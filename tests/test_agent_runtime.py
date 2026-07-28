@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import gc
 import sqlite3
 import tempfile
 import threading
 import unittest
+import weakref
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -401,6 +403,50 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertNotIn("First concurrent scope", second_provider_context)
         self.assertNotIn("weather-pulse", second_provider_context)
         self.assertIn("campaign-reader", second_provider_context)
+
+    def test_unrelated_conversations_enter_provider_calls_in_parallel(self):
+        first = context(assistant("weather-pulse"), thread_id="team:parallel:first")
+        second = context(assistant("campaign-reader"), thread_id="team:parallel:second")
+        model = BlockingScopeModel(responses=[AIMessage(content="First reply."), AIMessage(content="Second reply.")])
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first_result = executor.submit(runtime.start, first, "First concurrent scope")
+            self.assertTrue(model.first_entered.wait(timeout=1))
+            second_result = executor.submit(runtime.start, second, "Second concurrent scope")
+            second_entered_before_release = model.second_entered.wait(timeout=1)
+            model.release_first.set()
+            replies = {
+                first_result.result(timeout=2).reply,
+                second_result.result(timeout=2).reply,
+            }
+
+        self.assertTrue(second_entered_before_release)
+        self.assertEqual(replies, {"First reply.", "Second reply."})
+
+    def test_thread_lock_creation_is_exact_under_race(self):
+        runtime = agent_runtime.AgentRuntime(InMemorySaver())
+        barrier = threading.Barrier(16)
+
+        def select_lock():
+            barrier.wait(timeout=2)
+            return runtime._thread_lock("team:lock:race")
+
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            locks = tuple(executor.map(lambda _index: select_lock(), range(16)))
+
+        self.assertTrue(all(lock is locks[0] for lock in locks))
+
+    def test_unused_thread_locks_are_reclaimed(self):
+        runtime = agent_runtime.AgentRuntime(InMemorySaver())
+        lock = runtime._thread_lock("team:lock:reclaim")
+        reference = weakref.ref(lock)
+
+        del lock
+        gc.collect()
+
+        self.assertIsNone(reference())
+        self.assertEqual(len(runtime._thread_locks), 0)
 
     def test_system_prompt_uses_quoted_team_identity_and_internal_assistants(self):
         turn = context(team_name='  North "Star"  ')

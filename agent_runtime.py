@@ -13,6 +13,7 @@ import json
 import re
 import secrets
 import threading
+import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +47,6 @@ MAX_SCHEMA_BYTES = 64 * 1024
 MAX_REPLY_CHARS = 64 * 1024
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
-THREAD_LOCK_STRIPES = 64
 
 
 class RuntimeContractError(ValueError):
@@ -435,11 +435,16 @@ class AgentRuntime:
         self._checkpointer = checkpointer
         self._model_factory = model_factory or ProviderModelFactory()
         self._owns_model_factory = model_factory is None
-        self._thread_locks = tuple(threading.RLock() for _ in range(THREAD_LOCK_STRIPES))
+        self._thread_locks_guard = threading.Lock()
+        self._thread_locks: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakValueDictionary()
 
     def _thread_lock(self, thread_id: str) -> threading.RLock:
-        digest = hashlib.sha256(thread_id.encode()).digest()
-        return self._thread_locks[int.from_bytes(digest[:2]) % len(self._thread_locks)]
+        with self._thread_locks_guard:
+            lock = self._thread_locks.get(thread_id)
+            if lock is None:
+                lock = threading.RLock()
+                self._thread_locks[thread_id] = lock
+            return lock
 
     def _prune_history(self, thread_id: str) -> None:
         prune = getattr(self._checkpointer, "prune_thread", None)
@@ -465,8 +470,9 @@ class AgentRuntime:
         """Permanently remove one conversation without revealing whether it existed."""
         if not isinstance(thread_id, str) or IDENTIFIER_RE.fullmatch(thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
+        lock = self._thread_lock(thread_id)
         try:
-            with self._thread_lock(thread_id):
+            with lock:
                 self._checkpointer.delete_thread(thread_id)
         except Exception as exc:
             raise RuntimeStateError("checkpoint deletion failed") from exc
@@ -529,8 +535,9 @@ class AgentRuntime:
         if not isinstance(message, str) or not message.strip() or len(message) > MAX_MESSAGE_CHARS:
             raise RuntimeContractError("invalid chat message")
         turn_id = f"shimpz-turn-{secrets.token_hex(16)}"
+        lock = self._thread_lock(context.thread_id)
         try:
-            with self._thread_lock(context.thread_id):
+            with lock:
                 self._prepare_scope(context, resume=False)
                 self._prune_history(context.thread_id)
                 state = self._agent(context).invoke(
@@ -546,8 +553,9 @@ class AgentRuntime:
     def resume(self, context: TurnContext, results: Mapping[str, object]) -> TurnResult:
         if not results or not all(isinstance(key, str) and key for key in results):
             raise RuntimeContractError("invalid Power resume results")
+        lock = self._thread_lock(context.thread_id)
         try:
-            with self._thread_lock(context.thread_id):
+            with lock:
                 message_offset = self._prepare_scope(context, resume=True)
                 self._prune_history(context.thread_id)
                 state = self._agent(context).invoke(
