@@ -101,13 +101,13 @@ class AgentRuntimeTests(unittest.TestCase):
         BlockingScopeModel.second_entered = threading.Event()
 
     def test_returns_a_direct_reply_without_executing_any_power(self):
-        model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Captain.")])
+        model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Supervisor.")])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
 
         result = runtime.start(context(), "Say hello")
 
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.reply, "Hello, Captain.")
+        self.assertEqual(result.reply, "Hello, Supervisor.")
         self.assertEqual(result.powers, ())
 
     def test_prunes_checkpoint_history_before_each_provider_turn(self):
@@ -120,7 +120,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 self.pruned.append(thread_id)
 
         saver = PruningSaver()
-        model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Captain.")])
+        model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Supervisor.")])
         runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
 
         runtime.start(context(), "Say hello")
