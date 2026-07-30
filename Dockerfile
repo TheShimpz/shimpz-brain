@@ -25,14 +25,16 @@ LABEL org.opencontainers.image.title="shimpz-brain" \
 RUN groupadd -g 10001 brainruntime \
     && groupadd -g "${SHIMPZ_BRAIN_RUNTIME_TOKEN_GID}" shimpzbrain-runtime-token \
     && useradd -u 10001 -g brainruntime -G shimpzbrain-runtime-token -M -s /usr/sbin/nologin brainruntime \
-    && mkdir -p /app /run/shimpz-brain-runtime /var/lib/shimpz-brain-runtime \
+    && mkdir -p /app/egress /run/shimpz-brain-runtime /var/lib/shimpz-brain-runtime /var/log/egress-proxy \
     && chown brainruntime:shimpzbrain-runtime-token /run/shimpz-brain-runtime \
     && chmod 0750 /run/shimpz-brain-runtime \
     && chown brainruntime:brainruntime /var/lib/shimpz-brain-runtime \
-    && chmod 0700 /var/lib/shimpz-brain-runtime
+    && chmod 0700 /var/lib/shimpz-brain-runtime \
+    && chown brainruntime:brainruntime /var/log/egress-proxy
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=brainruntime:brainruntime agent_runtime.py runtime_api.py model_catalog.json /app/
+COPY --chown=brainruntime:brainruntime egress/app.py egress/audit.py egress/healthcheck.py egress/policy.py /app/egress/
 
 ENV LANGCHAIN_TRACING_V2=false \
     LANGSMITH_TRACING=false \

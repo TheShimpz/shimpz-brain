@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 #
 # egress-proxy — the shared Space Brain's only internet route.
-# A CONNECT-only, broad+audited-by-default proxy, optionally narrowed by SHIMPZ_EGRESS_ALLOW. It joins
-# only the Brain runtime's egress network, never a Team core/Assistant/data plane. Holds no credential
-# or docker.sock. stdlib-only — zero third-party dependencies.
+# A CONNECT-only proxy whose exact provider hosts come from the neutral model catalog. It joins only
+# the Brain runtime's egress network, never a Team core/Assistant/data plane. Holds no credential or
+# docker.sock. stdlib-only — zero third-party dependencies.
 # Pinned by digest rather than the movable `3.14-slim` tag.
 FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
 ARG SOURCE_DATE_EPOCH=0
@@ -16,7 +16,7 @@ RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 RUN useradd -u 10004 -M -s /usr/sbin/nologin egressproxy
 
 WORKDIR /app
-COPY app.py audit.py healthcheck.py ./
+COPY egress/app.py egress/audit.py egress/healthcheck.py egress/policy.py model_catalog.json ./
 
 # Pre-create + own the audit-log volume mountpoint — Docker copies image-dir ownership into a fresh
 # empty named volume on first mount (otherwise root:root/0755, unwritable by the non-root user).

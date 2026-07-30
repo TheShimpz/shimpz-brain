@@ -26,7 +26,9 @@ thread-delete endpoint. Historical checkpoint replay and time travel are not par
 The image uses CPython 3.14, one non-root Uvicorn worker, a read-only root filesystem, dropped
 capabilities, and no direct Docker socket or internet network. Provider traffic can leave only through
 the audited proxy owned at `egress/` and attached to the runtime's dedicated egress pair. That proxy is
-the Space-scoped Brain provider boundary; it is not reused for Assistant runtime or release traffic.
+the Space-scoped Brain provider boundary. It derives its exact HTTPS host policy from the packaged
+`model_catalog.json` and refuses to bind when that catalog is missing, invalid, empty, or contains a
+wildcard. It is not reused for Assistant runtime or release traffic.
 LangSmith tracing and access logging are disabled by default.
 
 `agent_runtime.py` owns the model/tool state machine, `runtime_api.py` owns the HTTP/auth boundary, and

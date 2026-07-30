@@ -4,8 +4,8 @@
 The Brain reaches this proxy over its dedicated runtime-egress network. The proxy is never attached
 to a Team core, Assistant, or data plane, and its own `egress_out` network is its only internet route.
 Internal datastores therefore remain unreachable and every outbound destination is audited.
-`SHIMPZ_EGRESS_ALLOW=*` is BROAD+AUDIT for a general-purpose Brain; a comma-list is a tight :443
-allowlist for a narrow deployment. See `permitted()`.
+The exact :443 allowlist is derived from the packaged neutral model catalog. Missing, invalid, or
+wildcard catalog policy prevents the proxy from binding.
 
 Design (deliberately minimal — no bearer, no TLS termination):
   * network-gated, not token-gated: only the Brain runtime shares its dedicated egress network.
@@ -30,9 +30,9 @@ import sys
 import threading
 
 import audit
+import policy
 
 LISTEN_PORT = int(os.environ.get("SHIMPZ_EGRESS_PORT", "8888"))
-ALLOW = [h.strip().lower().rstrip(".") for h in os.environ.get("SHIMPZ_EGRESS_ALLOW", "").split(",") if h.strip()]
 ALLOWED_PORTS = {443}  # HTTPS only — every legitimate brain destination is TLS
 CONNECT_TIMEOUT = 15
 IDLE_TIMEOUT = 300  # tear down a tunnel idle this long
@@ -57,40 +57,22 @@ _STATUS = {
 }
 
 
-def permitted(host: str, port: int) -> bool:
-    """Whether to forward a CONNECT to host:port.
-
-    `*` in the allowlist = BROAD+AUDIT mode: forward ANY host on ANY port. This is the right posture for
-    a GENERAL Brain — it reaches whatever public host a task needs. It is NOT
-    "no security": the internal datastores stay unreachable regardless (the brain is off `edge` and this
-    proxy has no route to PostgreSQL), and EVERY CONNECT is still audited — the full egress trail.
-
-    Otherwise ALLOWLIST mode: only the listed hosts, and only on :443. A `.suffix` entry matches the apex
-    + any subdomain (`.anthropic.com` → `anthropic.com`, `api.anthropic.com`); a bare entry matches exactly.
-    """
-    if "*" in ALLOW:
-        return True
+def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
+    """Whether one CONNECT exactly matches the catalog-derived :443 policy."""
     if port not in ALLOWED_PORTS:
         return False
-    host = host.lower().rstrip(".")
-    for entry in ALLOW:
-        if entry.startswith("."):
-            if host == entry[1:] or host.endswith(entry):
-                return True
-        elif host == entry:
-            return True
-    return False
+    canonical = host.lower().removesuffix(".")
+    return canonical in allowed_hosts
 
 
 def _resolve_public(host: str, port: int) -> tuple[int, tuple] | None:
     """Resolve host:port to a verified-PUBLIC address, or None if it resolves to an internal IP.
 
     Defense in depth for the authorized Brain caller. The proxy is multi-homed across its private
-    Brain network and outbound network, so `*` means "any PUBLIC host", never an in-cluster peer. A
-    CONNECT to an internal name or literal non-global address is refused, and mixed public/private
-    answers fail closed. We connect to
+    Brain network and outbound network. A CONNECT to an internal name or literal non-global address
+    is refused, and mixed public/private answers fail closed. We connect to
     the exact verified address (never a re-resolve), closing resolve→connect TOCTOU. Network separation,
-    not this destination guard, is what prevents Apps from reaching the broad proxy.
+    not this destination guard, is what prevents other domains from reaching the Brain proxy.
     """
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
@@ -126,7 +108,7 @@ class Handler(socketserver.BaseRequestHandler):
             self._reply(cli, 400)
             audit.log("connect", parts[1][:80], result="denied", level="info" if probe else "warn", code=400)
             return
-        if not permitted(host, port):
+        if not permitted(host, port, self.server.allowed_hosts):
             self._reply(cli, 403)
             src = {"source": "loopback-probe"} if probe else {}
             audit.log("connect", f"{host}:{port}", result="denied", level="info" if probe else "warn", code=403, **src)
@@ -222,12 +204,16 @@ class Server(socketserver.ThreadingTCPServer):
     def __init__(
         self,
         *args,
+        allowed_hosts: frozenset[str],
         max_concurrency: int = MAX_CONCURRENCY,
         max_source_concurrency: int = MAX_SOURCE_CONCURRENCY,
         **kwargs,
     ) -> None:
         if not 1 <= max_source_concurrency <= max_concurrency <= MAX_CONCURRENCY:
             raise ValueError("invalid egress proxy concurrency")
+        if not allowed_hosts or "*" in allowed_hosts:
+            raise ValueError("invalid Brain provider policy")
+        self.allowed_hosts = allowed_hosts
         self._request_slots = threading.BoundedSemaphore(max_concurrency)
         self._max_source_concurrency = max_source_concurrency
         self._source_guard = threading.Lock()
@@ -285,13 +271,13 @@ class Server(socketserver.ThreadingTCPServer):
 
 
 def main() -> None:
-    if not ALLOW:
-        # An empty allowlist would deny everything and silently break the brain — refuse to start
-        # so the misconfiguration is loud, not a mysterious total outage. (fail-fast doctrine.)
-        print("egress-proxy: SHIMPZ_EGRESS_ALLOW is empty — refusing to start", file=sys.stderr)
-        sys.exit(1)
-    server = Server((str(ipaddress.IPv4Address(0)), LISTEN_PORT), Handler)
-    print(f"egress-proxy listening on :{LISTEN_PORT}; allow={ALLOW}", file=sys.stderr)
+    try:
+        allowed_hosts = policy.load_provider_hosts()
+    except policy.ProviderPolicyError:
+        print("brain-egress: provider policy is unavailable; refusing to start", file=sys.stderr)
+        raise SystemExit(1) from None
+    server = Server((str(ipaddress.IPv4Address(0)), LISTEN_PORT), Handler, allowed_hosts=allowed_hosts)
+    print(f"brain-egress listening on :{LISTEN_PORT}; providers={sorted(allowed_hosts)}", file=sys.stderr)
     server.serve_forever()
 
 

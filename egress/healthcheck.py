@@ -4,8 +4,7 @@
 Prove the control is live, not merely that the port is open. A plain non-CONNECT request must be
 refused with 405: this proxy only tunnels CONNECT, never
 forward-proxies plain HTTP (which would be an `http://` exfil path). That check is independent of the
-host allowlist, so it holds in BOTH postures (broad `*` and a tight allowlist) — unlike a host-based
-probe, which a `*` allowlist would let through.
+catalog-derived host allowlist, so it does not create a provider request or require a live provider.
 """
 
 import socket
