@@ -50,6 +50,9 @@ class StaticBrainImageContractTests(unittest.TestCase):
         sources = "egress/app.py egress/audit.py egress/healthcheck.py egress/policy.py"
         self.assertIn(f"COPY --chown=brainruntime:brainruntime {sources} /app/egress/", dockerfile)
         self.assertIn("agent_runtime.py runtime_api.py model_catalog.json /app/", dockerfile)
+        self.assertIn("mkdir -p /app/egress", dockerfile)
+        self.assertIn("/var/log/brain-egress", dockerfile)
+        self.assertNotIn("/var/log/egress-proxy", dockerfile)
         self.assertNotIn("SHIMPZ_EGRESS_ALLOW", dockerfile)
 
 

@@ -25,12 +25,12 @@ LABEL org.opencontainers.image.title="shimpz-brain" \
 RUN groupadd -g 10001 brainruntime \
     && groupadd -g "${SHIMPZ_BRAIN_RUNTIME_TOKEN_GID}" shimpzbrain-runtime-token \
     && useradd -u 10001 -g brainruntime -G shimpzbrain-runtime-token -M -s /usr/sbin/nologin brainruntime \
-    && mkdir -p /app/egress /run/shimpz-brain-runtime /var/lib/shimpz-brain-runtime /var/log/egress-proxy \
+    && mkdir -p /app/egress /run/shimpz-brain-runtime /var/lib/shimpz-brain-runtime /var/log/brain-egress \
     && chown brainruntime:shimpzbrain-runtime-token /run/shimpz-brain-runtime \
     && chmod 0750 /run/shimpz-brain-runtime \
     && chown brainruntime:brainruntime /var/lib/shimpz-brain-runtime \
     && chmod 0700 /var/lib/shimpz-brain-runtime \
-    && chown brainruntime:brainruntime /var/log/egress-proxy
+    && chown brainruntime:brainruntime /var/log/brain-egress
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=brainruntime:brainruntime agent_runtime.py runtime_api.py model_catalog.json /app/

@@ -14,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
-AUDIT_PATH = Path(os.environ.get("SHIMPZ_EGRESS_AUDIT_LOG", "/var/log/egress-proxy/audit.jsonl"))
+AUDIT_PATH = Path(os.environ.get("SHIMPZ_EGRESS_AUDIT_LOG", "/var/log/brain-egress/audit.jsonl"))
 MAX_BYTES = 10 * 1024 * 1024
 BACKUPS = 3
 
