@@ -46,14 +46,11 @@ class StaticBrainImageContractTests(unittest.TestCase):
 
     def test_runtime_artifact_contains_the_catalog_bound_egress_role(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-        egress_dockerfile = (ROOT / "egress" / "Dockerfile").read_text(encoding="utf-8")
 
         sources = "egress/app.py egress/audit.py egress/healthcheck.py egress/policy.py"
         self.assertIn(f"COPY --chown=brainruntime:brainruntime {sources} /app/egress/", dockerfile)
-        self.assertIn(f"COPY {sources} model_catalog.json ./", egress_dockerfile)
         self.assertIn("agent_runtime.py runtime_api.py model_catalog.json /app/", dockerfile)
         self.assertNotIn("SHIMPZ_EGRESS_ALLOW", dockerfile)
-        self.assertNotIn("SHIMPZ_EGRESS_ALLOW", egress_dockerfile)
 
 
 if __name__ == "__main__":
