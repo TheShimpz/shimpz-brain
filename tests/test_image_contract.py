@@ -33,15 +33,12 @@ class StaticBrainImageContractTests(unittest.TestCase):
         self.assertNotIn("COPY rootfs", dockerfile)
         self.assertNotIn("COPY codex", dockerfile)
 
-    def test_static_runtime_paths_and_tracing_defaults_are_explicit(self):
+    def test_profile_owns_runtime_paths_while_image_owns_tracing_defaults(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("SHIMPZ_BRAIN_RUNTIME_TOKEN_GID=10016", dockerfile)
-        self.assertIn("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE=/run/shimpz-brain-runtime/token", dockerfile)
-        self.assertIn(
-            "SHIMPZ_BRAIN_RUNTIME_STATE=/var/lib/shimpz-brain-runtime/checkpoints.sqlite3",
-            dockerfile,
-        )
+        self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE=", dockerfile)
+        self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_STATE=", dockerfile)
         self.assertIn("LANGSMITH_TRACING=false", dockerfile)
 
     def test_runtime_artifact_contains_the_catalog_bound_egress_role(self):

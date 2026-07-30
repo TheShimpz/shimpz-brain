@@ -39,9 +39,7 @@ COPY --chown=brainruntime:brainruntime egress/app.py egress/audit.py egress/heal
 ENV LANGCHAIN_TRACING_V2=false \
     LANGSMITH_TRACING=false \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    SHIMPZ_BRAIN_RUNTIME_STATE=/var/lib/shimpz-brain-runtime/checkpoints.sqlite3 \
-    SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE=/run/shimpz-brain-runtime/token
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 USER brainruntime
