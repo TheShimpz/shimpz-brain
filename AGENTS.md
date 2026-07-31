@@ -6,7 +6,7 @@
   consumed by the neutral `shimpz-egress` image.
 - Brain reasons and requests declared Powers; it does not own Team authorization, execute Powers, persist provider
   credentials, or define the external model catalog that bounds its own egress.
-- Read the canonical [Shimpz architecture](https://github.com/TheShimpz/shimpz/blob/main/docs/ARCHITECTURE.md)
+- Read the canonical [Shimpz architecture](https://github.com/TheShimpz/shimpz/blob/main/.context/ARCHITECTURE.md)
   before changing product vocabulary, authority, protocols, runtime topology, or source placement.
 
 ## Delivery and engineering
