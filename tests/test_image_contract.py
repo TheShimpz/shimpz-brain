@@ -41,15 +41,12 @@ class StaticBrainImageContractTests(unittest.TestCase):
         self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_STATE=", dockerfile)
         self.assertIn("LANGSMITH_TRACING=false", dockerfile)
 
-    def test_runtime_artifact_contains_the_catalog_bound_egress_role(self):
+    def test_runtime_artifact_excludes_the_independent_egress_role(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-        sources = "egress/app.py egress/audit.py egress/healthcheck.py egress/policy.py"
-        self.assertIn(f"COPY --chown=brainruntime:brainruntime {sources} /app/egress/", dockerfile)
         self.assertIn("agent_runtime.py runtime_api.py model_catalog.json /app/", dockerfile)
-        self.assertIn("mkdir -p /app/egress", dockerfile)
-        self.assertIn("/var/log/brain-egress", dockerfile)
-        self.assertNotIn("/var/log/egress-proxy", dockerfile)
+        self.assertNotIn("egress/", dockerfile)
+        self.assertNotIn("/var/log/brain-egress", dockerfile)
         self.assertNotIn("SHIMPZ_EGRESS_ALLOW", dockerfile)
 
 
