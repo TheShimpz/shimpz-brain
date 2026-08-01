@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from typing import get_args
 
 import agent_runtime
 import runtime_api
@@ -81,12 +82,17 @@ class FakeRuntime:
             raise self.error
 
 
-def client(runtime):
+def client(runtime, *, raise_server_exceptions=True):
     app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
 class RuntimeApiTests(unittest.TestCase):
+    def test_http_provider_contract_matches_the_runtime_catalog(self):
+        provider_annotation = runtime_api.ProviderInput.model_fields["provider"].annotation
+
+        self.assertEqual(frozenset(get_args(provider_annotation)), agent_runtime.PROVIDERS)
+
     def test_health_is_small_and_does_not_require_a_secret(self):
         response = client(FakeRuntime()).get("/health")
 
@@ -278,6 +284,19 @@ class RuntimeApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json(), {"detail": "Model provider request failed"})
+        self.assertNotIn(SECRET, response.text)
+
+    def test_dependency_import_error_remains_an_internal_server_failure(self):
+        response = client(
+            FakeRuntime(error=ImportError(f"missing dependency beside {SECRET}")),
+            raise_server_exceptions=False,
+        ).post(
+            "/v1/turns",
+            json=body(),
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 500)
         self.assertNotIn(SECRET, response.text)
 
     def test_state_error_is_generic_and_never_echoes_persisted_data(self):

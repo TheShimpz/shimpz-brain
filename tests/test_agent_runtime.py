@@ -681,7 +681,7 @@ class AgentRuntimeTests(unittest.TestCase):
         transport = mock.Mock()
         with (
             mock.patch.object(agent_runtime.httpx, "Client", return_value=transport),
-            mock.patch.object(agent_runtime, "ChatOpenAI", side_effect=[mock.Mock(), mock.Mock()]) as constructor,
+            mock.patch("langchain_openai.ChatOpenAI", side_effect=[mock.Mock(), mock.Mock()]) as constructor,
         ):
             factory = agent_runtime.ProviderModelFactory()
             factory(
@@ -706,10 +706,48 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertNotEqual(first.kwargs["api_key"], second.kwargs["api_key"])
         transport.close.assert_called_once_with()
 
+    def test_dependency_import_errors_are_never_laundered_as_provider_failures(self):
+        class MissingDependencyFactory:
+            def __call__(self, _config):
+                raise ImportError("synthetic missing runtime dependency")
+
+        with self.assertRaisesRegex(ImportError, "synthetic missing runtime dependency"):
+            agent_runtime.AgentRuntime(InMemorySaver(), model_factory=MissingDependencyFactory()).start(
+                context(thread_id="team:dependency:start"),
+                "Start",
+            )
+
+        selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
+        model = ToolAwareFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": selected_tool,
+                            "args": {"name": "Lisbon"},
+                            "id": "provider-call-dependency",
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+            ]
+        )
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        turn = context(
+            assistant("weather-pulse", power("lookup")),
+            thread_id="team:dependency:resume",
+        )
+        suspended = runtime.start(turn, "Look up Lisbon")
+        runtime._model_factory = MissingDependencyFactory()
+
+        with self.assertRaisesRegex(ImportError, "synthetic missing runtime dependency"):
+            runtime.resume(turn, {suspended.powers[0].interrupt_id: {"weather": "sunny"}})
+
     def test_openai_uses_responses_api_without_changing_anthropic(self):
         with (
-            mock.patch.object(agent_runtime, "ChatOpenAI") as openai,
-            mock.patch.object(agent_runtime, "ChatAnthropic") as anthropic,
+            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
         ):
             agent_runtime.provider_model(
                 agent_runtime.ProviderConfig(

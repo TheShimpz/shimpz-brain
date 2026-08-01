@@ -20,13 +20,9 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import httpx
-from langchain.agents import create_agent
-from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import StructuredTool
-from langchain_openai import ChatOpenAI
-from langgraph.types import Command, interrupt
 from pydantic import SecretStr
 
 _MODEL_CATALOG = json.loads(Path(__file__).with_name("model_catalog.json").read_text(encoding="utf-8"))
@@ -194,11 +190,15 @@ def provider_model(config: ProviderConfig, *, http_client: httpx.Client | None =
         "max_retries": 2,
     }
     if config.provider == "openai":
+        from langchain_openai import ChatOpenAI
+
         openai = {**common, "use_responses_api": True}
         if http_client is not None:
             openai["http_client"] = http_client
         return ChatOpenAI(**openai)
     if config.provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+
         return ChatAnthropic(**common)
     raise RuntimeContractError("unsupported model provider")
 
@@ -247,6 +247,7 @@ def _assistant_scope(context: TurnContext) -> str:
 
 def _request_power(assistant_id: str, power: PowerDefinition) -> StructuredTool:
     """Build a tool that can only suspend the graph with a typed Power request."""
+    from langgraph.types import interrupt
 
     def suspend_for_controller(**payload: Any) -> Any:
         return interrupt(
@@ -486,6 +487,8 @@ class AgentRuntime:
         }
 
     def _agent(self, context: TurnContext):
+        from langchain.agents import create_agent
+
         model = self._model_factory(context.provider)
         tools = [_request_power(assistant.id, power) for assistant in context.assistants for power in assistant.powers]
         if len({tool.name for tool in tools}) != len(tools):
@@ -544,7 +547,7 @@ class AgentRuntime:
                     {"messages": [HumanMessage(content=message, id=turn_id)]},
                     config=self._config(context),
                 )
-        except RuntimeContractError, RuntimeStateError:
+        except RuntimeContractError, RuntimeStateError, ImportError:
             raise
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
@@ -555,6 +558,8 @@ class AgentRuntime:
             raise RuntimeContractError("invalid Power resume results")
         lock = self._thread_lock(context.thread_id)
         try:
+            from langgraph.types import Command
+
             with lock:
                 message_offset = self._prepare_scope(context, resume=True)
                 self._prune_history(context.thread_id)
@@ -562,7 +567,7 @@ class AgentRuntime:
                     Command(resume=dict(results)),
                     config=self._config(context),
                 )
-        except RuntimeContractError, RuntimeStateError:
+        except RuntimeContractError, RuntimeStateError, ImportError:
             raise
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
