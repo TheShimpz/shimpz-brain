@@ -18,6 +18,8 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+COLD_IMPORT_TIMEOUT_SECONDS = 10
+
 
 class ToolAwareFakeModel(FakeMessagesListChatModel):
     bound_tools: ClassVar[list[str]] = []
@@ -391,7 +393,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_result = executor.submit(runtime.start, first, "First concurrent scope")
-            self.assertTrue(model.first_entered.wait(timeout=1))
+            self.assertTrue(model.first_entered.wait(timeout=COLD_IMPORT_TIMEOUT_SECONDS))
             second_result = executor.submit(runtime.start, second, "Second concurrent scope")
             second_was_blocked = not model.second_entered.wait(timeout=0.1)
             model.release_first.set()
@@ -412,7 +414,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_result = executor.submit(runtime.start, first, "First concurrent scope")
-            self.assertTrue(model.first_entered.wait(timeout=1))
+            self.assertTrue(model.first_entered.wait(timeout=COLD_IMPORT_TIMEOUT_SECONDS))
             second_result = executor.submit(runtime.start, second, "Second concurrent scope")
             second_entered_before_release = model.second_entered.wait(timeout=1)
             model.release_first.set()
