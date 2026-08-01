@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 # check=skip=SecretsUsedInArgOrEnv ; SHIMPZ_BRAIN_RUNTIME_TOKEN_GID is a numeric group id, never a credential
 
-FROM ghcr.io/astral-sh/uv:0.11.25@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded AS uv
 ARG SOURCE_DATE_EPOCH=0
 
-FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS builder
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS builder
 ARG SOURCE_DATE_EPOCH=0
 WORKDIR /build
 COPY --from=uv /uv /usr/local/bin/uv
@@ -15,7 +15,7 @@ RUN export UV_PROJECT_ENVIRONMENT=/opt/venv UV_CACHE_DIR=/tmp/uv-cache UV_LINK_M
     && /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /opt/venv \
     && rm -rf "${UV_CACHE_DIR}" /root/.cache/uv
 
-FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6
 ARG SOURCE_DATE_EPOCH=0
 ARG SHIMPZ_BRAIN_RUNTIME_TOKEN_GID=10016
 
