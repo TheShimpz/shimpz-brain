@@ -679,6 +679,24 @@ class AgentRuntimeTests(unittest.TestCase):
             ):
                 agent_runtime.ProviderConfig(provider=provider, model=model, api_key="secret-test-key")
 
+    def test_every_catalog_provider_has_a_runtime_adapter(self):
+        with (
+            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+        ):
+            for provider, models in agent_runtime.MODELS_BY_PROVIDER.items():
+                with self.subTest(provider=provider):
+                    agent_runtime.provider_model(
+                        agent_runtime.ProviderConfig(
+                            provider=provider,
+                            model=next(iter(models)),
+                            api_key="secret-test-key",
+                        )
+                    )
+
+        openai.assert_called_once()
+        anthropic.assert_called_once()
+
     def test_openai_models_reuse_a_credential_free_http_transport(self):
         transport = mock.Mock()
         with (
