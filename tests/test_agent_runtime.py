@@ -484,6 +484,15 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("do not perform generic work or invent capabilities", prompt)
         self.assertTrue(prompt.endswith("[]"))
 
+    def test_completed_reply_is_bounded_to_the_public_chat_contract(self):
+        model = ToolAwareFakeModel(responses=[AIMessage(content="x" * (agent_runtime.MAX_REPLY_CHARS + 1))])
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+
+        completed = runtime.start(context(), "Give me a long answer")
+
+        self.assertEqual(completed.status, "completed")
+        self.assertEqual(completed.reply, "x" * agent_runtime.MAX_REPLY_CHARS)
+
     def test_duplicate_local_power_ids_are_isolated_and_emit_the_selected_assistant(self):
         selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
         model = ToolAwareFakeModel(
