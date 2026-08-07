@@ -12,9 +12,12 @@ from tests.test_agent_runtime import assistant, context, power
 class RuntimeFailureProjectionTests(unittest.TestCase):
     def test_pending_checkpoint_writes_are_strictly_validated(self):
         for pending in ("invalid", [("short", "tuple")]):
-            with self.subTest(pending=pending), self.assertRaisesRegex(
-                agent_runtime.RuntimeStateError,
-                "pending state is invalid",
+            with (
+                self.subTest(pending=pending),
+                self.assertRaisesRegex(
+                    agent_runtime.RuntimeStateError,
+                    "pending state is invalid",
+                ),
             ):
                 agent_runtime._has_pending_interrupt(pending)
 
@@ -94,24 +97,33 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         )
         for checkpoint_tuple in invalid_states:
             checkpointer.get_tuple.return_value = checkpoint_tuple
-            with self.subTest(checkpoint=checkpoint_tuple), self.assertRaisesRegex(
-                agent_runtime.RuntimeStateError,
-                "checkpoint state is invalid",
+            with (
+                self.subTest(checkpoint=checkpoint_tuple),
+                self.assertRaisesRegex(
+                    agent_runtime.RuntimeStateError,
+                    "checkpoint state is invalid",
+                ),
             ):
                 runtime._prepare_scope(turn, resume=False)
 
     def test_turn_entrypoints_reject_invalid_input_and_resume_provider_failure(self):
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: mock.Mock())
         for message in (None, " ", "x" * (agent_runtime.MAX_MESSAGE_CHARS + 1)):
-            with self.subTest(message=message), self.assertRaisesRegex(
-                agent_runtime.RuntimeContractError,
-                "invalid chat message",
+            with (
+                self.subTest(message=message),
+                self.assertRaisesRegex(
+                    agent_runtime.RuntimeContractError,
+                    "invalid chat message",
+                ),
             ):
                 runtime.start(context(), message)
         for results in ({}, {"": "value"}, {1: "value"}):
-            with self.subTest(results=results), self.assertRaisesRegex(
-                agent_runtime.RuntimeContractError,
-                "invalid Power resume results",
+            with (
+                self.subTest(results=results),
+                self.assertRaisesRegex(
+                    agent_runtime.RuntimeContractError,
+                    "invalid Power resume results",
+                ),
             ):
                 runtime.resume(context(), results)
 

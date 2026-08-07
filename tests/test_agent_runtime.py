@@ -642,9 +642,12 @@ class AgentRuntimeTests(unittest.TestCase):
             ("openai", "gpt-5.6-terra", "", "invalid model provider credential"),
             ("openai", "gpt-5.6-terra", "bad\0secret", "invalid model provider credential"),
         ):
-            with self.subTest(provider=provider, api_key=api_key), self.assertRaisesRegex(
-                agent_runtime.RuntimeContractError,
-                message,
+            with (
+                self.subTest(provider=provider, api_key=api_key),
+                self.assertRaisesRegex(
+                    agent_runtime.RuntimeContractError,
+                    message,
+                ),
             ):
                 agent_runtime.ProviderConfig(provider=provider, model=model, api_key=api_key)
 
