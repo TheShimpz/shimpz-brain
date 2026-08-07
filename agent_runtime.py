@@ -393,8 +393,6 @@ def _result(
             raise RuntimeContractError("graph completed without the current turn")
         current_messages = messages[boundary + 1 :]
     else:
-        if message_offset is None:
-            raise RuntimeContractError("graph result boundary is invalid")
         if message_offset < 0 or message_offset > len(messages):
             raise RuntimeContractError("graph result boundary is invalid")
         current_messages = messages[message_offset:]

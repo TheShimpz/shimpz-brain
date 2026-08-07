@@ -9,6 +9,7 @@ import weakref
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest import mock
 
@@ -634,6 +635,77 @@ class AgentRuntimeTests(unittest.TestCase):
                 summary="Hello",
                 input_schema={"type": "string"},
             )
+
+    def test_remaining_definition_contracts_fail_closed(self):
+        for provider, model, api_key, message in (
+            ("unknown", "model", "secret", "unsupported model provider"),
+            ("openai", "gpt-5.6-terra", "", "invalid model provider credential"),
+            ("openai", "gpt-5.6-terra", "bad\0secret", "invalid model provider credential"),
+        ):
+            with self.subTest(provider=provider, api_key=api_key), self.assertRaisesRegex(
+                agent_runtime.RuntimeContractError,
+                message,
+            ):
+                agent_runtime.ProviderConfig(provider=provider, model=model, api_key=api_key)
+
+        for summary, schema, message in (
+            (" ", {"type": "object"}, "invalid Power summary"),
+            ("Summary", {"type": "object", "value": {1}}, "not JSON"),
+            (
+                "Summary",
+                {"type": "object", "description": "x" * agent_runtime.MAX_SCHEMA_BYTES},
+                "too large",
+            ),
+        ):
+            with self.subTest(message=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
+                agent_runtime.PowerDefinition(id="power", summary=summary, input_schema=schema)
+
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Assistant id"):
+            assistant("Invalid Assistant")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Powers"):
+            agent_runtime.AssistantDefinition(
+                id="busy-assistant",
+                genesis="Bounded purpose.",
+                powers=tuple(power(f"power-{index}") for index in range(agent_runtime.MAX_POWERS_PER_ASSISTANT + 1)),
+            )
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid conversation thread"):
+            context(thread_id="invalid thread")
+
+        invalid_config = SimpleNamespace(provider="unsupported", model="model", api_key="secret")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model provider"):
+            agent_runtime.provider_model(invalid_config)
+
+    def test_result_projection_rejects_every_invalid_boundary_shape(self):
+        self.assertEqual(agent_runtime._message_content(None), "")
+        self.assertEqual(
+            agent_runtime._message_content(
+                ["first", {"type": "text", "text": "second"}, {"type": "image", "text": "ignored"}, 3]
+            ),
+            "first\nsecond",
+        )
+
+        for pending, message in (
+            (1, "invalid suspended graph state"),
+            ([], "empty graph suspension"),
+            ([object()], "invalid Power suspension"),
+        ):
+            with self.subTest(pending=pending), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
+                agent_runtime._pending_result(pending)
+
+        for state, boundaries, message in (
+            ({}, {"message_offset": 0}, "without messages"),
+            ({"messages": []}, {}, "boundary is invalid"),
+            ({"messages": []}, {"after_message_id": "id", "message_offset": 0}, "boundary is invalid"),
+            ({"messages": []}, {"after_message_id": "missing"}, "without the current turn"),
+            ({"messages": []}, {"message_offset": -1}, "boundary is invalid"),
+            ({"messages": []}, {"message_offset": 1}, "boundary is invalid"),
+            ({"messages": [AIMessage(content=" ")]}, {"message_offset": 0}, "without an Assistant reply"),
+        ):
+            with (
+                self.subTest(boundaries=boundaries),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, message),
+            ):
+                agent_runtime._result(state, **boundaries)
 
     def test_invalid_genesis_fails_closed(self):
         valid = assistant("hello-pulse", power("hello"))
