@@ -175,8 +175,7 @@ def _sqlite_runtime(path: Path = STATE_PATH) -> agent_runtime.AgentRuntime:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.parent.chmod(0o700)
     connection = sqlite3.connect(path, check_same_thread=False)
-    if path.exists():
-        path.chmod(0o600)
+    path.chmod(0o600)
     connection.execute("PRAGMA secure_delete=ON")
     checkpointer = PruningSqliteSaver(connection)
     checkpointer.setup()
