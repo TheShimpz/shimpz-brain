@@ -130,6 +130,12 @@ class BrainEgressHandlerTests(unittest.TestCase):
         closed.recv.return_value = b""
         self.assertIsNone(app.Handler._read_request_line(closed))
 
+        handler = object.__new__(app.Handler)
+        handler.request = mock.Mock()
+        handler.client_address = ("10.0.0.2", 1234)
+        with mock.patch.object(app.Handler, "_read_request_line", return_value=None):
+            self.assertIsNone(handler.handle())
+
     def test_resolution_rejects_errors_invalid_mixed_and_empty_answers(self) -> None:
         with mock.patch.object(app.socket, "getaddrinfo", side_effect=OSError):
             self.assertIsNone(app._resolve_public("api.openai.com", 443))
@@ -165,6 +171,21 @@ class BrainEgressHandlerTests(unittest.TestCase):
         left.close.assert_called_once()
         right.close.assert_called_once()
 
+        for result in (b"", OSError("closed")):
+            left = mock.Mock()
+            right = mock.Mock()
+            if isinstance(result, Exception):
+                left.recv.side_effect = result
+            else:
+                left.recv.return_value = result
+            with (
+                self.subTest(result=result),
+                mock.patch.object(app.select, "select", return_value=([left], [], [])),
+            ):
+                app.Handler._tunnel(left, right)
+            left.close.assert_called_once_with()
+            right.close.assert_called_once_with()
+
 
 class BrainEgressServerTests(unittest.TestCase):
     def _server(self, **kwargs) -> app.Server:
@@ -199,6 +220,13 @@ class BrainEgressServerTests(unittest.TestCase):
         server._release_request_slot(("10.0.0.2", 1))
         server._release_request_slot(("10.0.0.3", 3))
         self.assertEqual(server._source_counts, {})
+
+        server = self._server(max_concurrency=2, max_source_concurrency=2)
+        self.assertTrue(server._acquire_request_slot(("10.0.0.4", 1)))
+        self.assertTrue(server._acquire_request_slot(("10.0.0.4", 2)))
+        server._release_request_slot(("10.0.0.4", 1))
+        self.assertEqual(server._source_counts, {"10.0.0.4": 1})
+        server._release_request_slot(("10.0.0.4", 2))
 
     def test_overload_is_answered_without_creating_a_worker(self) -> None:
         server = self._server(max_concurrency=1, max_source_concurrency=1)
@@ -260,6 +288,70 @@ class BrainEgressServerTests(unittest.TestCase):
         server.serve_forever.assert_called_once_with()
         self.assertIn("providers=['api.anthropic.com', 'api.openai.com']", stderr.getvalue())
 
+    def test_accepted_socket_gets_the_connect_timeout(self) -> None:
+        server = self._server()
+        request = mock.Mock()
+        with mock.patch.object(
+            app.socketserver.ThreadingTCPServer,
+            "get_request",
+            return_value=(request, ("10.0.0.2", 1234)),
+        ):
+            self.assertEqual(server.get_request(), (request, ("10.0.0.2", 1234)))
+        request.settimeout.assert_called_once_with(app.CONNECT_TIMEOUT)
+
+    def test_invalid_shipping_envelope_and_script_guard_fail_closed(self) -> None:
+        specification = importlib.util.spec_from_file_location("brain_egress_invalid_config", EGRESS / "app.py")
+        if specification is None or specification.loader is None:
+            raise AssertionError("cannot execute Brain egress entrypoint")
+        invalid = importlib.util.module_from_spec(specification)
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {"SHIMPZ_EGRESS_MAX_CONCURRENCY": "1", "SHIMPZ_EGRESS_MAX_SOURCE_CONCURRENCY": "2"},
+                clear=True,
+            ),
+            self.assertRaisesRegex(ValueError, "shipping resource envelope"),
+        ):
+            specification.loader.exec_module(invalid)
+
+        specification = importlib.util.spec_from_file_location("__main__", EGRESS / "app.py")
+        if specification is None or specification.loader is None:
+            raise AssertionError("cannot execute Brain egress entrypoint")
+        script = importlib.util.module_from_spec(specification)
+        with (
+            mock.patch.object(app.policy, "load_provider_hosts", side_effect=app.policy.ProviderPolicyError("closed")),
+            mock.patch.dict(sys.modules, {"audit": app.audit, "policy": app.policy}),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            specification.loader.exec_module(script)
+        self.assertEqual(raised.exception.code, 1)
+
+
+class BrainEgressHealthcheckTests(unittest.TestCase):
+    def _run(self, *, response: bytes = b"", failure: OSError | None = None) -> int:
+        specification = importlib.util.spec_from_file_location("__main__", EGRESS / "healthcheck.py")
+        if specification is None or specification.loader is None:
+            raise AssertionError("cannot execute Brain egress healthcheck")
+        script = importlib.util.module_from_spec(specification)
+        connection = mock.Mock()
+        connection.recv.return_value = response
+        with (
+            mock.patch.object(
+                socket,
+                "create_connection",
+                return_value=connection if failure is None else None,
+                side_effect=failure,
+            ),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            specification.loader.exec_module(script)
+        return int(raised.exception.code)
+
+    def test_requires_a_live_connect_only_refusal(self) -> None:
+        self.assertEqual(self._run(response=b"HTTP/1.1 405 Method Not Allowed"), 0)
+        self.assertEqual(self._run(response=b"HTTP/1.1 200 Connection established"), 1)
+        self.assertEqual(self._run(failure=OSError("unavailable")), 1)
+
 
 class BrainEgressAuditTests(unittest.TestCase):
     def test_audit_writes_structured_events_and_rotates_bounded_files(self) -> None:
@@ -280,6 +372,7 @@ class BrainEgressAuditTests(unittest.TestCase):
                 principal="brain",
             )
             app.audit.log("connect", "example.com:443", result="denied", code=403)
+            app.audit.log("connect", "api.anthropic.com:443", result="ok")
 
         event = json.loads(stdout.getvalue().splitlines()[0])
         self.assertEqual(event["trace_id"], trace_id)
@@ -287,7 +380,8 @@ class BrainEgressAuditTests(unittest.TestCase):
         self.assertEqual(event["principal"], "brain")
         self.assertEqual(event["subject"], "api.openai.com:443")
         self.assertEqual(audit_path.with_name("audit.jsonl.1").read_text().count("\n"), 1)
-        denied = json.loads(audit_path.read_text())
+        self.assertEqual(audit_path.with_name("audit.jsonl.2").read_text().count("\n"), 1)
+        denied = json.loads(audit_path.with_name("audit.jsonl.1").read_text())
         self.assertEqual(denied["level"], "warn")
         self.assertEqual(denied["code"], 403)
 

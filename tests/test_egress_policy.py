@@ -4,6 +4,7 @@ import copy
 import importlib
 import io
 import json
+import stat
 import sys
 import tempfile
 import unittest
@@ -76,6 +77,46 @@ class BrainEgressPolicyTests(unittest.TestCase):
         for candidate in invalid_catalogs:
             with self.subTest(candidate=candidate), self.assertRaises(policy.ProviderPolicyError):
                 policy.load_provider_hosts(self._write(candidate))
+
+    def test_catalog_field_types_and_bounds_fail_closed(self) -> None:
+        candidates = []
+        invalid_title = copy.deepcopy(self.catalog)
+        invalid_title["providers"][0]["title"] = ""
+        candidates.append(invalid_title)
+        invalid_models = copy.deepcopy(self.catalog)
+        invalid_models["providers"][0]["models"] = []
+        candidates.append(invalid_models)
+        invalid_model_id = copy.deepcopy(self.catalog)
+        invalid_model_id["providers"][0]["models"][0]["id"] = "INVALID"
+        candidates.append(invalid_model_id)
+        invalid_price = copy.deepcopy(self.catalog)
+        invalid_price["providers"][0]["models"][0]["input_usd_per_million_cents"] = True
+        candidates.append(invalid_price)
+        invalid_default_model = copy.deepcopy(self.catalog)
+        invalid_default_model["providers"][0]["default_model"] = "missing"
+        candidates.append(invalid_default_model)
+        invalid_schema = copy.deepcopy(self.catalog)
+        invalid_schema["schema"] = True
+        candidates.append(invalid_schema)
+
+        for candidate in candidates:
+            with self.subTest(candidate=candidate), self.assertRaises(policy.ProviderPolicyError):
+                policy.load_provider_hosts(self._write(candidate))
+
+    def test_catalog_file_metadata_must_be_regular_unique_and_bounded(self) -> None:
+        path = self._write(self.catalog)
+        metadata = path.stat()
+        for replacement in (
+            mock.Mock(st_mode=stat.S_IFDIR, st_nlink=1, st_size=metadata.st_size),
+            mock.Mock(st_mode=stat.S_IFREG, st_nlink=2, st_size=metadata.st_size),
+            mock.Mock(st_mode=stat.S_IFREG, st_nlink=1, st_size=0),
+        ):
+            with (
+                self.subTest(replacement=replacement),
+                mock.patch.object(Path, "stat", return_value=replacement),
+                self.assertRaisesRegex(policy.ProviderPolicyError, "metadata is invalid"),
+            ):
+                policy.load_provider_hosts(path)
 
     def test_startup_exits_before_binding_when_policy_is_unavailable(self) -> None:
         stderr = io.StringIO()
