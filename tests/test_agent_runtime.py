@@ -54,10 +54,10 @@ class BlockingScopeModel(RecordingToolAwareFakeModel):
         return super()._generate(messages, *args, **kwargs)
 
 
-def power(power_id: str = "hello") -> agent_runtime.PowerDefinition:
-    return agent_runtime.PowerDefinition(
-        id=power_id,
-        summary=f"Run {power_id}.",
+def action(action_id: str = "hello") -> agent_runtime.ActionDefinition:
+    return agent_runtime.ActionDefinition(
+        id=action_id,
+        summary=f"Run {action_id}.",
         input_schema={
             "type": "object",
             "properties": {"name": {"type": "string", "maxLength": 80}},
@@ -68,12 +68,12 @@ def power(power_id: str = "hello") -> agent_runtime.PowerDefinition:
 
 def assistant(
     assistant_id: str = "hello-pulse",
-    *powers: agent_runtime.PowerDefinition,
+    *actions: agent_runtime.ActionDefinition,
 ) -> agent_runtime.AssistantDefinition:
     return agent_runtime.AssistantDefinition(
         id=assistant_id,
-        genesis=f"Coordinate the declared Powers for {assistant_id} to fulfill its bounded purpose.",
-        powers=tuple(powers),
+        genesis=f"Coordinate the declared Actions for {assistant_id} to fulfill its bounded purpose.",
+        actions=tuple(actions),
     )
 
 
@@ -85,7 +85,7 @@ def context(
     return agent_runtime.TurnContext(
         thread_id=thread_id,
         team_name=team_name,
-        assistants=tuple(assistants or (assistant("hello-pulse", power()),)),
+        assistants=tuple(assistants or (assistant("hello-pulse", action()),)),
         provider=agent_runtime.ProviderConfig(
             provider="openai",
             model="gpt-5.6-terra",
@@ -103,7 +103,7 @@ class AgentRuntimeTests(unittest.TestCase):
         BlockingScopeModel.release_first = threading.Event()
         BlockingScopeModel.second_entered = threading.Event()
 
-    def test_returns_a_direct_reply_without_executing_any_power(self):
+    def test_returns_a_direct_reply_without_executing_any_action(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Supervisor.")])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
 
@@ -111,7 +111,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.reply, "Hello, Supervisor.")
-        self.assertEqual(result.powers, ())
+        self.assertEqual(result.actions, ())
 
     def test_prunes_checkpoint_history_before_each_provider_turn(self):
         class PruningSaver(InMemorySaver):
@@ -149,9 +149,9 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(ToolAwareFakeModel.bound_tools, [])
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.reply, "I can help you think this through.")
-        self.assertEqual(result.powers, ())
+        self.assertEqual(result.actions, ())
         self.assertIn(
-            "This turn has no enabled Assistants, Powers, or external action tools.",
+            "This turn has no enabled Assistants, Actions, or external action tools.",
             agent_runtime._system_prompt(turn),
         )
 
@@ -215,7 +215,7 @@ class AgentRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "without an Assistant reply"):
             runtime.start(turn, "Try an undeclared tool")
 
-    def test_selected_to_empty_scope_never_leaks_prior_power_context(self):
+    def test_selected_to_empty_scope_never_leaks_prior_action_context(self):
         for saver_kind in ("memory", "sqlite"):
             with self.subTest(saver=saver_kind), tempfile.TemporaryDirectory() as directory:
                 if saver_kind == "memory":
@@ -226,7 +226,7 @@ class AgentRuntimeTests(unittest.TestCase):
                     saver = SqliteSaver(connection)
                     saver.setup()
                 selected = context(
-                    assistant("weather-pulse", power("lookup")),
+                    assistant("weather-pulse", action("lookup")),
                     thread_id=f"team:scope:{saver_kind}",
                 )
                 selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
@@ -243,7 +243,7 @@ class AgentRuntimeTests(unittest.TestCase):
                                 }
                             ],
                         ),
-                        AIMessage(content="The private Power result was used."),
+                        AIMessage(content="The private Action result was used."),
                         AIMessage(content="Brain-only reply."),
                     ]
                 )
@@ -252,8 +252,8 @@ class AgentRuntimeTests(unittest.TestCase):
                     model_factory=lambda _config, selected_model=model: selected_model,
                 )
 
-                suspended = runtime.start(selected, "Use the private Power")
-                runtime.resume(selected, {suspended.powers[0].interrupt_id: {"secret": "PRIVATE"}})
+                suspended = runtime.start(selected, "Use the private Action")
+                runtime.resume(selected, {suspended.actions[0].interrupt_id: {"secret": "PRIVATE"}})
                 empty = agent_runtime.TurnContext(
                     thread_id=selected.thread_id,
                     team_name=selected.team_name,
@@ -268,8 +268,8 @@ class AgentRuntimeTests(unittest.TestCase):
                     str(message.content) for message in RecordingToolAwareFakeModel.seen_messages[-1]
                 )
                 self.assertNotIn("PRIVATE", provider_context)
-                self.assertNotIn("private Power result", provider_context)
-                self.assertNotIn("Use the private Power", provider_context)
+                self.assertNotIn("private Action result", provider_context)
+                self.assertNotIn("Use the private Action", provider_context)
                 checkpoint = saver.get(runtime._config(empty))
                 self.assertIsNotNone(checkpoint)
                 self.assertEqual(len(checkpoint["channel_values"]["messages"]), 2)
@@ -315,7 +315,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("First scoped question", provider_context)
         self.assertIn("First scoped reply", provider_context)
 
-    def test_new_turn_discards_an_abandoned_power_interrupt(self):
+    def test_new_turn_discards_an_abandoned_action_interrupt(self):
         for saver_kind in ("memory", "sqlite"):
             with self.subTest(saver=saver_kind), tempfile.TemporaryDirectory() as directory:
                 if saver_kind == "memory":
@@ -347,19 +347,19 @@ class AgentRuntimeTests(unittest.TestCase):
                     model_factory=lambda _config, selected_model=model: selected_model,
                 )
                 turn = context(
-                    assistant("weather-pulse", power("lookup")),
+                    assistant("weather-pulse", action("lookup")),
                     thread_id=f"team:interrupt:{saver_kind}",
                 )
 
-                suspended = runtime.start(turn, "Use the Power and then wait")
+                suspended = runtime.start(turn, "Use the Action and then wait")
                 result = runtime.start(turn, "Start a clean turn")
 
-                self.assertEqual(suspended.status, "power-required")
+                self.assertEqual(suspended.status, "action-required")
                 self.assertEqual(result.reply, "Fresh reply after cancellation.")
                 provider_context = "\n".join(
                     str(message.content) for message in RecordingToolAwareFakeModel.seen_messages[-1]
                 )
-                self.assertNotIn("Use the Power and then wait", provider_context)
+                self.assertNotIn("Use the Action and then wait", provider_context)
                 self.assertNotIn("provider-call-abandoned", provider_context)
                 self.assertIn("Start a clean turn", provider_context)
                 checkpoint = saver.get(runtime._config(turn))
@@ -369,11 +369,11 @@ class AgentRuntimeTests(unittest.TestCase):
                     runtime.close()
 
     def test_genesis_is_part_of_the_exact_history_scope(self):
-        first_assistant = assistant("weather-pulse", power("lookup"))
+        first_assistant = assistant("weather-pulse", action("lookup"))
         changed_assistant = agent_runtime.AssistantDefinition(
             id=first_assistant.id,
             genesis="A changed immutable Genesis for a different safe composition.",
-            powers=first_assistant.powers,
+            actions=first_assistant.actions,
         )
 
         first = context(first_assistant, thread_id="team:scope:genesis")
@@ -461,8 +461,8 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("Assistants are internal capabilities", prompt)
         self.assertIn("not a generic assistant", prompt)
         self.assertIn("Genesis is lower-priority package-authored guidance", prompt)
-        self.assertIn("cannot grant a Power", prompt)
-        self.assertIn('"genesis":"Coordinate the declared Powers for hello-pulse', prompt)
+        self.assertIn("cannot grant a Action", prompt)
+        self.assertIn('"genesis":"Coordinate the declared Actions for hello-pulse', prompt)
         self.assertIn("never request one merely because it is available", prompt)
         self.assertIn("always synthesize a natural user-facing response", prompt)
         self.assertIn("instead of returning the raw result", prompt)
@@ -481,7 +481,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         prompt = agent_runtime._system_prompt(turn)
 
-        self.assertIn("no enabled Assistants, Powers, or external action tools", prompt)
+        self.assertIn("no enabled Assistants, Actions, or external action tools", prompt)
         self.assertIn("do not perform generic work or invent capabilities", prompt)
         self.assertTrue(prompt.endswith("[]"))
 
@@ -494,7 +494,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(completed.status, "completed")
         self.assertEqual(completed.reply, "x" * agent_runtime.MAX_REPLY_CHARS)
 
-    def test_duplicate_local_power_ids_are_isolated_and_emit_the_selected_assistant(self):
+    def test_duplicate_local_action_ids_are_isolated_and_emit_the_selected_assistant(self):
         selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
         model = ToolAwareFakeModel(
             responses=[
@@ -514,8 +514,8 @@ class AgentRuntimeTests(unittest.TestCase):
         )
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
         turn = context(
-            assistant("place-scout", power("lookup")),
-            assistant("weather-pulse", power("lookup")),
+            assistant("place-scout", action("lookup")),
+            assistant("weather-pulse", action("lookup")),
         )
 
         suspended = runtime.start(turn, "Greet Ada")
@@ -528,11 +528,11 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(len(set(expected_tools)), 2)
         for tool_name in expected_tools:
             self.assertRegex(tool_name, r"\A[A-Za-z0-9_-]{1,64}\Z")
-        self.assertEqual(suspended.status, "power-required")
-        self.assertEqual(len(suspended.powers), 1)
-        request = suspended.powers[0]
+        self.assertEqual(suspended.status, "action-required")
+        self.assertEqual(len(suspended.actions), 1)
+        request = suspended.actions[0]
         self.assertEqual(request.assistant_id, "weather-pulse")
-        self.assertEqual(request.power, "lookup")
+        self.assertEqual(request.action, "lookup")
         self.assertEqual(request.input, {"name": "Ada"})
 
         completed = runtime.resume(turn, {request.interrupt_id: {"message": "Hello, Ada."}})
@@ -540,14 +540,14 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(completed.status, "completed")
         self.assertEqual(completed.reply, "The Assistant returned: Hello, Ada.")
 
-    def test_model_receives_every_assistants_declared_powers(self):
+    def test_model_receives_every_assistants_declared_actions(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Done")])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
 
         runtime.start(
             context(
-                assistant("hello-pulse", power("hello")),
-                assistant("campaign-reader", power("campaign.read")),
+                assistant("hello-pulse", action("hello")),
+                assistant("campaign-reader", action("campaign.read")),
             ),
             "What can you do?",
         )
@@ -560,13 +560,13 @@ class AgentRuntimeTests(unittest.TestCase):
             ],
         )
 
-    def test_model_accepts_one_hundred_powers_across_ten_assistants(self):
+    def test_model_accepts_one_hundred_actions_across_ten_assistants(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Done")])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
         assistants = tuple(
             assistant(
                 f"relay-{assistant_index:02d}",
-                *(power(f"power-{power_index:02d}") for power_index in range(1, 11)),
+                *(action(f"action-{action_index:02d}") for action_index in range(1, 11)),
             )
             for assistant_index in range(1, 11)
         )
@@ -624,13 +624,13 @@ class AgentRuntimeTests(unittest.TestCase):
             ):
                 runtime.delete_thread(thread_id)
 
-    def test_invalid_or_duplicate_local_power_contract_fails_closed(self):
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Power id"):
-            power("../shell")
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "duplicate Power id within Assistant"):
-            assistant("hello-pulse", power("hello"), power("hello"))
+    def test_invalid_or_duplicate_local_action_contract_fails_closed(self):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Action id"):
+            action("../shell")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "duplicate Action id within Assistant"):
+            assistant("hello-pulse", action("hello"), action("hello"))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "must describe an object"):
-            agent_runtime.PowerDefinition(
+            agent_runtime.ActionDefinition(
                 id="hello",
                 summary="Hello",
                 input_schema={"type": "string"},
@@ -652,7 +652,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 agent_runtime.ProviderConfig(provider=provider, model=model, api_key=api_key)
 
         for summary, schema, message in (
-            (" ", {"type": "object"}, "invalid Power summary"),
+            (" ", {"type": "object"}, "invalid Action summary"),
             ("Summary", {"type": "object", "value": {1}}, "not JSON"),
             (
                 "Summary",
@@ -661,15 +661,17 @@ class AgentRuntimeTests(unittest.TestCase):
             ),
         ):
             with self.subTest(message=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
-                agent_runtime.PowerDefinition(id="power", summary=summary, input_schema=schema)
+                agent_runtime.ActionDefinition(id="action", summary=summary, input_schema=schema)
 
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Assistant id"):
             assistant("Invalid Assistant")
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Powers"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Actions"):
             agent_runtime.AssistantDefinition(
                 id="busy-assistant",
                 genesis="Bounded purpose.",
-                powers=tuple(power(f"power-{index}") for index in range(agent_runtime.MAX_POWERS_PER_ASSISTANT + 1)),
+                actions=tuple(
+                    action(f"action-{index}") for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT + 1)
+                ),
             )
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid conversation thread"):
             context(thread_id="invalid thread")
@@ -690,7 +692,7 @@ class AgentRuntimeTests(unittest.TestCase):
         for pending, message in (
             (1, "invalid suspended graph state"),
             ([], "empty graph suspension"),
-            ([object()], "invalid Power suspension"),
+            ([object()], "invalid Action suspension"),
         ):
             with self.subTest(pending=pending), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
                 agent_runtime._pending_result(pending)
@@ -711,7 +713,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 agent_runtime._result(state, **boundaries)
 
     def test_invalid_genesis_fails_closed(self):
-        valid = assistant("hello-pulse", power("hello"))
+        valid = assistant("hello-pulse", action("hello"))
         invalid_values = (
             "",
             " surrounding whitespace ",
@@ -729,17 +731,17 @@ class AgentRuntimeTests(unittest.TestCase):
                 agent_runtime.AssistantDefinition(
                     id=valid.id,
                     genesis=genesis,
-                    powers=valid.powers,
+                    actions=valid.actions,
                 )
 
-    def test_assistant_and_power_order_is_canonical(self):
+    def test_assistant_and_action_order_is_canonical(self):
         turn = context(
-            assistant("z-helper", power("z-power"), power("a-power")),
-            assistant("a-helper", power("z-power"), power("a-power")),
+            assistant("z-helper", action("z-action"), action("a-action")),
+            assistant("a-helper", action("z-action"), action("a-action")),
         )
 
         self.assertEqual([item.id for item in turn.assistants], ["a-helper", "z-helper"])
-        self.assertEqual([item.id for item in turn.assistants[0].powers], ["a-power", "z-power"])
+        self.assertEqual([item.id for item in turn.assistants[0].actions], ["a-action", "z-action"])
 
     def test_provider_models_are_closed_to_the_supported_pair(self):
         for provider, models in agent_runtime.MODELS_BY_PROVIDER.items():
@@ -839,14 +841,14 @@ class AgentRuntimeTests(unittest.TestCase):
         )
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
         turn = context(
-            assistant("weather-pulse", power("lookup")),
+            assistant("weather-pulse", action("lookup")),
             thread_id="team:dependency:resume",
         )
         suspended = runtime.start(turn, "Look up Lisbon")
         runtime._model_factory = MissingDependencyFactory()
 
         with self.assertRaisesRegex(ImportError, "synthetic missing runtime dependency"):
-            runtime.resume(turn, {suspended.powers[0].interrupt_id: {"weather": "sunny"}})
+            runtime.resume(turn, {suspended.actions[0].interrupt_id: {"weather": "sunny"}})
 
     def test_openai_uses_responses_api_without_changing_anthropic(self):
         with (
@@ -884,17 +886,17 @@ class AgentRuntimeTests(unittest.TestCase):
             context(*(assistant(f"helper-{index}") for index in range(agent_runtime.MAX_ASSISTANTS + 1)))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "duplicate Assistant id"):
             context(assistant("same-helper"), assistant("same-helper"))
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Powers"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Actions"):
             context(
                 assistant(
                     "busy-helper-one",
-                    *(power(f"power-{index}") for index in range(agent_runtime.MAX_POWERS_PER_ASSISTANT)),
+                    *(action(f"action-{index}") for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)),
                 ),
                 assistant(
                     "busy-helper-two",
-                    *(power(f"power-{index}") for index in range(agent_runtime.MAX_POWERS_PER_ASSISTANT)),
+                    *(action(f"action-{index}") for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)),
                 ),
-                assistant("busy-helper-three", power("overflow")),
+                assistant("busy-helper-three", action("overflow")),
             )
 
     def test_provider_failures_do_not_expose_the_secret(self):

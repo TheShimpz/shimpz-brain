@@ -4,7 +4,7 @@
 
 - This repository owns the shared provider-neutral Brain runtime and the Brain provider-egress policy profile
   consumed by the neutral `shimpz-egress` image.
-- Brain reasons and requests declared Powers; it does not own Team authorization, execute Powers, persist provider
+- Brain reasons and requests declared Actions; it does not own Team authorization, execute Actions, persist provider
   credentials, or define the external model catalog that bounds its own egress.
 - Read the canonical [Shimpz architecture](https://github.com/TheShimpz/shimpz/blob/main/.context/ARCHITECTURE.md)
   before changing product vocabulary, authority, protocols, runtime topology, or source placement.

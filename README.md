@@ -1,15 +1,15 @@
 # Shimpz Brain runtime
 
 This repository contains the isolated, provider-neutral reasoning runtime for Shimpz Teams. It uses
-LangGraph to select installed Assistant Powers and suspends before every external action. The Team
-controller remains authoritative for Assistant inventory, credentials, approvals, Power execution,
-result validation, cancellation, and audit; the runtime never executes a Power itself.
+LangGraph to select installed Assistant Actions and suspends before every external action. The Team
+controller remains authoritative for Assistant inventory, credentials, approvals, Action execution,
+result validation, cancellation, and audit; the runtime never executes a Action itself.
 
 The authenticated API is intentionally small:
 
 - `GET /health` reports process/runtime health without exposing state or credentials;
 - `POST /v1/turns` starts one turn from controller-supplied Team/Assistant context;
-- `POST /v1/turns/resume` resumes a suspended turn with controller-brokered Power results; and
+- `POST /v1/turns/resume` resumes a suspended turn with controller-brokered Action results; and
 - `POST /v1/threads/delete` deletes one exact conversation checkpoint during Team teardown.
 
 All POST endpoints require the private bearer mounted read-only at

@@ -44,7 +44,7 @@ class ProviderInput(BaseModel):
     api_key: SecretStr = Field(min_length=1, max_length=16 * 1024)
 
 
-class PowerInput(BaseModel):
+class ActionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(min_length=1, max_length=128)
@@ -57,7 +57,7 @@ class AssistantInput(BaseModel):
 
     id: str = Field(min_length=1, max_length=128)
     genesis: str = Field(min_length=1, max_length=agent_runtime.MAX_GENESIS_BYTES)
-    powers: list[PowerInput] = Field(max_length=agent_runtime.MAX_POWERS_PER_ASSISTANT)
+    actions: list[ActionInput] = Field(max_length=agent_runtime.MAX_ACTIONS_PER_ASSISTANT)
 
 
 class TurnContextInput(BaseModel):
@@ -76,9 +76,9 @@ class TurnContextInput(BaseModel):
         return agent_runtime.normalize_team_name(value)
 
     @model_validator(mode="after")
-    def bound_total_powers(self) -> Self:
-        if sum(len(assistant.powers) for assistant in self.assistants) > agent_runtime.MAX_TEAM_POWERS:
-            raise ValueError("a Team exposes too many Powers")
+    def bound_total_actions(self) -> Self:
+        if sum(len(assistant.actions) for assistant in self.assistants) > agent_runtime.MAX_TEAM_ACTIONS:
+            raise ValueError("a Team exposes too many Actions")
         return self
 
     def runtime_context(self) -> agent_runtime.TurnContext:
@@ -89,13 +89,13 @@ class TurnContextInput(BaseModel):
                 agent_runtime.AssistantDefinition(
                     id=assistant.id,
                     genesis=assistant.genesis,
-                    powers=tuple(
-                        agent_runtime.PowerDefinition(
-                            id=power.id,
-                            summary=power.summary,
-                            input_schema=power.input_schema,
+                    actions=tuple(
+                        agent_runtime.ActionDefinition(
+                            id=action.id,
+                            summary=action.summary,
+                            input_schema=action.input_schema,
                         )
-                        for power in assistant.powers
+                        for action in assistant.actions
                     ),
                 )
                 for assistant in self.assistants
@@ -113,7 +113,7 @@ class StartTurnInput(TurnContextInput):
 
 
 class ResumeTurnInput(TurnContextInput):
-    results: dict[str, Any] = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_POWERS)
+    results: dict[str, Any] = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_ACTIONS)
 
 
 class DeleteThreadInput(BaseModel):
@@ -186,14 +186,14 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
     return {
         "status": result.status,
         "reply": result.reply,
-        "powers": [
+        "actions": [
             {
                 "interrupt_id": request.interrupt_id,
                 "assistant_id": request.assistant_id,
-                "power": request.power,
+                "action": request.action,
                 "input": dict(request.input),
             }
-            for request in result.powers
+            for request in result.actions
         ],
     }
 

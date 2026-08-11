@@ -6,7 +6,7 @@ from unittest import mock
 
 import agent_runtime
 from langgraph.checkpoint.memory import InMemorySaver
-from tests.test_agent_runtime import assistant, context, power
+from tests.test_agent_runtime import action, assistant, context
 
 
 class RuntimeFailureProjectionTests(unittest.TestCase):
@@ -61,7 +61,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
 
         checkpointer.get_tuple.side_effect = None
         checkpointer.get_tuple.return_value = None
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "no pending Power request"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "no pending Action request"):
             runtime._prepare_scope(turn, resume=True)
 
         checkpointer.get_tuple.return_value = SimpleNamespace(
@@ -69,7 +69,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             metadata=expected_metadata,
             checkpoint={"channel_values": {"messages": []}},
         )
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "no pending Power request"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "no pending Action request"):
             runtime._prepare_scope(turn, resume=True)
 
         checkpointer.get_tuple.return_value = SimpleNamespace(
@@ -122,7 +122,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
                 self.subTest(results=results),
                 self.assertRaisesRegex(
                     agent_runtime.RuntimeContractError,
-                    "invalid Power resume results",
+                    "invalid Action resume results",
                 ),
             ):
                 runtime.resume(context(), results)
@@ -138,13 +138,13 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         ):
             runtime.resume(context(), {"interrupt": {"value": "result"}})
 
-    def test_power_tool_name_collision_fails_before_agent_creation(self):
+    def test_action_tool_name_collision_fails_before_agent_creation(self):
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: mock.Mock())
         duplicate_tool = SimpleNamespace(name="duplicate")
-        turn = context(assistant("helper", power("first"), power("second")))
+        turn = context(assistant("helper", action("first"), action("second")))
         with (
-            mock.patch.object(agent_runtime, "_request_power", return_value=duplicate_tool),
-            self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Power tool name collision"),
+            mock.patch.object(agent_runtime, "_request_action", return_value=duplicate_tool),
+            self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action tool name collision"),
         ):
             runtime._agent(turn)
 

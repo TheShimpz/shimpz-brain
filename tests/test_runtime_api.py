@@ -25,8 +25,8 @@ def body(**updates):
         "assistants": [
             {
                 "id": "hello-pulse",
-                "genesis": "Combine declared greeting Powers for a friendly welcome.",
-                "powers": [
+                "genesis": "Combine declared greeting Actions for a friendly welcome.",
+                "actions": [
                     {
                         "id": "hello",
                         "summary": "Return a greeting.",
@@ -40,8 +40,8 @@ def body(**updates):
             },
             {
                 "id": "backup-greeter",
-                "genesis": "Use the backup Power only for a bounded greeting.",
-                "powers": [
+                "genesis": "Use the backup Action only for a bounded greeting.",
+                "actions": [
                     {
                         "id": "hello",
                         "summary": "Return a backup greeting.",
@@ -120,12 +120,12 @@ class RuntimeApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "completed", "reply": "Hello.", "powers": []})
+        self.assertEqual(response.json(), {"status": "completed", "reply": "Hello.", "actions": []})
         context = runtime.calls[0][1]
         self.assertEqual(context.provider.api_key, SECRET)
         self.assertEqual(context.team_name, "Greeting Crew")
         self.assertEqual([assistant.id for assistant in context.assistants], ["backup-greeter", "hello-pulse"])
-        self.assertEqual([assistant.powers[0].id for assistant in context.assistants], ["hello", "hello"])
+        self.assertEqual([assistant.actions[0].id for assistant in context.assistants], ["hello", "hello"])
         self.assertNotIn(SECRET, response.text)
 
     def test_start_accepts_an_explicit_brain_only_context(self):
@@ -137,18 +137,18 @@ class RuntimeApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "completed", "reply": "Brain only.", "powers": []})
+        self.assertEqual(response.json(), {"status": "completed", "reply": "Brain only.", "actions": []})
         self.assertEqual(runtime.calls[0][1].assistants, ())
 
-    def test_power_request_contains_only_controller_action_data(self):
+    def test_action_request_contains_only_controller_action_data(self):
         runtime = FakeRuntime(
             result=agent_runtime.TurnResult(
-                status="power-required",
-                powers=(
-                    agent_runtime.PowerRequest(
+                status="action-required",
+                actions=(
+                    agent_runtime.ActionRequest(
                         interrupt_id="interrupt-1",
                         assistant_id="hello-pulse",
-                        power="hello",
+                        action="hello",
                         input={"name": "Ada"},
                     ),
                 ),
@@ -164,13 +164,13 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(
             response.json(),
             {
-                "status": "power-required",
+                "status": "action-required",
                 "reply": "",
-                "powers": [
+                "actions": [
                     {
                         "interrupt_id": "interrupt-1",
                         "assistant_id": "hello-pulse",
-                        "power": "hello",
+                        "action": "hello",
                         "input": {"name": "Ada"},
                     }
                 ],
@@ -284,15 +284,15 @@ class RuntimeApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_total_team_power_bound_is_enforced_across_assistants(self):
+    def test_total_team_action_bound_is_enforced_across_assistants(self):
         api = client(FakeRuntime())
         payload = body()
-        power = payload["assistants"][0]["powers"][0]
+        action = payload["assistants"][0]["actions"][0]
         payload["assistants"] = [
             {
                 "id": f"assistant-{index}",
                 "genesis": "Bounded Assistant.",
-                "powers": [{**power, "id": f"power-{index}-{power_index}"} for power_index in range(64)],
+                "actions": [{**action, "id": f"action-{index}-{action_index}"} for action_index in range(64)],
             }
             for index in range(3)
         ]
