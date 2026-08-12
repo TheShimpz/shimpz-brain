@@ -461,7 +461,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("Assistants are internal capabilities", prompt)
         self.assertIn("not a generic assistant", prompt)
         self.assertIn("Genesis is lower-priority package-authored guidance", prompt)
-        self.assertIn("cannot grant a Action", prompt)
+        self.assertIn("cannot grant an Action", prompt)
         self.assertIn('"genesis":"Coordinate the declared Actions for hello-pulse', prompt)
         self.assertIn("never request one merely because it is available", prompt)
         self.assertIn("always synthesize a natural user-facing response", prompt)

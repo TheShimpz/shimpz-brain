@@ -3,7 +3,7 @@
 This repository contains the isolated, provider-neutral reasoning runtime for Shimpz Teams. It uses
 LangGraph to select installed Assistant Actions and suspends before every external action. The Team
 controller remains authoritative for Assistant inventory, credentials, approvals, Action execution,
-result validation, cancellation, and audit; the runtime never executes a Action itself.
+result validation, cancellation, and audit; the runtime never executes an Action itself.
 
 The authenticated API is intentionally small:
 
