@@ -489,9 +489,7 @@ class AgentRuntime:
 
         model = self._model_factory(context.provider)
         tools = [
-            _request_action(assistant.id, action)
-            for assistant in context.assistants
-            for action in assistant.actions
+            _request_action(assistant.id, action) for assistant in context.assistants for action in assistant.actions
         ]
         if len({tool.name for tool in tools}) != len(tools):
             raise RuntimeContractError("Action tool name collision")
