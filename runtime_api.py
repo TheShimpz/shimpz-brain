@@ -129,6 +129,38 @@ class DeleteThreadInput(BaseModel):
         return value
 
 
+class ActionLabelsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: ProviderInput
+    language_exemplar: str = Field(min_length=1, max_length=agent_runtime.MAX_LANGUAGE_EXEMPLAR_CHARS)
+    actions: list[str] = Field(min_length=1, max_length=agent_runtime.MAX_ACTION_LABELS)
+
+    @field_validator("language_exemplar", mode="before")
+    @classmethod
+    def normalize_language_exemplar(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        return agent_runtime.normalize_language_exemplar(value)
+
+    @field_validator("actions")
+    @classmethod
+    def validate_actions(cls, value: list[str]) -> list[str]:
+        if (
+            any(agent_runtime.ACTION_ID_RE.fullmatch(action_id) is None for action_id in value)
+            or len(set(value)) != len(value)
+        ):
+            raise ValueError("invalid Action label ids")
+        return value
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+
 class RuntimeLike:
     """Structural documentation for the injected runtime used by the API and tests."""
 
@@ -141,6 +173,13 @@ class RuntimeLike:
     ) -> agent_runtime.TurnResult: ...
 
     def delete_thread(self, thread_id: str) -> None: ...
+
+    def action_labels(
+        self,
+        provider: agent_runtime.ProviderConfig,
+        language_exemplar: str,
+        action_ids: tuple[str, ...],
+    ) -> tuple[agent_runtime.ActionLabel, ...]: ...
 
 
 TokenReader = Callable[[], str]
@@ -198,6 +237,18 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
     }
 
 
+def _action_labels_response(labels: tuple[agent_runtime.ActionLabel, ...]) -> dict[str, object]:
+    return {"labels": [{"id": item.id, "label": item.label} for item in labels]}
+
+
+def _close_owned_runtime(runtime: object, *, owned: bool) -> None:
+    if not owned or runtime is None:
+        return
+    close = getattr(runtime, "close", None)
+    if callable(close):
+        close()
+
+
 async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
 
@@ -212,10 +263,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         yield
-        if owns_runtime and application.state.runtime is not None:
-            close = getattr(application.state.runtime, "close", None)
-            if callable(close):
-                close()
+        _close_owned_runtime(application.state.runtime, owned=owns_runtime)
 
     app = FastAPI(
         title="Shimpz Brain Runtime",
@@ -267,6 +315,15 @@ def create_app(
     def delete_thread(body: DeleteThreadInput) -> dict[str, str]:
         current_runtime().delete_thread(body.thread_id)
         return {"status": "deleted"}
+
+    @app.post("/v1/action-labels", dependencies=[Depends(require_auth)])
+    def action_labels(body: ActionLabelsInput) -> dict[str, object]:
+        labels = current_runtime().action_labels(
+            body.runtime_provider(),
+            body.language_exemplar,
+            tuple(body.actions),
+        )
+        return _action_labels_response(labels)
 
     return app
 

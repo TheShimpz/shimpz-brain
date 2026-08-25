@@ -113,6 +113,176 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(result.reply, "Hello, Supervisor.")
         self.assertEqual(result.actions, ())
 
+    def test_action_labels_use_no_tools_or_checkpoint_state(self):
+        class RejectCheckpointAccess:
+            def __getattr__(self, name):
+                raise AssertionError(f"unexpected checkpoint access: {name}")
+
+        model = RecordingToolAwareFakeModel(
+            responses=[
+                AIMessage(
+                    content=(
+                        '{"labels":['
+                        '{"id":"list-zones","label":"Listar zonas DNS"},'
+                        '{"id":"delete-dns-record","label":"Excluir registro DNS"}'
+                        "]}"
+                    )
+                )
+            ]
+        )
+        runtime = agent_runtime.AgentRuntime(RejectCheckpointAccess(), model_factory=lambda _config: model)
+
+        labels = runtime.action_labels(
+            context().provider,
+            "Quero listar minhas zonas DNS da Cloudflare",
+            ("list-zones", "delete-dns-record"),
+        )
+
+        self.assertEqual(
+            labels,
+            (
+                agent_runtime.ActionLabel(id="list-zones", label="Listar zonas DNS"),
+                agent_runtime.ActionLabel(id="delete-dns-record", label="Excluir registro DNS"),
+            ),
+        )
+        self.assertEqual(ToolAwareFakeModel.bound_tools, [])
+        self.assertEqual(len(RecordingToolAwareFakeModel.seen_messages), 1)
+        provider_text = "\n".join(str(message.content) for message in model.seen_messages[0])
+        self.assertIn("Quero listar minhas zonas DNS da Cloudflare", provider_text)
+        self.assertIn('"action_ids":["list-zones","delete-dns-record"]', provider_text)
+        self.assertNotIn("input_schema", provider_text)
+
+    def test_action_labels_reject_nonclosed_or_unsafe_model_output(self):
+        responses = (
+            '{"labels":[{"id":"list-zones","label":"Listar zonas"}]}',
+            (
+                '{"labels":['
+                '{"id":"list-zones","label":"Listar zonas"},'
+                '{"id":"extra-action","label":"Extra"}'
+                "]}"
+            ),
+            (
+                '{"labels":['
+                '{"id":"list-zones","label":"Mesmo rótulo"},'
+                '{"id":"get-zone","label":"Mesmo rótulo"}'
+                "]}"
+            ),
+            (
+                '{"labels":['
+                '{"id":"list-zones","label":"Listar\\nzona"},'
+                '{"id":"get-zone","label":"Consultar zona"}'
+                "]}"
+            ),
+            '{"labels":[],"unexpected":true}',
+            (
+                '{"labels":['
+                '{"id":"list-zones","label":"Listar zonas"},'
+                '{"id":"get-zone","label":"Consultar zona"}'
+                '],"labels":['
+                '{"id":"list-zones","label":"Listar zonas"},'
+                '{"id":"get-zone","label":"Consultar zona"}'
+                "]}"
+            ),
+            "not-json",
+        )
+        for content in responses:
+            with self.subTest(content=content):
+                model = ToolAwareFakeModel(responses=[AIMessage(content=content)])
+                runtime = agent_runtime.AgentRuntime(
+                    InMemorySaver(),
+                    model_factory=lambda _config, selected_model=model: selected_model,
+                )
+                with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "model provider request failed"):
+                    runtime.action_labels(
+                        context().provider,
+                        "Liste minhas zonas",
+                        ("list-zones", "get-zone"),
+                    )
+
+    def test_action_labels_reject_equivalent_unicode_and_unknown_content_blocks(self):
+        equivalent = ToolAwareFakeModel(
+            responses=[
+                AIMessage(
+                    content=(
+                        '{"labels":['
+                        '{"id":"list-zones","label":"é"},'
+                        '{"id":"get-zone","label":"e\\u0301"}'
+                        "]}"
+                    )
+                )
+            ]
+        )
+        unknown_block = ToolAwareFakeModel(
+            responses=[
+                AIMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": (
+                                '{"labels":['
+                                '{"id":"list-zones","label":"Listar zonas"},'
+                                '{"id":"get-zone","label":"Consultar zona"}'
+                                "]}"
+                            ),
+                        },
+                        {"type": "image_url", "image_url": "https://example.invalid/image"},
+                    ]
+                )
+            ]
+        )
+        tool_call = ToolAwareFakeModel(
+            responses=[
+                AIMessage(
+                    content='{"labels":[]}',
+                    tool_calls=[{"name": "unexpected", "args": {}, "id": "call-1", "type": "tool_call"}],
+                )
+            ]
+        )
+        invalid_tool_call = ToolAwareFakeModel(
+            responses=[
+                AIMessage(
+                    content='{"labels":[]}',
+                    invalid_tool_calls=[
+                        {
+                            "name": "unexpected",
+                            "args": "{}",
+                            "id": "call-2",
+                            "error": "invalid",
+                            "type": "invalid_tool_call",
+                        }
+                    ],
+                )
+            ]
+        )
+
+        for model in (equivalent, unknown_block, tool_call, invalid_tool_call):
+            with self.subTest(model=model), self.assertRaises(agent_runtime.ProviderRequestError):
+                agent_runtime.AgentRuntime(
+                    InMemorySaver(),
+                    model_factory=lambda _config, selected_model=model: selected_model,
+                ).action_labels(
+                    context().provider,
+                    "Liste minhas zonas",
+                    ("list-zones", "get-zone"),
+                )
+
+    def test_action_label_inputs_fail_before_provider_or_checkpoint_access(self):
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=mock.Mock())
+
+        for exemplar, action_ids in (
+            ("", ("list-zones",)),
+            ("hidden\0instruction", ("list-zones",)),
+            ("Liste zonas", ()),
+            ("Liste zonas", ("list-zones", "list-zones")),
+            ("Liste zonas", ("../shell",)),
+        ):
+            with (
+                self.subTest(exemplar=exemplar, action_ids=action_ids),
+                self.assertRaises(agent_runtime.RuntimeContractError),
+            ):
+                runtime.action_labels(context().provider, exemplar, action_ids)
+        runtime._model_factory.assert_not_called()
+
     def test_prunes_checkpoint_history_before_each_provider_turn(self):
         class PruningSaver(InMemorySaver):
             def __init__(self):

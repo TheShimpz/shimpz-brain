@@ -84,6 +84,15 @@ class FakeRuntime:
         if self.error:
             raise self.error
 
+    def action_labels(self, provider, language_exemplar, action_ids):
+        self.calls.append(("action_labels", provider, language_exemplar, action_ids))
+        if self.error:
+            raise self.error
+        return (
+            agent_runtime.ActionLabel(id="list-zones", label="Listar zonas DNS"),
+            agent_runtime.ActionLabel(id="get-zone", label="Consultar zona DNS"),
+        )
+
 
 def client(runtime, *, raise_server_exceptions=True):
     app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
@@ -110,6 +119,80 @@ class RuntimeApiTests(unittest.TestCase):
             api.post("/v1/turns", json=body(), headers={"Authorization": "Bearer wrong"}).status_code,
             401,
         )
+
+    def test_action_labels_are_authenticated_stateless_and_closed(self):
+        runtime = FakeRuntime()
+        payload = {
+            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "language_exemplar": "  Quero listar minhas zonas DNS  ",
+            "actions": ["list-zones", "get-zone"],
+        }
+        api = client(runtime)
+
+        self.assertEqual(api.post("/v1/action-labels", json=payload).status_code, 401)
+        response = api.post(
+            "/v1/action-labels",
+            json=payload,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "labels": [
+                    {"id": "list-zones", "label": "Listar zonas DNS"},
+                    {"id": "get-zone", "label": "Consultar zona DNS"},
+                ]
+            },
+        )
+        call = runtime.calls[0]
+        self.assertEqual(call[0], "action_labels")
+        self.assertEqual(call[1].api_key, SECRET)
+        self.assertEqual(call[2], "Quero listar minhas zonas DNS")
+        self.assertEqual(call[3], ("list-zones", "get-zone"))
+        self.assertNotIn(SECRET, response.text)
+
+    def test_action_label_input_rejects_added_duplicate_and_unsafe_values(self):
+        runtime = FakeRuntime()
+        valid = {
+            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "language_exemplar": "Liste minhas zonas",
+            "actions": ["list-zones", "get-zone"],
+        }
+        invalid_values = (
+            {**valid, "unexpected": True},
+            {**valid, "actions": []},
+            {**valid, "actions": ["list-zones", "list-zones"]},
+            {**valid, "actions": ["../shell"]},
+            {**valid, "language_exemplar": "hidden\0instruction"},
+        )
+
+        for payload in invalid_values:
+            with self.subTest(payload=payload):
+                response = client(runtime).post(
+                    "/v1/action-labels",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {TOKEN}"},
+                )
+                self.assertEqual(response.status_code, 422)
+        self.assertEqual(runtime.calls, [])
+
+    def test_invalid_action_label_model_output_is_a_redacted_upstream_failure(self):
+        runtime = FakeRuntime(error=agent_runtime.ProviderRequestError(f"invalid output beside {SECRET}"))
+        response = client(runtime).post(
+            "/v1/action-labels",
+            json={
+                "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+                "language_exemplar": "Liste minhas zonas",
+                "actions": ["list-zones"],
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json(), {"detail": "Model provider request failed"})
+        self.assertNotIn(SECRET, response.text)
 
     def test_start_passes_provider_secret_in_memory_but_never_returns_it(self):
         runtime = FakeRuntime()
