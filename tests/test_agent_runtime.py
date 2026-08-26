@@ -466,6 +466,13 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("never request one merely because it is available", prompt)
         self.assertIn("always synthesize a natural user-facing response", prompt)
         self.assertIn("instead of returning the raw result", prompt)
+        self.assertIn("`:success[plain text]` for a confirmed success", prompt)
+        self.assertIn("`:warning[plain text]` for an actionable warning", prompt)
+        self.assertIn("`:error[plain text]` for a concrete failure", prompt)
+        self.assertIn("must occupy its own complete line", prompt)
+        self.assertIn("without brackets, nested Markdown, or HTML", prompt)
+        self.assertIn("always state the meaning in words", prompt)
+        self.assertIn("ordinary Markdown emphasis for non-semantic highlighting", prompt)
 
     def test_brain_only_prompt_does_not_invent_generic_capabilities(self):
         turn = agent_runtime.TurnContext(
