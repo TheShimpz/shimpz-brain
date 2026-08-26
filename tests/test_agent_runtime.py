@@ -471,6 +471,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("`:error[plain text]` for a concrete failure", prompt)
         self.assertIn("must occupy its own complete line", prompt)
         self.assertIn("without brackets, nested Markdown, or HTML", prompt)
+        self.assertIn("Use callouts sparingly", prompt)
         self.assertIn("always state the meaning in words", prompt)
         self.assertIn("ordinary Markdown emphasis for non-semantic highlighting", prompt)
 
