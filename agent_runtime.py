@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+import capability_plan as capability_planner
 import httpx
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -678,6 +679,26 @@ class AgentRuntime:
                 raise RuntimeContractError("invalid Action label response")
             return _parse_action_labels(message, action_ids)
         except RuntimeContractError as exc:
+            raise ProviderRequestError("model provider request failed") from exc
+
+    def capability_plan(
+        self,
+        provider: ProviderConfig,
+        objective: str,
+        candidates: tuple[capability_planner.CapabilityCandidate, ...],
+    ) -> capability_planner.CapabilityPlan:
+        """Select a closed Assistant subset without conversation or lifecycle authority."""
+        try:
+            capability_planner.validate_inputs(objective, candidates)
+            model = self._model_factory(provider)
+            return capability_planner.create(model, objective, candidates)
+        except capability_planner.CapabilityPlanError as exc:
+            raise RuntimeContractError(str(exc)) from exc
+        except capability_planner.CapabilityPlanProviderError as exc:
+            raise ProviderRequestError("model provider request failed") from exc
+        except ImportError:
+            raise
+        except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
 
     def start(self, context: TurnContext, message: str) -> TurnResult:

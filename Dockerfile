@@ -32,7 +32,7 @@ RUN groupadd -g 10001 brainruntime \
     && chmod 0700 /var/lib/shimpz-brain-runtime
 
 COPY --from=builder /opt/venv /opt/venv
-COPY --chown=brainruntime:brainruntime agent_runtime.py runtime_api.py model_catalog.json /app/
+COPY --chown=brainruntime:brainruntime agent_runtime.py capability_plan.py runtime_api.py model_catalog.json /app/
 
 ENV LANGCHAIN_TRACING_V2=false \
     LANGSMITH_TRACING=false \

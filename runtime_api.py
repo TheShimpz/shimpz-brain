@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
 import agent_runtime
+import capability_plan
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -20,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 TOKEN_FILE = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE", "/run/shimpz-brain-runtime/token"))
 STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-brain-runtime/checkpoints.sqlite3"))
 MAX_TOKEN_BYTES = 4 * 1024
+CAPABILITY_PLAN_CONCURRENCY = 2
 _PRUNE_WRITES_SQL = (
     "WITH latest AS (SELECT checkpoint_ns,MAX(checkpoint_id) AS checkpoint_id "
     "FROM checkpoints WHERE thread_id=? GROUP BY checkpoint_ns) "
@@ -161,6 +163,56 @@ class ActionLabelsInput(BaseModel):
         )
 
 
+class CapabilityIntegrationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=128)
+
+
+class CapabilityCandidateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=capability_plan.MAX_NAME_CHARS)
+    summary: str = Field(min_length=1, max_length=capability_plan.MAX_SUMMARY_CHARS)
+    actions: list[str] = Field(min_length=1, max_length=capability_plan.MAX_ACTIONS)
+    integrations: list[CapabilityIntegrationInput] = Field(max_length=capability_plan.MAX_INTEGRATIONS)
+
+    def runtime_candidate(self) -> capability_plan.CapabilityCandidate:
+        return capability_plan.CapabilityCandidate(
+            id=self.id,
+            name=self.name,
+            summary=self.summary,
+            actions=tuple(self.actions),
+            integrations=tuple(
+                capability_plan.CapabilityIntegration(id=item.id, provider=item.provider)
+                for item in self.integrations
+            ),
+        )
+
+
+class CapabilityPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: ProviderInput
+    objective: str = Field(min_length=1, max_length=capability_plan.MAX_OBJECTIVE_CHARS)
+    candidates: list[CapabilityCandidateInput] = Field(
+        min_length=1,
+        max_length=capability_plan.MAX_CANDIDATES,
+    )
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+    def runtime_candidates(self) -> tuple[capability_plan.CapabilityCandidate, ...]:
+        return tuple(item.runtime_candidate() for item in self.candidates)
+
+
 class RuntimeLike:
     """Structural documentation for the injected runtime used by the API and tests."""
 
@@ -180,6 +232,13 @@ class RuntimeLike:
         language_exemplar: str,
         action_ids: tuple[str, ...],
     ) -> tuple[agent_runtime.ActionLabel, ...]: ...
+
+    def capability_plan(
+        self,
+        provider: agent_runtime.ProviderConfig,
+        objective: str,
+        candidates: tuple[capability_plan.CapabilityCandidate, ...],
+    ) -> capability_plan.CapabilityPlan: ...
 
 
 TokenReader = Callable[[], str]
@@ -241,6 +300,28 @@ def _action_labels_response(labels: tuple[agent_runtime.ActionLabel, ...]) -> di
     return {"labels": [{"id": item.id, "label": item.label} for item in labels]}
 
 
+def _capability_plan_response(plan: capability_plan.CapabilityPlan) -> dict[str, object]:
+    return {"status": plan.status, "assistant_ids": list(plan.assistant_ids)}
+
+
+def _run_capability_plan(
+    runtime: RuntimeLike,
+    slots: threading.BoundedSemaphore,
+    body: CapabilityPlanInput,
+) -> dict[str, object]:
+    if not slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Capability planner capacity reached")
+    try:
+        plan = runtime.capability_plan(
+            body.runtime_provider(),
+            body.objective,
+            body.runtime_candidates(),
+        )
+        return _capability_plan_response(plan)
+    finally:
+        slots.release()
+
+
 def _close_owned_runtime(runtime: object, *, owned: bool) -> None:
     if not owned or runtime is None:
         return
@@ -274,6 +355,7 @@ def create_app(
     )
     app.state.runtime = runtime
     app.state.runtime_lock = threading.Lock()
+    app.state.capability_plan_slots = threading.BoundedSemaphore(CAPABILITY_PLAN_CONCURRENCY)
     app.add_exception_handler(agent_runtime.RuntimeStateError, _state_error_response)
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -324,6 +406,14 @@ def create_app(
             tuple(body.actions),
         )
         return _action_labels_response(labels)
+
+    @app.post("/v1/capability-plan", dependencies=[Depends(require_auth)])
+    def create_capability_plan(body: CapabilityPlanInput) -> dict[str, object]:
+        return _run_capability_plan(
+            current_runtime(),
+            app.state.capability_plan_slots,
+            body,
+        )
 
     return app
 

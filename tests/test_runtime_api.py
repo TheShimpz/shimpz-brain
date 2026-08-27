@@ -11,6 +11,7 @@ from typing import get_args
 from unittest import mock
 
 import agent_runtime
+import capability_plan
 import runtime_api
 from fastapi.testclient import TestClient
 
@@ -93,6 +94,15 @@ class FakeRuntime:
             agent_runtime.ActionLabel(id="get-zone", label="Consultar zona DNS"),
         )
 
+    def capability_plan(self, provider, objective, candidates):
+        self.calls.append(("capability_plan", provider, objective, candidates))
+        if self.error:
+            raise self.error
+        return capability_plan.CapabilityPlan(
+            "install-required",
+            ("shimpz-cloudflare", "shimpz-whatsapp"),
+        )
+
 
 def client(runtime, *, raise_server_exceptions=True):
     app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
@@ -152,6 +162,79 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(call[2], "Quero listar minhas zonas DNS")
         self.assertEqual(call[3], ("list-zones", "get-zone"))
         self.assertNotIn(SECRET, response.text)
+
+    def test_capability_plan_is_authenticated_stateless_and_closed(self):
+        runtime = FakeRuntime()
+        payload = {
+            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "objective": "Configure um domínio e envie uma mensagem",
+            "candidates": [
+                {
+                    "id": "shimpz-cloudflare",
+                    "name": "Shimpz Cloudflare",
+                    "summary": "Manage DNS.",
+                    "actions": ["dns.read", "dns.write"],
+                    "integrations": [{"id": "cloudflare", "provider": "cloudflare"}],
+                },
+                {
+                    "id": "shimpz-whatsapp",
+                    "name": "Shimpz WhatsApp",
+                    "summary": "Send messages.",
+                    "actions": ["messages.send"],
+                    "integrations": [{"id": "whatsapp", "provider": "whatsapp"}],
+                },
+            ],
+        }
+        api = client(runtime)
+
+        self.assertEqual(api.post("/v1/capability-plan", json=payload).status_code, 401)
+        response = api.post(
+            "/v1/capability-plan",
+            json=payload,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "status": "install-required",
+                "assistant_ids": ["shimpz-cloudflare", "shimpz-whatsapp"],
+            },
+        )
+        call = runtime.calls[0]
+        self.assertEqual(call[0], "capability_plan")
+        self.assertEqual(call[1].api_key, SECRET)
+        self.assertEqual(call[2], payload["objective"])
+        self.assertEqual(tuple(item.id for item in call[3]), ("shimpz-cloudflare", "shimpz-whatsapp"))
+        self.assertNotIn(SECRET, response.text)
+
+    def test_capability_plan_has_an_independent_fail_closed_capacity_lane(self):
+        runtime = FakeRuntime()
+        app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
+        for _index in range(runtime_api.CAPABILITY_PLAN_CONCURRENCY):
+            self.assertTrue(app.state.capability_plan_slots.acquire(blocking=False))
+        response = TestClient(app).post(
+            "/v1/capability-plan",
+            json={
+                "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+                "objective": "Configure DNS",
+                "candidates": [
+                    {
+                        "id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
+                        "summary": "Manage DNS.",
+                        "actions": ["dns.read"],
+                        "integrations": [],
+                    }
+                ],
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json(), {"detail": "Capability planner capacity reached"})
+        self.assertEqual(runtime.calls, [])
 
     def test_action_label_input_rejects_added_duplicate_and_unsafe_values(self):
         runtime = FakeRuntime()
