@@ -44,7 +44,10 @@ class StaticBrainImageContractTests(unittest.TestCase):
     def test_runtime_artifact_excludes_the_independent_egress_role(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-        self.assertIn("agent_runtime.py runtime_api.py model_catalog.json /app/", dockerfile)
+        self.assertIn(
+            "agent_runtime.py capability_plan.py runtime_api.py model_catalog.json /app/",
+            dockerfile,
+        )
         self.assertNotIn("egress/", dockerfile)
         self.assertNotIn("/var/log/brain-egress", dockerfile)
         self.assertNotIn("SHIMPZ_EGRESS_ALLOW", dockerfile)
