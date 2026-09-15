@@ -248,6 +248,7 @@ class RuntimeApiTests(unittest.TestCase):
             {**valid, "actions": []},
             {**valid, "actions": ["list-zones", "list-zones"]},
             {**valid, "actions": ["../shell"]},
+            {**valid, "language_exemplar": 1},
             {**valid, "language_exemplar": "hidden\0instruction"},
         )
 

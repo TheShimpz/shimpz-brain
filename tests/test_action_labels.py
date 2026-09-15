@@ -81,24 +81,9 @@ class ActionLabelTests(unittest.TestCase):
     def test_rejects_nonclosed_or_unsafe_model_output(self):
         responses = (
             '{"labels":[{"id":"list-zones","label":"Listar zonas"}]}',
-            (
-                '{"labels":['
-                '{"id":"list-zones","label":"Listar zonas"},'
-                '{"id":"extra-action","label":"Extra"}'
-                "]}"
-            ),
-            (
-                '{"labels":['
-                '{"id":"list-zones","label":"Mesmo rótulo"},'
-                '{"id":"get-zone","label":"Mesmo rótulo"}'
-                "]}"
-            ),
-            (
-                '{"labels":['
-                '{"id":"list-zones","label":"Listar\\nzona"},'
-                '{"id":"get-zone","label":"Consultar zona"}'
-                "]}"
-            ),
+            ('{"labels":[{"id":"list-zones","label":"Listar zonas"},{"id":"extra-action","label":"Extra"}]}'),
+            ('{"labels":[{"id":"list-zones","label":"Mesmo rótulo"},{"id":"get-zone","label":"Mesmo rótulo"}]}'),
+            ('{"labels":[{"id":"list-zones","label":"Listar\\nzona"},{"id":"get-zone","label":"Consultar zona"}]}'),
             '{"labels":[],"unexpected":true}',
             (
                 '{"labels":['
@@ -124,14 +109,7 @@ class ActionLabelTests(unittest.TestCase):
     def test_rejects_equivalent_unicode_and_unknown_content_blocks(self):
         equivalent = RecordingModel(
             responses=[
-                AIMessage(
-                    content=(
-                        '{"labels":['
-                        '{"id":"list-zones","label":"é"},'
-                        '{"id":"get-zone","label":"e\\u0301"}'
-                        "]}"
-                    )
-                )
+                AIMessage(content=('{"labels":[{"id":"list-zones","label":"é"},{"id":"get-zone","label":"e\\u0301"}]}'))
             ]
         )
         unknown_block = RecordingModel(
@@ -184,6 +162,50 @@ class ActionLabelTests(unittest.TestCase):
                     "Liste minhas zonas",
                     ("list-zones", "get-zone"),
                 )
+
+        text_block = RecordingModel(
+            responses=[
+                AIMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": '{"labels":[{"id":"list-zones","label":"Listar zonas"}]}',
+                        }
+                    ]
+                )
+            ]
+        )
+        self.assertEqual(
+            runtime_for(text_block).action_labels(provider(), "Liste zonas", ("list-zones",)),
+            (agent_runtime.ActionLabel("list-zones", "Listar zonas"),),
+        )
+
+    def test_closed_label_helpers_reject_remaining_boundary_shapes(self):
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            agent_runtime.normalize_language_exemplar(object())
+        for value in (object(), " label", "x" * (agent_runtime.MAX_ACTION_LABEL_CHARS + 1)):
+            with self.subTest(value_type=type(value)), self.assertRaises(agent_runtime.RuntimeContractError):
+                agent_runtime._validated_action_label(value)
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            agent_runtime._action_label_items([object()], frozenset({"list-zones"}))
+        for content in ("", "x" * (agent_runtime.MAX_ACTION_LABEL_RESPONSE_CHARS + 1)):
+            with self.subTest(length=len(content)), self.assertRaises(agent_runtime.RuntimeContractError):
+                agent_runtime._parse_action_labels(AIMessage(content=content), ("list-zones",))
+
+    def test_provider_and_non_message_failures_are_redacted(self):
+        for failure, expected in (
+            (ImportError("missing dependency"), ImportError),
+            (RuntimeError("secret provider detail"), agent_runtime.ProviderRequestError),
+        ):
+            model = mock.Mock()
+            model.invoke.side_effect = failure
+            with self.subTest(failure=type(failure).__name__), self.assertRaises(expected):
+                runtime_for(model).action_labels(provider(), "Liste zonas", ("list-zones",))
+
+        model = mock.Mock()
+        model.invoke.return_value = object()
+        with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
+            runtime_for(model).action_labels(provider(), "Liste zonas", ("list-zones",))
 
     def test_inputs_fail_before_provider_or_checkpoint_access(self):
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=mock.Mock())

@@ -56,10 +56,7 @@ class CapabilityPlanTests(unittest.TestCase):
         model = RecordingModel(
             responses=[
                 AIMessage(
-                    content=(
-                        '{"status":"install-required","assistant_ids":'
-                        '["shimpz-cloudflare","shimpz-whatsapp"]}'
-                    )
+                    content=('{"status":"install-required","assistant_ids":["shimpz-cloudflare","shimpz-whatsapp"]}')
                 )
             ]
         )
@@ -88,9 +85,7 @@ class CapabilityPlanTests(unittest.TestCase):
         self.assertNotIn("genesis", provider_text.casefold())
 
     def test_accepts_a_closed_sufficient_result(self):
-        model = RecordingModel(
-            responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')]
-        )
+        model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
         runtime = agent_runtime.AgentRuntime(object(), model_factory=lambda _config: model)
 
         self.assertEqual(
@@ -101,21 +96,12 @@ class CapabilityPlanTests(unittest.TestCase):
     def test_rejects_unknown_duplicate_unsorted_added_and_oversized_results(self):
         responses = (
             '{"status":"install-required","assistant_ids":["unknown"]}',
-            (
-                '{"status":"install-required","assistant_ids":'
-                '["shimpz-cloudflare","shimpz-cloudflare"]}'
-            ),
-            (
-                '{"status":"install-required","assistant_ids":'
-                '["shimpz-whatsapp","shimpz-cloudflare"]}'
-            ),
+            ('{"status":"install-required","assistant_ids":["shimpz-cloudflare","shimpz-cloudflare"]}'),
+            ('{"status":"install-required","assistant_ids":["shimpz-whatsapp","shimpz-cloudflare"]}'),
             '{"status":"sufficient","assistant_ids":["shimpz-cloudflare"]}',
             '{"status":"install-required","assistant_ids":[]}',
             '{"status":"install-required","assistant_ids":["shimpz-cloudflare"],"extra":true}',
-            (
-                '{"status":"install-required","assistant_ids":["shimpz-cloudflare"],'
-                '"assistant_ids":["shimpz-whatsapp"]}'
-            ),
+            ('{"status":"install-required","assistant_ids":["shimpz-cloudflare"],"assistant_ids":["shimpz-whatsapp"]}'),
             "not-json",
         )
         for content in responses:
@@ -138,9 +124,11 @@ class CapabilityPlanTests(unittest.TestCase):
             )
             for index in range(5)
         )
-        output = '{"status":"install-required","assistant_ids":[' + ",".join(
-            f'"assistant-{index}"' for index in range(5)
-        ) + "]}"
+        output = (
+            '{"status":"install-required","assistant_ids":['
+            + ",".join(f'"assistant-{index}"' for index in range(5))
+            + "]}"
+        )
         model = RecordingModel(responses=[AIMessage(content=output)])
         with self.assertRaises(agent_runtime.ProviderRequestError):
             agent_runtime.AgentRuntime(object(), model_factory=lambda _config: model).capability_plan(
@@ -179,6 +167,55 @@ class CapabilityPlanTests(unittest.TestCase):
                 runtime.capability_plan(provider(), objective, shortlist)
         factory.assert_not_called()
 
+    def test_candidate_shape_failures_are_rejected_before_provider_access(self):
+        first = candidates()[0]
+        invalid = (
+            (object(),),
+            (capability_plan.CapabilityCandidate(first.id, first.name, first.summary, (), first.integrations),),
+            (capability_plan.CapabilityCandidate(first.id, first.name, first.summary, first.actions, (object(),)),),
+        )
+        for shortlist in invalid:
+            with (
+                self.subTest(candidate_type=type(shortlist[0])),
+                self.assertRaises(capability_plan.CapabilityPlanError),
+            ):
+                capability_plan.validate_inputs("Configure DNS", shortlist)
+
+    def test_content_envelopes_and_provider_failures_are_closed(self):
+        valid = '{"status":"install-required","assistant_ids":["shimpz-cloudflare"]}'
+        text_block = RecordingModel(responses=[AIMessage(content=[{"type": "text", "text": valid}])])
+        self.assertEqual(
+            capability_plan.create(text_block, "Configure DNS", candidates()),
+            capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)),
+        )
+
+        invalid_messages = (
+            AIMessage(
+                content=valid,
+                tool_calls=[{"name": "unexpected", "args": {}, "id": "call-1", "type": "tool_call"}],
+            ),
+            AIMessage(content=[{"type": "text", "text": valid}, {"type": "text", "text": valid}]),
+            AIMessage(content=""),
+            AIMessage(content='{"status":"unknown","assistant_ids":[]}'),
+        )
+        for message in invalid_messages:
+            with self.subTest(content=message.content), self.assertRaises(capability_plan.CapabilityPlanProviderError):
+                capability_plan.create(RecordingModel(responses=[message]), "Configure DNS", candidates())
+
+        for failure, expected in (
+            (ImportError("missing dependency"), ImportError),
+            (RuntimeError("secret provider detail"), capability_plan.CapabilityPlanProviderError),
+        ):
+            model = mock.Mock()
+            model.invoke.side_effect = failure
+            with self.subTest(failure=type(failure).__name__), self.assertRaises(expected):
+                capability_plan.create(model, "Configure DNS", candidates())
+
+        model = mock.Mock()
+        model.invoke.return_value = object()
+        with self.assertRaises(capability_plan.CapabilityPlanProviderError):
+            capability_plan.create(model, "Configure DNS", candidates())
+
     def test_provider_factory_failure_is_redacted(self):
         runtime = agent_runtime.AgentRuntime(
             object(),
@@ -187,6 +224,13 @@ class CapabilityPlanTests(unittest.TestCase):
 
         with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
             runtime.capability_plan(provider(), "Configure DNS", candidates())
+
+        missing = agent_runtime.AgentRuntime(
+            object(),
+            model_factory=mock.Mock(side_effect=ImportError("missing dependency")),
+        )
+        with self.assertRaisesRegex(ImportError, "missing dependency"):
+            missing.capability_plan(provider(), "Configure DNS", candidates())
 
 
 if __name__ == "__main__":
