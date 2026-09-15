@@ -56,8 +56,7 @@ def _text(value: object, maximum: int, label: str, *, allow_layout: bool = False
         or not 1 <= len(value) <= maximum
         or value.strip() != value
         or any(
-            unicodedata.category(character).startswith("C")
-            and (not allow_layout or character not in {"\n", "\t"})
+            unicodedata.category(character).startswith("C") and (not allow_layout or character not in {"\n", "\t"})
             for character in value
         )
     ):
@@ -141,8 +140,7 @@ def _prompt(objective: str, candidates: tuple[CapabilityCandidate, ...]) -> list
                 "summary": item.summary,
                 "actions": list(item.actions),
                 "integrations": [
-                    {"id": integration.id, "provider": integration.provider}
-                    for integration in item.integrations
+                    {"id": integration.id, "provider": integration.provider} for integration in item.integrations
                 ],
             }
             for item in candidates

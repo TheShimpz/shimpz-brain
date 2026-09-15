@@ -363,8 +363,7 @@ def normalize_language_exemplar(value: str) -> str:
     if not 1 <= len(normalized) <= MAX_LANGUAGE_EXEMPLAR_CHARS:
         raise RuntimeContractError("invalid language exemplar")
     if any(
-        unicodedata.category(character).startswith("C") and character not in {"\n", "\t"}
-        for character in normalized
+        unicodedata.category(character).startswith("C") and character not in {"\n", "\t"} for character in normalized
     ):
         raise RuntimeContractError("invalid language exemplar")
     return normalized
@@ -662,8 +661,7 @@ class AgentRuntime:
         if (
             not 1 <= len(action_ids) <= MAX_ACTION_LABELS
             or any(
-                not isinstance(action_id, str) or ACTION_ID_RE.fullmatch(action_id) is None
-                for action_id in action_ids
+                not isinstance(action_id, str) or ACTION_ID_RE.fullmatch(action_id) is None for action_id in action_ids
             )
             or len(set(action_ids)) != len(action_ids)
         ):

@@ -148,10 +148,9 @@ class ActionLabelsInput(BaseModel):
     @field_validator("actions")
     @classmethod
     def validate_actions(cls, value: list[str]) -> list[str]:
-        if (
-            any(agent_runtime.ACTION_ID_RE.fullmatch(action_id) is None for action_id in value)
-            or len(set(value)) != len(value)
-        ):
+        if any(agent_runtime.ACTION_ID_RE.fullmatch(action_id) is None for action_id in value) or len(
+            set(value)
+        ) != len(value):
             raise ValueError("invalid Action label ids")
         return value
 
@@ -186,8 +185,7 @@ class CapabilityCandidateInput(BaseModel):
             summary=self.summary,
             actions=tuple(self.actions),
             integrations=tuple(
-                capability_plan.CapabilityIntegration(id=item.id, provider=item.provider)
-                for item in self.integrations
+                capability_plan.CapabilityIntegration(id=item.id, provider=item.provider) for item in self.integrations
             ),
         )
 
