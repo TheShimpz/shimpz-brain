@@ -134,9 +134,7 @@ class ActionLabelTests(unittest.TestCase):
             ]
         )
         refusal = RecordingModel(
-            responses=[
-                AIMessage(content=[{"type": "refusal", "refusal": "cannot comply", "id": "message-1"}])
-            ]
+            responses=[AIMessage(content=[{"type": "refusal", "refusal": "cannot comply", "id": "message-1"}])]
         )
         tool_call = RecordingModel(
             responses=[
