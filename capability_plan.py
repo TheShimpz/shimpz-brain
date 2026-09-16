@@ -29,6 +29,10 @@ class CapabilityPlanProviderError(RuntimeError):
     """The model request failed without exposing provider data."""
 
 
+class CapabilityPlanResponseError(RuntimeError):
+    """The model response violated the closed plan contract without exposing provider data."""
+
+
 @dataclass(frozen=True, slots=True)
 class CapabilityIntegration:
     id: str
@@ -164,19 +168,12 @@ def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 def _content(message: AIMessage) -> str:
     if message.tool_calls or message.invalid_tool_calls:
         raise CapabilityPlanError("invalid capability plan response")
-    value = message.content
-    if isinstance(value, str):
-        return value
-    if (
-        isinstance(value, list)
-        and len(value) == 1
-        and isinstance(value[0], Mapping)
-        and set(value[0]) == {"type", "text"}
-        and value[0]["type"] == "text"
-        and isinstance(value[0]["text"], str)
-    ):
-        return value[0]["text"]
-    raise CapabilityPlanError("invalid capability plan response")
+    from agent_runtime import RuntimeContractError, _structured_response_text
+
+    try:
+        return _structured_response_text(message.content, "capability plan")
+    except RuntimeContractError as exc:
+        raise CapabilityPlanError(str(exc)) from exc
 
 
 def _parse(message: AIMessage, candidates: tuple[CapabilityCandidate, ...]) -> CapabilityPlan:
@@ -223,4 +220,4 @@ def create(
             raise CapabilityPlanError("invalid capability plan response")
         return _parse(message, admitted)
     except CapabilityPlanError as exc:
-        raise CapabilityPlanProviderError("model provider request failed") from exc
+        raise CapabilityPlanResponseError("model provider response failed") from exc

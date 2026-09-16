@@ -111,7 +111,7 @@ class CapabilityPlanTests(unittest.TestCase):
                     object(),
                     model_factory=lambda _config, selected=model: selected,
                 )
-                with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "model provider request failed"):
+                with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "model provider response failed"):
                     runtime.capability_plan(provider(), "Configure DNS", candidates())
 
         five = tuple(
@@ -130,7 +130,7 @@ class CapabilityPlanTests(unittest.TestCase):
             + "]}"
         )
         model = RecordingModel(responses=[AIMessage(content=output)])
-        with self.assertRaises(agent_runtime.ProviderRequestError):
+        with self.assertRaises(agent_runtime.ProviderResponseError):
             agent_runtime.AgentRuntime(object(), model_factory=lambda _config: model).capability_plan(
                 provider(),
                 "Use all capabilities",
@@ -181,9 +181,26 @@ class CapabilityPlanTests(unittest.TestCase):
             ):
                 capability_plan.validate_inputs("Configure DNS", shortlist)
 
-    def test_content_envelopes_and_provider_failures_are_closed(self):
+    def test_provider_content_envelopes_and_failures_are_closed(self):
         valid = '{"status":"install-required","assistant_ids":["shimpz-cloudflare"]}'
-        text_block = RecordingModel(responses=[AIMessage(content=[{"type": "text", "text": valid}])])
+        text_block = RecordingModel(
+            responses=[
+                AIMessage(
+                    content=[
+                        {"type": "reasoning", "id": "reasoning-1", "summary": []},
+                        {"type": "compaction", "id": "compaction-1", "encrypted_content": "opaque"},
+                        {
+                            "type": "text",
+                            "text": valid,
+                            "annotations": [],
+                            "id": "message-1",
+                            "phase": "final_answer",
+                        },
+                        {"type": "future-provider-metadata", "value": "ignored"},
+                    ]
+                )
+            ]
+        )
         self.assertEqual(
             capability_plan.create(text_block, "Configure DNS", candidates()),
             capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)),
@@ -194,12 +211,20 @@ class CapabilityPlanTests(unittest.TestCase):
                 content=valid,
                 tool_calls=[{"name": "unexpected", "args": {}, "id": "call-1", "type": "tool_call"}],
             ),
-            AIMessage(content=[{"type": "text", "text": valid}, {"type": "text", "text": valid}]),
+            AIMessage(
+                content=[
+                    {"type": "text", "text": valid, "annotations": [], "id": "message-1"},
+                    {"type": "text", "text": valid, "annotations": [], "id": "message-2"},
+                ]
+            ),
+            AIMessage(content=[{"type": "refusal", "refusal": "cannot comply", "id": "message-1"}]),
+            AIMessage(content=[{"type": "text", "text": 1, "annotations": [], "id": "message-1"}]),
+            AIMessage(content=[{"type": "reasoning", "id": "reasoning-1", "summary": []}]),
             AIMessage(content=""),
             AIMessage(content='{"status":"unknown","assistant_ids":[]}'),
         )
         for message in invalid_messages:
-            with self.subTest(content=message.content), self.assertRaises(capability_plan.CapabilityPlanProviderError):
+            with self.subTest(content=message.content), self.assertRaises(capability_plan.CapabilityPlanResponseError):
                 capability_plan.create(RecordingModel(responses=[message]), "Configure DNS", candidates())
 
         for failure, expected in (
@@ -213,7 +238,7 @@ class CapabilityPlanTests(unittest.TestCase):
 
         model = mock.Mock()
         model.invoke.return_value = object()
-        with self.assertRaises(capability_plan.CapabilityPlanProviderError):
+        with self.assertRaises(capability_plan.CapabilityPlanResponseError):
             capability_plan.create(model, "Configure DNS", candidates())
 
     def test_provider_factory_failure_is_redacted(self):

@@ -99,23 +99,24 @@ class ActionLabelTests(unittest.TestCase):
         for content in responses:
             with self.subTest(content=content):
                 model = RecordingModel(responses=[AIMessage(content=content)])
-                with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "model provider request failed"):
+                with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "model provider response failed"):
                     runtime_for(model).action_labels(
                         provider(),
                         "Liste minhas zonas",
                         ("list-zones", "get-zone"),
                     )
 
-    def test_rejects_equivalent_unicode_and_unknown_content_blocks(self):
+    def test_rejects_equivalent_unicode_refusals_and_tool_calls(self):
         equivalent = RecordingModel(
             responses=[
                 AIMessage(content=('{"labels":[{"id":"list-zones","label":"é"},{"id":"get-zone","label":"e\\u0301"}]}'))
             ]
         )
-        unknown_block = RecordingModel(
+        provider_envelope = RecordingModel(
             responses=[
                 AIMessage(
                     content=[
+                        {"type": "reasoning", "id": "reasoning-1", "summary": []},
                         {
                             "type": "text",
                             "text": (
@@ -124,10 +125,17 @@ class ActionLabelTests(unittest.TestCase):
                                 '{"id":"get-zone","label":"Consultar zona"}'
                                 "]}"
                             ),
+                            "annotations": [],
+                            "id": "message-1",
                         },
-                        {"type": "image_url", "image_url": "https://example.invalid/image"},
+                        {"type": "future-provider-metadata", "value": "ignored"},
                     ]
                 )
+            ]
+        )
+        refusal = RecordingModel(
+            responses=[
+                AIMessage(content=[{"type": "refusal", "refusal": "cannot comply", "id": "message-1"}])
             ]
         )
         tool_call = RecordingModel(
@@ -155,29 +163,24 @@ class ActionLabelTests(unittest.TestCase):
             ]
         )
 
-        for model in (equivalent, unknown_block, tool_call, invalid_tool_call):
-            with self.subTest(model=model), self.assertRaises(agent_runtime.ProviderRequestError):
+        for model in (equivalent, refusal, tool_call, invalid_tool_call):
+            with self.subTest(model=model), self.assertRaises(agent_runtime.ProviderResponseError):
                 runtime_for(model).action_labels(
                     provider(),
                     "Liste minhas zonas",
                     ("list-zones", "get-zone"),
                 )
 
-        text_block = RecordingModel(
-            responses=[
-                AIMessage(
-                    content=[
-                        {
-                            "type": "text",
-                            "text": '{"labels":[{"id":"list-zones","label":"Listar zonas"}]}',
-                        }
-                    ]
-                )
-            ]
-        )
         self.assertEqual(
-            runtime_for(text_block).action_labels(provider(), "Liste zonas", ("list-zones",)),
-            (agent_runtime.ActionLabel("list-zones", "Listar zonas"),),
+            runtime_for(provider_envelope).action_labels(
+                provider(),
+                "Liste zonas",
+                ("list-zones", "get-zone"),
+            ),
+            (
+                agent_runtime.ActionLabel("list-zones", "Listar zonas"),
+                agent_runtime.ActionLabel("get-zone", "Consultar zona"),
+            ),
         )
 
     def test_closed_label_helpers_reject_remaining_boundary_shapes(self):
@@ -204,7 +207,7 @@ class ActionLabelTests(unittest.TestCase):
 
         model = mock.Mock()
         model.invoke.return_value = object()
-        with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
+        with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "^model provider response failed$"):
             runtime_for(model).action_labels(provider(), "Liste zonas", ("list-zones",))
 
     def test_inputs_fail_before_provider_or_checkpoint_access(self):

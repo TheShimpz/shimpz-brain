@@ -59,6 +59,10 @@ class ProviderRequestError(RuntimeError):
     """A provider call failed without exposing provider response or credential material."""
 
 
+class ProviderResponseError(ProviderRequestError):
+    """A provider response violated a closed runtime contract without exposing its content."""
+
+
 class RuntimeStateError(RuntimeError):
     """A checkpoint operation failed without exposing persisted conversation data."""
 
@@ -355,6 +359,31 @@ def _message_content(value: object) -> str:
     return "\n".join(text)
 
 
+def _structured_response_text(value: object, label: str) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list):
+        raise RuntimeContractError(f"invalid {label} response")
+    text_blocks: list[str] = []
+    for block in value:
+        if not isinstance(block, Mapping):
+            continue
+        block_type = block.get("type")
+        if block_type == "refusal":
+            raise RuntimeContractError(f"{label} response was refused")
+        if block_type != "text":
+            continue
+        text = block.get("text")
+        if not isinstance(text, str):
+            raise RuntimeContractError(f"invalid {label} text block")
+        text_blocks.append(text)
+    if not text_blocks:
+        raise RuntimeContractError(f"{label} response has no text block")
+    if len(text_blocks) != 1:
+        raise RuntimeContractError(f"{label} response has multiple text blocks")
+    return text_blocks[0]
+
+
 def normalize_language_exemplar(value: str) -> str:
     """Return bounded user text that may influence presentation but never authority."""
     if not isinstance(value, str):
@@ -423,18 +452,7 @@ def _action_label_items(value: object, expected_ids: frozenset[str]) -> dict[str
 
 
 def _action_label_content(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    if (
-        isinstance(value, list)
-        and len(value) == 1
-        and isinstance(value[0], Mapping)
-        and set(value[0]) == {"type", "text"}
-        and value[0]["type"] == "text"
-        and isinstance(value[0]["text"], str)
-    ):
-        return value[0]["text"]
-    raise RuntimeContractError("invalid Action label response")
+    return _structured_response_text(value, "Action label")
 
 
 def _parse_action_labels(message: AIMessage, action_ids: tuple[str, ...]) -> tuple[ActionLabel, ...]:
@@ -677,7 +695,7 @@ class AgentRuntime:
                 raise RuntimeContractError("invalid Action label response")
             return _parse_action_labels(message, action_ids)
         except RuntimeContractError as exc:
-            raise ProviderRequestError("model provider request failed") from exc
+            raise ProviderResponseError("model provider response failed") from exc
 
     def capability_plan(
         self,
@@ -692,6 +710,8 @@ class AgentRuntime:
             return capability_planner.create(model, objective, candidates)
         except capability_planner.CapabilityPlanError as exc:
             raise RuntimeContractError(str(exc)) from exc
+        except capability_planner.CapabilityPlanResponseError as exc:
+            raise ProviderResponseError("model provider response failed") from exc
         except capability_planner.CapabilityPlanProviderError as exc:
             raise ProviderRequestError("model provider request failed") from exc
         except ImportError:

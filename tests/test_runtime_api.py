@@ -263,7 +263,7 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(runtime.calls, [])
 
     def test_invalid_action_label_model_output_is_a_redacted_upstream_failure(self):
-        runtime = FakeRuntime(error=agent_runtime.ProviderRequestError(f"invalid output beside {SECRET}"))
+        runtime = FakeRuntime(error=agent_runtime.ProviderResponseError(f"invalid output beside {SECRET}"))
         response = client(runtime).post(
             "/v1/action-labels",
             json={
