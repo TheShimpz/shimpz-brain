@@ -186,6 +186,15 @@ class ActionLabelTests(unittest.TestCase):
     def test_closed_label_helpers_reject_remaining_boundary_shapes(self):
         with self.assertRaises(agent_runtime.RuntimeContractError):
             agent_runtime.normalize_language_exemplar(object())
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            agent_runtime._structured_response_text(object(), "Action label")
+        self.assertEqual(
+            agent_runtime._structured_response_text(
+                [object(), {"type": "text", "text": "closed"}],
+                "Action label",
+            ),
+            "closed",
+        )
         for value in (object(), " label", "x" * (agent_runtime.MAX_ACTION_LABEL_CHARS + 1)):
             with self.subTest(value_type=type(value)), self.assertRaises(agent_runtime.RuntimeContractError):
                 agent_runtime._validated_action_label(value)

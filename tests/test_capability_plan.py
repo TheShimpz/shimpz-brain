@@ -242,6 +242,15 @@ class CapabilityPlanTests(unittest.TestCase):
             capability_plan.create(model, "Configure DNS", candidates())
 
     def test_provider_factory_failure_is_redacted(self):
+        provider_failure = mock.Mock()
+        provider_failure.invoke.side_effect = RuntimeError("secret provider detail")
+        runtime = agent_runtime.AgentRuntime(
+            object(),
+            model_factory=lambda _config: provider_failure,
+        )
+        with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
+            runtime.capability_plan(provider(), "Configure DNS", candidates())
+
         runtime = agent_runtime.AgentRuntime(
             object(),
             model_factory=mock.Mock(side_effect=RuntimeError("secret provider detail")),
