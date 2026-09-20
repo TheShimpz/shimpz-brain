@@ -147,9 +147,7 @@ def _prompt(
     payload = {
         "objective": objective,
         "expected_intent": expected_intent,
-        "candidates": [
-            {"id": item.id, "name": item.name, "summary": item.summary} for item in candidates
-        ],
+        "candidates": [{"id": item.id, "name": item.name, "summary": item.summary} for item in candidates],
     }
     return [
         SystemMessage(content=f"{system}\n\n{instruction}"),
