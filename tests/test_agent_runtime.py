@@ -791,11 +791,14 @@ class AgentRuntimeTests(unittest.TestCase):
         openai.assert_called_once()
         anthropic.assert_called_once()
 
-    def test_openai_models_reuse_a_credential_free_http_transport(self):
+    def test_openai_models_reuse_transport_and_decisions_use_low_effort(self):
         transport = mock.Mock()
         with (
             mock.patch.object(agent_runtime.httpx, "Client", return_value=transport),
-            mock.patch("langchain_openai.ChatOpenAI", side_effect=[mock.Mock(), mock.Mock()]) as constructor,
+            mock.patch(
+                "langchain_openai.ChatOpenAI",
+                side_effect=[mock.Mock(), mock.Mock(), mock.Mock()],
+            ) as constructor,
         ):
             factory = agent_runtime.ProviderModelFactory()
             factory(
@@ -812,12 +815,22 @@ class AgentRuntimeTests(unittest.TestCase):
                     api_key="second-secret-key",
                 )
             )
+            factory.decision(
+                agent_runtime.ProviderConfig(
+                    provider="openai",
+                    model="gpt-5.6-terra",
+                    api_key="decision-secret-key",
+                )
+            )
             factory.close()
 
-        first, second = constructor.call_args_list
+        first, second, decision = constructor.call_args_list
         self.assertIs(first.kwargs["http_client"], transport)
         self.assertIs(second.kwargs["http_client"], transport)
         self.assertNotEqual(first.kwargs["api_key"], second.kwargs["api_key"])
+        self.assertIs(decision.kwargs["http_client"], transport)
+        self.assertEqual(decision.kwargs["reasoning_effort"], "low")
+        self.assertEqual(decision.kwargs["max_retries"], 0)
         transport.close.assert_called_once_with()
 
     def test_dependency_import_errors_are_never_laundered_as_provider_failures(self):

@@ -82,9 +82,7 @@ class IntentRouteTests(unittest.TestCase):
         self.assertNotIn("api_key", prompt)
 
     def test_anthropic_uses_the_same_static_schema_without_openai_options(self):
-        model = StructuredModel(
-            intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[])
-        )
+        model = StructuredModel(intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[]))
 
         result = intent_route.create(model, "anthropic", "liste minhas zonas", None, ())
 
@@ -173,6 +171,64 @@ class IntentRouteTests(unittest.TestCase):
                 intent_route.create(model, "openai", objective, expected, shortlist)
         model.with_structured_output.assert_not_called()
 
+    def test_input_contract_rejects_wrong_types_identifiers_and_intents(self):
+        invalid = (
+            (1, None, ()),
+            ("install", "unsupported", ()),
+            ("install", "assistant-install", (object(),)),
+            (
+                "install",
+                "assistant-install",
+                (intent_route.DirectoryCandidate("Invalid Id", "Invalid"),),
+            ),
+        )
+        for objective, expected, shortlist in invalid:
+            with self.subTest(expected=expected, shortlist=shortlist), self.assertRaises(intent_route.IntentRouteError):
+                intent_route.validate_inputs(objective, expected, shortlist)
+
+    def test_response_contract_rejects_classification_and_selection_conflicts(self):
+        invalid = (
+            (
+                intent_route.StructuredRoute(
+                    intent="ordinary-task",
+                    query="",
+                    assistant_ids=["shimpz-cloudflare"],
+                ),
+                None,
+                (),
+            ),
+            (
+                intent_route.StructuredRoute.model_construct(
+                    intent="invalid",
+                    query="unexpected",
+                    assistant_ids=[],
+                ),
+                None,
+                (),
+            ),
+            (
+                intent_route.StructuredRoute(
+                    intent="assistant-uninstall",
+                    query="unexpected",
+                    assistant_ids=["shimpz-cloudflare"],
+                ),
+                "assistant-uninstall",
+                candidates(uninstall=True),
+            ),
+            (
+                intent_route.StructuredRoute(
+                    intent="unresolved",
+                    query="",
+                    assistant_ids=["shimpz-cloudflare"],
+                ),
+                "assistant-uninstall",
+                candidates(uninstall=True),
+            ),
+        )
+        for response, expected, shortlist in invalid:
+            with self.subTest(response=response), self.assertRaises(intent_route.IntentRouteError):
+                intent_route._route(response, expected, shortlist)
+
     def test_provider_and_contract_failures_are_redacted_and_distinct(self):
         with self.assertRaisesRegex(intent_route.IntentRouteProviderError, "^model provider request failed$"):
             intent_route.create(
@@ -183,11 +239,26 @@ class IntentRouteTests(unittest.TestCase):
                 (),
             )
         for value in (None, {}, {"intent": "ordinary-task", "query": "", "assistant_ids": [], "extra": True}):
-            with self.subTest(value=value), self.assertRaisesRegex(
-                intent_route.IntentRouteResponseError,
-                "^model provider response failed$",
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(
+                    intent_route.IntentRouteResponseError,
+                    "^model provider response failed$",
+                ),
             ):
                 intent_route.create(StructuredModel(value), "openai", "hello", None, ())
+
+    def test_provider_adapter_and_dependency_failures_remain_distinct(self):
+        with self.assertRaises(intent_route.IntentRouteError):
+            intent_route.create(StructuredModel(), "unsupported", "hello", None, ())
+        with self.assertRaisesRegex(ImportError, "missing structured adapter"):
+            intent_route.create(
+                StructuredModel(error=ImportError("missing structured adapter")),
+                "openai",
+                "hello",
+                None,
+                (),
+            )
 
     def test_runtime_uses_only_the_decision_factory_without_checkpoint_access(self):
         model = StructuredModel({"intent": "ordinary-task", "query": "", "assistant_ids": []})
@@ -198,6 +269,29 @@ class IntentRouteTests(unittest.TestCase):
 
         self.assertEqual(result, intent_route.IntentRoute("ordinary-task"))
         self.assertEqual(factory.decision_calls, [provider()])
+
+    def test_runtime_projects_every_intent_route_failure_without_provider_detail(self):
+        cases = (
+            (intent_route.IntentRouteError("invalid route"), agent_runtime.RuntimeContractError),
+            (
+                intent_route.IntentRouteResponseError("private response"),
+                agent_runtime.ProviderResponseError,
+            ),
+            (
+                intent_route.IntentRouteProviderError("private request"),
+                agent_runtime.ProviderRequestError,
+            ),
+            (ImportError("missing adapter"), ImportError),
+            (RuntimeError("private failure"), agent_runtime.ProviderRequestError),
+        )
+        runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=lambda _config: mock.Mock())
+        for failure, projected in cases:
+            with (
+                self.subTest(failure=failure),
+                mock.patch.object(intent_route, "create", side_effect=failure),
+                self.assertRaises(projected),
+            ):
+                runtime.intent_route(provider(), "hello", None, ())
 
 
 if __name__ == "__main__":
