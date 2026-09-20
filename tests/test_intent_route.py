@@ -101,9 +101,7 @@ class IntentRouteTests(unittest.TestCase):
         with self.assertRaises(intent_route.IntentRouteError):
             intent_route.validate_inputs("instale", None, (), object())
 
-        echo = StructuredModel(
-            {"intent": "assistant-install", "query": "", "assistant_ids": ["shimpz-cloudflare"]}
-        )
+        echo = StructuredModel({"intent": "assistant-install", "query": "", "assistant_ids": ["shimpz-cloudflare"]})
         with self.assertRaises(intent_route.IntentRouteResponseError):
             intent_route.create(echo, "openai", "instale ele", None, (), reference)
 
