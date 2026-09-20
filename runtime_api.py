@@ -224,6 +224,16 @@ class DirectoryCandidateInput(BaseModel):
         return intent_route.DirectoryCandidate(id=self.id, name=self.name, summary=self.summary)
 
 
+class LifecycleReferenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=intent_route.MAX_NAME_CHARS)
+
+    def runtime_reference(self) -> intent_route.LifecycleReference:
+        return intent_route.LifecycleReference(id=self.id, name=self.name)
+
+
 class IntentRouteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -231,6 +241,7 @@ class IntentRouteInput(BaseModel):
     objective: str = Field(min_length=1, max_length=intent_route.MAX_OBJECTIVE_CHARS)
     expected_intent: Literal["assistant-install", "assistant-uninstall"] | None
     candidates: list[DirectoryCandidateInput] = Field(max_length=intent_route.MAX_CANDIDATES)
+    lifecycle_reference: LifecycleReferenceInput | None
 
     def runtime_provider(self) -> agent_runtime.ProviderConfig:
         return agent_runtime.ProviderConfig(
@@ -241,6 +252,9 @@ class IntentRouteInput(BaseModel):
 
     def runtime_candidates(self) -> tuple[intent_route.DirectoryCandidate, ...]:
         return tuple(item.runtime_candidate() for item in self.candidates)
+
+    def runtime_reference(self) -> intent_route.LifecycleReference | None:
+        return None if self.lifecycle_reference is None else self.lifecycle_reference.runtime_reference()
 
 
 class RuntimeLike:
@@ -276,6 +290,7 @@ class RuntimeLike:
         objective: str,
         expected_intent: intent_route.LifecycleIntent | None,
         candidates: tuple[intent_route.DirectoryCandidate, ...],
+        reference: intent_route.LifecycleReference | None,
     ) -> intent_route.IntentRoute: ...
 
 
@@ -381,6 +396,7 @@ def _run_intent_route(
             body.objective,
             body.expected_intent,
             body.runtime_candidates(),
+            body.runtime_reference(),
         )
         return _intent_route_response(route)
     finally:

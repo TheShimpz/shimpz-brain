@@ -739,13 +739,14 @@ class AgentRuntime:
         objective: str,
         expected_intent: intent_router.LifecycleIntent | None,
         candidates: tuple[intent_router.DirectoryCandidate, ...],
+        reference: intent_router.LifecycleReference | None,
     ) -> intent_router.IntentRoute:
         """Classify or resolve lifecycle intent without conversation or lifecycle authority."""
         try:
-            intent_router.validate_inputs(objective, expected_intent, candidates)
+            intent_router.validate_inputs(objective, expected_intent, candidates, reference)
             decision_factory = getattr(self._model_factory, "decision", None)
             model = decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
-            return intent_router.create(model, provider.provider, objective, expected_intent, candidates)
+            return intent_router.create(model, provider.provider, objective, expected_intent, candidates, reference)
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError(str(exc)) from exc
         except intent_router.IntentRouteResponseError as exc:

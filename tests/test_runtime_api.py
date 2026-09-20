@@ -104,8 +104,8 @@ class FakeRuntime:
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
 
-    def intent_route(self, provider, objective, expected_intent, candidates):
-        self.calls.append(("intent_route", provider, objective, expected_intent, candidates))
+    def intent_route(self, provider, objective, expected_intent, candidates, reference):
+        self.calls.append(("intent_route", provider, objective, expected_intent, candidates, reference))
         if self.error:
             raise self.error
         if expected_intent is None:
@@ -253,6 +253,10 @@ class RuntimeApiTests(unittest.TestCase):
             "objective": "tire o cloudflare deste time",
             "expected_intent": None,
             "candidates": [],
+            "lifecycle_reference": {
+                "id": "shimpz-cloudflare",
+                "name": "Shimpz Cloudflare",
+            },
         }
 
         self.assertEqual(api.post("/v1/intent-route", json=classification).status_code, 401)
@@ -271,12 +275,14 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(call[1].api_key, SECRET)
         self.assertEqual(call[2:4], (classification["objective"], None))
         self.assertEqual(call[4], ())
+        self.assertEqual(call[5].id, "shimpz-cloudflare")
         self.assertNotIn(SECRET, response.text)
 
         selection = {
             **classification,
             "expected_intent": "assistant-uninstall",
             "candidates": [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
+            "lifecycle_reference": None,
         }
         selected = api.post(
             "/v1/intent-route",
@@ -301,6 +307,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "objective": "hello",
                 "expected_intent": None,
                 "candidates": [],
+                "lifecycle_reference": None,
             },
             headers={"Authorization": f"Bearer {TOKEN}"},
         )

@@ -71,7 +71,7 @@ class IntentRouteTests(unittest.TestCase):
             )
         )
 
-        result = intent_route.create(model, "openai", "por favor tire o cloudflare", None, ())
+        result = intent_route.create(model, "openai", "por favor tire o cloudflare", None, (), None)
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
         self.assertIs(model.schema, intent_route.StructuredRoute)
@@ -81,10 +81,36 @@ class IntentRouteTests(unittest.TestCase):
         self.assertIn("por favor tire o cloudflare", prompt)
         self.assertNotIn("api_key", prompt)
 
+    def test_classification_admits_one_untrusted_lifecycle_reference_only(self):
+        reference = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")
+        model = StructuredModel(
+            intent_route.StructuredRoute(
+                intent="assistant-install",
+                query="shimpz-cloudflare",
+                assistant_ids=[],
+            )
+        )
+
+        result = intent_route.create(model, "openai", "instale ele de novo", None, (), reference)
+
+        self.assertEqual(result, intent_route.IntentRoute("assistant-install", "shimpz-cloudflare"))
+        self.assertNotIn("shimpz-cloudflare", str(model.messages[0].content))
+        self.assertIn('"lifecycle_reference":{"id":"shimpz-cloudflare"', str(model.messages[1].content))
+        with self.assertRaises(intent_route.IntentRouteError):
+            intent_route.validate_inputs("instale", "assistant-install", candidates(), reference)
+        with self.assertRaises(intent_route.IntentRouteError):
+            intent_route.validate_inputs("instale", None, (), object())
+
+        echo = StructuredModel(
+            {"intent": "assistant-install", "query": "", "assistant_ids": ["shimpz-cloudflare"]}
+        )
+        with self.assertRaises(intent_route.IntentRouteResponseError):
+            intent_route.create(echo, "openai", "instale ele", None, (), reference)
+
     def test_anthropic_uses_the_same_static_schema_without_openai_options(self):
         model = StructuredModel(intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[]))
 
-        result = intent_route.create(model, "anthropic", "liste minhas zonas", None, ())
+        result = intent_route.create(model, "anthropic", "liste minhas zonas", None, (), None)
 
         self.assertEqual(result, intent_route.IntentRoute("ordinary-task"))
         self.assertEqual(model.options, {"method": "json_schema"})
@@ -104,6 +130,7 @@ class IntentRouteTests(unittest.TestCase):
             "instale cloudflare e whatsapp",
             "assistant-install",
             candidates(),
+            None,
         )
 
         self.assertEqual(
@@ -143,6 +170,7 @@ class IntentRouteTests(unittest.TestCase):
                     "lifecycle objective",
                     expected,
                     shortlist,
+                    None,
                 )
 
     def test_unresolved_selection_is_non_authorizing(self):
@@ -152,6 +180,7 @@ class IntentRouteTests(unittest.TestCase):
             "remove it",
             "assistant-uninstall",
             candidates(uninstall=True),
+            None,
         )
 
         self.assertEqual(result, intent_route.IntentRoute("unresolved"))
@@ -168,7 +197,7 @@ class IntentRouteTests(unittest.TestCase):
         )
         for objective, expected, shortlist in invalid:
             with self.subTest(objective=objective, expected=expected), self.assertRaises(intent_route.IntentRouteError):
-                intent_route.create(model, "openai", objective, expected, shortlist)
+                intent_route.create(model, "openai", objective, expected, shortlist, None)
         model.with_structured_output.assert_not_called()
 
     def test_input_contract_rejects_wrong_types_identifiers_and_intents(self):
@@ -184,7 +213,7 @@ class IntentRouteTests(unittest.TestCase):
         )
         for objective, expected, shortlist in invalid:
             with self.subTest(expected=expected, shortlist=shortlist), self.assertRaises(intent_route.IntentRouteError):
-                intent_route.validate_inputs(objective, expected, shortlist)
+                intent_route.validate_inputs(objective, expected, shortlist, None)
 
     def test_response_contract_rejects_classification_and_selection_conflicts(self):
         invalid = (
@@ -237,6 +266,7 @@ class IntentRouteTests(unittest.TestCase):
                 "hello",
                 None,
                 (),
+                None,
             )
         for value in (None, {}, {"intent": "ordinary-task", "query": "", "assistant_ids": [], "extra": True}):
             with (
@@ -246,11 +276,11 @@ class IntentRouteTests(unittest.TestCase):
                     "^model provider response failed$",
                 ),
             ):
-                intent_route.create(StructuredModel(value), "openai", "hello", None, ())
+                intent_route.create(StructuredModel(value), "openai", "hello", None, (), None)
 
     def test_provider_adapter_and_dependency_failures_remain_distinct(self):
         with self.assertRaises(intent_route.IntentRouteError):
-            intent_route.create(StructuredModel(), "unsupported", "hello", None, ())
+            intent_route.create(StructuredModel(), "unsupported", "hello", None, (), None)
         with self.assertRaisesRegex(ImportError, "missing structured adapter"):
             intent_route.create(
                 StructuredModel(error=ImportError("missing structured adapter")),
@@ -258,6 +288,7 @@ class IntentRouteTests(unittest.TestCase):
                 "hello",
                 None,
                 (),
+                None,
             )
 
     def test_runtime_uses_only_the_decision_factory_without_checkpoint_access(self):
@@ -265,7 +296,7 @@ class IntentRouteTests(unittest.TestCase):
         factory = DecisionFactory(model)
         runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=factory)
 
-        result = runtime.intent_route(provider(), "hello", None, ())
+        result = runtime.intent_route(provider(), "hello", None, (), None)
 
         self.assertEqual(result, intent_route.IntentRoute("ordinary-task"))
         self.assertEqual(factory.decision_calls, [provider()])
@@ -291,7 +322,7 @@ class IntentRouteTests(unittest.TestCase):
                 mock.patch.object(intent_route, "create", side_effect=failure),
                 self.assertRaises(projected),
             ):
-                runtime.intent_route(provider(), "hello", None, ())
+                runtime.intent_route(provider(), "hello", None, (), None)
 
 
 if __name__ == "__main__":
