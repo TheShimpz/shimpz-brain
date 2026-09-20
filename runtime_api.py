@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal, Self
 
 import agent_runtime
 import capability_plan
+import intent_route
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -22,6 +23,7 @@ TOKEN_FILE = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE", "/run/shimpz
 STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-brain-runtime/checkpoints.sqlite3"))
 MAX_TOKEN_BYTES = 4 * 1024
 CAPABILITY_PLAN_CONCURRENCY = 2
+INTENT_ROUTE_CONCURRENCY = 2
 _PRUNE_WRITES_SQL = (
     "WITH latest AS (SELECT checkpoint_ns,MAX(checkpoint_id) AS checkpoint_id "
     "FROM checkpoints WHERE thread_id=? GROUP BY checkpoint_ns) "
@@ -211,6 +213,36 @@ class CapabilityPlanInput(BaseModel):
         return tuple(item.runtime_candidate() for item in self.candidates)
 
 
+class DirectoryCandidateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=intent_route.MAX_NAME_CHARS)
+    summary: str = Field(max_length=intent_route.MAX_SUMMARY_CHARS)
+
+    def runtime_candidate(self) -> intent_route.DirectoryCandidate:
+        return intent_route.DirectoryCandidate(id=self.id, name=self.name, summary=self.summary)
+
+
+class IntentRouteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: ProviderInput
+    objective: str = Field(min_length=1, max_length=intent_route.MAX_OBJECTIVE_CHARS)
+    expected_intent: Literal["assistant-install", "assistant-uninstall"] | None
+    candidates: list[DirectoryCandidateInput] = Field(max_length=intent_route.MAX_CANDIDATES)
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+    def runtime_candidates(self) -> tuple[intent_route.DirectoryCandidate, ...]:
+        return tuple(item.runtime_candidate() for item in self.candidates)
+
+
 class RuntimeLike:
     """Structural documentation for the injected runtime used by the API and tests."""
 
@@ -237,6 +269,14 @@ class RuntimeLike:
         objective: str,
         candidates: tuple[capability_plan.CapabilityCandidate, ...],
     ) -> capability_plan.CapabilityPlan: ...
+
+    def intent_route(
+        self,
+        provider: agent_runtime.ProviderConfig,
+        objective: str,
+        expected_intent: intent_route.LifecycleIntent | None,
+        candidates: tuple[intent_route.DirectoryCandidate, ...],
+    ) -> intent_route.IntentRoute: ...
 
 
 TokenReader = Callable[[], str]
@@ -302,6 +342,14 @@ def _capability_plan_response(plan: capability_plan.CapabilityPlan) -> dict[str,
     return {"status": plan.status, "assistant_ids": list(plan.assistant_ids)}
 
 
+def _intent_route_response(route: intent_route.IntentRoute) -> dict[str, object]:
+    return {
+        "intent": route.intent,
+        "query": route.query,
+        "assistant_ids": list(route.assistant_ids),
+    }
+
+
 def _run_capability_plan(
     runtime: RuntimeLike,
     slots: threading.BoundedSemaphore,
@@ -320,6 +368,25 @@ def _run_capability_plan(
         slots.release()
 
 
+def _run_intent_route(
+    runtime: RuntimeLike,
+    slots: threading.BoundedSemaphore,
+    body: IntentRouteInput,
+) -> dict[str, object]:
+    if not slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Intent route capacity reached")
+    try:
+        route = runtime.intent_route(
+            body.runtime_provider(),
+            body.objective,
+            body.expected_intent,
+            body.runtime_candidates(),
+        )
+        return _intent_route_response(route)
+    finally:
+        slots.release()
+
+
 def _close_owned_runtime(runtime: object, *, owned: bool) -> None:
     if not owned or runtime is None:
         return
@@ -330,6 +397,22 @@ def _close_owned_runtime(runtime: object, *, owned: bool) -> None:
 
 async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
+
+
+def _register_intent_route(
+    app: FastAPI,
+    current_runtime: Callable[[], RuntimeLike],
+    require_auth: Callable[[], None],
+) -> None:
+    """Register the independent structured-decision capacity boundary."""
+
+    @app.post("/v1/intent-route", dependencies=[Depends(require_auth)])
+    def create_intent_route(body: IntentRouteInput) -> dict[str, object]:
+        return _run_intent_route(
+            current_runtime(),
+            app.state.intent_route_slots,
+            body,
+        )
 
 
 def create_app(
@@ -354,6 +437,7 @@ def create_app(
     app.state.runtime = runtime
     app.state.runtime_lock = threading.Lock()
     app.state.capability_plan_slots = threading.BoundedSemaphore(CAPABILITY_PLAN_CONCURRENCY)
+    app.state.intent_route_slots = threading.BoundedSemaphore(INTENT_ROUTE_CONCURRENCY)
     app.add_exception_handler(agent_runtime.RuntimeStateError, _state_error_response)
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -412,6 +496,8 @@ def create_app(
             app.state.capability_plan_slots,
             body,
         )
+
+    _register_intent_route(app, current_runtime, require_auth)
 
     return app
 

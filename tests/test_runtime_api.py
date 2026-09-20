@@ -12,6 +12,7 @@ from unittest import mock
 
 import agent_runtime
 import capability_plan
+import intent_route
 import runtime_api
 from fastapi.testclient import TestClient
 
@@ -102,6 +103,14 @@ class FakeRuntime:
             "install-required",
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
+
+    def intent_route(self, provider, objective, expected_intent, candidates):
+        self.calls.append(("intent_route", provider, objective, expected_intent, candidates))
+        if self.error:
+            raise self.error
+        if expected_intent is None:
+            return intent_route.IntentRoute("assistant-uninstall", "cloudflare")
+        return intent_route.IntentRoute(expected_intent, assistant_ids=("shimpz-cloudflare",))
 
 
 def client(runtime, *, raise_server_exceptions=True):
@@ -234,6 +243,70 @@ class RuntimeApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.json(), {"detail": "Capability planner capacity reached"})
+        self.assertEqual(runtime.calls, [])
+
+    def test_intent_route_is_authenticated_stateless_and_closed(self):
+        runtime = FakeRuntime()
+        api = client(runtime)
+        classification = {
+            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "objective": "tire o cloudflare deste time",
+            "expected_intent": None,
+            "candidates": [],
+        }
+
+        self.assertEqual(api.post("/v1/intent-route", json=classification).status_code, 401)
+        response = api.post(
+            "/v1/intent-route",
+            json=classification,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(
+            response.json(),
+            {"intent": "assistant-uninstall", "query": "cloudflare", "assistant_ids": []},
+        )
+        call = runtime.calls[0]
+        self.assertEqual(call[0], "intent_route")
+        self.assertEqual(call[1].api_key, SECRET)
+        self.assertEqual(call[2:4], (classification["objective"], None))
+        self.assertEqual(call[4], ())
+        self.assertNotIn(SECRET, response.text)
+
+        selection = {
+            **classification,
+            "expected_intent": "assistant-uninstall",
+            "candidates": [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
+        }
+        selected = api.post(
+            "/v1/intent-route",
+            json=selection,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(
+            selected.json(),
+            {"intent": "assistant-uninstall", "query": "", "assistant_ids": ["shimpz-cloudflare"]},
+        )
+        self.assertEqual(runtime.calls[1][4][0].id, "shimpz-cloudflare")
+
+    def test_intent_route_has_an_independent_fail_closed_capacity_lane(self):
+        runtime = FakeRuntime()
+        app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
+        for _index in range(runtime_api.INTENT_ROUTE_CONCURRENCY):
+            self.assertTrue(app.state.intent_route_slots.acquire(blocking=False))
+        response = TestClient(app).post(
+            "/v1/intent-route",
+            json={
+                "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+                "objective": "hello",
+                "expected_intent": None,
+                "candidates": [],
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json(), {"detail": "Intent route capacity reached"})
         self.assertEqual(runtime.calls, [])
 
     def test_action_label_input_rejects_added_duplicate_and_unsafe_values(self):

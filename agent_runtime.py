@@ -22,6 +22,7 @@ from typing import Any, Literal, Protocol
 
 import capability_plan as capability_planner
 import httpx
+import intent_route as intent_router
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
@@ -49,6 +50,7 @@ MAX_ACTION_LABEL_RESPONSE_CHARS = 32 * 1024
 MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
+DECISION_TIMEOUT_SECONDS = 10.0
 
 
 class RuntimeContractError(ValueError):
@@ -196,26 +198,34 @@ class Checkpointer(Protocol):
 ModelFactory = Callable[[ProviderConfig], BaseChatModel]
 
 
-def provider_model(config: ProviderConfig, *, http_client: httpx.Client | None = None) -> BaseChatModel:
+def provider_model(
+    config: ProviderConfig,
+    *,
+    http_client: httpx.Client | None = None,
+    decision: bool = False,
+) -> BaseChatModel:
     """Create one direct provider client; the API key is never put in graph state."""
     secret = SecretStr(config.api_key)
     common = {
         "model": config.model,
         "api_key": secret,
-        "timeout": 60.0,
-        "max_retries": 2,
+        "timeout": DECISION_TIMEOUT_SECONDS if decision else 60.0,
+        "max_retries": 0 if decision else 2,
     }
     if config.provider == "openai":
         from langchain_openai import ChatOpenAI
 
         openai = {**common, "use_responses_api": True}
+        if decision:
+            openai["reasoning_effort"] = "low"
         if http_client is not None:
             openai["http_client"] = http_client
         return ChatOpenAI(**openai)
     if config.provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(**common)
+        anthropic = {**common, **({"effort": "low"} if decision else {})}
+        return ChatAnthropic(**anthropic)
     raise RuntimeContractError("unsupported model provider")
 
 
@@ -227,6 +237,10 @@ class ProviderModelFactory:
 
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
         return provider_model(config, http_client=self._http_client)
+
+    def decision(self, config: ProviderConfig) -> BaseChatModel:
+        """Build a short, zero-retry model for one structured routing decision."""
+        return provider_model(config, http_client=self._http_client, decision=True)
 
     def close(self) -> None:
         self._http_client.close()
@@ -713,6 +727,30 @@ class AgentRuntime:
         except capability_planner.CapabilityPlanResponseError as exc:
             raise ProviderResponseError("model provider response failed") from exc
         except capability_planner.CapabilityPlanProviderError as exc:
+            raise ProviderRequestError("model provider request failed") from exc
+        except ImportError:
+            raise
+        except Exception as exc:
+            raise ProviderRequestError("model provider request failed") from exc
+
+    def intent_route(
+        self,
+        provider: ProviderConfig,
+        objective: str,
+        expected_intent: intent_router.LifecycleIntent | None,
+        candidates: tuple[intent_router.DirectoryCandidate, ...],
+    ) -> intent_router.IntentRoute:
+        """Classify or resolve lifecycle intent without conversation or lifecycle authority."""
+        try:
+            intent_router.validate_inputs(objective, expected_intent, candidates)
+            decision_factory = getattr(self._model_factory, "decision", None)
+            model = decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
+            return intent_router.create(model, provider.provider, objective, expected_intent, candidates)
+        except intent_router.IntentRouteError as exc:
+            raise RuntimeContractError(str(exc)) from exc
+        except intent_router.IntentRouteResponseError as exc:
+            raise ProviderResponseError("model provider response failed") from exc
+        except intent_router.IntentRouteProviderError as exc:
             raise ProviderRequestError("model provider request failed") from exc
         except ImportError:
             raise

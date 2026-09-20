@@ -882,6 +882,38 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertNotIn("use_responses_api", anthropic.call_args.kwargs)
         self.assertEqual(set(openai.call_args.kwargs) - {"use_responses_api"}, set(anthropic.call_args.kwargs))
 
+    def test_decision_models_use_provider_specific_low_effort_without_retries(self):
+        with (
+            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+        ):
+            agent_runtime.provider_model(
+                agent_runtime.ProviderConfig(
+                    provider="openai",
+                    model="gpt-5.6-luna",
+                    api_key="secret-test-key",
+                ),
+                decision=True,
+            )
+            agent_runtime.provider_model(
+                agent_runtime.ProviderConfig(
+                    provider="anthropic",
+                    model="claude-haiku-4-5-20251001",
+                    api_key="secret-test-key",
+                ),
+                decision=True,
+            )
+
+        openai_options = openai.call_args.kwargs
+        anthropic_options = anthropic.call_args.kwargs
+        self.assertEqual(openai_options["reasoning_effort"], "low")
+        self.assertNotIn("effort", openai_options)
+        self.assertEqual(anthropic_options["effort"], "low")
+        self.assertNotIn("reasoning_effort", anthropic_options)
+        for options in (openai_options, anthropic_options):
+            self.assertEqual(options["timeout"], agent_runtime.DECISION_TIMEOUT_SECONDS)
+            self.assertEqual(options["max_retries"], 0)
+
     def test_team_name_and_team_bounds_fail_closed(self):
         for invalid_name in ("", "   ", "Bad\nName", "Bad\x7fName", "x" * 81):
             with (
