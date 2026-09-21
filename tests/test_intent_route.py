@@ -68,6 +68,7 @@ class IntentRouteTests(unittest.TestCase):
                 intent="assistant-uninstall",
                 query="cloudflare",
                 assistant_ids=[],
+                reply="",
             )
         )
 
@@ -88,25 +89,53 @@ class IntentRouteTests(unittest.TestCase):
                 intent="assistant-install",
                 query="shimpz-cloudflare",
                 assistant_ids=[],
+                reply="",
             )
         )
 
-        result = intent_route.create(model, "openai", "instale ele de novo", None, (), reference)
+        context = intent_route.LifecycleContext(reference=reference)
+        result = intent_route.create(model, "openai", "instale ele de novo", None, (), context)
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-install", "shimpz-cloudflare"))
         self.assertNotIn("shimpz-cloudflare", str(model.messages[0].content))
         self.assertIn('"lifecycle_reference":{"id":"shimpz-cloudflare"', str(model.messages[1].content))
         with self.assertRaises(intent_route.IntentRouteError):
-            intent_route.validate_inputs("instale", "assistant-install", candidates(), reference)
+            intent_route.validate_inputs("instale", "assistant-install", candidates(), context)
         with self.assertRaises(intent_route.IntentRouteError):
             intent_route.validate_inputs("instale", None, (), object())
 
-        echo = StructuredModel({"intent": "assistant-install", "query": "", "assistant_ids": ["shimpz-cloudflare"]})
+        echo = StructuredModel(
+            {"intent": "assistant-install", "query": "", "assistant_ids": ["shimpz-cloudflare"], "reply": ""}
+        )
         with self.assertRaises(intent_route.IntentRouteResponseError):
-            intent_route.create(echo, "openai", "instale ele", None, (), reference)
+            intent_route.create(echo, "openai", "instale ele", None, (), context)
+
+    def test_pending_target_context_preserves_language_without_becoming_authority(self):
+        context = intent_route.LifecycleContext(
+            pending_intent="assistant-uninstall",
+            language_exemplar="Desinstala ele",
+        )
+        model = StructuredModel(
+            intent_route.StructuredRoute(
+                intent="assistant-uninstall",
+                query="cloudflare",
+                assistant_ids=[],
+                reply="",
+            )
+        )
+
+        result = intent_route.create(model, "openai", "cloudflare", None, (), context)
+
+        self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
+        payload = str(model.messages[1].content)
+        self.assertIn('"pending_intent":"assistant-uninstall"', payload)
+        self.assertIn('"language_exemplar":"Desinstala ele"', payload)
+        self.assertNotIn("Desinstala ele", str(model.messages[0].content))
 
     def test_anthropic_uses_the_same_static_schema_without_openai_options(self):
-        model = StructuredModel(intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[]))
+        model = StructuredModel(
+            intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[], reply="")
+        )
 
         result = intent_route.create(model, "anthropic", "liste minhas zonas", None, (), None)
 
@@ -119,6 +148,7 @@ class IntentRouteTests(unittest.TestCase):
                 intent="assistant-install",
                 query="",
                 assistant_ids=["shimpz-cloudflare", "shimpz-whatsapp"],
+                reply="",
             )
         )
 
@@ -144,19 +174,21 @@ class IntentRouteTests(unittest.TestCase):
 
     def test_selection_rejects_wrong_unknown_duplicate_unsorted_and_empty_ids(self):
         invalid = (
-            {"intent": "assistant-uninstall", "query": "", "assistant_ids": ["unknown"]},
+            {"intent": "assistant-uninstall", "query": "", "assistant_ids": ["unknown"], "reply": ""},
             {
                 "intent": "assistant-uninstall",
                 "query": "",
                 "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
+                "reply": "",
             },
             {
                 "intent": "assistant-install",
                 "query": "",
                 "assistant_ids": ["shimpz-whatsapp", "shimpz-cloudflare"],
+                "reply": "",
             },
-            {"intent": "assistant-install", "query": "", "assistant_ids": []},
-            {"intent": "ordinary-task", "query": "", "assistant_ids": ["shimpz-cloudflare"]},
+            {"intent": "assistant-install", "query": "", "assistant_ids": [], "reply": ""},
+            {"intent": "ordinary-task", "query": "", "assistant_ids": ["shimpz-cloudflare"], "reply": ""},
         )
         for response in invalid:
             expected = "assistant-uninstall" if response["intent"] == "assistant-uninstall" else "assistant-install"
@@ -173,7 +205,14 @@ class IntentRouteTests(unittest.TestCase):
 
     def test_unresolved_selection_is_non_authorizing(self):
         result = intent_route.create(
-            StructuredModel({"intent": "unresolved", "query": "", "assistant_ids": []}),
+            StructuredModel(
+                {
+                    "intent": "unresolved",
+                    "query": "",
+                    "assistant_ids": [],
+                    "reply": "Qual Assistant instalado você quer desinstalar?",
+                }
+            ),
             "openai",
             "remove it",
             "assistant-uninstall",
@@ -181,7 +220,39 @@ class IntentRouteTests(unittest.TestCase):
             None,
         )
 
-        self.assertEqual(result, intent_route.IntentRoute("unresolved"))
+        self.assertEqual(
+            result,
+            intent_route.IntentRoute(
+                "unresolved",
+                reply="Qual Assistant instalado você quer desinstalar?",
+            ),
+        )
+
+    def test_targetless_classification_requires_a_bounded_natural_question(self):
+        reply = "Qual Assistant você quer desinstalar?"
+        result = intent_route.create(
+            StructuredModel({"intent": "assistant-uninstall", "query": "", "assistant_ids": [], "reply": reply}),
+            "openai",
+            "desinstala ele",
+            None,
+            (),
+            None,
+        )
+
+        self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", reply=reply))
+
+    def test_empty_selection_directory_can_only_ask_for_clarification(self):
+        reply = "Qual Assistant instalado você quer desinstalar?"
+        result = intent_route.create(
+            StructuredModel({"intent": "unresolved", "query": "", "assistant_ids": [], "reply": reply}),
+            "openai",
+            "desinstale desconhecido",
+            "assistant-uninstall",
+            (),
+            intent_route.LifecycleContext(language_exemplar="desinstale desconhecido"),
+        )
+
+        self.assertEqual(result, intent_route.IntentRoute("unresolved", reply=reply))
 
     def test_invalid_inputs_fail_before_provider_access(self):
         model = mock.Mock()
@@ -189,7 +260,6 @@ class IntentRouteTests(unittest.TestCase):
             ("", None, ()),
             ("hidden\0message", None, ()),
             ("install", None, candidates()),
-            ("install", "assistant-install", ()),
             ("install", "assistant-install", tuple(reversed(candidates()))),
             ("uninstall", "assistant-uninstall", candidates()),
         )
@@ -220,6 +290,7 @@ class IntentRouteTests(unittest.TestCase):
                     intent="ordinary-task",
                     query="",
                     assistant_ids=["shimpz-cloudflare"],
+                    reply="",
                 ),
                 None,
                 (),
@@ -229,6 +300,7 @@ class IntentRouteTests(unittest.TestCase):
                     intent="invalid",
                     query="unexpected",
                     assistant_ids=[],
+                    reply="",
                 ),
                 None,
                 (),
@@ -238,6 +310,7 @@ class IntentRouteTests(unittest.TestCase):
                     intent="assistant-uninstall",
                     query="unexpected",
                     assistant_ids=["shimpz-cloudflare"],
+                    reply="",
                 ),
                 "assistant-uninstall",
                 candidates(uninstall=True),
@@ -247,6 +320,7 @@ class IntentRouteTests(unittest.TestCase):
                     intent="unresolved",
                     query="",
                     assistant_ids=["shimpz-cloudflare"],
+                    reply="clarify",
                 ),
                 "assistant-uninstall",
                 candidates(uninstall=True),
@@ -266,7 +340,11 @@ class IntentRouteTests(unittest.TestCase):
                 (),
                 None,
             )
-        for value in (None, {}, {"intent": "ordinary-task", "query": "", "assistant_ids": [], "extra": True}):
+        for value in (
+            None,
+            {},
+            {"intent": "ordinary-task", "query": "", "assistant_ids": [], "reply": "", "extra": True},
+        ):
             with (
                 self.subTest(value=value),
                 self.assertRaisesRegex(
@@ -290,7 +368,7 @@ class IntentRouteTests(unittest.TestCase):
             )
 
     def test_runtime_uses_only_the_decision_factory_without_checkpoint_access(self):
-        model = StructuredModel({"intent": "ordinary-task", "query": "", "assistant_ids": []})
+        model = StructuredModel({"intent": "ordinary-task", "query": "", "assistant_ids": [], "reply": ""})
         factory = DecisionFactory(model)
         runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=factory)
 

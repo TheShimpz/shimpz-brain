@@ -242,6 +242,19 @@ class IntentRouteInput(BaseModel):
     expected_intent: Literal["assistant-install", "assistant-uninstall"] | None
     candidates: list[DirectoryCandidateInput] = Field(max_length=intent_route.MAX_CANDIDATES)
     lifecycle_reference: LifecycleReferenceInput | None
+    pending_intent: Literal["assistant-install", "assistant-uninstall"] | None
+    language_exemplar: str | None = Field(max_length=intent_route.MAX_LANGUAGE_EXEMPLAR_CHARS)
+
+    @model_validator(mode="after")
+    def validate_lifecycle_context(self) -> Self:
+        if self.expected_intent is None:
+            if self.lifecycle_reference is not None and self.pending_intent is not None:
+                raise ValueError("intent route lifecycle context is ambiguous")
+            if (self.pending_intent is None) != (self.language_exemplar is None):
+                raise ValueError("pending intent and language exemplar must appear together")
+        elif self.lifecycle_reference is not None or self.pending_intent is not None:
+            raise ValueError("selection cannot include lifecycle state")
+        return self
 
     def runtime_provider(self) -> agent_runtime.ProviderConfig:
         return agent_runtime.ProviderConfig(
@@ -253,8 +266,11 @@ class IntentRouteInput(BaseModel):
     def runtime_candidates(self) -> tuple[intent_route.DirectoryCandidate, ...]:
         return tuple(item.runtime_candidate() for item in self.candidates)
 
-    def runtime_reference(self) -> intent_route.LifecycleReference | None:
-        return None if self.lifecycle_reference is None else self.lifecycle_reference.runtime_reference()
+    def runtime_context(self) -> intent_route.LifecycleContext | None:
+        reference = None if self.lifecycle_reference is None else self.lifecycle_reference.runtime_reference()
+        if reference is None and self.pending_intent is None and self.language_exemplar is None:
+            return None
+        return intent_route.LifecycleContext(reference, self.pending_intent, self.language_exemplar)
 
 
 class RuntimeLike:
@@ -290,7 +306,7 @@ class RuntimeLike:
         objective: str,
         expected_intent: intent_route.LifecycleIntent | None,
         candidates: tuple[intent_route.DirectoryCandidate, ...],
-        reference: intent_route.LifecycleReference | None,
+        context: intent_route.LifecycleContext | None,
     ) -> intent_route.IntentRoute: ...
 
 
@@ -362,6 +378,7 @@ def _intent_route_response(route: intent_route.IntentRoute) -> dict[str, object]
         "intent": route.intent,
         "query": route.query,
         "assistant_ids": list(route.assistant_ids),
+        "reply": route.reply,
     }
 
 
@@ -396,7 +413,7 @@ def _run_intent_route(
             body.objective,
             body.expected_intent,
             body.runtime_candidates(),
-            body.runtime_reference(),
+            body.runtime_context(),
         )
         return _intent_route_response(route)
     finally:
