@@ -241,6 +241,49 @@ class IntentRouteTests(unittest.TestCase):
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", reply=reply))
 
+    def test_clarification_admits_unicode_spacing_and_rejects_layout_separators(self):
+        reply = "Quel Assistant voulez-vous désinstaller\u00a0?"
+        result = intent_route.create(
+            StructuredModel({"intent": "assistant-uninstall", "query": "", "assistant_ids": [], "reply": reply}),
+            "openai",
+            "désinstalle",
+            None,
+            (),
+            None,
+        )
+        self.assertEqual(result.reply, reply)
+
+        for separator in ("\u2028", "\u2029"):
+            with self.subTest(separator=separator), self.assertRaises(intent_route.IntentRouteResponseError):
+                intent_route.create(
+                    StructuredModel(
+                        {
+                            "intent": "assistant-uninstall",
+                            "query": "",
+                            "assistant_ids": [],
+                            "reply": f"Question{separator}suivante",
+                        }
+                    ),
+                    "openai",
+                    "désinstalle",
+                    None,
+                    (),
+                    None,
+                )
+
+    def test_pending_context_admits_user_unicode_format_and_layout(self):
+        context = intent_route.LifecycleContext(
+            pending_intent="assistant-uninstall",
+            language_exemplar="desinstala 👩‍💻\r\nagora",
+        )
+        model = StructuredModel(
+            {"intent": "assistant-uninstall", "query": "cloudflare", "assistant_ids": [], "reply": ""}
+        )
+
+        result = intent_route.create(model, "openai", "cloudflare", None, (), context)
+
+        self.assertEqual(result.query, "cloudflare")
+
     def test_empty_selection_directory_can_only_ask_for_clarification(self):
         reply = "Qual Assistant instalado você quer desinstalar?"
         result = intent_route.create(

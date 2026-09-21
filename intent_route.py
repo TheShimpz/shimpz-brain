@@ -20,6 +20,7 @@ MAX_NAME_CHARS = 80
 MAX_REPLY_CHARS = 240
 MAX_SUMMARY_CHARS = 160
 MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
+_LANGUAGE_LAYOUT_CONTROLS = frozenset({"\n", "\r", "\t"})
 
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
@@ -85,7 +86,14 @@ def _text(value: object, maximum: int, label: str, *, empty: bool = False, layou
         or value.strip() != value
         or not (0 if empty else 1) <= len(value) <= maximum
         or any(
-            unicodedata.category(character).startswith("C") and (not layout or character not in {"\n", "\t"})
+            unicodedata.category(character).startswith("C")
+            and (
+                not layout
+                or (
+                    unicodedata.category(character) != "Cf"
+                    and character not in _LANGUAGE_LAYOUT_CONTROLS
+                )
+            )
             for character in value
         )
     ):
@@ -255,6 +263,8 @@ def _route(
     parsed = _parsed(value)
     assistant_ids = tuple(parsed.assistant_ids)
     reply = _text(parsed.reply, MAX_REPLY_CHARS, "route reply", empty=True)
+    if any(unicodedata.category(character) in {"Zl", "Zp"} for character in reply):
+        raise IntentRouteError("invalid route reply")
     if assistant_ids != tuple(sorted(set(assistant_ids))):
         raise IntentRouteError("invalid structured route selection")
     if expected_intent is None:

@@ -406,7 +406,10 @@ def normalize_language_exemplar(value: str) -> str:
     if not 1 <= len(normalized) <= MAX_LANGUAGE_EXEMPLAR_CHARS:
         raise RuntimeContractError("invalid language exemplar")
     if any(
-        unicodedata.category(character).startswith("C") and character not in {"\n", "\t"} for character in normalized
+        unicodedata.category(character).startswith("C")
+        and unicodedata.category(character) != "Cf"
+        and character not in {"\n", "\r", "\t"}
+        for character in normalized
     ):
         raise RuntimeContractError("invalid language exemplar")
     return normalized
