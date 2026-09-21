@@ -316,6 +316,7 @@ class IntentRouteTests(unittest.TestCase):
         invalid = (
             (1, None, ()),
             ("install", "unsupported", ()),
+            ("install", "assistant-install", []),
             ("install", "assistant-install", (object(),)),
             (
                 "install",
@@ -326,6 +327,24 @@ class IntentRouteTests(unittest.TestCase):
         for objective, expected, shortlist in invalid:
             with self.subTest(expected=expected, shortlist=shortlist), self.assertRaises(intent_route.IntentRouteError):
                 intent_route.validate_inputs(objective, expected, shortlist, None)
+
+    def test_lifecycle_context_rejects_ambiguous_and_unpaired_state(self):
+        reference = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")
+        invalid = (
+            intent_route.LifecycleContext(reference=object()),
+            intent_route.LifecycleContext(pending_intent="unsupported", language_exemplar="remove it"),
+            intent_route.LifecycleContext(pending_intent="assistant-uninstall"),
+            intent_route.LifecycleContext(language_exemplar="remove it"),
+            intent_route.LifecycleContext(
+                reference=reference,
+                pending_intent="assistant-uninstall",
+                language_exemplar="remove it",
+            ),
+        )
+
+        for context in invalid:
+            with self.subTest(context=context), self.assertRaises(intent_route.IntentRouteError):
+                intent_route.validate_inputs("remove it", None, (), context)
 
     def test_response_contract_rejects_classification_and_selection_conflicts(self):
         invalid = (
@@ -368,6 +387,16 @@ class IntentRouteTests(unittest.TestCase):
                 ),
                 "assistant-uninstall",
                 candidates(uninstall=True),
+            ),
+            (
+                intent_route.StructuredRoute(
+                    intent="ordinary-task",
+                    query="",
+                    assistant_ids=[],
+                    reply="Which Assistant?",
+                ),
+                None,
+                (),
             ),
         )
         for response, expected, shortlist in invalid:

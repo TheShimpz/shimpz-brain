@@ -304,6 +304,43 @@ class RuntimeApiTests(unittest.TestCase):
         )
         self.assertEqual(runtime.calls[1][4][0].id, "shimpz-cloudflare")
 
+    def test_intent_route_rejects_ambiguous_or_unpaired_lifecycle_state(self):
+        runtime = FakeRuntime()
+        api = client(runtime)
+        base = {
+            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "objective": "remove it",
+            "expected_intent": None,
+            "candidates": [],
+            "lifecycle_reference": None,
+            "pending_intent": None,
+            "language_exemplar": None,
+        }
+        invalid = (
+            {
+                **base,
+                "lifecycle_reference": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
+                "pending_intent": "assistant-uninstall",
+                "language_exemplar": "remove it",
+            },
+            {**base, "pending_intent": "assistant-uninstall"},
+            {
+                **base,
+                "expected_intent": "assistant-uninstall",
+                "lifecycle_reference": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
+            },
+        )
+
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                response = api.post(
+                    "/v1/intent-route",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {TOKEN}"},
+                )
+                self.assertEqual(response.status_code, 422)
+        self.assertEqual(runtime.calls, [])
+
     def test_intent_route_has_an_independent_fail_closed_capacity_lane(self):
         runtime = FakeRuntime()
         app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
