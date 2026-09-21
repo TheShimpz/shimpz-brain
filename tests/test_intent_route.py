@@ -358,6 +358,18 @@ class IntentRouteTests(unittest.TestCase):
         for context in invalid:
             with self.subTest(context=context), self.assertRaises(intent_route.IntentRouteError):
                 intent_route.validate_inputs("remove it", None, (), context)
+        with (
+            mock.patch.object(intent_route, "MAX_CONVERSATION_CHARS", 1),
+            self.assertRaises(intent_route.IntentRouteError),
+        ):
+            intent_route.validate_inputs(
+                "remove it",
+                None,
+                (),
+                intent_route.LifecycleContext(
+                    conversation=(intent_route.ConversationEntry("user", "remove it", False),),
+                ),
+            )
 
         selection_contexts = (
             intent_route.LifecycleContext(

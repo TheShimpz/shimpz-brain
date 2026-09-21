@@ -323,6 +323,7 @@ class RuntimeApiTests(unittest.TestCase):
             "conversation": [],
             "language_exemplar": None,
         }
+        self.assertIsNone(runtime_api.IntentRouteInput.model_validate(base).runtime_context())
         invalid = (
             {
                 **base,
@@ -361,6 +362,16 @@ class RuntimeApiTests(unittest.TestCase):
                     headers={"Authorization": f"Bearer {TOKEN}"},
                 )
                 self.assertEqual(response.status_code, 422)
+        with mock.patch.object(intent_route, "MAX_CONVERSATION_CHARS", 1):
+            response = api.post(
+                "/v1/intent-route",
+                json={
+                    **base,
+                    "conversation": [{"role": "user", "text": "remove it", "truncated": False}],
+                },
+                headers={"Authorization": f"Bearer {TOKEN}"},
+            )
+        self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [])
 
     def test_intent_route_has_an_independent_fail_closed_capacity_lane(self):
