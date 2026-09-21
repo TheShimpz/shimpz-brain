@@ -79,6 +79,7 @@ class IntentRouteTests(unittest.TestCase):
         self.assertEqual(model.options, {"method": "json_schema", "strict": True})
         prompt = "\n".join(str(message.content) for message in model.messages)
         self.assertIn("untrusted data", prompt)
+        self.assertIn("exactly one line", prompt)
         self.assertIn("por favor tire o cloudflare", prompt)
         self.assertNotIn("api_key", prompt)
 
