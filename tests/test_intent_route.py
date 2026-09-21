@@ -111,10 +111,16 @@ class IntentRouteTests(unittest.TestCase):
         with self.assertRaises(intent_route.IntentRouteResponseError):
             intent_route.create(echo, "openai", "instale ele", None, (), context)
 
-    def test_pending_target_context_preserves_language_without_becoming_authority(self):
+    def test_classification_uses_bounded_conversation_to_resolve_a_reference(self):
         context = intent_route.LifecycleContext(
-            pending_intent="assistant-uninstall",
-            language_exemplar="Desinstala ele",
+            conversation=(
+                intent_route.ConversationEntry("user", "Quais Assistants estão instalados?", False),
+                intent_route.ConversationEntry("assistant", "Temos apenas Cloudflare/DNS.", False),
+                intent_route.ConversationEntry("user", "Quero desinstalar ele.", False),
+                intent_route.ConversationEntry("assistant", "Qual Assistant você quer desinstalar?", False),
+                intent_route.ConversationEntry("user", "Quais temos?", False),
+                intent_route.ConversationEntry("assistant", "Temos apenas Cloudflare/DNS.", False),
+            ),
         )
         model = StructuredModel(
             intent_route.StructuredRoute(
@@ -125,13 +131,15 @@ class IntentRouteTests(unittest.TestCase):
             )
         )
 
-        result = intent_route.create(model, "openai", "cloudflare", None, (), context)
+        result = intent_route.create(model, "openai", "Desinstala esse então.", None, (), context)
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
         payload = str(model.messages[1].content)
-        self.assertIn('"pending_intent":"assistant-uninstall"', payload)
-        self.assertIn('"language_exemplar":"Desinstala ele"', payload)
-        self.assertNotIn("Desinstala ele", str(model.messages[0].content))
+        self.assertIn('"role":"assistant","text":"Temos apenas Cloudflare/DNS."', payload)
+        self.assertIn('"conversation":[', payload)
+        system = str(model.messages[0].content)
+        self.assertIn("current objective is the only fresh instruction", system)
+        self.assertNotIn("Cloudflare/DNS", system)
 
     def test_anthropic_uses_the_same_static_schema_without_openai_options(self):
         model = StructuredModel(
@@ -272,10 +280,9 @@ class IntentRouteTests(unittest.TestCase):
                     None,
                 )
 
-    def test_pending_context_admits_user_unicode_format_and_layout(self):
+    def test_conversation_admits_user_unicode_format_and_layout(self):
         context = intent_route.LifecycleContext(
-            pending_intent="assistant-uninstall",
-            language_exemplar="desinstala 👩‍💻\r\nagora",
+            conversation=(intent_route.ConversationEntry("user", "desinstala 👩‍💻\r\nagora", False),),
         )
         model = StructuredModel(
             {"intent": "assistant-uninstall", "query": "cloudflare", "assistant_ids": [], "reply": ""}
@@ -328,23 +335,41 @@ class IntentRouteTests(unittest.TestCase):
             with self.subTest(expected=expected, shortlist=shortlist), self.assertRaises(intent_route.IntentRouteError):
                 intent_route.validate_inputs(objective, expected, shortlist, None)
 
-    def test_lifecycle_context_rejects_ambiguous_and_unpaired_state(self):
-        reference = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")
+    def test_lifecycle_context_rejects_invalid_or_wrong_lane_state(self):
         invalid = (
             intent_route.LifecycleContext(reference=object()),
-            intent_route.LifecycleContext(pending_intent="unsupported", language_exemplar="remove it"),
-            intent_route.LifecycleContext(pending_intent="assistant-uninstall"),
-            intent_route.LifecycleContext(language_exemplar="remove it"),
+            intent_route.LifecycleContext(conversation=[]),
+            intent_route.LifecycleContext(conversation=(object(),)),
             intent_route.LifecycleContext(
-                reference=reference,
-                pending_intent="assistant-uninstall",
-                language_exemplar="remove it",
+                conversation=(intent_route.ConversationEntry("system", "remove it", False),),
             ),
+            intent_route.LifecycleContext(
+                conversation=(intent_route.ConversationEntry("user", "remove it", 1),),
+            ),
+            intent_route.LifecycleContext(
+                conversation=(intent_route.ConversationEntry("user", "x" * 513, False),),
+            ),
+            intent_route.LifecycleContext(
+                conversation=tuple(intent_route.ConversationEntry("user", str(index), False) for index in range(9)),
+            ),
+            intent_route.LifecycleContext(language_exemplar="remove it"),
         )
 
         for context in invalid:
             with self.subTest(context=context), self.assertRaises(intent_route.IntentRouteError):
                 intent_route.validate_inputs("remove it", None, (), context)
+
+        selection_contexts = (
+            intent_route.LifecycleContext(
+                conversation=(intent_route.ConversationEntry("user", "remove it", False),),
+            ),
+            intent_route.LifecycleContext(
+                reference=intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare"),
+            ),
+        )
+        for context in selection_contexts:
+            with self.subTest(selection_context=context), self.assertRaises(intent_route.IntentRouteError):
+                intent_route.validate_inputs("cloudflare", "assistant-uninstall", candidates(uninstall=True), context)
 
     def test_response_contract_rejects_classification_and_selection_conflicts(self):
         invalid = (

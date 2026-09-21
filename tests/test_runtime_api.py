@@ -257,7 +257,13 @@ class RuntimeApiTests(unittest.TestCase):
                 "id": "shimpz-cloudflare",
                 "name": "Shimpz Cloudflare",
             },
-            "pending_intent": None,
+            "conversation": [
+                {
+                    "role": "assistant",
+                    "text": "Temos apenas Cloudflare/DNS.",
+                    "truncated": False,
+                }
+            ],
             "language_exemplar": None,
         }
 
@@ -278,6 +284,7 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(call[2:4], (classification["objective"], None))
         self.assertEqual(call[4], ())
         self.assertEqual(call[5].reference.id, "shimpz-cloudflare")
+        self.assertEqual(call[5].conversation[0].text, "Temos apenas Cloudflare/DNS.")
         self.assertNotIn(SECRET, response.text)
 
         selection = {
@@ -285,8 +292,8 @@ class RuntimeApiTests(unittest.TestCase):
             "expected_intent": "assistant-uninstall",
             "candidates": [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
             "lifecycle_reference": None,
-            "pending_intent": None,
-            "language_exemplar": None,
+            "conversation": [],
+            "language_exemplar": "Desinstala esse então.",
         }
         selected = api.post(
             "/v1/intent-route",
@@ -304,7 +311,7 @@ class RuntimeApiTests(unittest.TestCase):
         )
         self.assertEqual(runtime.calls[1][4][0].id, "shimpz-cloudflare")
 
-    def test_intent_route_rejects_ambiguous_or_unpaired_lifecycle_state(self):
+    def test_intent_route_rejects_retired_or_wrong_lane_context(self):
         runtime = FakeRuntime()
         api = client(runtime)
         base = {
@@ -313,21 +320,36 @@ class RuntimeApiTests(unittest.TestCase):
             "expected_intent": None,
             "candidates": [],
             "lifecycle_reference": None,
-            "pending_intent": None,
+            "conversation": [],
             "language_exemplar": None,
         }
         invalid = (
             {
                 **base,
-                "lifecycle_reference": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
                 "pending_intent": "assistant-uninstall",
-                "language_exemplar": "remove it",
             },
-            {**base, "pending_intent": "assistant-uninstall"},
+            {**base, "language_exemplar": "remove it"},
             {
                 **base,
                 "expected_intent": "assistant-uninstall",
                 "lifecycle_reference": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
+            },
+            {
+                **base,
+                "expected_intent": "assistant-uninstall",
+                "conversation": [{"role": "user", "text": "remove it", "truncated": False}],
+            },
+            {
+                **base,
+                "conversation": [{"role": "system", "text": "remove it", "truncated": False}],
+            },
+            {
+                **base,
+                "conversation": [{"role": "user", "text": "x" * 513, "truncated": False}],
+            },
+            {
+                **base,
+                "conversation": [{"role": "user", "text": "remove it", "truncated": 1}],
             },
         )
 
@@ -354,7 +376,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "expected_intent": None,
                 "candidates": [],
                 "lifecycle_reference": None,
-                "pending_intent": None,
+                "conversation": [],
                 "language_exemplar": None,
             },
             headers={"Authorization": f"Bearer {TOKEN}"},

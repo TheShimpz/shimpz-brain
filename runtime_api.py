@@ -234,6 +234,17 @@ class LifecycleReferenceInput(BaseModel):
         return intent_route.LifecycleReference(id=self.id, name=self.name)
 
 
+class ConversationEntryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=intent_route.MAX_CONVERSATION_TEXT_CHARS)
+    truncated: bool
+
+    def runtime_entry(self) -> intent_route.ConversationEntry:
+        return intent_route.ConversationEntry(self.role, self.text, self.truncated)
+
+
 class IntentRouteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -242,18 +253,18 @@ class IntentRouteInput(BaseModel):
     expected_intent: Literal["assistant-install", "assistant-uninstall"] | None
     candidates: list[DirectoryCandidateInput] = Field(max_length=intent_route.MAX_CANDIDATES)
     lifecycle_reference: LifecycleReferenceInput | None
-    pending_intent: Literal["assistant-install", "assistant-uninstall"] | None
+    conversation: list[ConversationEntryInput] = Field(max_length=intent_route.MAX_CONVERSATION_ENTRIES)
     language_exemplar: str | None = Field(max_length=intent_route.MAX_LANGUAGE_EXEMPLAR_CHARS)
 
     @model_validator(mode="after")
     def validate_lifecycle_context(self) -> Self:
         if self.expected_intent is None:
-            if self.lifecycle_reference is not None and self.pending_intent is not None:
-                raise ValueError("intent route lifecycle context is ambiguous")
-            if (self.pending_intent is None) != (self.language_exemplar is None):
-                raise ValueError("pending intent and language exemplar must appear together")
-        elif self.lifecycle_reference is not None or self.pending_intent is not None:
+            if self.language_exemplar is not None:
+                raise ValueError("classification cannot include a language exemplar")
+        elif self.lifecycle_reference is not None or self.conversation:
             raise ValueError("selection cannot include lifecycle state")
+        if sum(len(entry.text) for entry in self.conversation) > intent_route.MAX_CONVERSATION_CHARS:
+            raise ValueError("conversation window is too large")
         return self
 
     def runtime_provider(self) -> agent_runtime.ProviderConfig:
@@ -268,9 +279,10 @@ class IntentRouteInput(BaseModel):
 
     def runtime_context(self) -> intent_route.LifecycleContext | None:
         reference = None if self.lifecycle_reference is None else self.lifecycle_reference.runtime_reference()
-        if reference is None and self.pending_intent is None and self.language_exemplar is None:
+        conversation = tuple(entry.runtime_entry() for entry in self.conversation)
+        if reference is None and not conversation and self.language_exemplar is None:
             return None
-        return intent_route.LifecycleContext(reference, self.pending_intent, self.language_exemplar)
+        return intent_route.LifecycleContext(reference, conversation, self.language_exemplar)
 
 
 class RuntimeLike:

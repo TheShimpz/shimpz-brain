@@ -10,7 +10,7 @@ The authenticated API is intentionally small:
 - `GET /health` reports process/runtime health without exposing state or credentials;
 - `POST /v1/turns` starts one turn from controller-supplied Team/Assistant context;
 - `POST /v1/turns/resume` resumes a suspended turn with controller-brokered Action results; and
-- `POST /v1/intent-route` classifies or resolves one stateless bounded Assistant lifecycle intent;
+- `POST /v1/intent-route` classifies one fresh Assistant lifecycle intent with bounded untrusted conversation evidence, or resolves it against a closed candidate directory;
 - `POST /v1/threads/delete` deletes one exact conversation checkpoint during Team teardown.
 
 All POST endpoints require the private bearer mounted read-only at
