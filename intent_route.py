@@ -87,13 +87,7 @@ def _text(value: object, maximum: int, label: str, *, empty: bool = False, layou
         or not (0 if empty else 1) <= len(value) <= maximum
         or any(
             unicodedata.category(character).startswith("C")
-            and (
-                not layout
-                or (
-                    unicodedata.category(character) != "Cf"
-                    and character not in _LANGUAGE_LAYOUT_CONTROLS
-                )
-            )
+            and (not layout or (unicodedata.category(character) != "Cf" and character not in _LANGUAGE_LAYOUT_CONTROLS))
             for character in value
         )
     ):
