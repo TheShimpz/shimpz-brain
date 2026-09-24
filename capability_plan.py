@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -124,7 +124,7 @@ def validate_inputs(
     objective: object,
     candidates: tuple[CapabilityCandidate, ...],
 ) -> tuple[str, tuple[CapabilityCandidate, ...]]:
-    """Validate the complete request before a provider client is created."""
+    """Validate the complete request without creating a provider client."""
     return _inputs(objective, candidates)
 
 
@@ -204,14 +204,14 @@ def _parse(message: AIMessage, candidates: tuple[CapabilityCandidate, ...]) -> C
 
 
 def create(
-    model: BaseChatModel,
+    model_factory: Callable[[], BaseChatModel],
     objective: object,
     candidates: tuple[CapabilityCandidate, ...],
 ) -> CapabilityPlan:
     """Produce one closed plan without tools, conversation state, or lifecycle authority."""
     task, admitted = _inputs(objective, candidates)
     try:
-        message = model.invoke(_prompt(task, admitted))
+        message = model_factory().invoke(_prompt(task, admitted))
     except ImportError:
         raise
     except Exception as exc:

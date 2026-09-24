@@ -2,7 +2,7 @@
 
 Run from the Brain checkout with
 ``PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.capability_plan_validation``.
-The fixed model returns one prebuilt result. Timings cover validation twice
+The fixed model returns one prebuilt result. Timings cover validation once
 and the complete local planner path separately, excluding provider latency.
 Only case names and aggregate timings are printed after every result matches.
 """
@@ -75,11 +75,10 @@ def _case(
     candidates: tuple[capability_plan.CapabilityCandidate, ...],
     samples: int,
 ) -> dict[str, dict[str, float]]:
-    def validate_twice():
-        capability_plan.validate_inputs(objective, candidates)
+    def validate_once():
         return capability_plan.validate_inputs(objective, candidates)
 
-    validation = _measure(validate_twice, (objective, candidates), samples)
+    validation = _measure(validate_once, (objective, candidates), samples)
     route = _measure(
         lambda: runtime.capability_plan(provider, objective, candidates),
         capability_plan.CapabilityPlan("sufficient"),

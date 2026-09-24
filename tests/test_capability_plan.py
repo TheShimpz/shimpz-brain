@@ -88,11 +88,13 @@ class CapabilityPlanTests(unittest.TestCase):
     def test_accepts_a_closed_sufficient_result(self):
         model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
         runtime = agent_runtime.AgentRuntime(object(), model_factory=lambda _config: model)
-
-        self.assertEqual(
-            runtime.capability_plan(provider(), "Explain DNS", candidates()),
-            capability_plan.CapabilityPlan("sufficient"),
-        )
+        shortlist = candidates()
+        with mock.patch.object(capability_plan, "_inputs", wraps=capability_plan._inputs) as validate:
+            self.assertEqual(
+                runtime.capability_plan(provider(), "Explain DNS", shortlist),
+                capability_plan.CapabilityPlan("sufficient"),
+            )
+        validate.assert_called_once_with("Explain DNS", shortlist)
 
     def test_rejects_unknown_duplicate_unsorted_added_and_oversized_results(self):
         responses = (
@@ -213,7 +215,7 @@ class CapabilityPlanTests(unittest.TestCase):
             ]
         )
         self.assertEqual(
-            capability_plan.create(text_block, "Configure DNS", candidates()),
+            capability_plan.create(lambda: text_block, "Configure DNS", candidates()),
             capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)),
         )
 
@@ -236,7 +238,8 @@ class CapabilityPlanTests(unittest.TestCase):
         )
         for message in invalid_messages:
             with self.subTest(content=message.content), self.assertRaises(capability_plan.CapabilityPlanResponseError):
-                capability_plan.create(RecordingModel(responses=[message]), "Configure DNS", candidates())
+                factory = mock.Mock(return_value=RecordingModel(responses=[message]))
+                capability_plan.create(factory, "Configure DNS", candidates())
 
         for failure, expected in (
             (ImportError("missing dependency"), ImportError),
@@ -245,12 +248,34 @@ class CapabilityPlanTests(unittest.TestCase):
             model = mock.Mock()
             model.invoke.side_effect = failure
             with self.subTest(failure=type(failure).__name__), self.assertRaises(expected):
-                capability_plan.create(model, "Configure DNS", candidates())
+                capability_plan.create(mock.Mock(return_value=model), "Configure DNS", candidates())
 
         model = mock.Mock()
         model.invoke.return_value = object()
         with self.assertRaises(capability_plan.CapabilityPlanResponseError):
-            capability_plan.create(model, "Configure DNS", candidates())
+            capability_plan.create(lambda: model, "Configure DNS", candidates())
+
+    def test_create_validates_before_factory_and_calls_factory_once(self):
+        factory = mock.Mock(side_effect=RuntimeError("secret provider detail"))
+        with self.assertRaisesRegex(capability_plan.CapabilityPlanError, "invalid capability objective"):
+            capability_plan.create(factory, "", candidates())
+        factory.assert_not_called()
+
+        with self.assertRaisesRegex(capability_plan.CapabilityPlanProviderError, "^model provider request failed$"):
+            capability_plan.create(factory, "Configure DNS", candidates())
+        factory.assert_called_once_with()
+
+        model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
+        factory = mock.Mock(return_value=model)
+        self.assertEqual(
+            capability_plan.create(factory, "Configure DNS", candidates()),
+            capability_plan.CapabilityPlan("sufficient"),
+        )
+        factory.assert_called_once_with()
+
+        missing = mock.Mock(side_effect=ImportError("missing dependency"))
+        with self.assertRaisesRegex(ImportError, "missing dependency"):
+            capability_plan.create(missing, "Configure DNS", candidates())
 
     def test_provider_factory_failure_is_redacted(self):
         provider_failure = mock.Mock()

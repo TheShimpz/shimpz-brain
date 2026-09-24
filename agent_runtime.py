@@ -722,9 +722,7 @@ class AgentRuntime:
     ) -> capability_planner.CapabilityPlan:
         """Select a closed Assistant subset without conversation or lifecycle authority."""
         try:
-            capability_planner.validate_inputs(objective, candidates)
-            model = self._model_factory(provider)
-            return capability_planner.create(model, objective, candidates)
+            return capability_planner.create(lambda: self._model_factory(provider), objective, candidates)
         except capability_planner.CapabilityPlanError as exc:
             raise RuntimeContractError(str(exc)) from exc
         except capability_planner.CapabilityPlanResponseError as exc:
