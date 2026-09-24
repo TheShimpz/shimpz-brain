@@ -654,7 +654,9 @@ class AgentRuntime:
     def _prepare_scope(self, context: TurnContext, *, resume: bool) -> int:
         """Retain history only while the exact Assistant contract remains selected."""
         try:
-            checkpoint_tuple = self._checkpointer.get_tuple(self._config(context))
+            config = self._config(context)
+            expected_scope = config["metadata"][ASSISTANT_SCOPE_METADATA]
+            checkpoint_tuple = self._checkpointer.get_tuple(config)
         except Exception as exc:
             raise RuntimeStateError("checkpoint read failed") from exc
         if checkpoint_tuple is None:
@@ -668,7 +670,6 @@ class AgentRuntime:
             self.delete_thread(context.thread_id)
             return 0
         metadata = getattr(checkpoint_tuple, "metadata", None)
-        expected_scope = _assistant_scope(context)
         if not isinstance(metadata, Mapping) or metadata.get(ASSISTANT_SCOPE_METADATA) != expected_scope:
             self.delete_thread(context.thread_id)
             if resume:

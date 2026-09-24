@@ -106,6 +106,22 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             ):
                 runtime._prepare_scope(turn, resume=False)
 
+    def test_prepare_scope_hashes_warm_contract_once(self):
+        turn = context(thread_id="team:scope:unchanged")
+        expected_scope = agent_runtime._assistant_scope(turn)
+        checkpointer = mock.Mock()
+        checkpointer.get_tuple.return_value = SimpleNamespace(
+            pending_writes=[],
+            metadata={agent_runtime.ASSISTANT_SCOPE_METADATA: expected_scope},
+            checkpoint={"channel_values": {"messages": [object(), object()]}},
+        )
+        runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=lambda _config: mock.Mock())
+
+        with mock.patch.object(agent_runtime, "_assistant_scope", wraps=agent_runtime._assistant_scope) as scope:
+            self.assertEqual(runtime._prepare_scope(turn, resume=False), 2)
+
+        scope.assert_called_once_with(turn)
+
     def test_turn_entrypoints_reject_invalid_input_and_resume_provider_failure(self):
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: mock.Mock())
         for message in (None, " ", "x" * (agent_runtime.MAX_MESSAGE_CHARS + 1)):
