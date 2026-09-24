@@ -279,7 +279,7 @@ def _request_action(assistant_id: str, action: ActionDefinition) -> StructuredTo
     """Build a tool that can only suspend the graph with a typed Action request."""
     from langgraph.types import interrupt
 
-    def suspend_for_controller(**payload: Any) -> Any:
+    def suspend_for_controller(**payload):
         return interrupt(
             {
                 "kind": "action",
