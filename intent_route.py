@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -327,7 +327,7 @@ def _route(
 
 
 def create(
-    model: BaseChatModel,
+    model_factory: Callable[[], BaseChatModel],
     provider: str,
     objective: object,
     expected_intent: LifecycleIntent | None,
@@ -347,7 +347,7 @@ def create(
             options["strict"] = True
         elif provider != "anthropic":
             raise IntentRouteError("unsupported model provider")
-        structured = model.with_structured_output(StructuredRoute, **options)
+        structured = model_factory().with_structured_output(StructuredRoute, **options)
         value = structured.invoke(_prompt(task, expected, admitted, admitted_context))
     except ImportError:
         raise

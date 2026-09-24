@@ -2,8 +2,8 @@
 
 Run from the Brain checkout with
 ``PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.intent_route_validation``.
-The fake model returns one fixed structured result. Timings cover Brain's two
-input validations, prompt construction, and result validation, not provider I/O.
+The fake model returns one fixed structured result. Timings cover one Brain
+input validation, prompt construction, and result validation, not provider I/O.
 Only case names and aggregate timings are printed.
 """
 
