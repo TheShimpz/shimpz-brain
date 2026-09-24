@@ -132,7 +132,7 @@ class AssistantDefinition:
             not self.genesis
             or self.genesis.strip() != self.genesis
             or genesis_size > MAX_GENESIS_BYTES
-            or any(not character.isprintable() and character not in {"\n", "\t"} for character in self.genesis)
+            or not self.genesis.replace("\n", "").replace("\t", "").isprintable()
         ):
             raise RuntimeContractError("invalid Assistant Genesis")
         if len(self.actions) > MAX_ACTIONS_PER_ASSISTANT:

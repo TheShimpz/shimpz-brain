@@ -725,7 +725,9 @@ class AgentRuntimeTests(unittest.TestCase):
         invalid_values = (
             "",
             " surrounding whitespace ",
+            "\n\t",
             "hidden\x00instruction",
+            "hidden\rinstruction",
             "hidden\u202einstruction",
             "x" * (agent_runtime.MAX_GENESIS_BYTES + 1),
             "é" * ((agent_runtime.MAX_GENESIS_BYTES // 2) + 1),
@@ -741,6 +743,15 @@ class AgentRuntimeTests(unittest.TestCase):
                     genesis=genesis,
                     actions=valid.actions,
                 )
+
+    def test_genesis_allows_internal_newline_and_tab(self):
+        selected = agent_runtime.AssistantDefinition(
+            id="indented-assistant",
+            genesis="First line\n\tIndented second line",
+            actions=(),
+        )
+
+        self.assertEqual(selected.genesis, "First line\n\tIndented second line")
 
     def test_assistant_and_action_order_is_canonical(self):
         turn = context(
