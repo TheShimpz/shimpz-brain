@@ -91,15 +91,14 @@ def _text(value: object, maximum: int, label: str, *, empty: bool = False, layou
     if not isinstance(value, str):
         raise IntentRouteError(f"invalid {label}")
     normalized = unicodedata.normalize("NFC", value)
-    if (
-        normalized != value
-        or value.strip() != value
-        or not (0 if empty else 1) <= len(value) <= maximum
-        or any(
-            unicodedata.category(character).startswith("C")
-            and (not layout or (unicodedata.category(character) != "Cf" and character not in _LANGUAGE_LAYOUT_CONTROLS))
-            for character in value
-        )
+    if normalized != value or value.strip() != value or not (0 if empty else 1) <= len(value) <= maximum:
+        raise IntentRouteError(f"invalid {label}")
+    if not (
+        value.isprintable() or (layout and value.replace("\n", "").replace("\r", "").replace("\t", "").isprintable())
+    ) and any(
+        unicodedata.category(character).startswith("C")
+        and (not layout or (unicodedata.category(character) != "Cf" and character not in _LANGUAGE_LAYOUT_CONTROLS))
+        for character in value
     ):
         raise IntentRouteError(f"invalid {label}")
     return value

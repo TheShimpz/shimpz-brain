@@ -292,6 +292,23 @@ class IntentRouteTests(unittest.TestCase):
 
         self.assertEqual(result.query, "cloudflare")
 
+    def test_common_route_text_avoids_python_unicode_category_scans(self):
+        examples = (
+            ("a" * intent_route.MAX_OBJECTIVE_CHARS, "b" * intent_route.MAX_CONVERSATION_TEXT_CHARS),
+            (("a\nb" * 5334)[: intent_route.MAX_OBJECTIVE_CHARS], "b\n" * 255 + "cc"),
+            ("é" * intent_route.MAX_OBJECTIVE_CHARS, "é" * intent_route.MAX_CONVERSATION_TEXT_CHARS),
+        )
+        with mock.patch.object(intent_route.unicodedata, "category", side_effect=AssertionError("slow scan")):
+            for objective, text in examples:
+                with self.subTest(objective_start=objective[:3]):
+                    context = intent_route.LifecycleContext(
+                        conversation=(intent_route.ConversationEntry("user", text, False),)
+                    )
+                    admitted = intent_route.validate_inputs(objective, None, (), context)
+                    self.assertEqual(admitted[0], objective)
+            selected = intent_route.validate_inputs("install", "assistant-install", candidates(), None)
+            self.assertEqual(selected[2], candidates())
+
     def test_empty_selection_directory_can_only_ask_for_clarification(self):
         reply = "Qual Assistant instalado você quer desinstalar?"
         result = intent_route.create(
