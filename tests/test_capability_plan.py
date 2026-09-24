@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from typing import Any, ClassVar
 from unittest import mock
@@ -180,6 +181,16 @@ class CapabilityPlanTests(unittest.TestCase):
                 self.assertRaises(capability_plan.CapabilityPlanError),
             ):
                 capability_plan.validate_inputs("Configure DNS", shortlist)
+
+    def test_candidate_identifiers_use_the_current_canonical_pattern(self):
+        shortlist = candidates()
+        self.assertEqual(capability_plan.validate_inputs("Configure DNS", shortlist)[1], shortlist)
+        with (
+            mock.patch.object(agent_runtime, "ACTION_ID_RE", re.compile(r"never-match\Z")),
+            self.assertRaisesRegex(capability_plan.CapabilityPlanError, "invalid Action id"),
+        ):
+            capability_plan.validate_inputs("Configure DNS", shortlist)
+        self.assertEqual(capability_plan.validate_inputs("Configure DNS", shortlist)[1], shortlist)
 
     def test_provider_content_envelopes_and_failures_are_closed(self):
         valid = '{"status":"install-required","assistant_ids":["shimpz-cloudflare"]}'

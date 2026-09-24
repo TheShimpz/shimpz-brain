@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -68,10 +69,8 @@ def _text(value: object, maximum: int, label: str, *, allow_layout: bool = False
     return value
 
 
-def _identifier(value: object, label: str) -> str:
-    from agent_runtime import ACTION_ID_RE
-
-    if not isinstance(value, str) or ACTION_ID_RE.fullmatch(value) is None:
+def _identifier(value: object, label: str, pattern: re.Pattern[str]) -> str:
+    if not isinstance(value, str) or pattern.fullmatch(value) is None:
         raise CapabilityPlanError(f"invalid {label}")
     return value
 
@@ -79,13 +78,15 @@ def _identifier(value: object, label: str) -> str:
 def _candidate(value: CapabilityCandidate) -> CapabilityCandidate:
     if not isinstance(value, CapabilityCandidate):
         raise CapabilityPlanError("invalid capability candidate")
-    actions = tuple(_identifier(item, "Action id") for item in value.actions)
+    from agent_runtime import ACTION_ID_RE
+
+    actions = tuple(_identifier(item, "Action id", ACTION_ID_RE) for item in value.actions)
     if not 1 <= len(actions) <= MAX_ACTIONS or actions != tuple(sorted(set(actions))):
         raise CapabilityPlanError("invalid capability candidate Actions")
     integrations = tuple(
         CapabilityIntegration(
-            _identifier(item.id, "Integration id"),
-            _identifier(item.provider, "Integration provider"),
+            _identifier(item.id, "Integration id", ACTION_ID_RE),
+            _identifier(item.provider, "Integration provider", ACTION_ID_RE),
         )
         for item in value.integrations
         if isinstance(item, CapabilityIntegration)
@@ -97,7 +98,7 @@ def _candidate(value: CapabilityCandidate) -> CapabilityCandidate:
     ):
         raise CapabilityPlanError("invalid capability candidate Integrations")
     return CapabilityCandidate(
-        id=_identifier(value.id, "Assistant id"),
+        id=_identifier(value.id, "Assistant id", ACTION_ID_RE),
         name=_text(value.name, MAX_NAME_CHARS, "Assistant name"),
         summary=_text(value.summary, MAX_SUMMARY_CHARS, "Assistant summary"),
         actions=actions,
