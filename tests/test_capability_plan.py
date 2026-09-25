@@ -302,6 +302,30 @@ class CapabilityPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(ImportError, "missing dependency"):
             missing.capability_plan(provider(), "Configure DNS", candidates())
 
+    def test_unexpected_planner_failure_is_redacted(self):
+        class FailingActions:
+            def __iter__(self):
+                raise RuntimeError("private capability marker")
+
+        first = candidates()[0]
+        malformed = capability_plan.CapabilityCandidate(
+            id=first.id,
+            name=first.name,
+            summary=first.summary,
+            actions=FailingActions(),
+            integrations=first.integrations,
+        )
+        factory = mock.Mock()
+        runtime = agent_runtime.AgentRuntime(object(), model_factory=factory)
+
+        with self.assertRaises(agent_runtime.ProviderRequestError) as raised:
+            runtime.capability_plan(provider(), "Configure DNS", (malformed,))
+
+        self.assertEqual(str(raised.exception), "model provider request failed")
+        self.assertIsInstance(raised.exception.__cause__, RuntimeError)
+        self.assertEqual(str(raised.exception.__cause__), "private capability marker")
+        factory.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
