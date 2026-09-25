@@ -77,7 +77,7 @@ def main() -> None:
     if not 20 <= args.samples <= 10_000:
         parser.error("samples must be between 20 and 10000")
     runtime = agent_runtime.AgentRuntime(None, model_factory=FixedFactory())
-    provider = agent_runtime.ProviderConfig("openai", "gpt-5.6-terra", "fixture-only-key")
+    provider = agent_runtime.ProviderConfig("openai", "gpt-6-sol", "fixture-only-key")
     cases = {
         "short": ("Hello", intent_route.LifecycleContext()),
         "max_ascii": ("a" * intent_route.MAX_OBJECTIVE_CHARS, _context("b" * 512)),

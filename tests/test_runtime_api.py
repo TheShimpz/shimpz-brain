@@ -56,7 +56,7 @@ def body(**updates):
                 ],
             },
         ],
-        "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+        "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
         "message": "Hello",
     }
     value.update(updates)
@@ -142,7 +142,7 @@ class RuntimeApiTests(unittest.TestCase):
     def test_action_labels_are_authenticated_stateless_and_closed(self):
         runtime = FakeRuntime()
         payload = {
-            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
             "language_exemplar": "  Quero listar minhas zonas DNS  ",
             "actions": ["list-zones", "get-zone"],
         }
@@ -175,7 +175,7 @@ class RuntimeApiTests(unittest.TestCase):
     def test_capability_plan_is_authenticated_stateless_and_closed(self):
         runtime = FakeRuntime()
         payload = {
-            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
             "objective": "Configure um domínio e envie uma mensagem",
             "candidates": [
                 {
@@ -226,7 +226,7 @@ class RuntimeApiTests(unittest.TestCase):
         response = TestClient(app).post(
             "/v1/capability-plan",
             json={
-                "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+                "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
                 "objective": "Configure DNS",
                 "candidates": [
                     {
@@ -249,7 +249,7 @@ class RuntimeApiTests(unittest.TestCase):
         runtime = FakeRuntime()
         api = client(runtime)
         classification = {
-            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
             "objective": "tire o cloudflare deste time",
             "expected_intent": None,
             "candidates": [],
@@ -315,7 +315,7 @@ class RuntimeApiTests(unittest.TestCase):
         runtime = FakeRuntime()
         api = client(runtime)
         base = {
-            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
             "objective": "remove it",
             "expected_intent": None,
             "candidates": [],
@@ -382,7 +382,7 @@ class RuntimeApiTests(unittest.TestCase):
         response = TestClient(app).post(
             "/v1/intent-route",
             json={
-                "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+                "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
                 "objective": "hello",
                 "expected_intent": None,
                 "candidates": [],
@@ -400,7 +400,7 @@ class RuntimeApiTests(unittest.TestCase):
     def test_action_label_input_rejects_added_duplicate_and_unsafe_values(self):
         runtime = FakeRuntime()
         valid = {
-            "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+            "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
             "language_exemplar": "Liste minhas zonas",
             "actions": ["list-zones", "get-zone"],
         }
@@ -428,7 +428,7 @@ class RuntimeApiTests(unittest.TestCase):
         response = client(runtime).post(
             "/v1/action-labels",
             json={
-                "provider": {"provider": "openai", "model": "gpt-5.6-terra", "api_key": SECRET},
+                "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
                 "language_exemplar": "Liste minhas zonas",
                 "actions": ["list-zones"],
             },
@@ -578,7 +578,7 @@ class RuntimeApiTests(unittest.TestCase):
         for provider, model in (
             ("openai", "gpt-well-formed-but-unknown"),
             ("openai", "claude-sonnet-5"),
-            ("anthropic", "gpt-5.6-terra"),
+            ("anthropic", "gpt-6-sol"),
         ):
             payload = body()
             payload["provider"] = {"provider": provider, "model": model, "api_key": SECRET}

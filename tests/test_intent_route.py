@@ -9,7 +9,7 @@ import intent_route
 
 
 def provider(name: str = "openai") -> agent_runtime.ProviderConfig:
-    model = "gpt-5.6-terra" if name == "openai" else "claude-sonnet-5"
+    model = "gpt-6-sol" if name == "openai" else "claude-sonnet-5"
     return agent_runtime.ProviderConfig(name, model, "secret-test-key")
 
 

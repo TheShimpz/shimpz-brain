@@ -23,7 +23,7 @@ class RecordingModel(FakeMessagesListChatModel):
 
 
 def provider() -> agent_runtime.ProviderConfig:
-    return agent_runtime.ProviderConfig("openai", "gpt-5.6-terra", "secret-test-key")
+    return agent_runtime.ProviderConfig("openai", "gpt-6-sol", "secret-test-key")
 
 
 def candidates() -> tuple[capability_plan.CapabilityCandidate, ...]:

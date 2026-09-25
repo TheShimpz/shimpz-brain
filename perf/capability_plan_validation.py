@@ -95,7 +95,7 @@ def main() -> None:
         parser.error("samples must be between 20 and 10000")
     model = FixedModel()
     runtime = agent_runtime.AgentRuntime(None, model_factory=lambda _provider: model)
-    provider = agent_runtime.ProviderConfig("openai", "gpt-5.6-terra", "fixture-only-key")
+    provider = agent_runtime.ProviderConfig("openai", "gpt-6-sol", "fixture-only-key")
     sparse = _candidates(dense=False)
     dense = _candidates(dense=True)
     cases = {

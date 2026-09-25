@@ -23,7 +23,7 @@ import agent_runtime
 import intent_route
 
 # Least expensive OpenAI option in the umbrella model catalog on 2026-09-25.
-FLOOR_MODEL = "gpt-5.6-luna"
+FLOOR_MODEL = "gpt-6-luna"
 ATTEMPTS = 3
 
 _REFERENCE = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")

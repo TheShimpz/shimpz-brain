@@ -24,7 +24,7 @@ class RecordingModel(FakeMessagesListChatModel):
 def provider() -> agent_runtime.ProviderConfig:
     return agent_runtime.ProviderConfig(
         provider="openai",
-        model="gpt-5.6-terra",
+        model="gpt-6-sol",
         api_key="secret-test-key",
     )
 

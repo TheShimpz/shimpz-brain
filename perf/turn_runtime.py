@@ -165,7 +165,7 @@ def _case(
 ) -> dict[str, object]:
     case = f"{assistant_count}x{actions_each}-history-{prior_turns * 2}"
     assistants = _assistants(assistant_count, actions_each)
-    provider = agent_runtime.ProviderConfig("openai", "gpt-5.6-terra", "fixture-only-key")
+    provider = agent_runtime.ProviderConfig("openai", "gpt-6-sol", "fixture-only-key")
     response_count = (samples + WARMUPS) * (prior_turns + 1) + 1
     model = FixedModel(responses=[AIMessage(content=REPLY, id=f"fixture-{index}") for index in range(response_count)])
     totals: list[int] = []
