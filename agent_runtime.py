@@ -51,6 +51,8 @@ MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 DECISION_TIMEOUT_SECONDS = 10.0
+# One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
+DECISION_MAX_RETRIES = 1
 
 
 class RuntimeContractError(ValueError):
@@ -210,7 +212,7 @@ def provider_model(
         "model": config.model,
         "api_key": secret,
         "timeout": DECISION_TIMEOUT_SECONDS if decision else 60.0,
-        "max_retries": 0 if decision else 2,
+        "max_retries": DECISION_MAX_RETRIES if decision else 2,
     }
     if config.provider == "openai":
         from langchain_openai import ChatOpenAI
@@ -239,7 +241,7 @@ class ProviderModelFactory:
         return provider_model(config, http_client=self._http_client)
 
     def decision(self, config: ProviderConfig) -> BaseChatModel:
-        """Build a short, zero-retry model for one structured routing decision."""
+        """Build a short model with at most one retry for one structured routing decision."""
         return provider_model(config, http_client=self._http_client, decision=True)
 
     def close(self) -> None:

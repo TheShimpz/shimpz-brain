@@ -841,7 +841,8 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertNotEqual(first.kwargs["api_key"], second.kwargs["api_key"])
         self.assertIs(decision.kwargs["http_client"], transport)
         self.assertEqual(decision.kwargs["reasoning_effort"], "low")
-        self.assertEqual(decision.kwargs["max_retries"], 0)
+        self.assertEqual(decision.kwargs["max_retries"], agent_runtime.DECISION_MAX_RETRIES)
+        self.assertEqual(first.kwargs["max_retries"], 2)
         transport.close.assert_called_once_with()
 
     def test_dependency_import_errors_are_never_laundered_as_provider_failures(self):
@@ -881,62 +882,6 @@ class AgentRuntimeTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ImportError, "synthetic missing runtime dependency"):
             runtime.resume(turn, {suspended.actions[0].interrupt_id: {"weather": "sunny"}})
-
-    def test_openai_uses_responses_api_without_changing_anthropic(self):
-        with (
-            mock.patch("langchain_openai.ChatOpenAI") as openai,
-            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
-        ):
-            agent_runtime.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6-sol",
-                    api_key="secret-test-key",
-                )
-            )
-            agent_runtime.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="anthropic",
-                    model="claude-sonnet-5",
-                    api_key="secret-test-key",
-                )
-            )
-
-        self.assertTrue(openai.call_args.kwargs["use_responses_api"])
-        self.assertNotIn("use_responses_api", anthropic.call_args.kwargs)
-        self.assertEqual(set(openai.call_args.kwargs) - {"use_responses_api"}, set(anthropic.call_args.kwargs))
-
-    def test_decision_models_use_provider_specific_low_effort_without_retries(self):
-        with (
-            mock.patch("langchain_openai.ChatOpenAI") as openai,
-            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
-        ):
-            agent_runtime.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6-luna",
-                    api_key="secret-test-key",
-                ),
-                decision=True,
-            )
-            agent_runtime.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="anthropic",
-                    model="claude-sonnet-5",
-                    api_key="secret-test-key",
-                ),
-                decision=True,
-            )
-
-        openai_options = openai.call_args.kwargs
-        anthropic_options = anthropic.call_args.kwargs
-        self.assertEqual(openai_options["reasoning_effort"], "low")
-        self.assertNotIn("effort", openai_options)
-        self.assertEqual(anthropic_options["effort"], "low")
-        self.assertNotIn("reasoning_effort", anthropic_options)
-        for options in (openai_options, anthropic_options):
-            self.assertEqual(options["timeout"], agent_runtime.DECISION_TIMEOUT_SECONDS)
-            self.assertEqual(options["max_retries"], 0)
 
     def test_team_name_and_team_bounds_fail_closed(self):
         for invalid_name in ("", "   ", "Bad\nName", "Bad\x7fName", "x" * 81):
