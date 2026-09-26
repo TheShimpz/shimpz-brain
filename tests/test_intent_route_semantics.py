@@ -14,7 +14,23 @@ from eval import intent_route as semantics
 class IntentRouteSemanticsTests(unittest.TestCase):
     def test_corpus_admits_every_case_without_provider_access(self):
         semantics.validate_corpus()
-        self.assertEqual(len(semantics.CASES), 20)
+        self.assertEqual(
+            {case.intent for case in semantics.CASES},
+            {"ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"},
+        )
+        installs = [case for case in semantics.CASES if case.intent == "assistant-install" and case.target]
+        self.assertEqual({case.task_follows for case in installs}, {False, True})
+
+    def test_oracle_requires_the_exact_task_continuation(self):
+        case = next(item for item in semantics.CASES if item.id == "install-then-search-pt")
+        self.assertTrue(
+            semantics._matches(case, intent_route.IntentRoute("assistant-install", "exa", task_follows=True))
+        )
+        self.assertFalse(semantics._matches(case, intent_route.IntentRoute("assistant-install", "exa")))
+        only = next(item for item in semantics.CASES if item.id == "install-pt")
+        self.assertFalse(
+            semantics._matches(only, intent_route.IntentRoute("assistant-install", "cloudflare", task_follows=True))
+        )
 
     def test_oracle_rejects_wrong_or_mixed_lifecycle_targets(self):
         case = next(item for item in semantics.CASES if item.id == "explicit-over-reference")
