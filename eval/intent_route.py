@@ -45,10 +45,33 @@ class Case:
     candidates: tuple[intent_route.DirectoryCandidate, ...] = ()
     context: intent_route.LifecycleContext | None = None
     selected: tuple[str, ...] = ()
+    task_follows: bool = False
 
 
 CASES = (
     Case("ordinary-pt", "ADR-0062: ordinary conversation", "Olá, tudo bem?", "ordinary-task"),
+    Case(
+        "ordinary-search-pt",
+        "ADR-0066: capability task without install wording",
+        "Pesquisa na web as novidades de IA de hoje.",
+        "ordinary-task",
+    ),
+    Case(
+        "install-then-search-pt",
+        "ADR-0070: install then continue the task",
+        "Agora instala o exa e faz uma pesquisa web do mercado de IA brasileiro e suas novidades no dia de hoje.",
+        "assistant-install",
+        "exa",
+        task_follows=True,
+    ),
+    Case(
+        "install-then-message-en",
+        "ADR-0070: install then continue the task",
+        "Install the WhatsApp Assistant and send Ana the meeting summary.",
+        "assistant-install",
+        "whatsapp",
+        task_follows=True,
+    ),
     Case("ordinary-en", "ADR-0062: ordinary capability task", "List my DNS zones.", "ordinary-task"),
     Case(
         "dns-delete-pt", "ADR-0062: work inside an Assistant", "Apague o registro TXT do meu domínio.", "ordinary-task"
@@ -183,7 +206,7 @@ _TARGETS = frozenset(case.target for case in CASES if case.target)
 
 
 def _matches(case: Case, route: intent_route.IntentRoute) -> bool:
-    if route.intent != case.intent:
+    if route.intent != case.intent or route.task_follows != case.task_follows:
         return False
     if case.mode is not None:
         return (
@@ -204,7 +227,12 @@ def validate_corpus() -> None:
     if len({case.id for case in CASES}) != len(CASES):
         raise ValueError("duplicate semantic case id")
     for case in CASES:
-        if not case.contract or not case.id or (case.target and case.mode is not None):
+        if (
+            not case.contract
+            or not case.id
+            or (case.target and case.mode is not None)
+            or (case.task_follows and (case.intent != "assistant-install" or not case.target))
+        ):
             raise ValueError("invalid semantic case")
         intent_route.validate_inputs(case.objective, case.mode, case.candidates, case.context)
         if case.mode is not None:

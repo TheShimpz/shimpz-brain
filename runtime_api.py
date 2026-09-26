@@ -391,6 +391,7 @@ def _intent_route_response(route: intent_route.IntentRoute) -> dict[str, object]
         "query": route.query,
         "assistant_ids": list(route.assistant_ids),
         "reply": route.reply,
+        "task_follows": route.task_follows,
     }
 
 

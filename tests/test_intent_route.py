@@ -65,6 +65,7 @@ class IntentRouteTests(unittest.TestCase):
     def test_classification_uses_static_native_schema_and_untrusted_framing(self):
         model = StructuredModel(
             intent_route.StructuredRoute(
+                task_follows=False,
                 intent="assistant-uninstall",
                 query="cloudflare",
                 assistant_ids=[],
@@ -89,6 +90,7 @@ class IntentRouteTests(unittest.TestCase):
         reference = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")
         model = StructuredModel(
             intent_route.StructuredRoute(
+                task_follows=False,
                 intent="assistant-install",
                 query="shimpz-cloudflare",
                 assistant_ids=[],
@@ -108,7 +110,13 @@ class IntentRouteTests(unittest.TestCase):
             intent_route.validate_inputs("instale", None, (), object())
 
         echo = StructuredModel(
-            {"intent": "assistant-install", "query": "", "assistant_ids": ["shimpz-cloudflare"], "reply": ""}
+            {
+                "task_follows": False,
+                "intent": "assistant-install",
+                "query": "",
+                "assistant_ids": ["shimpz-cloudflare"],
+                "reply": "",
+            }
         )
         with self.assertRaises(intent_route.IntentRouteResponseError):
             intent_route.create(lambda: echo, "openai", "instale ele", None, (), context)
@@ -126,6 +134,7 @@ class IntentRouteTests(unittest.TestCase):
         )
         model = StructuredModel(
             intent_route.StructuredRoute(
+                task_follows=False,
                 intent="assistant-uninstall",
                 query="cloudflare",
                 assistant_ids=[],
@@ -145,7 +154,9 @@ class IntentRouteTests(unittest.TestCase):
 
     def test_anthropic_uses_the_same_static_schema_without_openai_options(self):
         model = StructuredModel(
-            intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[], reply="")
+            intent_route.StructuredRoute(
+                task_follows=False, intent="ordinary-task", query="", assistant_ids=[], reply=""
+            )
         )
 
         result = intent_route.create(lambda: model, "anthropic", "liste minhas zonas", None, (), None)
@@ -156,6 +167,7 @@ class IntentRouteTests(unittest.TestCase):
     def test_selection_is_bound_to_expected_intent_and_exact_candidate_ids(self):
         model = StructuredModel(
             intent_route.StructuredRoute(
+                task_follows=False,
                 intent="assistant-install",
                 query="",
                 assistant_ids=["shimpz-cloudflare", "shimpz-whatsapp"],
@@ -185,21 +197,35 @@ class IntentRouteTests(unittest.TestCase):
 
     def test_selection_rejects_wrong_unknown_duplicate_unsorted_and_empty_ids(self):
         invalid = (
-            {"intent": "assistant-uninstall", "query": "", "assistant_ids": ["unknown"], "reply": ""},
             {
+                "task_follows": False,
+                "intent": "assistant-uninstall",
+                "query": "",
+                "assistant_ids": ["unknown"],
+                "reply": "",
+            },
+            {
+                "task_follows": False,
                 "intent": "assistant-uninstall",
                 "query": "",
                 "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
                 "reply": "",
             },
             {
+                "task_follows": False,
                 "intent": "assistant-install",
                 "query": "",
                 "assistant_ids": ["shimpz-whatsapp", "shimpz-cloudflare"],
                 "reply": "",
             },
-            {"intent": "assistant-install", "query": "", "assistant_ids": [], "reply": ""},
-            {"intent": "ordinary-task", "query": "", "assistant_ids": ["shimpz-cloudflare"], "reply": ""},
+            {"task_follows": False, "intent": "assistant-install", "query": "", "assistant_ids": [], "reply": ""},
+            {
+                "task_follows": False,
+                "intent": "ordinary-task",
+                "query": "",
+                "assistant_ids": ["shimpz-cloudflare"],
+                "reply": "",
+            },
         )
         for response in invalid:
             expected = "assistant-uninstall" if response["intent"] == "assistant-uninstall" else "assistant-install"
@@ -218,6 +244,7 @@ class IntentRouteTests(unittest.TestCase):
         result = intent_route.create(
             lambda: StructuredModel(
                 {
+                    "task_follows": False,
                     "intent": "unresolved",
                     "query": "",
                     "assistant_ids": [],
@@ -243,7 +270,13 @@ class IntentRouteTests(unittest.TestCase):
         reply = "Qual Assistant você quer desinstalar?"
         result = intent_route.create(
             lambda: StructuredModel(
-                {"intent": "assistant-uninstall", "query": "", "assistant_ids": [], "reply": reply}
+                {
+                    "task_follows": False,
+                    "intent": "assistant-uninstall",
+                    "query": "",
+                    "assistant_ids": [],
+                    "reply": reply,
+                }
             ),
             "openai",
             "desinstala ele",
@@ -258,7 +291,13 @@ class IntentRouteTests(unittest.TestCase):
         reply = "Quel Assistant voulez-vous désinstaller\u00a0?"
         result = intent_route.create(
             lambda: StructuredModel(
-                {"intent": "assistant-uninstall", "query": "", "assistant_ids": [], "reply": reply}
+                {
+                    "task_follows": False,
+                    "intent": "assistant-uninstall",
+                    "query": "",
+                    "assistant_ids": [],
+                    "reply": reply,
+                }
             ),
             "openai",
             "désinstalle",
@@ -274,6 +313,7 @@ class IntentRouteTests(unittest.TestCase):
                     mock.Mock(
                         return_value=StructuredModel(
                             {
+                                "task_follows": False,
                                 "intent": "assistant-uninstall",
                                 "query": "",
                                 "assistant_ids": [],
@@ -293,7 +333,13 @@ class IntentRouteTests(unittest.TestCase):
             conversation=(intent_route.ConversationEntry("user", "desinstala 👩‍💻\r\nagora", False),),
         )
         model = StructuredModel(
-            {"intent": "assistant-uninstall", "query": "cloudflare", "assistant_ids": [], "reply": ""}
+            {
+                "task_follows": False,
+                "intent": "assistant-uninstall",
+                "query": "cloudflare",
+                "assistant_ids": [],
+                "reply": "",
+            }
         )
 
         result = intent_route.create(lambda: model, "openai", "cloudflare", None, (), context)
@@ -320,7 +366,9 @@ class IntentRouteTests(unittest.TestCase):
     def test_empty_selection_directory_can_only_ask_for_clarification(self):
         reply = "Qual Assistant instalado você quer desinstalar?"
         result = intent_route.create(
-            lambda: StructuredModel({"intent": "unresolved", "query": "", "assistant_ids": [], "reply": reply}),
+            lambda: StructuredModel(
+                {"task_follows": False, "intent": "unresolved", "query": "", "assistant_ids": [], "reply": reply}
+            ),
             "openai",
             "desinstale desconhecido",
             "assistant-uninstall",
@@ -414,6 +462,7 @@ class IntentRouteTests(unittest.TestCase):
         invalid = (
             (
                 intent_route.StructuredRoute(
+                    task_follows=False,
                     intent="ordinary-task",
                     query="",
                     assistant_ids=["shimpz-cloudflare"],
@@ -434,6 +483,7 @@ class IntentRouteTests(unittest.TestCase):
             ),
             (
                 intent_route.StructuredRoute(
+                    task_follows=False,
                     intent="assistant-uninstall",
                     query="unexpected",
                     assistant_ids=["shimpz-cloudflare"],
@@ -444,6 +494,7 @@ class IntentRouteTests(unittest.TestCase):
             ),
             (
                 intent_route.StructuredRoute(
+                    task_follows=False,
                     intent="unresolved",
                     query="",
                     assistant_ids=["shimpz-cloudflare"],
@@ -454,6 +505,7 @@ class IntentRouteTests(unittest.TestCase):
             ),
             (
                 intent_route.StructuredRoute(
+                    task_follows=False,
                     intent="ordinary-task",
                     query="",
                     assistant_ids=[],
@@ -466,6 +518,36 @@ class IntentRouteTests(unittest.TestCase):
         for response, expected, shortlist in invalid:
             with self.subTest(response=response), self.assertRaises(intent_route.IntentRouteError):
                 intent_route._route(response, expected, shortlist)
+
+    def test_only_a_targeted_install_classification_can_continue_the_task(self):
+        def route(intent, query, reply="", ids=(), follows=True, expected=None, shortlist=()):
+            response = intent_route.StructuredRoute(
+                task_follows=follows, intent=intent, query=query, assistant_ids=list(ids), reply=reply
+            )
+            return intent_route._route(response, expected, shortlist)
+
+        self.assertEqual(
+            route("assistant-install", "exa"),
+            intent_route.IntentRoute("assistant-install", "exa", task_follows=True),
+        )
+        self.assertFalse(route("assistant-install", "exa", follows=False).task_follows)
+        for args in (
+            ("ordinary-task", ""),
+            ("assistant-uninstall", "exa"),
+            ("unresolved", "", "Which Assistant?"),
+            ("assistant-install", "", "Which Assistant?"),
+        ):
+            with self.subTest(args=args), self.assertRaises(intent_route.IntentRouteError):
+                route(*args)
+        with self.assertRaises(intent_route.IntentRouteError):
+            route(
+                "assistant-install",
+                "",
+                ids=("shimpz-cloudflare",),
+                expected="assistant-install",
+                shortlist=candidates(),
+            )
+        self.assertIn("task_follows", intent_route.StructuredRoute.model_json_schema()["required"])
 
     def test_provider_and_contract_failures_are_redacted_and_distinct(self):
         with self.assertRaisesRegex(intent_route.IntentRouteProviderError, "^model provider request failed$"):
@@ -480,7 +562,14 @@ class IntentRouteTests(unittest.TestCase):
         for value in (
             None,
             {},
-            {"intent": "ordinary-task", "query": "", "assistant_ids": [], "reply": "", "extra": True},
+            {
+                "task_follows": False,
+                "intent": "ordinary-task",
+                "query": "",
+                "assistant_ids": [],
+                "reply": "",
+                "extra": True,
+            },
         ):
             with (
                 self.subTest(value=value),
@@ -517,7 +606,9 @@ class IntentRouteTests(unittest.TestCase):
             )
 
     def test_runtime_uses_only_the_decision_factory_without_checkpoint_access(self):
-        model = StructuredModel({"intent": "ordinary-task", "query": "", "assistant_ids": [], "reply": ""})
+        model = StructuredModel(
+            {"task_follows": False, "intent": "ordinary-task", "query": "", "assistant_ids": [], "reply": ""}
+        )
         factory = DecisionFactory(model)
         runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=factory)
 

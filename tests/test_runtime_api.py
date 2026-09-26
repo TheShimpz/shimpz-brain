@@ -276,7 +276,13 @@ class RuntimeApiTests(unittest.TestCase):
 
         self.assertEqual(
             response.json(),
-            {"intent": "assistant-uninstall", "query": "cloudflare", "assistant_ids": [], "reply": ""},
+            {
+                "task_follows": False,
+                "intent": "assistant-uninstall",
+                "query": "cloudflare",
+                "assistant_ids": [],
+                "reply": "",
+            },
         )
         call = runtime.calls[0]
         self.assertEqual(call[0], "intent_route")
@@ -303,6 +309,7 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(
             selected.json(),
             {
+                "task_follows": False,
                 "intent": "assistant-uninstall",
                 "query": "",
                 "assistant_ids": ["shimpz-cloudflare"],
@@ -310,6 +317,12 @@ class RuntimeApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(runtime.calls[1][4][0].id, "shimpz-cloudflare")
+
+    def test_intent_route_response_carries_the_task_continuation(self):
+        self.assertEqual(
+            runtime_api._intent_route_response(intent_route.IntentRoute("assistant-install", "exa", task_follows=True)),
+            {"intent": "assistant-install", "query": "exa", "assistant_ids": [], "reply": "", "task_follows": True},
+        )
 
     def test_intent_route_rejects_retired_or_wrong_lane_context(self):
         runtime = FakeRuntime()
