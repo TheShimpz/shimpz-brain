@@ -56,7 +56,7 @@ def body(**updates):
                 ],
             },
         ],
-        "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
+        "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET, "effort": "low"},
         "message": "Hello",
     }
     value.update(updates)
@@ -594,7 +594,7 @@ class RuntimeApiTests(unittest.TestCase):
             ("anthropic", "gpt-6-sol"),
         ):
             payload = body()
-            payload["provider"] = {"provider": provider, "model": model, "api_key": SECRET}
+            payload["provider"] = {"provider": provider, "model": model, "api_key": SECRET, "effort": "low"}
             with self.subTest(provider=provider, model=model):
                 response = api.post(
                     "/v1/turns",
@@ -604,6 +604,20 @@ class RuntimeApiTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json(), {"detail": "unsupported model for provider"})
 
+        self.assertEqual(runtime.calls, [])
+
+    def test_chat_turns_require_one_closed_reasoning_effort(self):
+        runtime = FakeRuntime()
+        api = client(runtime)
+        for effort in (None, "", "minimal", "xhigh", "LOW"):
+            payload = body()
+            if effort is None:
+                del payload["provider"]["effort"]
+            else:
+                payload["provider"]["effort"] = effort
+            with self.subTest(effort=effort):
+                response = api.post("/v1/turns", json=payload, headers={"Authorization": f"Bearer {TOKEN}"})
+                self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [])
 
     def test_malformed_team_names_fail_at_the_closed_http_contract(self):

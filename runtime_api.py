@@ -48,6 +48,10 @@ class ProviderInput(BaseModel):
     api_key: SecretStr = Field(min_length=1, max_length=16 * 1024)
 
 
+class ChatProviderInput(ProviderInput):
+    effort: Literal["low", "medium", "high"]
+
+
 class ActionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,7 +74,7 @@ class TurnContextInput(BaseModel):
     thread_id: str = Field(min_length=1, max_length=256)
     team_name: str = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_NAME_CHARS)
     assistants: list[AssistantInput] = Field(max_length=agent_runtime.MAX_ASSISTANTS)
-    provider: ProviderInput
+    provider: ChatProviderInput
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -108,6 +112,7 @@ class TurnContextInput(BaseModel):
                 provider=self.provider.provider,
                 model=self.provider.model,
                 api_key=self.provider.api_key.get_secret_value(),
+                effort=self.provider.effort,
             ),
         )
 

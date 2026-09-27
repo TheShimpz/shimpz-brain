@@ -53,6 +53,8 @@ ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 DECISION_TIMEOUT_SECONDS = 10.0
 # One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
 DECISION_MAX_RETRIES = 1
+# The Team's configured reasoning effort applies only to ordinary chat turns (ADR-0074).
+CHAT_EFFORTS = frozenset({"low", "medium", "high"})
 
 
 class RuntimeContractError(ValueError):
@@ -86,8 +88,11 @@ class ProviderConfig:
     provider: str
     model: str
     api_key: str
+    effort: str | None = None
 
     def __post_init__(self) -> None:
+        if self.effort is not None and self.effort not in CHAT_EFFORTS:
+            raise RuntimeContractError("unsupported reasoning effort")
         if self.provider not in PROVIDERS:
             raise RuntimeContractError("unsupported model provider")
         if self.model not in MODELS_BY_PROVIDER[self.provider]:
@@ -220,13 +225,16 @@ def provider_model(
         openai = {**common, "use_responses_api": True}
         if decision:
             openai["reasoning_effort"] = "low"
+        elif config.effort is not None:
+            openai["reasoning_effort"] = config.effort
         if http_client is not None:
             openai["http_client"] = http_client
         return ChatOpenAI(**openai)
     if config.provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
-        anthropic = {**common, **({"effort": "low"} if decision else {})}
+        effort = "low" if decision else config.effort
+        anthropic = {**common, **({"effort": effort} if effort is not None else {})}
         return ChatAnthropic(**anthropic)
     raise RuntimeContractError("unsupported model provider")
 

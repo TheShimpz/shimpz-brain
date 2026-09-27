@@ -65,6 +65,33 @@ class ProviderModelTests(unittest.TestCase):
             self.assertEqual(options["timeout"], agent_runtime.DECISION_TIMEOUT_SECONDS)
             self.assertEqual(options["max_retries"], agent_runtime.DECISION_MAX_RETRIES)
 
+    def test_chat_models_use_the_configured_effort_and_other_models_keep_the_provider_default(self):
+        with (
+            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+        ):
+            for effort in ("low", "medium", "high"):
+                agent_runtime.provider_model(
+                    agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", effort)
+                )
+                self.assertEqual(openai.call_args.kwargs["reasoning_effort"], effort)
+                agent_runtime.provider_model(
+                    agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "secret-test-key", effort)
+                )
+                self.assertEqual(anthropic.call_args.kwargs["effort"], effort)
+            agent_runtime.provider_model(agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"))
+            self.assertNotIn("reasoning_effort", openai.call_args.kwargs)
+            agent_runtime.provider_model(
+                agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "secret-test-key")
+            )
+            self.assertNotIn("effort", anthropic.call_args.kwargs)
+            agent_runtime.provider_model(
+                agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", "high"), decision=True
+            )
+            self.assertEqual(openai.call_args.kwargs["reasoning_effort"], "low")
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", "xhigh")
+
     def test_a_stalled_route_decision_is_retried_exactly_once(self):
         import httpx
 
