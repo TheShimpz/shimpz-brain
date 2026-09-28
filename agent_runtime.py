@@ -26,7 +26,7 @@ import intent_route as intent_router
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 _MODEL_CATALOG = json.loads(Path(__file__).with_name("model_catalog.json").read_text(encoding="utf-8"))
 MODELS_BY_PROVIDER = {
@@ -369,6 +369,79 @@ def _system_prompt(context: TurnContext) -> str:
     )
 
 
+def structured_output(model: BaseChatModel, provider: str, schema: type[BaseModel]):
+    """Bind provider-native JSON-schema output that also returns the raw message for closed validation."""
+    options: dict[str, object] = {"method": "json_schema", "include_raw": True}
+    if provider == "openai":
+        options["strict"] = True
+    elif provider != "anthropic":
+        raise RuntimeContractError("unsupported model provider")
+    return model.with_structured_output(schema, **options)
+
+
+def _closed_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RuntimeContractError("duplicate structured response field")
+        result[key] = value
+    return result
+
+
+def _raw_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        block["text"]
+        for block in content
+        if isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str)
+    )
+
+
+def _text_value[Schema: BaseModel](text: str, schema: type[Schema], label: str, max_chars: int) -> Schema:
+    """Re-read the raw JSON text itself: bounded, free of duplicate keys, and schema-valid."""
+    if len(text) > max_chars:
+        raise RuntimeContractError(f"invalid {label} response")
+    try:
+        return schema.model_validate(json.loads(text, object_pairs_hook=_closed_json_object))
+    except (json.JSONDecodeError, UnicodeError, ValueError) as exc:
+        raise RuntimeContractError(f"invalid {label} response") from exc
+
+
+def structured_value[Schema: BaseModel](result: object, schema: type[Schema], label: str, max_chars: int) -> Schema:
+    """Return one schema-valid value, refusing a refusal, a tool call, or a parse failure as a response failure.
+
+    When the provider returned JSON text, that text is re-read and must agree with the adapter's parsed value, so a
+    duplicate key or an oversized reply cannot hide behind a lenient parser. Native schema output narrows the shape;
+    callers still apply their own exact-identifier and semantic checks.
+    """
+    if not isinstance(result, Mapping) or set(result) != {"raw", "parsed", "parsing_error"}:
+        raise RuntimeContractError(f"invalid {label} response")
+    raw = result["raw"]
+    if not isinstance(raw, AIMessage) or raw.tool_calls or raw.invalid_tool_calls:
+        raise RuntimeContractError(f"invalid {label} response")
+    if isinstance(raw.content, list) and any(
+        isinstance(block, Mapping) and block.get("type") == "refusal" for block in raw.content
+    ):
+        raise RuntimeContractError(f"{label} response was refused")
+    if result["parsing_error"] is not None:
+        raise RuntimeContractError(f"invalid {label} response")
+    parsed = result["parsed"]
+    if isinstance(parsed, Mapping):
+        try:
+            parsed = schema.model_validate(parsed)
+        except ValueError as exc:
+            raise RuntimeContractError(f"invalid {label} response") from exc
+    if not isinstance(parsed, schema):
+        raise RuntimeContractError(f"invalid {label} response")
+    text = _raw_text(raw.content).strip()
+    if text and _text_value(text, schema, label, max_chars) != parsed:
+        raise RuntimeContractError(f"inconsistent {label} response")
+    return parsed
+
+
 def _message_content(value: object) -> str:
     if isinstance(value, str):
         return value
@@ -381,31 +454,6 @@ def _message_content(value: object) -> str:
         elif isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str):
             text.append(str(block["text"]))
     return "\n".join(text)
-
-
-def _structured_response_text(value: object, label: str) -> str:
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, list):
-        raise RuntimeContractError(f"invalid {label} response")
-    text_blocks: list[str] = []
-    for block in value:
-        if not isinstance(block, Mapping):
-            continue
-        block_type = block.get("type")
-        if block_type == "refusal":
-            raise RuntimeContractError(f"{label} response was refused")
-        if block_type != "text":
-            continue
-        text = block.get("text")
-        if not isinstance(text, str):
-            raise RuntimeContractError(f"invalid {label} text block")
-        text_blocks.append(text)
-    if not text_blocks:
-        raise RuntimeContractError(f"{label} response has no text block")
-    if len(text_blocks) != 1:
-        raise RuntimeContractError(f"{label} response has multiple text blocks")
-    return text_blocks[0]
 
 
 def normalize_language_exemplar(value: str) -> str:
@@ -442,15 +490,6 @@ def _action_label_prompt(language_exemplar: str, action_ids: tuple[str, ...]) ->
     return [SystemMessage(content=system), HumanMessage(content=payload)]
 
 
-def _closed_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise RuntimeContractError("duplicate Action label response field")
-        result[key] = value
-    return result
-
-
 def _validated_action_label(value: object) -> str:
     if not isinstance(value, str):
         raise RuntimeContractError("invalid Action label")
@@ -478,23 +517,25 @@ def _action_label_items(value: object, expected_ids: frozenset[str]) -> dict[str
     return labels
 
 
-def _action_label_content(value: object) -> str:
-    return _structured_response_text(value, "Action label")
+class ActionLabelItem(BaseModel):
+    # OpenAI strict schemas do not document string length limits, so label length stays a Python invariant.
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: str
+    label: str
 
 
-def _parse_action_labels(message: AIMessage, action_ids: tuple[str, ...]) -> tuple[ActionLabel, ...]:
-    if message.tool_calls or message.invalid_tool_calls:
-        raise RuntimeContractError("invalid Action label response")
-    content = _action_label_content(message.content).strip()
-    if not content or len(content) > MAX_ACTION_LABEL_RESPONSE_CHARS:
-        raise RuntimeContractError("invalid Action label response")
-    try:
-        parsed = json.loads(content, object_pairs_hook=_closed_json_object)
-    except (json.JSONDecodeError, UnicodeError) as exc:
-        raise RuntimeContractError("invalid Action label response") from exc
-    if not isinstance(parsed, Mapping) or set(parsed) != {"labels"}:
-        raise RuntimeContractError("invalid Action label response")
-    labels = _action_label_items(parsed["labels"], frozenset(action_ids))
+class ActionLabelsOutput(BaseModel):
+    """One static provider schema; exact identifiers, uniqueness, and label text remain Python invariants."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    labels: list[ActionLabelItem] = Field(max_length=MAX_ACTION_LABELS)
+
+
+def _parse_action_labels(result: object, action_ids: tuple[str, ...]) -> tuple[ActionLabel, ...]:
+    parsed = structured_value(result, ActionLabelsOutput, "Action label", MAX_ACTION_LABEL_RESPONSE_CHARS)
+    labels = _action_label_items([item.model_dump() for item in parsed.labels], frozenset(action_ids))
     return tuple(ActionLabel(id=action_id, label=labels[action_id]) for action_id in action_ids)
 
 
@@ -727,15 +768,14 @@ class AgentRuntime:
         ):
             raise RuntimeContractError("invalid Action label ids")
         try:
-            message = self._model_factory(provider).invoke(_action_label_prompt(exemplar, action_ids))
+            structured = structured_output(self._model_factory(provider), provider.provider, ActionLabelsOutput)
+            result = structured.invoke(_action_label_prompt(exemplar, action_ids))
         except ImportError:
             raise
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
         try:
-            if not isinstance(message, AIMessage):
-                raise RuntimeContractError("invalid Action label response")
-            return _parse_action_labels(message, action_ids)
+            return _parse_action_labels(result, action_ids)
         except RuntimeContractError as exc:
             raise ProviderResponseError("model provider response failed") from exc
 
@@ -747,7 +787,9 @@ class AgentRuntime:
     ) -> capability_planner.CapabilityPlan:
         """Select a closed Assistant subset without conversation or lifecycle authority."""
         try:
-            return capability_planner.create(lambda: self._model_factory(provider), objective, candidates)
+            return capability_planner.create(
+                lambda: self._model_factory(provider), provider.provider, objective, candidates
+            )
         except capability_planner.CapabilityPlanError as exc:
             raise RuntimeContractError(str(exc)) from exc
         except capability_planner.CapabilityPlanResponseError as exc:

@@ -2,24 +2,14 @@ from __future__ import annotations
 
 import re
 import unittest
-from typing import Any, ClassVar
 from unittest import mock
 
 import agent_runtime
 import capability_plan
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
+from structured_fake import StructuredFakeModel
 
-
-class RecordingModel(FakeMessagesListChatModel):
-    seen_messages: ClassVar[list[list[Any]]] = []
-
-    def bind_tools(self, *_args: Any, **_kwargs: Any):
-        raise AssertionError("capability planning must not bind tools")
-
-    def _generate(self, messages: list[Any], *args: Any, **kwargs: Any):
-        type(self).seen_messages.append(list(messages))
-        return super()._generate(messages, *args, **kwargs)
+RecordingModel = StructuredFakeModel
 
 
 def provider() -> agent_runtime.ProviderConfig:
@@ -48,6 +38,7 @@ def candidates() -> tuple[capability_plan.CapabilityCandidate, ...]:
 class CapabilityPlanTests(unittest.TestCase):
     def setUp(self) -> None:
         RecordingModel.seen_messages = []
+        RecordingModel.structured = []
 
     def test_uses_no_tools_or_checkpoint_and_returns_exact_subset(self):
         class RejectCheckpointAccess:
@@ -84,6 +75,10 @@ class CapabilityPlanTests(unittest.TestCase):
         self.assertNotIn("source_digest", provider_text)
         self.assertNotIn("input_schema", provider_text)
         self.assertNotIn("genesis", provider_text.casefold())
+        self.assertEqual(
+            RecordingModel.structured,
+            [(capability_plan.StructuredPlan, {"method": "json_schema", "include_raw": True, "strict": True})],
+        )
 
     def test_accepts_a_closed_sufficient_result(self):
         model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
@@ -105,6 +100,7 @@ class CapabilityPlanTests(unittest.TestCase):
             '{"status":"install-required","assistant_ids":[]}',
             '{"status":"install-required","assistant_ids":["shimpz-cloudflare"],"extra":true}',
             ('{"status":"install-required","assistant_ids":["shimpz-cloudflare"],"assistant_ids":["shimpz-whatsapp"]}'),
+            '{"status":"sufficient",' + " " * capability_plan.MAX_RESPONSE_CHARS + '"assistant_ids":[]}',
             "not-json",
         )
         for content in responses:
@@ -215,7 +211,7 @@ class CapabilityPlanTests(unittest.TestCase):
             ]
         )
         self.assertEqual(
-            capability_plan.create(lambda: text_block, "Configure DNS", candidates()),
+            capability_plan.create(lambda: text_block, "openai", "Configure DNS", candidates()),
             capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)),
         )
 
@@ -239,47 +235,47 @@ class CapabilityPlanTests(unittest.TestCase):
         for message in invalid_messages:
             with self.subTest(content=message.content), self.assertRaises(capability_plan.CapabilityPlanResponseError):
                 factory = mock.Mock(return_value=RecordingModel(responses=[message]))
-                capability_plan.create(factory, "Configure DNS", candidates())
+                capability_plan.create(factory, "openai", "Configure DNS", candidates())
 
         for failure, expected in (
             (ImportError("missing dependency"), ImportError),
             (RuntimeError("secret provider detail"), capability_plan.CapabilityPlanProviderError),
         ):
             model = mock.Mock()
-            model.invoke.side_effect = failure
+            model.with_structured_output.return_value.invoke.side_effect = failure
             with self.subTest(failure=type(failure).__name__), self.assertRaises(expected):
-                capability_plan.create(mock.Mock(return_value=model), "Configure DNS", candidates())
+                capability_plan.create(mock.Mock(return_value=model), "openai", "Configure DNS", candidates())
 
         model = mock.Mock()
-        model.invoke.return_value = object()
+        model.with_structured_output.return_value.invoke.return_value = object()
         with self.assertRaises(capability_plan.CapabilityPlanResponseError):
-            capability_plan.create(lambda: model, "Configure DNS", candidates())
+            capability_plan.create(lambda: model, "openai", "Configure DNS", candidates())
 
     def test_create_validates_before_factory_and_calls_factory_once(self):
         factory = mock.Mock(side_effect=RuntimeError("secret provider detail"))
         with self.assertRaisesRegex(capability_plan.CapabilityPlanError, "invalid capability objective"):
-            capability_plan.create(factory, "", candidates())
+            capability_plan.create(factory, "openai", "", candidates())
         factory.assert_not_called()
 
         with self.assertRaisesRegex(capability_plan.CapabilityPlanProviderError, "^model provider request failed$"):
-            capability_plan.create(factory, "Configure DNS", candidates())
+            capability_plan.create(factory, "openai", "Configure DNS", candidates())
         factory.assert_called_once_with()
 
         model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
         factory = mock.Mock(return_value=model)
         self.assertEqual(
-            capability_plan.create(factory, "Configure DNS", candidates()),
+            capability_plan.create(factory, "openai", "Configure DNS", candidates()),
             capability_plan.CapabilityPlan("sufficient"),
         )
         factory.assert_called_once_with()
 
         missing = mock.Mock(side_effect=ImportError("missing dependency"))
         with self.assertRaisesRegex(ImportError, "missing dependency"):
-            capability_plan.create(missing, "Configure DNS", candidates())
+            capability_plan.create(missing, "openai", "Configure DNS", candidates())
 
     def test_provider_factory_failure_is_redacted(self):
         provider_failure = mock.Mock()
-        provider_failure.invoke.side_effect = RuntimeError("secret provider detail")
+        provider_failure.with_structured_output.return_value.invoke.side_effect = RuntimeError("secret provider detail")
         runtime = agent_runtime.AgentRuntime(
             object(),
             model_factory=lambda _config: provider_failure,

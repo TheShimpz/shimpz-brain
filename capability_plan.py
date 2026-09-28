@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, ConfigDict, Field
 
 MAX_CANDIDATES = 8
 MAX_SELECTED = 4
@@ -157,68 +158,44 @@ def _prompt(objective: str, candidates: tuple[CapabilityCandidate, ...]) -> list
     ]
 
 
-def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise CapabilityPlanError("duplicate capability plan field")
-        result[key] = value
-    return result
+class StructuredPlan(BaseModel):
+    """One static provider schema; candidate membership and ordering remain Python invariants."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    status: Literal["sufficient", "install-required"]
+    assistant_ids: list[str] = Field(max_length=MAX_SELECTED)
 
 
-def _content(message: AIMessage) -> str:
-    if message.tool_calls or message.invalid_tool_calls:
-        raise CapabilityPlanError("invalid capability plan response")
-    from agent_runtime import RuntimeContractError, _structured_response_text
-
-    try:
-        return _structured_response_text(message.content, "capability plan")
-    except RuntimeContractError as exc:
-        raise CapabilityPlanError(str(exc)) from exc
-
-
-def _parse(message: AIMessage, candidates: tuple[CapabilityCandidate, ...]) -> CapabilityPlan:
-    content = _content(message).strip()
-    if not content or len(content) > MAX_RESPONSE_CHARS:
-        raise CapabilityPlanError("invalid capability plan response")
-    try:
-        value = json.loads(content, object_pairs_hook=_closed_object)
-    except (json.JSONDecodeError, UnicodeError) as exc:
-        raise CapabilityPlanError("invalid capability plan response") from exc
-    if not isinstance(value, Mapping) or set(value) != {"status", "assistant_ids"}:
-        raise CapabilityPlanError("invalid capability plan response")
-    status = value["status"]
-    raw_ids = value["assistant_ids"]
-    if status not in {"sufficient", "install-required"} or not isinstance(raw_ids, list):
-        raise CapabilityPlanError("invalid capability plan response")
+def _plan(value: StructuredPlan, candidates: tuple[CapabilityCandidate, ...]) -> CapabilityPlan:
     expected = frozenset(item.id for item in candidates)
-    assistant_ids = tuple(raw_ids)
+    assistant_ids = tuple(value.assistant_ids)
     if (
-        any(not isinstance(item, str) or item not in expected for item in assistant_ids)
+        any(item not in expected for item in assistant_ids)
         or assistant_ids != tuple(sorted(set(assistant_ids)))
-        or len(assistant_ids) > MAX_SELECTED
-        or (status == "sufficient") != (not assistant_ids)
+        or (value.status == "sufficient") != (not assistant_ids)
     ):
         raise CapabilityPlanError("invalid capability plan response")
-    return CapabilityPlan(status=status, assistant_ids=assistant_ids)
+    return CapabilityPlan(status=value.status, assistant_ids=assistant_ids)
 
 
 def create(
     model_factory: Callable[[], BaseChatModel],
+    provider: str,
     objective: object,
     candidates: tuple[CapabilityCandidate, ...],
 ) -> CapabilityPlan:
-    """Produce one closed plan without tools, conversation state, or lifecycle authority."""
+    """Produce one provider-native structured plan without tools, conversation state, or lifecycle authority."""
+    from agent_runtime import RuntimeContractError, structured_output, structured_value
+
     task, admitted = _inputs(objective, candidates)
     try:
-        message = model_factory().invoke(_prompt(task, admitted))
+        result = structured_output(model_factory(), provider, StructuredPlan).invoke(_prompt(task, admitted))
     except ImportError:
         raise
     except Exception as exc:
         raise CapabilityPlanProviderError("model provider request failed") from exc
     try:
-        if not isinstance(message, AIMessage):
-            raise CapabilityPlanError("invalid capability plan response")
-        return _parse(message, admitted)
-    except CapabilityPlanError as exc:
+        return _plan(structured_value(result, StructuredPlan, "capability plan", MAX_RESPONSE_CHARS), admitted)
+    except (CapabilityPlanError, RuntimeContractError) as exc:
         raise CapabilityPlanResponseError("model provider response failed") from exc
