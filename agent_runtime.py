@@ -21,10 +21,11 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import capability_plan as capability_planner
+import context_budget
 import httpx
 import intent_route as intent_router
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
@@ -442,20 +443,6 @@ def structured_value[Schema: BaseModel](result: object, schema: type[Schema], la
     return parsed
 
 
-def _message_content(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, list):
-        return ""
-    text: list[str] = []
-    for block in value:
-        if isinstance(block, str):
-            text.append(block)
-        elif isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str):
-            text.append(str(block["text"]))
-    return "\n".join(text)
-
-
 def normalize_language_exemplar(value: str) -> str:
     """Return bounded user text that may influence presentation but never authority."""
     if not isinstance(value, str):
@@ -603,10 +590,9 @@ def _result(
         (message for message in reversed(current_messages) if isinstance(message, AIMessage)),
         None,
     )
-    if reply_message is not None and not reply_message.tool_calls and not reply_message.invalid_tool_calls:
-        reply = _message_content(reply_message.content).strip()
-        if reply:
-            return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
+    reply = context_budget.final_reply(reply_message)
+    if reply:
+        return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
     raise RuntimeContractError("graph completed without an Assistant reply")
 
 
@@ -716,8 +702,8 @@ class AgentRuntime:
             middleware=_prompt_caching(context.provider),
         )
 
-    def _prepare_scope(self, context: TurnContext, *, resume: bool) -> int:
-        """Retain history only while the exact Assistant contract remains selected."""
+    def _prepare_scope(self, context: TurnContext, *, resume: bool) -> tuple[object, ...]:
+        """Retain history only while the exact Assistant contract remains selected, and return what remains."""
         try:
             config = self._config(context)
             expected_scope = config["metadata"][ASSISTANT_SCOPE_METADATA]
@@ -727,19 +713,19 @@ class AgentRuntime:
         if checkpoint_tuple is None:
             if resume:
                 raise RuntimeContractError("conversation has no pending Action request")
-            return 0
+            return ()
         has_pending_interrupt = _has_pending_interrupt(getattr(checkpoint_tuple, "pending_writes", None))
         if resume and not has_pending_interrupt:
             raise RuntimeContractError("conversation has no pending Action request")
         if not resume and has_pending_interrupt:
             self.delete_thread(context.thread_id)
-            return 0
+            return ()
         metadata = getattr(checkpoint_tuple, "metadata", None)
         if not isinstance(metadata, Mapping) or metadata.get(ASSISTANT_SCOPE_METADATA) != expected_scope:
             self.delete_thread(context.thread_id)
             if resume:
                 raise RuntimeContractError("Assistant scope changed during the pending turn")
-            return 0
+            return ()
         checkpoint = getattr(checkpoint_tuple, "checkpoint", None)
         if not isinstance(checkpoint, Mapping):
             raise RuntimeStateError("checkpoint state is invalid")
@@ -749,7 +735,44 @@ class AgentRuntime:
         messages = channel_values.get("messages", ())
         if not isinstance(messages, Sequence):
             raise RuntimeStateError("checkpoint state is invalid")
-        return len(messages)
+        return tuple(messages)
+
+    @staticmethod
+    def _fixed_tokens(context: TurnContext) -> int:
+        tools = [
+            {"name": _tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
+            for assistant in context.assistants
+            for action in assistant.actions
+        ]
+        return context_budget.fixed_tokens(_system_prompt(context), tools)
+
+    def _fit_history(self, agent, context: TurnContext, history: tuple[object, ...], turn: HumanMessage) -> None:
+        """Forget the oldest whole exchanges before a new turn; never runs while an Action round is pending."""
+        try:
+            drop = context_budget.history_to_drop(
+                history, self._fixed_tokens(context), context_budget.message_tokens(turn)
+            )
+        except context_budget.ContextWindowError as exc:
+            raise RuntimeContractError(str(exc)) from exc
+        except context_budget.ContextStateError as exc:
+            raise RuntimeStateError("checkpoint state is invalid") from exc
+        if not drop:
+            return
+        try:
+            agent.update_state(self._config(context), {"messages": [RemoveMessage(id=message.id) for message in drop]})
+        except Exception as exc:
+            raise RuntimeStateError("checkpoint trimming failed") from exc
+        self._prune_history(context.thread_id)
+
+    def _ensure_resume_window(self, context: TurnContext, history: tuple[object, ...], results: Mapping) -> None:
+        """Refuse a resumed call whose Action results would overflow the smallest model window."""
+        try:
+            conversation = sum(context_budget.message_tokens(message) for message in history)
+            context_budget.ensure_window(
+                self._fixed_tokens(context), conversation + context_budget.estimated_tokens(dict(results))
+            )
+        except context_budget.ContextWindowError as exc:
+            raise RuntimeContractError(str(exc)) from exc
 
     def action_labels(
         self,
@@ -837,12 +860,12 @@ class AgentRuntime:
         lock = self._thread_lock(context.thread_id)
         try:
             with lock:
-                self._prepare_scope(context, resume=False)
+                history = self._prepare_scope(context, resume=False)
                 self._prune_history(context.thread_id)
-                state = self._agent(context).invoke(
-                    {"messages": [HumanMessage(content=message, id=turn_id)]},
-                    config=self._config(context),
-                )
+                agent = self._agent(context)
+                turn = HumanMessage(content=message, id=turn_id)
+                self._fit_history(agent, context, history, turn)
+                state = agent.invoke({"messages": [turn]}, config=self._config(context))
         except RuntimeContractError, RuntimeStateError, ImportError:
             raise
         except Exception as exc:
@@ -857,8 +880,10 @@ class AgentRuntime:
             from langgraph.types import Command
 
             with lock:
-                message_offset = self._prepare_scope(context, resume=True)
+                history = self._prepare_scope(context, resume=True)
+                message_offset = len(history)
                 self._prune_history(context.thread_id)
+                self._ensure_resume_window(context, history, results)
                 state = self._agent(context).invoke(
                     Command(resume=dict(results)),
                     config=self._config(context),

@@ -84,7 +84,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             pending_writes=[("task", "__interrupt__", {})],
             metadata=expected_metadata,
         )
-        self.assertEqual(runtime._prepare_scope(turn, resume=False), 0)
+        self.assertEqual(runtime._prepare_scope(turn, resume=False), ())
 
         invalid_states = (
             SimpleNamespace(pending_writes=[], metadata=expected_metadata, checkpoint=None),
@@ -118,7 +118,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=lambda _config: mock.Mock())
 
         with mock.patch.object(agent_runtime, "_assistant_scope", wraps=agent_runtime._assistant_scope) as scope:
-            self.assertEqual(runtime._prepare_scope(turn, resume=False), 2)
+            self.assertEqual(len(runtime._prepare_scope(turn, resume=False)), 2)
 
         scope.assert_called_once_with(turn)
 

@@ -14,6 +14,7 @@ from typing import Any, ClassVar
 from unittest import mock
 
 import agent_runtime
+import context_budget
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -689,9 +690,9 @@ class AgentRuntimeTests(unittest.TestCase):
             agent_runtime.provider_model(invalid_config)
 
     def test_result_projection_rejects_every_invalid_boundary_shape(self):
-        self.assertEqual(agent_runtime._message_content(None), "")
+        self.assertEqual(context_budget.message_text(None), "")
         self.assertEqual(
-            agent_runtime._message_content(
+            context_budget.message_text(
                 ["first", {"type": "text", "text": "second"}, {"type": "image", "text": "ignored"}, 3]
             ),
             "first\nsecond",

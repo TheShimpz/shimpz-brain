@@ -1,0 +1,273 @@
+"""Whole-exchange conversation memory and the model-window guard, over the production SQLite checkpoint."""
+
+from __future__ import annotations
+
+import sqlite3
+import tempfile
+import unittest
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any, ClassVar
+from unittest import mock
+
+import agent_runtime
+import context_budget
+import runtime_api
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+
+class RecordingModel(FakeMessagesListChatModel):
+    seen: ClassVar[list[list[Any]]] = []
+
+    def bind_tools(self, tools: Sequence[Any], **_kwargs: Any):
+        return self
+
+    def _generate(self, messages: list[Any], *args: Any, **kwargs: Any):
+        type(self).seen.append(list(messages))
+        return super()._generate(messages, *args, **kwargs)
+
+
+ACTION = agent_runtime.ActionDefinition(
+    "ping",
+    "Ping a host.",
+    {"type": "object", "properties": {"host": {"type": "string"}}, "additionalProperties": False},
+)
+PINGER = agent_runtime.AssistantDefinition("pinger", "Pinger checks that hosts answer.", (ACTION,))
+TOOL = agent_runtime._tool_name("pinger", "ping")
+
+
+def _context(*assistants: agent_runtime.AssistantDefinition) -> agent_runtime.TurnContext:
+    return agent_runtime.TurnContext(
+        "budget-thread",
+        "Budget Team",
+        assistants or (PINGER,),
+        agent_runtime.ProviderConfig("openai", "gpt-6-sol", "secret-test-key"),
+    )
+
+
+def _call(host: str, call_id: str) -> dict:
+    return {"name": TOOL, "args": {"host": host}, "id": call_id, "type": "tool_call"}
+
+
+def _user_texts(messages: Sequence[Any]) -> list[str]:
+    return [str(message.content) for message in messages if isinstance(message, HumanMessage)]
+
+
+class ExchangeTests(unittest.TestCase):
+    def test_history_splits_at_user_messages_and_needs_ids(self):
+        history = [
+            HumanMessage("a", id="h1"),
+            AIMessage("", tool_calls=[_call("x", "c1")], id="a1"),
+            ToolMessage("ok", tool_call_id="c1", id="t1"),
+            AIMessage("done", id="a2"),
+            HumanMessage("b", id="h2"),
+            AIMessage("reply", id="a3"),
+        ]
+        self.assertEqual([len(group) for group in context_budget.exchanges(history)], [4, 2])
+        with self.assertRaises(context_budget.ContextStateError):
+            context_budget.exchanges([HumanMessage("a")])
+        with self.assertRaises(context_budget.ContextStateError):
+            context_budget.exchanges([AIMessage("orphan", id="a1")])
+
+    def test_newest_whole_exchanges_are_kept_within_count_and_budget(self):
+        history = [
+            message
+            for index in range(5)
+            for message in (HumanMessage(f"q{index}", id=f"h{index}"), AIMessage(f"r{index}", id=f"a{index}"))
+        ]
+        with mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 2):
+            dropped = context_budget.history_to_drop(history, 0, 1)
+        self.assertEqual([message.id for message in dropped], ["h0", "a0", "h1", "a1", "h2", "a2"])
+        exchange = sum(context_budget.message_tokens(message) for message in history[-2:])
+        with mock.patch.object(context_budget, "HISTORY_BUDGET_TOKENS", exchange):
+            dropped = context_budget.history_to_drop(history, 0, 1)
+        self.assertEqual(len(dropped), 8)
+        self.assertEqual(context_budget.history_to_drop([], 0, 1), ())
+        unfinished = [
+            HumanMessage("q0", id="h0"),
+            AIMessage("r0", id="a0"),
+            HumanMessage("failed", id="hf"),
+            HumanMessage("q1", id="h1"),
+            AIMessage("", tool_calls=[_call("x", "c1")], id="at"),
+            HumanMessage("q2", id="h2"),
+            AIMessage("r2", id="a2"),
+        ]
+        self.assertEqual(
+            [message.id for message in context_budget.history_to_drop(unfinished, 0, 1)], ["hf", "h1", "at"]
+        )
+
+    def test_fixed_prompt_and_current_message_alone_can_exceed_the_window(self):
+        with self.assertRaises(context_budget.ContextWindowError):
+            context_budget.history_to_drop([], context_budget.MODEL_WINDOW_TOKENS, 1)
+        # The JSON encoding counts: 298 characters plus two quotes are 300 bytes, 100 estimated tokens.
+        self.assertEqual(context_budget.estimated_tokens("x" * 298), 100)
+
+
+class RuntimeBudgetTests(unittest.TestCase):
+    def setUp(self) -> None:
+        RecordingModel.seen = []
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = Path(self.directory.name) / "checkpoints.sqlite3"
+        self.connections: list[sqlite3.Connection] = []
+
+    def tearDown(self) -> None:
+        for connection in self.connections:
+            connection.close()
+        self.directory.cleanup()
+
+    def _runtime(self, *responses: AIMessage) -> agent_runtime.AgentRuntime:
+        connection = sqlite3.connect(self.path, check_same_thread=False)
+        self.connections.append(connection)
+        saver = runtime_api.PruningSqliteSaver(connection)
+        saver.setup()
+        model = RecordingModel(responses=list(responses))
+        return agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+
+    def test_a_new_turn_forgets_the_oldest_whole_exchanges_and_resume_still_finds_its_reply(self):
+        turn = _context()
+        runtime = self._runtime(
+            AIMessage("r1"),
+            AIMessage("", tool_calls=[_call("a.example", "c1"), _call("b.example", "c2")]),
+            AIMessage("both hosts answered"),
+            AIMessage("r3"),
+            AIMessage("", tool_calls=[_call("c.example", "c3")]),
+            AIMessage("c answered"),
+        )
+        runtime.start(turn, "one")
+        parallel = runtime.start(turn, "two")
+        self.assertEqual(len(parallel.actions), 2)
+        runtime.resume(turn, {request.interrupt_id: {"status": "ok"} for request in parallel.actions})
+        runtime.start(turn, "three")
+        with mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 2):
+            pending = runtime.start(turn, "four")
+            self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["two", "three", "four"])
+            # The kept Action exchange reaches the model whole: both calls and both results.
+            self.assertEqual(sum(isinstance(message, ToolMessage) for message in RecordingModel.seen[-1]), 2)
+            done = runtime.resume(turn, {pending.actions[0].interrupt_id: {"status": "ok"}})
+        self.assertEqual((done.status, done.reply), ("completed", "c answered"))
+
+        stored = runtime._checkpointer.get_tuple(runtime._config(turn))
+        self.assertEqual(_user_texts(stored.checkpoint["channel_values"]["messages"]), ["two", "three", "four"])
+        self.assertFalse(agent_runtime._has_pending_interrupt(stored.pending_writes))
+        self.assertEqual(stored.metadata[agent_runtime.ASSISTANT_SCOPE_METADATA], agent_runtime._assistant_scope(turn))
+
+        reopened = self._runtime(AIMessage("r5"))
+        with mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 1):
+            self.assertEqual(reopened.start(turn, "five").reply, "r5")
+        self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["four", "five"])
+        # Pruning leaves one self-contained checkpoint that a fresh connection reads back as the trimmed history.
+        reopened._prune_history(turn.thread_id)
+        rows = self.connections[-1].execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0]
+        self.assertEqual(rows, 1)
+        fresh = self._runtime()
+        stored = fresh._checkpointer.get_tuple(fresh._config(turn))
+        self.assertEqual(_user_texts(stored.checkpoint["channel_values"]["messages"]), ["four", "five"])
+
+    def test_window_guards_refuse_before_any_provider_call(self):
+        turn = _context()
+        runtime = self._runtime(AIMessage("", tool_calls=[_call("a.example", "c1")]))
+        with (
+            mock.patch.object(context_budget, "MODEL_WINDOW_TOKENS", context_budget.OUTPUT_RESERVE_TOKENS + 10),
+            self.assertRaisesRegex(agent_runtime.RuntimeContractError, "model window"),
+        ):
+            runtime.start(turn, "x" * 1_000)
+        self.assertEqual(RecordingModel.seen, [])
+        pending = runtime.start(turn, "ping")
+        calls = len(RecordingModel.seen)
+        huge = {pending.actions[0].interrupt_id: {"body": "x" * 4_000}}
+        with (
+            mock.patch.object(context_budget, "MODEL_WINDOW_TOKENS", context_budget.OUTPUT_RESERVE_TOKENS + 2_000),
+            self.assertRaisesRegex(agent_runtime.RuntimeContractError, "model window"),
+        ):
+            runtime.resume(turn, huge)
+        self.assertEqual(len(RecordingModel.seen), calls)
+
+    def test_a_failed_turn_is_forgotten_instead_of_resent_with_the_next_request(self):
+        class FailOnce(RecordingModel):
+            def _generate(self, messages: list[Any], *args: Any, **kwargs: Any):
+                if str(messages[-1].content) in {"boom", "tool boom"}:
+                    raise RuntimeError("provider outage")
+                return super()._generate(messages, *args, **kwargs)
+
+        turn = _context()
+        model = FailOnce(
+            responses=[
+                AIMessage("r1"),
+                AIMessage("", tool_calls=[_call("a.example", "c1")]),
+                AIMessage("r3"),
+            ]
+        )
+        connection = sqlite3.connect(self.path, check_same_thread=False)
+        self.connections.append(connection)
+        saver = runtime_api.PruningSqliteSaver(connection)
+        saver.setup()
+        runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        runtime.start(turn, "one")
+        with self.assertRaises(agent_runtime.ProviderRequestError):
+            runtime.start(turn, "boom")
+        failed = saver.get_tuple(runtime._config(turn))
+        self.assertEqual(_user_texts(failed.checkpoint["channel_values"]["messages"]), ["one", "boom"])
+        pending = runtime.start(turn, "ping")
+        self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["one", "ping"])
+        # A resumed round that fails leaves an unanswered Action round; the next turn forgets it too.
+        with self.assertRaises(agent_runtime.ProviderRequestError):
+            runtime.resume(turn, {pending.actions[0].interrupt_id: "tool boom"})
+        self.assertEqual(runtime.start(turn, "three").reply, "r3")
+        self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["one", "three"])
+        self.assertFalse(any(isinstance(message, ToolMessage) for message in RecordingModel.seen[-1]))
+
+    def test_a_rejected_empty_reply_is_forgotten_like_any_failed_turn(self):
+        turn = _context()
+        runtime = self._runtime(AIMessage("r1"), AIMessage("   "), AIMessage("r3"))
+        runtime.start(turn, "one")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "without an Assistant reply"):
+            runtime.start(turn, "empty")
+        self.assertEqual(runtime.start(turn, "three").reply, "r3")
+        self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["one", "three"])
+
+    def test_corrupt_history_and_failed_trimming_fail_closed_as_state_errors(self):
+        runtime = self._runtime()
+        turn = _context()
+        agent = mock.Mock()
+        with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint state is invalid"):
+            runtime._fit_history(agent, turn, (AIMessage("orphan", id="a1"),), HumanMessage("now", id="h9"))
+        agent.update_state.side_effect = RuntimeError("private checkpoint detail")
+        history = (HumanMessage("old", id="h1"), AIMessage("reply", id="a1"))
+        with (
+            mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 0),
+            self.assertRaisesRegex(agent_runtime.RuntimeStateError, "^checkpoint trimming failed$"),
+        ):
+            runtime._fit_history(agent, turn, history, HumanMessage("now", id="h9"))
+        agent.update_state.assert_called_once()
+
+    def test_maximum_genesis_fits_but_maximum_schemas_are_refused_before_a_provider_call(self):
+        genesis = "g" * agent_runtime.MAX_GENESIS_BYTES
+        largest = tuple(
+            agent_runtime.AssistantDefinition(f"assistant-{index}", genesis, (ACTION,))
+            for index in range(agent_runtime.MAX_ASSISTANTS)
+        )
+        self.assertEqual(self._runtime(AIMessage("fits")).start(_context(*largest), "hi").reply, "fits")
+
+        filler = {"type": "string", "description": "d" * (agent_runtime.MAX_SCHEMA_BYTES - 200)}
+        wide = tuple(
+            agent_runtime.ActionDefinition(
+                f"action-{index}",
+                "Wide.",
+                {"type": "object", "properties": {"v": filler}, "additionalProperties": False},
+            )
+            for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)
+        )
+        # Two Assistants carry the Team's 128 Actions at the maximum schema size; the rest carry maximum Genesis only.
+        heaviest = tuple(
+            agent_runtime.AssistantDefinition(f"assistant-{index}", genesis, wide if index < 2 else ())
+            for index in range(agent_runtime.MAX_ASSISTANTS)
+        )
+        calls = len(RecordingModel.seen)
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "model window"):
+            self._runtime().start(_context(*heaviest), "hi")
+        self.assertEqual(len(RecordingModel.seen), calls)
+
+
+if __name__ == "__main__":
+    unittest.main()
