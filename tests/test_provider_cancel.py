@@ -239,6 +239,8 @@ class StreamScopeTests(unittest.TestCase):
         # Outside any scope the same stream is a plain pass-through.
         peer.sendall(b"ok")
         self.assertEqual(stream.read(2), b"ok")
+        peer.sendall(b"x")
+        self.assertIsInstance(stream.start_tls(None), provider_cancel._Stream)
         self.assertIsNone(stream.get_extra_info("server_addr"))
         stream.close()
 
