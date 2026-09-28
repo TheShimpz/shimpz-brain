@@ -98,6 +98,16 @@ class SchemaTests(unittest.TestCase):
                 self.assertNotIn("minLength", encoded)
                 self.assertNotIn("pattern", encoded)
 
+    def test_binding_and_raw_text_helpers_fail_closed(self):
+        model = mock.Mock()
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model provider"):
+            agent_runtime.structured_output(model, "gemini", capability_plan.StructuredPlan)
+        model.with_structured_output.assert_not_called()
+        self.assertEqual(agent_runtime._raw_text(object()), "")
+        self.assertEqual(
+            agent_runtime._raw_text([{"type": "reasoning"}, {"type": "text", "text": "{}"}, {"type": "text"}]), "{}"
+        )
+
 
 class OpenAIStructuredOutputTests(unittest.TestCase):
     provider = agent_runtime.ProviderConfig("openai", "gpt-6-sol", KEY)
