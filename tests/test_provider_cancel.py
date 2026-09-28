@@ -157,6 +157,51 @@ class CancellableTransportTests(unittest.TestCase):
         self.assertEqual(connect.call_args_list[0].args[2], provider_cancel.CONNECT_TIMEOUT_SECONDS)
         self.assertEqual(connect.call_args_list[1].args[2], 0.5)
 
+    def test_a_connect_or_pool_wait_failing_after_stop_is_a_cancellation_and_never_retried(self):
+        scope = provider_cancel.CancelScope()
+
+        def fail_after_stop(error):
+            def fail(*_args, **_kwargs):
+                scope.cancel()
+                raise error
+
+            return fail
+
+        with (
+            mock.patch.object(
+                httpcore.SyncBackend, "connect_tcp", side_effect=fail_after_stop(httpcore.ConnectTimeout("slow"))
+            ),
+            self.assertRaises(provider_cancel.ProviderCallCancelled),
+        ):
+            scope.run(lambda: provider_cancel._Backend().connect_tcp("127.0.0.1", 9))
+        # Without Stop the same failures keep their meaning for the SDK's own retry policy.
+        with (
+            mock.patch.object(httpcore.SyncBackend, "connect_tcp", side_effect=httpcore.ConnectTimeout("slow")),
+            self.assertRaises(httpcore.ConnectTimeout),
+        ):
+            provider_cancel.CancelScope().run(lambda: provider_cancel._Backend().connect_tcp("127.0.0.1", 9))
+        with (
+            mock.patch.object(httpx.HTTPTransport, "handle_request", side_effect=httpx.PoolTimeout("busy")),
+            self.assertRaises(httpx.PoolTimeout),
+        ):
+            provider_cancel.CancelScope().run(lambda: self.client.get("http://127.0.0.1:9/"))
+
+        # Through the real OpenAI SDK: a pool timeout after Stop ends the call without a retry sleep.
+        scope = provider_cancel.CancelScope()
+        model = agent_runtime.provider_model(
+            agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"), http_client=self.client
+        )
+        with (
+            mock.patch.object(
+                httpx.HTTPTransport, "handle_request", side_effect=fail_after_stop(httpx.PoolTimeout("busy"))
+            ) as send,
+            mock.patch("openai._base_client.time.sleep") as sleep,
+            self.assertRaises(provider_cancel.ProviderCallCancelled),
+        ):
+            scope.run(lambda: model.invoke("Hello"))
+        send.assert_called_once()
+        sleep.assert_not_called()
+
     def test_a_cancel_during_connect_closes_the_new_connection(self):
         scope = provider_cancel.CancelScope()
         stream = mock.Mock()

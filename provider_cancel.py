@@ -133,6 +133,11 @@ class _Stream(httpcore.NetworkStream):
         return self._inner.get_extra_info(info)
 
 
+def _raise_if_cancelled(scope: CancelScope | None, cause: Exception) -> None:
+    if scope is not None and scope.cancelled:
+        raise ProviderCallCancelled from cause
+
+
 def _bounded(timeout: float | None, bound: float) -> float:
     return bound if timeout is None else min(timeout, bound)
 
@@ -142,9 +147,13 @@ class _Backend(httpcore.SyncBackend):
         scope = _SCOPE.get()
         if scope is not None:
             scope.check()
-        stream = super().connect_tcp(
-            host, port, _bounded(timeout, CONNECT_TIMEOUT_SECONDS), local_address, socket_options
-        )
+        try:
+            stream = super().connect_tcp(
+                host, port, _bounded(timeout, CONNECT_TIMEOUT_SECONDS), local_address, socket_options
+            )
+        except Exception as exc:
+            _raise_if_cancelled(scope, exc)
+            raise
         if scope is not None and scope.cancelled:
             stream.close()
             raise ProviderCallCancelled
@@ -178,7 +187,12 @@ class _Transport(httpx.HTTPTransport):
         timeout["connect"] = _bounded(timeout.get("connect"), CONNECT_TIMEOUT_SECONDS)
         timeout["pool"] = _bounded(timeout.get("pool"), POOL_TIMEOUT_SECONDS)
         request.extensions["timeout"] = timeout
-        return super().handle_request(request)
+        try:
+            return super().handle_request(request)
+        except Exception as exc:
+            # A connect or pool wait that failed after Stop must not reach the SDK, which would sleep and retry.
+            _raise_if_cancelled(scope, exc)
+            raise
 
 
 def client() -> httpx.Client:
