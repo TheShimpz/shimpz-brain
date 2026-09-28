@@ -113,6 +113,21 @@ class CancellableTransportTests(unittest.TestCase):
         self.assertEqual(hanging.accepted, 1)
         self.assertEqual(self.client.get(answering.url()).text, "ok")
 
+    def test_cancel_wakes_a_stalled_real_tls_handshake_without_touching_the_pool(self):
+        stalled = self._server(respond=False)
+        answering = self._server(respond=True)
+        scope = provider_cancel.CancelScope()
+        # The server never answers the ClientHello, so the real ssl handshake blocks.
+        outcome = _run(scope, lambda: self.client.get(f"https://127.0.0.1:{stalled.port}/", timeout=30))
+        while not scope._sockets:
+            time.sleep(0.01)
+        self.assertEqual(self.client.get(answering.url()).text, "ok")
+        started = time.monotonic()
+        scope.cancel()
+        self.assertIsInstance(outcome.exception(5), provider_cancel.ProviderCallCancelled)
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertEqual(self.client.get(answering.url()).text, "ok")
+
     def test_a_scope_cancelled_before_its_request_never_connects(self):
         server = self._server(respond=True)
         scope = provider_cancel.CancelScope()

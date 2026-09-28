@@ -117,8 +117,17 @@ class _Stream(httpcore.NetworkStream):
         self._inner.close()
 
     def start_tls(self, ssl_context, server_hostname: str | None = None, timeout: float | None = None):
-        with _guard(self._inner):
+        scope = _SCOPE.get()
+        if scope is None:
             return _Stream(self._inner.start_tls(ssl_context, server_hostname, timeout))
+        # wrap_socket detaches this socket object and handshakes on a new one, so the scope holds a duplicate
+        # descriptor of the same connection; shutting it down still wakes the handshake.
+        handle = self._inner.get_extra_info("socket").dup()
+        try:
+            with scope.io(handle):
+                return _Stream(self._inner.start_tls(ssl_context, server_hostname, timeout))
+        finally:
+            handle.close()
 
     def get_extra_info(self, info: str) -> object:
         return self._inner.get_extra_info(info)
