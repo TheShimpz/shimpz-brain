@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -145,8 +144,7 @@ class TurnEvalTests(unittest.TestCase):
         self.assertFalse(turns.run_turn(vague, PROVIDER, _case("genesis-injection-en"), 0))
 
     def test_turns_carry_the_team_default_effort_and_decisions_do_not(self):
-        config = (Path(__file__).resolve().parents[2] / "teams" / "inference" / "config.py").read_text(encoding="utf-8")
-        self.assertIn(f'DEFAULT_EFFORT = "{turns.TURN_EFFORT}"', config)
+        # The umbrella pins TURN_EFFORT to Team's default; this standalone repository proves only its use.
         runtime = mock.Mock()
         runtime.start.return_value = agent_runtime.TurnResult("completed", reply="ok")
         runtime.capability_plan.return_value = capability_plan.CapabilityPlan("sufficient")
