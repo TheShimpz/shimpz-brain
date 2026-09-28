@@ -503,21 +503,44 @@ class IntentRouteTests(unittest.TestCase):
                 "assistant-uninstall",
                 candidates(uninstall=True),
             ),
-            (
-                intent_route.StructuredRoute(
-                    task_follows=False,
-                    intent="ordinary-task",
-                    query="",
-                    assistant_ids=[],
-                    reply="Which Assistant?",
-                ),
-                None,
-                (),
-            ),
         )
         for response, expected, shortlist in invalid:
             with self.subTest(response=response), self.assertRaises(intent_route.IntentRouteError):
                 intent_route._route(response, expected, shortlist)
+
+    def test_an_unconsumed_reply_is_discarded_and_a_missing_clarification_stays_fatal(self):
+        # Live gpt-6-sol probes returned ordinary-task with a greeting in reply, which failed the whole message.
+        def route(intent, query="", reply="", ids=(), expected=None, shortlist=()):
+            response = intent_route.StructuredRoute(
+                task_follows=False, intent=intent, query=query, assistant_ids=list(ids), reply=reply
+            )
+            return intent_route._route(response, expected, shortlist)
+
+        self.assertEqual(
+            route("ordinary-task", reply="Claro, posso ajudar!"), intent_route.IntentRoute("ordinary-task")
+        )
+        self.assertEqual(
+            route("assistant-uninstall", "cloudflare", reply="Removendo o Cloudflare."),
+            intent_route.IntentRoute("assistant-uninstall", "cloudflare"),
+        )
+        self.assertEqual(
+            route(
+                "assistant-uninstall",
+                reply="Vou remover.",
+                ids=("shimpz-cloudflare",),
+                expected="assistant-uninstall",
+                shortlist=candidates(uninstall=True),
+            ),
+            intent_route.IntentRoute("assistant-uninstall", assistant_ids=("shimpz-cloudflare",)),
+        )
+        for args in (("unresolved",), ("assistant-install",), ("assistant-uninstall",)):
+            with self.subTest(missing=args), self.assertRaises(intent_route.IntentRouteError):
+                route(*args)
+        with self.assertRaises(intent_route.IntentRouteError):
+            route("unresolved", expected="assistant-uninstall", shortlist=candidates(uninstall=True))
+        # The discarded reply is still validated first.
+        with self.assertRaises(intent_route.IntentRouteError):
+            route("ordinary-task", reply="Primeira linha\u2028segunda")
 
     def test_only_a_targeted_install_classification_can_continue_the_task(self):
         def route(intent, query, reply="", ids=(), follows=True, expected=None, shortlist=()):

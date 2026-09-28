@@ -48,12 +48,12 @@ class IntentRouteSemanticsTests(unittest.TestCase):
                 side_effect=[
                     intent_route.IntentRoute("assistant-uninstall", assistant_ids=("shimpz-whatsapp",)),
                     intent_route.IntentRoute("unresolved", reply="Which Assistant?"),
-                    intent_route.IntentRoute("assistant-uninstall", assistant_ids=("shimpz-whatsapp",)),
+                    intent_route.IntentRouteResponseError("model provider response failed"),
                 ],
             ) as route,
         ):
             result = semantics.evaluate(mock.Mock(), mock.Mock())
-        self.assertEqual(result["cases"], [{"id": "select-uninstall", "passed": 2, "required": 3}])
+        self.assertEqual(result["cases"], [{"id": "select-uninstall", "passed": 1, "rejected": 1, "required": 3}])
         self.assertEqual(result["passing_cases"], 0)
         self.assertEqual(route.call_count, semantics.ATTEMPTS)
 

@@ -2,7 +2,8 @@
 
 Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m
 eval.intent_route`` from Brain to validate the corpus without a
-provider. Add ``--key-file ../.gpt-key`` for three real calls per case. Output
+provider. Add ``--key-file ../.gpt-key`` (or ``--provider anthropic --key-file ../.claude-key``) for three real
+calls per case. A response the route contract rejects counts as a miss. Output
 contains only case identifiers and pass counts, never prompts or responses.
 Three of three is a conservative semantic floor for a future prompt edit, not
 a statistical reliability estimate. Keep the first complete run, including
@@ -22,8 +23,8 @@ from pathlib import Path
 import agent_runtime
 import intent_route
 
-# Least expensive OpenAI option in the umbrella model catalog on 2026-09-25.
-FLOOR_MODEL = "gpt-6-luna"
+# Least expensive option per provider in the umbrella model catalog on 2026-09-28.
+FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5"}
 ATTEMPTS = 3
 
 _REFERENCE = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")
@@ -271,15 +272,25 @@ def _key(path: Path) -> str:
 def evaluate(factory: agent_runtime.ProviderModelFactory, provider: agent_runtime.ProviderConfig) -> dict[str, object]:
     results = []
     for case in CASES:
-        passed = 0
+        passed = rejected = 0
         for _ in range(ATTEMPTS):
-            route = intent_route.create(
-                lambda: factory.decision(provider), "openai", case.objective, case.mode, case.candidates, case.context
-            )
+            try:
+                route = intent_route.create(
+                    lambda: factory.decision(provider),
+                    provider.provider,
+                    case.objective,
+                    case.mode,
+                    case.candidates,
+                    case.context,
+                )
+            except intent_route.IntentRouteResponseError:
+                rejected += 1
+                continue
             passed += _matches(case, route)
-        results.append({"id": case.id, "passed": passed, "required": ATTEMPTS})
+        results.append({"id": case.id, "passed": passed, "rejected": rejected, "required": ATTEMPTS})
     return {
-        "model": FLOOR_MODEL,
+        "model": provider.model,
+        "provider": provider.provider,
         "attempts_per_case": ATTEMPTS,
         "cases": results,
         "passing_cases": sum(item["passed"] == ATTEMPTS for item in results),
@@ -289,13 +300,16 @@ def evaluate(factory: agent_runtime.ProviderModelFactory, provider: agent_runtim
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--key-file", type=Path)
+    parser.add_argument("--provider", choices=sorted(FLOOR_MODELS), default="openai")
     args = parser.parse_args()
     try:
         validate_corpus()
         if args.key_file is None:
-            print(json.dumps({"status": "corpus-inputs-valid", "cases": len(CASES), "model": FLOOR_MODEL}))
+            print(
+                json.dumps({"status": "corpus-inputs-valid", "cases": len(CASES), "model": FLOOR_MODELS[args.provider]})
+            )
             return 0
-        provider = agent_runtime.ProviderConfig("openai", FLOOR_MODEL, _key(args.key_file))
+        provider = agent_runtime.ProviderConfig(args.provider, FLOOR_MODELS[args.provider], _key(args.key_file))
         factory = agent_runtime.ProviderModelFactory()
         try:
             result = evaluate(factory, provider)
@@ -306,7 +320,6 @@ def main() -> int:
         ValueError,
         intent_route.IntentRouteError,
         intent_route.IntentRouteProviderError,
-        intent_route.IntentRouteResponseError,
     ):
         print("intent-route semantic evaluation failed", file=sys.stderr)
         return 2
