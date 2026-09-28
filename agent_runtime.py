@@ -588,6 +588,19 @@ def _has_pending_interrupt(pending_writes: object) -> bool:
     return has_pending_interrupt
 
 
+def _prompt_caching(provider: ProviderConfig) -> list[object]:
+    """Mark Anthropic's stable system prompt, tools, and conversation prefix for its five-minute prompt cache.
+
+    OpenAI caches eligible prefixes automatically. Anthropic keeps a cached prefix under the configured five-minute
+    TTL, refreshed each time it is reused (ADR-0009).
+    """
+    if provider.provider != "anthropic":
+        return []
+    from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
+
+    return [AnthropicPromptCachingMiddleware(ttl="5m", unsupported_model_behavior="raise")]
+
+
 class AgentRuntime:
     """Compile short-lived provider models over one durable, provider-neutral graph state."""
 
@@ -659,6 +672,7 @@ class AgentRuntime:
             tools=tools,
             system_prompt=_system_prompt(context),
             checkpointer=self._checkpointer,
+            middleware=_prompt_caching(context.provider),
         )
 
     def _prepare_scope(self, context: TurnContext, *, resume: bool) -> int:
