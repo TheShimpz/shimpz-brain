@@ -8,6 +8,7 @@ with its bounded result.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import re
@@ -25,6 +26,7 @@ import context_budget
 import httpx
 import intent_fast_path
 import intent_route as intent_router
+import provider_cancel
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.tools import StructuredTool
@@ -233,19 +235,40 @@ def provider_model(
             openai["http_client"] = http_client
         return ChatOpenAI(**openai)
     if config.provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-
         effort = "low" if decision else config.effort
         anthropic = {**common, **({"effort": effort} if effort is not None else {})}
-        return ChatAnthropic(**anthropic)
+        model = _pooled_chat_anthropic()(**anthropic)
+        model._http_client = http_client
+        return model
     raise RuntimeContractError("unsupported model provider")
 
 
+@functools.cache
+def _pooled_chat_anthropic() -> type[BaseChatModel]:
+    import anthropic
+    from langchain_anthropic import ChatAnthropic
+    from pydantic import PrivateAttr
+
+    class PooledChatAnthropic(ChatAnthropic):
+        """ChatAnthropic over the runtime's cancellable pool instead of langchain-anthropic's process-wide client.
+
+        Overrides the ``_client`` of the pinned langchain-anthropic 1.4.8; only the synchronous client is used.
+        """
+
+        _http_client: httpx.Client | None = PrivateAttr(default=None)
+
+        @functools.cached_property
+        def _client(self) -> anthropic.Client:
+            return anthropic.Client(**self._client_params, http_client=self._http_client)
+
+    return PooledChatAnthropic
+
+
 class ProviderModelFactory:
-    """Build short-lived credential holders over one credential-free connection pool."""
+    """Build short-lived credential holders over one credential-free, turn-cancellable connection pool."""
 
     def __init__(self) -> None:
-        self._http_client = httpx.Client()
+        self._http_client = provider_cancel.client()
 
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
         return provider_model(config, http_client=self._http_client)

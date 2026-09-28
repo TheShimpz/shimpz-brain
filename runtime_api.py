@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hmac
 import os
 import sqlite3
@@ -14,7 +16,9 @@ from typing import Annotated, Any, Literal, Self
 import agent_runtime
 import capability_plan
 import intent_route
-from fastapi import Depends, FastAPI, Header, HTTPException
+import provider_cancel
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -484,6 +488,27 @@ def _register_intent_route(
         )
 
 
+async def _cancel_on_disconnect(request: Request, scope: provider_cancel.CancelScope) -> None:
+    while (await request.receive())["type"] != "http.disconnect":
+        pass
+    scope.cancel()
+
+
+async def _cancellable_turn(request: Request, work: Callable[[], agent_runtime.TurnResult]) -> dict[str, object]:
+    """Run one synchronous turn to completion; a Team disconnect cancels only this turn's provider I/O (ADR-0079)."""
+    scope = provider_cancel.CancelScope()
+    watcher = asyncio.create_task(_cancel_on_disconnect(request, scope))
+    try:
+        result = await run_in_threadpool(scope.run, work)
+    except provider_cancel.ProviderCallCancelled:
+        raise HTTPException(status_code=409, detail="Chat turn cancelled") from None
+    finally:
+        watcher.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watcher
+    return _response(result)
+
+
 def create_app(
     *,
     runtime: RuntimeLike | None = None,
@@ -537,12 +562,15 @@ def create_app(
         return {"status": "ok", "runtime": "langgraph"}
 
     @app.post("/v1/turns", dependencies=[Depends(require_auth)])
-    def start_turn(body: StartTurnInput) -> dict[str, object]:
-        return _response(current_runtime().start(body.runtime_context(), body.message, body.runtime_conversation()))
+    async def start_turn(request: Request, body: StartTurnInput) -> dict[str, object]:
+        return await _cancellable_turn(
+            request,
+            lambda: current_runtime().start(body.runtime_context(), body.message, body.runtime_conversation()),
+        )
 
     @app.post("/v1/turns/resume", dependencies=[Depends(require_auth)])
-    def resume_turn(body: ResumeTurnInput) -> dict[str, object]:
-        return _response(current_runtime().resume(body.runtime_context(), body.results))
+    async def resume_turn(request: Request, body: ResumeTurnInput) -> dict[str, object]:
+        return await _cancellable_turn(request, lambda: current_runtime().resume(body.runtime_context(), body.results))
 
     @app.post("/v1/threads/delete", dependencies=[Depends(require_auth)])
     def delete_thread(body: DeleteThreadInput) -> dict[str, str]:

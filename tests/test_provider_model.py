@@ -12,7 +12,7 @@ class ProviderModelTests(unittest.TestCase):
     def test_openai_uses_responses_api_without_changing_anthropic(self):
         with (
             mock.patch("langchain_openai.ChatOpenAI") as openai,
-            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+            mock.patch.object(agent_runtime, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             agent_runtime.provider_model(
                 agent_runtime.ProviderConfig(
@@ -36,7 +36,7 @@ class ProviderModelTests(unittest.TestCase):
     def test_decision_models_use_provider_specific_low_effort_with_one_retry(self):
         with (
             mock.patch("langchain_openai.ChatOpenAI") as openai,
-            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+            mock.patch.object(agent_runtime, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             agent_runtime.provider_model(
                 agent_runtime.ProviderConfig(
@@ -68,7 +68,7 @@ class ProviderModelTests(unittest.TestCase):
     def test_chat_models_use_the_configured_effort_and_other_models_keep_the_provider_default(self):
         with (
             mock.patch("langchain_openai.ChatOpenAI") as openai,
-            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+            mock.patch.object(agent_runtime, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             for effort in ("low", "medium", "high"):
                 agent_runtime.provider_model(

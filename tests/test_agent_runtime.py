@@ -788,7 +788,7 @@ class AgentRuntimeTests(unittest.TestCase):
     def test_every_catalog_provider_has_a_runtime_adapter(self):
         with (
             mock.patch("langchain_openai.ChatOpenAI") as openai,
-            mock.patch("langchain_anthropic.ChatAnthropic") as anthropic,
+            mock.patch.object(agent_runtime, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             for provider, models in agent_runtime.MODELS_BY_PROVIDER.items():
                 with self.subTest(provider=provider):
