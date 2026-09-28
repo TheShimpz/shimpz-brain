@@ -58,6 +58,7 @@ def body(**updates):
         ],
         "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET, "effort": "low"},
         "message": "Hello",
+        "conversation": [],
     }
     value.update(updates)
     return value
@@ -69,8 +70,9 @@ class FakeRuntime:
         self.error = error
         self.calls = []
 
-    def start(self, context, message):
+    def start(self, context, message, conversation=()):
         self.calls.append(("start", context, message))
+        self.conversation = conversation
         if self.error:
             raise self.error
         return self.result
@@ -518,10 +520,36 @@ class RuntimeApiTests(unittest.TestCase):
             },
         )
 
+    def test_start_requires_a_bounded_conversation_window_and_resume_refuses_one(self):
+        entry = {"role": "user", "text": "Earlier", "truncated": False}
+        runtime = FakeRuntime()
+        response = client(runtime).post(
+            "/v1/turns", json=body(conversation=[entry]), headers={"Authorization": f"Bearer {TOKEN}"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(runtime.conversation, (intent_route.ConversationEntry("user", "Earlier", False),))
+        for window in ([entry] * 9, [{**entry, "text": "x" * 513}], [{**entry, "role": "system"}]):
+            with self.subTest(size=len(window)):
+                response = client(FakeRuntime()).post(
+                    "/v1/turns", json=body(conversation=window), headers={"Authorization": f"Bearer {TOKEN}"}
+                )
+                self.assertEqual(response.status_code, 422)
+        missing = body()
+        missing.pop("conversation")
+        response = client(FakeRuntime()).post("/v1/turns", json=missing, headers={"Authorization": f"Bearer {TOKEN}"})
+        self.assertEqual(response.status_code, 422)
+        resume = body(results={"interrupt-1": {"status": "ok"}})
+        resume.pop("message")
+        response = client(FakeRuntime()).post(
+            "/v1/turns/resume", json=resume, headers={"Authorization": f"Bearer {TOKEN}"}
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_resume_accepts_only_explicit_interrupt_results(self):
         runtime = FakeRuntime()
         payload = body(message=None)
         payload.pop("message")
+        payload.pop("conversation")
         payload["results"] = {"interrupt-1": {"message": "Hello, Ada."}}
         response = client(runtime).post(
             "/v1/turns/resume",

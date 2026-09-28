@@ -144,7 +144,8 @@ def _conversation_entry(value: ConversationEntry) -> ConversationEntry:
     )
 
 
-def _conversation(value: object) -> tuple[ConversationEntry, ...]:
+def admit_conversation(value: object) -> tuple[ConversationEntry, ...]:
+    """Admit one bounded window of untrusted committed presentation history."""
     if not isinstance(value, tuple) or len(value) > MAX_CONVERSATION_ENTRIES:
         raise IntentRouteError("invalid conversation window")
     admitted = tuple(_conversation_entry(entry) for entry in value)
@@ -166,7 +167,7 @@ def _lifecycle_context(value: LifecycleContext | None) -> LifecycleContext:
             "language exemplar",
             layout=True,
         )
-    return LifecycleContext(value.reference, _conversation(value.conversation), exemplar)
+    return LifecycleContext(value.reference, admit_conversation(value.conversation), exemplar)
 
 
 def _classification_context(context: LifecycleContext) -> LifecycleContext:

@@ -231,14 +231,14 @@ class RuntimeBudgetTests(unittest.TestCase):
         turn = _context()
         agent = mock.Mock()
         with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint state is invalid"):
-            runtime._fit_history(agent, turn, (AIMessage("orphan", id="a1"),), HumanMessage("now", id="h9"))
+            runtime._fit_history(agent, turn, (AIMessage("orphan", id="a1"),), HumanMessage("now", id="h9"), ())
         agent.update_state.side_effect = RuntimeError("private checkpoint detail")
         history = (HumanMessage("old", id="h1"), AIMessage("reply", id="a1"))
         with (
             mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 0),
             self.assertRaisesRegex(agent_runtime.RuntimeStateError, "^checkpoint trimming failed$"),
         ):
-            runtime._fit_history(agent, turn, history, HumanMessage("now", id="h9"))
+            runtime._fit_history(agent, turn, history, HumanMessage("now", id="h9"), ())
         agent.update_state.assert_called_once()
 
     def test_maximum_genesis_fits_but_maximum_schemas_are_refused_before_a_provider_call(self):

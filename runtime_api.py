@@ -117,8 +117,24 @@ class TurnContextInput(BaseModel):
         )
 
 
+class ConversationEntryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=intent_route.MAX_CONVERSATION_TEXT_CHARS)
+    truncated: bool
+
+    def runtime_entry(self) -> intent_route.ConversationEntry:
+        return intent_route.ConversationEntry(self.role, self.text, self.truncated)
+
+
 class StartTurnInput(TurnContextInput):
     message: str = Field(min_length=1, max_length=agent_runtime.MAX_MESSAGE_CHARS)
+    # Eight entries of at most 512 characters cannot exceed the 4,096-character window total.
+    conversation: list[ConversationEntryInput] = Field(max_length=intent_route.MAX_CONVERSATION_ENTRIES)
+
+    def runtime_conversation(self) -> tuple[intent_route.ConversationEntry, ...]:
+        return tuple(entry.runtime_entry() for entry in self.conversation)
 
 
 class ResumeTurnInput(TurnContextInput):
@@ -237,17 +253,6 @@ class LifecycleReferenceInput(BaseModel):
 
     def runtime_reference(self) -> intent_route.LifecycleReference:
         return intent_route.LifecycleReference(id=self.id, name=self.name)
-
-
-class ConversationEntryInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    role: Literal["user", "assistant"]
-    text: str = Field(min_length=1, max_length=intent_route.MAX_CONVERSATION_TEXT_CHARS)
-    truncated: bool
-
-    def runtime_entry(self) -> intent_route.ConversationEntry:
-        return intent_route.ConversationEntry(self.role, self.text, self.truncated)
 
 
 class IntentRouteInput(BaseModel):
@@ -520,7 +525,7 @@ def create_app(
 
     @app.post("/v1/turns", dependencies=[Depends(require_auth)])
     def start_turn(body: StartTurnInput) -> dict[str, object]:
-        return _response(current_runtime().start(body.runtime_context(), body.message))
+        return _response(current_runtime().start(body.runtime_context(), body.message, body.runtime_conversation()))
 
     @app.post("/v1/turns/resume", dependencies=[Depends(require_auth)])
     def resume_turn(body: ResumeTurnInput) -> dict[str, object]:
