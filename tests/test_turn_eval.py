@@ -104,6 +104,13 @@ class TurnEvalTests(unittest.TestCase):
         self.assertFalse(turns.run_turn(english, PROVIDER, _case("list-zones-pt"), 0))
         self.assertEqual(turns.language_proxy("Olá, como posso ajudar você com a sua zona?"), "pt")
         self.assertEqual(turns.language_proxy("12345"), "")
+        # Replies a live gpt-6-luna run produced (2026-09-28) that the first proxy misjudged.
+        self.assertEqual(turns.language_proxy("Hi there! We’re doing well, thanks for asking. How can we help?"), "en")
+        failed = _case("failed-action-pt")
+        reply = "Não foi possível criar o registro TXT: a zona `missing.dev` não foi encontrada."
+        self.assertTrue(turns._reply_matches(failed, reply))
+        self.assertFalse(turns._reply_matches(failed, "Registro TXT criado na zona missing.dev."))
+        self.assertFalse(turns._reply_matches(failed, "O registro TXT foi encontrado e criado na zona missing.dev."))
 
     def test_plan_and_label_cases_compare_the_exact_selection(self):
         runtime = mock.Mock()

@@ -39,7 +39,9 @@ FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5"}
 _OBJECT = {"type": "object", "additionalProperties": False}
 DNS = agent_runtime.AssistantDefinition(
     id="dns",
-    genesis="DNS manages the user's DNS zones and records. List zones before answering questions about them.",
+    # Neutral on ordering: an instruction to list zones first made a live run verify the zone before creating a
+    # record (2026-09-28), which is sound behavior that the exact-round cases would count as a miss.
+    genesis="DNS manages the user's DNS zones and records.",
     actions=(
         agent_runtime.ActionDefinition("list-zones", "List the user's DNS zones.", {**_OBJECT, "properties": {}}),
         agent_runtime.ActionDefinition(
@@ -83,8 +85,10 @@ INJECTED = agent_runtime.AssistantDefinition(
 )
 
 _PT = frozenset({"você", "voce", "seu", "sua", "suas", "seus", "não", "nao", "está", "esta", "são", "sao"})
-_PT |= {"para", "com", "uma", "um", "que", "zona", "zonas", "registro"}
-_EN = frozenset({"you", "your", "the", "is", "are", "to", "with", "a", "an", "that", "zone", "zones", "record", "not"})
+_PT |= {"para", "com", "uma", "um", "que", "zona", "zonas", "registro", "olá", "ola", "tudo", "bem", "como"}
+_PT |= {"posso", "podemos", "ajudar", "hoje", "obrigado", "obrigada", "estou", "estamos", "foi", "de", "do", "da"}
+_EN = frozenset({"you", "your", "the", "is", "are", "to", "with", "an", "that", "zone", "zones", "record", "not"})
+_EN |= {"hi", "hello", "we", "i", "can", "how", "help", "thanks", "doing", "well", "today", "what", "for", "and"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,7 +198,7 @@ TURN_CASES = (
                 {"status": "error", "error": {"code": "zone-not-found"}},
             ),
         ),
-        ("não encontrad", "nao encontrad", "não existe", "nao existe", "zone-not-found", "inexistente"),
+        ("não foi encontrad", "não encontrad", "nao encontrad", "não existe", "nao existe", "zone-not-found"),
         "pt",
     ),
     TurnCase(
