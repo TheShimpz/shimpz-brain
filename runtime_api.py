@@ -255,10 +255,20 @@ class LifecycleReferenceInput(BaseModel):
         return intent_route.LifecycleReference(id=self.id, name=self.name)
 
 
+class DecisionProviderInput(BaseModel):
+    """The Supervisor's request-scoped TypeSafe key for the classification fast path."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["typesafe"]
+    api_key: SecretStr = Field(min_length=16, max_length=8192)
+
+
 class IntentRouteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: ProviderInput
+    decision_provider: DecisionProviderInput | None = None
     objective: str = Field(min_length=1, max_length=intent_route.MAX_OBJECTIVE_CHARS)
     expected_intent: Literal["assistant-install", "assistant-uninstall"] | None
     candidates: list[DirectoryCandidateInput] = Field(max_length=intent_route.MAX_CANDIDATES)
@@ -271,8 +281,8 @@ class IntentRouteInput(BaseModel):
         if self.expected_intent is None:
             if self.language_exemplar is not None:
                 raise ValueError("classification cannot include a language exemplar")
-        elif self.lifecycle_reference is not None or self.conversation:
-            raise ValueError("selection cannot include lifecycle state")
+        elif self.lifecycle_reference is not None or self.conversation or self.decision_provider is not None:
+            raise ValueError("selection cannot include lifecycle state or a decision provider")
         if sum(len(entry.text) for entry in self.conversation) > intent_route.MAX_CONVERSATION_CHARS:
             raise ValueError("conversation window is too large")
         return self
@@ -329,6 +339,7 @@ class RuntimeLike:
         expected_intent: intent_route.LifecycleIntent | None,
         candidates: tuple[intent_route.DirectoryCandidate, ...],
         context: intent_route.LifecycleContext | None,
+        decision_key: str | None = None,
     ) -> intent_route.IntentRoute: ...
 
 
@@ -431,12 +442,14 @@ def _run_intent_route(
     if not slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Intent route capacity reached")
     try:
+        decision = body.decision_provider
         route = runtime.intent_route(
             body.runtime_provider(),
             body.objective,
             body.expected_intent,
             body.runtime_candidates(),
             body.runtime_context(),
+            decision_key=None if decision is None else decision.api_key.get_secret_value(),
         )
         return _intent_route_response(route)
     finally:

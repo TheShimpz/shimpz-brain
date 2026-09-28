@@ -1,4 +1,4 @@
-"""Fail-closed Brain provider policy derived only from the packaged model catalog."""
+"""Fail-closed Brain provider policy: the packaged model catalog's hosts plus one fixed decision host."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ import stat
 from pathlib import Path
 
 CATALOG_PATH = Path("/app/model_catalog.json")
+# The TypeSafe Jev intent fast path is a decision endpoint, not a selectable chat provider, so it stays out of the
+# model catalog that every component mirrors (ADR-0077).
+DECISION_HOSTS = frozenset({"api.typesafe.ai"})
 MAX_CATALOG_BYTES = 256 * 1024
 ID_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}\Z")
 HOST_RE = re.compile(

@@ -43,6 +43,16 @@ class BrainEgressPolicyTests(unittest.TestCase):
         self.assertFalse(app.permitted("api.openai.com", 80, hosts))
         self.assertFalse(app.permitted("*", 443, hosts))
 
+    def test_the_only_decision_host_is_the_exact_typesafe_api(self) -> None:
+        self.assertEqual(policy.DECISION_HOSTS, frozenset({"api.typesafe.ai"}))
+        catalog_hosts = policy.load_provider_hosts(ROOT / "model_catalog.json")
+        self.assertTrue(policy.DECISION_HOSTS.isdisjoint(catalog_hosts))
+        allowed = catalog_hosts | policy.DECISION_HOSTS
+        self.assertTrue(app.permitted("api.typesafe.ai", 443, allowed))
+        self.assertFalse(app.permitted("typesafe.ai", 443, allowed))
+        self.assertFalse(app.permitted("docs.typesafe.ai", 443, allowed))
+        self.assertFalse(app.permitted("api.typesafe.ai", 80, allowed))
+
     def test_missing_and_malformed_catalogs_are_refused(self) -> None:
         missing = Path(tempfile.gettempdir()) / "shimpz-missing-brain-egress-catalog"
         missing.unlink(missing_ok=True)

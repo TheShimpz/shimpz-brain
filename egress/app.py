@@ -272,12 +272,17 @@ class Server(socketserver.ThreadingTCPServer):
 
 def main() -> None:
     try:
-        allowed_hosts = policy.load_provider_hosts()
+        provider_hosts = policy.load_provider_hosts()
     except policy.ProviderPolicyError:
         print("brain-egress: provider policy is unavailable; refusing to start", file=sys.stderr)
         raise SystemExit(1) from None
+    allowed_hosts = provider_hosts | policy.DECISION_HOSTS
     server = Server((str(ipaddress.IPv4Address(0)), LISTEN_PORT), Handler, allowed_hosts=allowed_hosts)
-    print(f"brain-egress listening on :{LISTEN_PORT}; providers={sorted(allowed_hosts)}", file=sys.stderr)
+    print(
+        f"brain-egress listening on :{LISTEN_PORT}; providers={sorted(provider_hosts)} "
+        f"decisions={sorted(policy.DECISION_HOSTS)}",
+        file=sys.stderr,
+    )
     server.serve_forever()
 
 

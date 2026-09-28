@@ -45,8 +45,8 @@ class StaticBrainImageContractTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn(
-            "agent_runtime.py capability_plan.py context_budget.py intent_route.py runtime_api.py model_catalog.json "
-            "/app/",
+            "agent_runtime.py capability_plan.py context_budget.py intent_fast_path.py intent_route.py "
+            "runtime_api.py \\\n    model_catalog.json /app/",
             dockerfile,
         )
         self.assertNotIn("egress/", dockerfile)

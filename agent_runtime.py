@@ -23,6 +23,7 @@ from typing import Any, Literal, Protocol
 import capability_plan as capability_planner
 import context_budget
 import httpx
+import intent_fast_path
 import intent_route as intent_router
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
@@ -654,6 +655,8 @@ class AgentRuntime:
         self._owns_model_factory = model_factory is None
         self._thread_locks_guard = threading.Lock()
         self._thread_locks: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakValueDictionary()
+        self._decision_client: httpx.Client | None = None
+        self._decision_client_guard = threading.Lock()
 
     def _thread_lock(self, thread_id: str) -> threading.RLock:
         with self._thread_locks_guard:
@@ -674,6 +677,8 @@ class AgentRuntime:
 
     def close(self) -> None:
         """Close runtime-owned provider and checkpointer connections."""
+        if self._decision_client is not None:
+            self._decision_client.close()
         if self._owns_model_factory:
             close_factory = getattr(self._model_factory, "close", None)
             if callable(close_factory):
@@ -809,6 +814,25 @@ class AgentRuntime:
         except context_budget.ContextWindowError as exc:
             raise RuntimeContractError(str(exc)) from exc
 
+    def _confident_ordinary(
+        self,
+        decision_key: str,
+        objective: str,
+        expected_intent: intent_router.LifecycleIntent | None,
+        context: intent_router.LifecycleContext | None,
+    ) -> bool:
+        if expected_intent is not None:
+            raise RuntimeContractError("the decision fast path applies only to classification")
+        try:
+            task, _, _, admitted = intent_router.validate_inputs(objective, None, (), context)
+        except intent_router.IntentRouteError as exc:
+            raise RuntimeContractError(str(exc)) from exc
+        with self._decision_client_guard:
+            if self._decision_client is None:
+                self._decision_client = httpx.Client()
+            client = self._decision_client
+        return intent_fast_path.confident_ordinary(client, decision_key, task, admitted)
+
     def action_labels(
         self,
         provider: ProviderConfig,
@@ -866,8 +890,15 @@ class AgentRuntime:
         expected_intent: intent_router.LifecycleIntent | None,
         candidates: tuple[intent_router.DirectoryCandidate, ...],
         context: intent_router.LifecycleContext | None,
+        decision_key: str | None = None,
     ) -> intent_router.IntentRoute:
-        """Classify or resolve lifecycle intent without conversation or lifecycle authority."""
+        """Classify or resolve lifecycle intent without conversation or lifecycle authority.
+
+        With a Supervisor-configured decision key, classification first asks the Jev fast path; only a confident
+        ordinary task skips the LLM route, which otherwise runs unchanged.
+        """
+        if decision_key is not None and self._confident_ordinary(decision_key, objective, expected_intent, context):
+            return intent_router.IntentRoute("ordinary-task")
 
         def model_factory() -> BaseChatModel:
             decision_factory = getattr(self._model_factory, "decision", None)

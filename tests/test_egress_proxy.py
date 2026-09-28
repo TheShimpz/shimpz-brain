@@ -283,10 +283,12 @@ class BrainEgressServerTests(unittest.TestCase):
         server_factory.assert_called_once_with(
             (str(ipaddress.IPv4Address(0)), app.LISTEN_PORT),
             app.Handler,
-            allowed_hosts=hosts,
+            allowed_hosts=hosts | {"api.typesafe.ai"},
         )
         server.serve_forever.assert_called_once_with()
-        self.assertIn("providers=['api.anthropic.com', 'api.openai.com']", stderr.getvalue())
+        self.assertIn(
+            "providers=['api.anthropic.com', 'api.openai.com'] decisions=['api.typesafe.ai']", stderr.getvalue()
+        )
 
     def test_accepted_socket_gets_the_connect_timeout(self) -> None:
         server = self._server()

@@ -106,8 +106,9 @@ class FakeRuntime:
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
 
-    def intent_route(self, provider, objective, expected_intent, candidates, context):
+    def intent_route(self, provider, objective, expected_intent, candidates, context, decision_key=None):
         self.calls.append(("intent_route", provider, objective, expected_intent, candidates, context))
+        self.decision_key = decision_key
         if self.error:
             raise self.error
         if expected_intent is None:
@@ -246,6 +247,46 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.json(), {"detail": "Capability planner capacity reached"})
         self.assertEqual(runtime.calls, [])
+
+    def test_intent_route_accepts_a_decision_key_only_for_classification(self):
+        route = {
+            "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET},
+            "objective": "Oi, tudo bem?",
+            "expected_intent": None,
+            "candidates": [],
+            "lifecycle_reference": None,
+            "conversation": [],
+            "language_exemplar": None,
+        }
+        decision = {"provider": "typesafe", "api_key": "tsk-test-0123456789abcdef"}
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+        runtime = FakeRuntime()
+        response = client(runtime).post(
+            "/v1/intent-route", json={**route, "decision_provider": decision}, headers=headers
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(runtime.decision_key, decision["api_key"])
+        self.assertNotIn(decision["api_key"], response.text)
+        runtime = FakeRuntime()
+        self.assertEqual(client(runtime).post("/v1/intent-route", json=route, headers=headers).status_code, 200)
+        self.assertIsNone(runtime.decision_key)
+        selection = {
+            **route,
+            "objective": "cloudflare",
+            "expected_intent": "assistant-install",
+            "candidates": [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": "DNS."}],
+            "decision_provider": decision,
+        }
+        for body in (
+            selection,
+            {**route, "decision_provider": {**decision, "provider": "openai"}},
+            {**route, "decision_provider": {**decision, "api_key": "short"}},
+            {**route, "decision_provider": {**decision, "extra": 1}},
+        ):
+            with self.subTest(body=str(body.get("decision_provider"))[:60]):
+                self.assertEqual(
+                    client(FakeRuntime()).post("/v1/intent-route", json=body, headers=headers).status_code, 422
+                )
 
     def test_intent_route_is_authenticated_stateless_and_closed(self):
         runtime = FakeRuntime()
