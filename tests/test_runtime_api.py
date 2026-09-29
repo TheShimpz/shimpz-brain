@@ -60,7 +60,7 @@ def body(**updates):
             },
         ],
         "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET, "effort": "low"},
-        "instructions": [],
+        "memories": [],
         "message": "Hello",
         "conversation": [],
     }
@@ -528,7 +528,14 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            {"status": "completed", "reply": "Hello.", "clarification": None, "actions": [], "usage": NO_USAGE},
+            {
+                "status": "completed",
+                "reply": "Hello.",
+                "clarification": None,
+                "actions": [],
+                "memory": [],
+                "usage": NO_USAGE,
+            },
         )
         context = runtime.calls[0][1]
         self.assertEqual(context.provider.api_key, SECRET)
@@ -548,7 +555,14 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            {"status": "completed", "reply": "Brain only.", "clarification": None, "actions": [], "usage": NO_USAGE},
+            {
+                "status": "completed",
+                "reply": "Brain only.",
+                "clarification": None,
+                "actions": [],
+                "memory": [],
+                "usage": NO_USAGE,
+            },
         )
         self.assertEqual(runtime.calls[0][1].assistants, ())
 
@@ -579,6 +593,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "status": "action-required",
                 "reply": "",
                 "clarification": None,
+                "memory": [],
                 "actions": [
                     {
                         "interrupt_id": "interrupt-1",

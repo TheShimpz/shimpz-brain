@@ -15,8 +15,8 @@ from typing import Annotated, Any, Literal, Self
 
 import agent_runtime
 import capability_plan
-import instructions as standing_instructions
 import intent_route
+import memory as team_memory
 import model_usage
 import provider_cancel
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -81,7 +81,8 @@ class TurnContextInput(BaseModel):
     team_name: str = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_NAME_CHARS)
     assistants: list[AssistantInput] = Field(max_length=agent_runtime.MAX_ASSISTANTS)
     provider: ChatProviderInput
-    instructions: list[str] = Field(max_length=standing_instructions.MAX_INSTRUCTIONS)
+    # What the Team remembers (ADR-0084); null where memory is unavailable, which also withholds the memory tool.
+    memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -121,8 +122,17 @@ class TurnContextInput(BaseModel):
                 api_key=self.provider.api_key.get_secret_value(),
                 effort=self.provider.effort,
             ),
-            instructions=tuple(self.instructions),
+            memories=_memories(self.memories),
         )
+
+
+def _memories(value: list[dict[str, Any]] | None) -> tuple[team_memory.Memory, ...] | None:
+    if value is None:
+        return None
+    try:
+        return team_memory.canonical(value)
+    except team_memory.MemoryContractError as exc:
+        raise agent_runtime.RuntimeContractError("invalid memory") from exc
 
 
 class ConversationEntryInput(BaseModel):
@@ -395,6 +405,7 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
         "status": result.status,
         "reply": result.reply,
         "clarification": None if result.clarification is None else result.clarification.to_dict(),
+        "memory": [change.to_dict() for change in result.memory],
         "actions": [
             {
                 "interrupt_id": request.interrupt_id,

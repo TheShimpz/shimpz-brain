@@ -27,9 +27,9 @@ import capability_plan as capability_planner
 import clarification as clarifier
 import context_budget
 import httpx
-import instructions as standing_instructions
 import intent_fast_path
 import intent_route as intent_router
+import memory as team_memory
 import provider_cancel
 import turn_pins
 import turn_prompt
@@ -174,17 +174,19 @@ class TurnContext:
     provider: ProviderConfig
     # The trusted UTC date the logical turn reasons with; a resumed turn keeps the date its start recorded.
     turn_date: datetime.date = field(default_factory=turn_prompt.today)
-    # The Supervisor's standing instructions for the Team; a resumed turn keeps the ones its start recorded.
-    instructions: tuple[str, ...] = ()
+    # What the Team remembers about the user (ADR-0084); None where memory is unavailable. A resumed turn keeps the
+    # memories its start recorded.
+    memories: tuple[team_memory.Memory, ...] | None = None
 
     def __post_init__(self) -> None:
         if type(self.turn_date) is not datetime.date:
             raise RuntimeContractError("invalid turn date")
-        try:
-            standing_instructions.canonical(self.instructions)
-        except standing_instructions.InstructionsError as exc:
-            raise RuntimeContractError("invalid standing instructions") from exc
-        object.__setattr__(self, "instructions", tuple(self.instructions))
+        if self.memories is not None:
+            try:
+                team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in self.memories])
+            except (AttributeError, TypeError, team_memory.MemoryContractError) as exc:
+                raise RuntimeContractError("invalid memory") from exc
+            object.__setattr__(self, "memories", tuple(self.memories))
         if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
@@ -212,6 +214,8 @@ class TurnResult:
     reply: str = ""
     actions: tuple[ActionRequest, ...] = ()
     clarification: clarifier.Clarification | None = None
+    # The memory changes this completed logical turn proposed; the Team saves them when its reply commits.
+    memory: tuple[team_memory.Change, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,6 +564,13 @@ def _result(
     raise RuntimeContractError("graph completed without an Assistant reply")
 
 
+def _with_memory(result: TurnResult, state: Mapping[str, Any]) -> TurnResult:
+    """Attach the logical turn's accepted memory changes to its completed result only."""
+    if result.status != "completed":
+        return result
+    return replace(result, memory=team_memory.proposed(list(state.get("messages", ()))))
+
+
 def _has_pending_interrupt(pending_writes: object) -> bool:
     if pending_writes is not None and (
         not isinstance(pending_writes, Sequence) or isinstance(pending_writes, (str, bytes))
@@ -665,7 +676,7 @@ class AgentRuntime:
             "configurable": {"thread_id": context.thread_id},
             "metadata": {
                 ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
-                **turn_pins.record(context.turn_date, context.instructions),
+                **turn_pins.record(context.turn_date, context.memories),
             },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
@@ -680,6 +691,8 @@ class AgentRuntime:
             for action in assistant.actions
         ]
         tools.append(clarifier.tool())
+        if context.memories is not None:
+            tools.append(team_memory.tool())
         if len({tool.name for tool in tools}) != len(tools):
             raise RuntimeContractError("Action tool name collision")
         return create_agent(
@@ -690,6 +703,7 @@ class AgentRuntime:
             middleware=[
                 *_prompt_caching(context.provider),
                 clarifier.guard(allowed=clarification_allowed),
+                *([team_memory.guard(allowed=clarification_allowed)] if context.memories is not None else []),
             ],
         )
 
@@ -748,7 +762,7 @@ class AgentRuntime:
                 turn_date, rules = turn_pins.restore(metadata)
             except turn_pins.PinError as exc:
                 raise RuntimeStateError("checkpoint state is invalid") from exc
-            context = replace(context, turn_date=turn_date, instructions=rules)
+            context = replace(context, turn_date=turn_date, memories=rules)
         return context, tuple(messages)
 
     @staticmethod
@@ -759,6 +773,10 @@ class AgentRuntime:
             for action in assistant.actions
         ]
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
+        if context.memories is not None:
+            tools.append(
+                {"name": team_memory.TOOL_NAME, "summary": team_memory.DESCRIPTION, "schema": team_memory.SCHEMA}
+            )
         return context_budget.fixed_tokens(turn_prompt.system_prompt(context), tools)
 
     def _fit_history(
@@ -941,7 +959,7 @@ class AgentRuntime:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        return asked or _result(state, after_message_id=turn_id)
+        return _with_memory(asked or _result(state, after_message_id=turn_id), state)
 
     def resume(self, context: TurnContext, results: Mapping[str, object]) -> TurnResult:
         if not results or not all(isinstance(key, str) and key for key in results):
@@ -965,4 +983,4 @@ class AgentRuntime:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        return _result(state, message_offset=message_offset)
+        return _with_memory(_result(state, message_offset=message_offset), state)
