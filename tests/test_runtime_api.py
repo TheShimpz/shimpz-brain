@@ -12,6 +12,7 @@ from unittest import mock
 
 import agent_runtime
 import capability_plan
+import clarification
 import intent_route
 import runtime_api
 from fastapi.testclient import TestClient
@@ -122,6 +123,20 @@ def client(runtime, *, raise_server_exceptions=True):
 
 
 class RuntimeApiTests(unittest.TestCase):
+    def test_a_clarification_travels_as_its_closed_shape(self):
+        asked = clarification.parse(
+            {
+                "question": "Qual formato?",
+                "options": [{"label": "Lista", "description": ""}, {"label": "Tabela", "description": "Compacta."}],
+                "default_index": 1,
+            }
+        )
+        runtime = FakeRuntime(agent_runtime.TurnResult(status="completed", reply=asked.render(), clarification=asked))
+        response = client(runtime).post("/v1/turns", json=body(), headers={"Authorization": f"Bearer {TOKEN}"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["clarification"], asked.to_dict())
+        self.assertEqual(response.json()["reply"], asked.render())
+
     def test_http_provider_contract_matches_the_runtime_catalog(self):
         provider_annotation = runtime_api.ProviderInput.model_fields["provider"].annotation
 
@@ -504,7 +519,9 @@ class RuntimeApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "completed", "reply": "Hello.", "actions": []})
+        self.assertEqual(
+            response.json(), {"status": "completed", "reply": "Hello.", "clarification": None, "actions": []}
+        )
         context = runtime.calls[0][1]
         self.assertEqual(context.provider.api_key, SECRET)
         self.assertEqual(context.team_name, "Greeting Crew")
@@ -521,7 +538,9 @@ class RuntimeApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "completed", "reply": "Brain only.", "actions": []})
+        self.assertEqual(
+            response.json(), {"status": "completed", "reply": "Brain only.", "clarification": None, "actions": []}
+        )
         self.assertEqual(runtime.calls[0][1].assistants, ())
 
     def test_action_request_contains_only_controller_action_data(self):
@@ -550,6 +569,7 @@ class RuntimeApiTests(unittest.TestCase):
             {
                 "status": "action-required",
                 "reply": "",
+                "clarification": None,
                 "actions": [
                     {
                         "interrupt_id": "interrupt-1",

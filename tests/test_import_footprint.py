@@ -61,7 +61,8 @@ def _loaded_modules(probe: str, connection) -> None:
                     team_name="Import Probe",
                     assistants=(),
                     provider=provider_config,
-                )
+                ),
+                clarification_allowed=True,
             )
             assert graph is not None
             runtime.close()
