@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from typing import TYPE_CHECKING
 
@@ -11,19 +12,33 @@ if TYPE_CHECKING:
     from agent_runtime import TurnContext
 
 CLARIFY_AND_COMPLETE = (
-    "Before acting, make sure you know what the user needs. When a material decision is open, meaning reasonable "
-    "choices would change what you search, do, or deliver, and neither the current message nor the conversation "
-    f"settles it, call {clarification.TOOL_NAME} with one question, two to five distinct options, and the index of the "
-    "option you recommend. Ask before requesting any Action and never together with another tool. Do not ask about "
-    "anything the user already specified, never ask for secrets, and do not ask when the request is narrow or a "
-    "sensible default carries no real risk. When the current message answers an earlier question, act on it. When you "
-    "act, cover every requirement the request implies, including each part of a multi-part request and each category "
-    "a broad overview needs, and state plainly what could not be done or found."
+    "Before acting, make sure you know what the user needs. Prefer acting over asking: when a low-risk default "
+    "exists, such as a standard configuration, a common region, the current period, or the most popular options, "
+    "use it and state the assumption in one short sentence of your answer. Call "
+    f"{clarification.TOOL_NAME} only when reasonable choices would lead to materially different deliverables so that "
+    "a default would likely waste the user's time, when the user asks you to choose for them and the right choice "
+    "depends on their own situation, such as budget, goal, or risk tolerance, that they did not give, or when an "
+    "Action would change or delete something whose target or values the user did not give. Then ask one question with "
+    "two to five distinct options and the index of the option you recommend, before requesting any Action and never "
+    "together with another tool. Never ask for a detail that an available read-only Action can look up, such as which "
+    "zone holds a named domain; look it up instead. A lookup cannot reveal intent, so when a change or deletion is "
+    "requested without saying what to change or which values to use, ask before any Action. Never ask about anything "
+    "the user already specified, never ask for secrets, and never ask on narrow or conversational requests. When the "
+    'request depends on context you do not have, such as "that", "everything", or "the project" with nothing earlier '
+    f"to resolve it, ask with {clarification.TOOL_NAME} instead of a free-text question. When the current message "
+    "answers an earlier question, act on it. When you act, cover every requirement the request implies, including "
+    "each part of a multi-part request and each category a broad overview needs, and state plainly what could not be "
+    "done or found."
 )
 
 
+def today() -> datetime.date:
+    """The trusted UTC date the turn reasons with; the Brain has no other source of the current date."""
+    return datetime.datetime.now(datetime.UTC).date()
+
+
 def system_prompt(context: TurnContext) -> str:
-    """The Team turn's policy prompt: identity, Action authority, clarification, completeness, and contracts."""
+    """The Team turn's policy prompt: identity, Action authority, clarification, completeness, contracts, and date."""
     assistant_contracts = [
         {
             "genesis": assistant.genesis,
@@ -84,5 +99,8 @@ def system_prompt(context: TurnContext) -> str:
         f"{json.dumps(context.team_name)}\n\n"
         f"{empty_scope}"
         "Enabled Assistant contracts (canonical JSON data; only the declared Actions are executable):\n"
-        f"{capabilities}"
+        f"{capabilities}\n\n"
+        # The date changes daily, so it stays last and everything before it remains a stable cacheable prefix.
+        f"Current date: {context.turn_date.isoformat()} (UTC). "
+        "When the user's local date could differ and it matters, say which date you used."
     )

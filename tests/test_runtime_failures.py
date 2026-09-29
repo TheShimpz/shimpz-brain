@@ -84,7 +84,16 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             pending_writes=[("task", "__interrupt__", {})],
             metadata=expected_metadata,
         )
-        self.assertEqual(runtime._prepare_scope(turn, resume=False), ())
+        self.assertEqual(runtime._prepare_scope(turn, resume=False), (turn, ()))
+
+        # A pending turn that did not record its date is corrupt state; it never resumes under today's date.
+        checkpointer.get_tuple.return_value = SimpleNamespace(
+            pending_writes=[("task", "__interrupt__", {})],
+            metadata=expected_metadata,
+            checkpoint={"channel_values": {"messages": []}},
+        )
+        with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint state is invalid"):
+            runtime._prepare_scope(turn, resume=True)
 
         invalid_states = (
             SimpleNamespace(pending_writes=[], metadata=expected_metadata, checkpoint=None),
@@ -118,7 +127,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=lambda _config: mock.Mock())
 
         with mock.patch.object(agent_runtime, "_assistant_scope", wraps=agent_runtime._assistant_scope) as scope:
-            self.assertEqual(len(runtime._prepare_scope(turn, resume=False)), 2)
+            self.assertEqual(len(runtime._prepare_scope(turn, resume=False)[1]), 2)
 
         scope.assert_called_once_with(turn)
 
@@ -147,7 +156,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         failing_agent = mock.Mock()
         failing_agent.invoke.side_effect = RuntimeError("provider secret")
         with (
-            mock.patch.object(runtime, "_prepare_scope", return_value=0),
+            mock.patch.object(runtime, "_prepare_scope", return_value=(context(), ())),
             mock.patch.object(runtime, "_prune_history"),
             mock.patch.object(runtime, "_agent", return_value=failing_agent),
             self.assertRaisesRegex(agent_runtime.ProviderRequestError, "model provider request failed"),

@@ -496,7 +496,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         self.assertIn("no enabled Assistants, Actions, or external action tools", prompt)
         self.assertIn("do not perform generic work or invent capabilities", prompt)
-        self.assertTrue(prompt.endswith("[]"))
+        self.assertIn("only the declared Actions are executable):\n[]\n\nCurrent date: ", prompt)
 
     def test_completed_reply_is_bounded_to_the_public_chat_contract(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="x" * (agent_runtime.MAX_REPLY_CHARS + 1))])

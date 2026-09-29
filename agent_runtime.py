@@ -8,6 +8,7 @@ with its bounded result.
 
 from __future__ import annotations
 
+import datetime
 import functools
 import hashlib
 import json
@@ -17,7 +18,7 @@ import threading
 import unicodedata
 import weakref
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -56,6 +57,7 @@ MAX_ACTION_LABEL_RESPONSE_CHARS = 32 * 1024
 MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
+TURN_DATE_METADATA = "shimpz_turn_date"
 DECISION_TIMEOUT_SECONDS = 10.0
 # One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
 DECISION_MAX_RETRIES = 1
@@ -169,8 +171,12 @@ class TurnContext:
     team_name: str
     assistants: tuple[AssistantDefinition, ...]
     provider: ProviderConfig
+    # The trusted UTC date the logical turn reasons with; a resumed turn keeps the date its start recorded.
+    turn_date: datetime.date = field(default_factory=turn_prompt.today)
 
     def __post_init__(self) -> None:
+        if type(self.turn_date) is not datetime.date:
+            raise RuntimeContractError("invalid turn date")
         if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
@@ -297,6 +303,20 @@ def _tool_name(assistant_id: str, action_id: str) -> str:
     action_slug = action_id.replace(".", "_")[:18]
     digest = hashlib.sha256(f"{assistant_id}\0{action_id}".encode()).hexdigest()[:16]
     return f"a_{assistant_slug}__a_{action_slug}__{digest}"
+
+
+def _recorded_turn_date(metadata: Mapping[str, object]) -> datetime.date:
+    """The date a pending turn recorded at its start; anything else is corrupt state, never today's date."""
+    value = metadata.get(TURN_DATE_METADATA)
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        recorded = datetime.date.fromisoformat(value)
+    except ValueError as exc:
+        raise RuntimeStateError("checkpoint state is invalid") from exc
+    if recorded.isoformat() != value:
+        raise RuntimeStateError("checkpoint state is invalid")
+    return recorded
 
 
 def _assistant_scope(context: TurnContext) -> str:
@@ -649,7 +669,10 @@ class AgentRuntime:
     def _config(context: TurnContext) -> dict[str, object]:
         return {
             "configurable": {"thread_id": context.thread_id},
-            "metadata": {ASSISTANT_SCOPE_METADATA: _assistant_scope(context)},
+            "metadata": {
+                ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
+                TURN_DATE_METADATA: context.turn_date.isoformat(),
+            },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
 
@@ -690,8 +713,11 @@ class AgentRuntime:
             raise RuntimeStateError("checkpoint update failed") from exc
         return TurnResult(status="completed", reply=reply, clarification=asked)
 
-    def _prepare_scope(self, context: TurnContext, *, resume: bool) -> tuple[object, ...]:
-        """Retain history only while the exact Assistant contract remains selected, and return what remains."""
+    def _prepare_scope(self, context: TurnContext, *, resume: bool) -> tuple[TurnContext, tuple[object, ...]]:
+        """Retain history only while the exact Assistant contract remains selected, and return what remains.
+
+        A resumed turn continues with the date its start recorded, so one logical turn never spans two dates.
+        """
         try:
             config = self._config(context)
             expected_scope = config["metadata"][ASSISTANT_SCOPE_METADATA]
@@ -701,19 +727,19 @@ class AgentRuntime:
         if checkpoint_tuple is None:
             if resume:
                 raise RuntimeContractError("conversation has no pending Action request")
-            return ()
+            return context, ()
         has_pending_interrupt = _has_pending_interrupt(getattr(checkpoint_tuple, "pending_writes", None))
         if resume and not has_pending_interrupt:
             raise RuntimeContractError("conversation has no pending Action request")
         if not resume and has_pending_interrupt:
             self.delete_thread(context.thread_id)
-            return ()
+            return context, ()
         metadata = getattr(checkpoint_tuple, "metadata", None)
         if not isinstance(metadata, Mapping) or metadata.get(ASSISTANT_SCOPE_METADATA) != expected_scope:
             self.delete_thread(context.thread_id)
             if resume:
                 raise RuntimeContractError("Assistant scope changed during the pending turn")
-            return ()
+            return context, ()
         checkpoint = getattr(checkpoint_tuple, "checkpoint", None)
         if not isinstance(checkpoint, Mapping):
             raise RuntimeStateError("checkpoint state is invalid")
@@ -723,7 +749,9 @@ class AgentRuntime:
         messages = channel_values.get("messages", ())
         if not isinstance(messages, Sequence):
             raise RuntimeStateError("checkpoint state is invalid")
-        return tuple(messages)
+        if resume:
+            context = replace(context, turn_date=_recorded_turn_date(metadata))
+        return context, tuple(messages)
 
     @staticmethod
     def _fixed_tokens(context: TurnContext) -> int:
@@ -902,7 +930,7 @@ class AgentRuntime:
         lock = self._thread_lock(context.thread_id)
         try:
             with lock:
-                history = self._prepare_scope(context, resume=False)
+                context, history = self._prepare_scope(context, resume=False)
                 self._prune_history(context.thread_id)
                 agent = self._agent(context, clarification_allowed=True)
                 turn = HumanMessage(content=message, id=turn_id)
@@ -925,7 +953,7 @@ class AgentRuntime:
             from langgraph.types import Command
 
             with lock:
-                history = self._prepare_scope(context, resume=True)
+                context, history = self._prepare_scope(context, resume=True)
                 message_offset = len(history)
                 self._prune_history(context.thread_id)
                 self._ensure_resume_window(context, history, results)
