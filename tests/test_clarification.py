@@ -109,29 +109,54 @@ class GraphTests(unittest.TestCase):
         self.assertEqual({m.tool_call_id for m in refusals}, {"ask-1", "act-1"})
         self.assertTrue(all("cannot be combined" in m.content for m in refusals))
 
-    def test_an_unparsable_clarification_beside_an_action_stops_the_whole_response(self):
+    def test_a_clarification_beside_an_unparsable_call_ends_the_turn_before_any_tool_runs(self):
         broken = {
             "name": clarification.TOOL_NAME,
             "args": "{not json",
-            "id": "ask-bad",
+            "id": None,
             "error": "bad json",
             "type": "invalid_tool_call",
         }
-        runtime, saver = self._runtime(
+        for response in (
             AIMessage(content="", tool_calls=[_action()], invalid_tool_calls=[broken]),
-            AIMessage(content="", invalid_tool_calls=[{**broken, "id": None}]),
-            AIMessage(content="", tool_calls=[_clarify(VALID, "ask-2")]),
+            AIMessage(content="", invalid_tool_calls=[broken]),
+            AIMessage(content="", tool_calls=[_clarify(VALID)], invalid_tool_calls=[{**broken, "name": ACTION_TOOL}]),
+        ):
+            with self.subTest(response=response):
+                runtime, _saver = self._runtime(response)
+                with (
+                    mock.patch("langgraph.types.interrupt") as interrupt,
+                    self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unparsable tool call"),
+                ):
+                    runtime.start(context(assistant("hello-pulse", action())), "Faça algo")
+                interrupt.assert_not_called()
+        # The same rule holds while resuming after an Action.
+        runtime, _saver = self._runtime(
+            AIMessage(content="", tool_calls=[_action()]), AIMessage(content="", invalid_tool_calls=[broken])
         )
         turn = context(assistant("hello-pulse", action()))
-        with mock.patch("langgraph.types.interrupt") as interrupt:
-            result = runtime.start(turn, "Faça algo")
-        interrupt.assert_not_called()
-        self.assertIsNotNone(result.clarification)
-        refusals = [m for m in _messages(saver, turn.thread_id) if isinstance(m, ToolMessage)]
-        self.assertEqual([m.tool_call_id for m in refusals[:3]], ["act-1", "ask-bad", "shimpz-unidentified-call-0"])
-        self.assertIn("cannot be combined", refusals[0].content)
-        self.assertTrue(all(m.tool_call_id for m in refusals))
-        self.assertTrue(refusals[2].content.startswith("Not executed: the clarification must"))
+        suspended = runtime.start(turn, "Cumprimente Ada")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unparsable tool call"):
+            runtime.resume(turn, {suspended.actions[0].interrupt_id: {"message": "hi"}})
+
+    def test_refusals_pair_with_their_calls_in_both_provider_adapters(self):
+        from langchain_anthropic.chat_models import _format_messages
+        from langchain_openai.chat_models.base import _construct_responses_api_input
+
+        response = AIMessage(content="", tool_calls=[_clarify(VALID), _action()])
+        refused = clarification.guard(allowed=True).after_model(
+            {"messages": [HumanMessage(content="Oi"), response]}, None
+        )
+        messages = [HumanMessage(content="Oi"), response, *refused["messages"]]
+        _system, anthropic = _format_messages(messages)
+        uses = [block["id"] for block in anthropic[1]["content"] if block.get("type") == "tool_use"]
+        results = [block["tool_use_id"] for block in anthropic[2]["content"] if block.get("type") == "tool_result"]
+        self.assertEqual(uses, results)
+        openai = _construct_responses_api_input(messages)
+        calls = [item["call_id"] for item in openai if item.get("type") == "function_call"]
+        outputs = [item["call_id"] for item in openai if item.get("type") == "function_call_output"]
+        self.assertEqual(calls, outputs)
+        self.assertEqual(calls, ["ask-1", "act-1"])
 
     def test_a_malformed_clarification_is_refused_and_can_be_corrected(self):
         runtime, saver = self._runtime(

@@ -65,6 +65,10 @@ _CORRECTIONS = {
 }
 
 
+class UnanswerableToolCallError(ValueError):
+    """A clarification arrived beside a tool call no refusal can be paired with."""
+
+
 @dataclass(frozen=True, slots=True)
 class Option:
     label: str
@@ -176,22 +180,20 @@ def _review(messages: list[Any], *, allowed: bool) -> str | None:
     latest = messages[-1] if messages else None
     if not isinstance(latest, AIMessage):
         return None
-    calls = _calls(latest)
+    calls = [*(latest.tool_calls or []), *(latest.invalid_tool_calls or [])]
     if not any(call.get("name") == TOOL_NAME for call in calls):
         return None
+    if latest.invalid_tool_calls:
+        # A refusal must pair with a call the provider sees again, and adapters drop unparsable calls (Anthropic) or
+        # send them without an id; so a clarification beside one ends the turn as a contract error.
+        raise UnanswerableToolCallError("a clarification arrived with an unparsable tool call")
     if len(calls) > 1:
         return "mixed"
     if not allowed:
         return "after-action"
-    # A call the provider could not parse is listed only among the invalid tool calls.
-    if not latest.tool_calls or parse(latest.tool_calls[0].get("args")) is None:
+    if parse(latest.tool_calls[0].get("args")) is None:
         return "invalid"
     return None
-
-
-def _calls(message: AIMessage) -> list[dict[str, Any]]:
-    """Every tool call of a response, including the ones the provider could not parse."""
-    return [*(message.tool_calls or []), *(message.invalid_tool_calls or [])]
 
 
 @functools.cache
@@ -214,13 +216,8 @@ def _guard_class():
                 return None
             return {
                 "messages": [
-                    ToolMessage(
-                        content=_CORRECTIONS[reason],
-                        # An unparsable call may carry no id; its refusal still needs one to stay a closed correction.
-                        tool_call_id=call["id"] or f"shimpz-unidentified-call-{index}",
-                        name=call["name"] or TOOL_NAME,
-                    )
-                    for index, call in enumerate(_calls(messages[-1]))
+                    ToolMessage(content=_CORRECTIONS[reason], tool_call_id=call["id"], name=call["name"])
+                    for call in messages[-1].tool_calls
                 ],
                 "jump_to": "model",
             }

@@ -911,6 +911,8 @@ class AgentRuntime:
                 asked = self._finish_clarification(agent, context, state)
         except RuntimeContractError, RuntimeStateError, ImportError:
             raise
+        except clarifier.UnanswerableToolCallError as exc:
+            raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
         return asked or _result(state, after_message_id=turn_id)
@@ -933,6 +935,8 @@ class AgentRuntime:
                 )
         except RuntimeContractError, RuntimeStateError, ImportError:
             raise
+        except clarifier.UnanswerableToolCallError as exc:
+            raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
         return _result(state, message_offset=message_offset)
