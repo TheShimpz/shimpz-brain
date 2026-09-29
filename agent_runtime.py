@@ -27,6 +27,7 @@ import capability_plan as capability_planner
 import clarification as clarifier
 import context_budget
 import httpx
+import instructions as standing_instructions
 import intent_fast_path
 import intent_route as intent_router
 import provider_cancel
@@ -58,6 +59,7 @@ MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 TURN_DATE_METADATA = "shimpz_turn_date"
+TURN_INSTRUCTIONS_METADATA = "shimpz_turn_instructions"
 DECISION_TIMEOUT_SECONDS = 10.0
 # One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
 DECISION_MAX_RETRIES = 1
@@ -173,10 +175,17 @@ class TurnContext:
     provider: ProviderConfig
     # The trusted UTC date the logical turn reasons with; a resumed turn keeps the date its start recorded.
     turn_date: datetime.date = field(default_factory=turn_prompt.today)
+    # The Supervisor's standing instructions for the Team; a resumed turn keeps the ones its start recorded.
+    instructions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.turn_date) is not datetime.date:
             raise RuntimeContractError("invalid turn date")
+        try:
+            standing_instructions.canonical(self.instructions)
+        except standing_instructions.InstructionsError as exc:
+            raise RuntimeContractError("invalid standing instructions") from exc
+        object.__setattr__(self, "instructions", tuple(self.instructions))
         if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
@@ -315,6 +324,24 @@ def _recorded_turn_date(metadata: Mapping[str, object]) -> datetime.date:
     except ValueError as exc:
         raise RuntimeStateError("checkpoint state is invalid") from exc
     if recorded.isoformat() != value:
+        raise RuntimeStateError("checkpoint state is invalid")
+    return recorded
+
+
+def _instructions_json(instructions: tuple[str, ...]) -> str:
+    return json.dumps(list(instructions), ensure_ascii=False, separators=(",", ":"))
+
+
+def _recorded_instructions(metadata: Mapping[str, object]) -> tuple[str, ...]:
+    """The standing instructions a pending turn recorded at its start; anything else is corrupt state."""
+    value = metadata.get(TURN_INSTRUCTIONS_METADATA)
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        recorded = standing_instructions.canonical(json.loads(value))
+    except (ValueError, standing_instructions.InstructionsError) as exc:
+        raise RuntimeStateError("checkpoint state is invalid") from exc
+    if _instructions_json(recorded) != value:
         raise RuntimeStateError("checkpoint state is invalid")
     return recorded
 
@@ -672,6 +699,8 @@ class AgentRuntime:
             "metadata": {
                 ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
                 TURN_DATE_METADATA: context.turn_date.isoformat(),
+                # Checkpoint metadata keeps only scalar values, so the list travels as its canonical JSON text.
+                TURN_INSTRUCTIONS_METADATA: _instructions_json(context.instructions),
             },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
@@ -750,7 +779,9 @@ class AgentRuntime:
         if not isinstance(messages, Sequence):
             raise RuntimeStateError("checkpoint state is invalid")
         if resume:
-            context = replace(context, turn_date=_recorded_turn_date(metadata))
+            context = replace(
+                context, turn_date=_recorded_turn_date(metadata), instructions=_recorded_instructions(metadata)
+            )
         return context, tuple(messages)
 
     @staticmethod

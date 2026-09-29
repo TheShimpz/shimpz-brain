@@ -60,6 +60,7 @@ def body(**updates):
             },
         ],
         "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET, "effort": "low"},
+        "instructions": [],
         "message": "Hello",
         "conversation": [],
     }

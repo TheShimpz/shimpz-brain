@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal, Self
 
 import agent_runtime
 import capability_plan
+import instructions as standing_instructions
 import intent_route
 import model_usage
 import provider_cancel
@@ -80,6 +81,7 @@ class TurnContextInput(BaseModel):
     team_name: str = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_NAME_CHARS)
     assistants: list[AssistantInput] = Field(max_length=agent_runtime.MAX_ASSISTANTS)
     provider: ChatProviderInput
+    instructions: list[str] = Field(max_length=standing_instructions.MAX_INSTRUCTIONS)
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -119,6 +121,7 @@ class TurnContextInput(BaseModel):
                 api_key=self.provider.api_key.get_secret_value(),
                 effort=self.provider.effort,
             ),
+            instructions=tuple(self.instructions),
         )
 
 
