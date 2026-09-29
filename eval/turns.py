@@ -34,7 +34,7 @@ ATTEMPTS = 3
 # The Team's default chat-turn effort (teams/inference/config.py DEFAULT_EFFORT, pinned by a test).
 TURN_EFFORT = "low"
 # Least expensive model per provider in the umbrella model catalog on 2026-09-28.
-FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5"}
+FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 
 _OBJECT = {"type": "object", "additionalProperties": False}
 DNS = agent_runtime.AssistantDefinition(

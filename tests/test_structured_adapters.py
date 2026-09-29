@@ -34,7 +34,7 @@ def _anthropic_reply(text: str | None, stop_reason: str = "end_turn") -> Message
     return Message(
         id="msg_test",
         content=[] if text is None else [TextBlock(type="text", text=text)],
-        model="claude-sonnet-5",
+        model="claude-sonnet-5-5",
         role="assistant",
         stop_reason=stop_reason,
         type="message",
@@ -43,7 +43,7 @@ def _anthropic_reply(text: str | None, stop_reason: str = "end_turn") -> Message
 
 
 class AnthropicStructuredOutputTests(unittest.TestCase):
-    provider = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", KEY)
+    provider = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", KEY)
 
     def _run(self, reply: Message, call):
         payloads: list[dict] = []

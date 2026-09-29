@@ -24,7 +24,7 @@ import agent_runtime
 import intent_route
 
 # Least expensive option per provider in the umbrella model catalog on 2026-09-28.
-FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5"}
+FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 ATTEMPTS = 3
 
 _REFERENCE = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")

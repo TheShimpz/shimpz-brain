@@ -30,7 +30,7 @@ def _reply(text: str) -> Message:
     return Message(
         id="msg_test",
         content=[TextBlock(type="text", text=text)],
-        model="claude-sonnet-5",
+        model="claude-sonnet-5-5",
         role="assistant",
         stop_reason="end_turn",
         type="message",
@@ -60,7 +60,7 @@ class PromptCachingTests(unittest.TestCase):
         return payloads
 
     def test_anthropic_turn_marks_the_system_prompt_tools_and_conversation_prefix(self):
-        payloads = self._turns("anthropic", "claude-sonnet-5")
+        payloads = self._turns("anthropic", "claude-sonnet-5-5")
         self.assertEqual(len(payloads), 2)
         for payload in payloads:
             with self.subTest(messages=len(payload["messages"])):
@@ -75,7 +75,7 @@ class PromptCachingTests(unittest.TestCase):
 
     def test_only_anthropic_turns_receive_the_caching_middleware(self):
         openai = agent_runtime.ProviderConfig("openai", "gpt-6-sol", "sk-test-0123456789abcdef")
-        anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "sk-test-0123456789abcdef")
+        anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "sk-test-0123456789abcdef")
         self.assertEqual(agent_runtime._prompt_caching(openai), [])
         (middleware,) = agent_runtime._prompt_caching(anthropic)
         self.assertEqual((middleware.ttl, middleware.unsupported_model_behavior), ("5m", "raise"))

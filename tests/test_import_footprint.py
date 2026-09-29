@@ -43,7 +43,7 @@ def _loaded_modules(probe: str, connection) -> None:
         serving_probe = probe.startswith("serving-")
         provider_probe = probe.removeprefix("serving-")
         provider, model = {
-            "anthropic": ("anthropic", "claude-sonnet-5"),
+            "anthropic": ("anthropic", "claude-sonnet-5-5"),
             "openai": ("openai", "gpt-6-sol"),
         }[provider_probe]
         provider_config = agent_runtime.ProviderConfig(

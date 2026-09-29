@@ -75,7 +75,7 @@ class ActionLabelTests(unittest.TestCase):
 
     def test_anthropic_labels_use_native_schema_without_the_openai_strict_flag(self):
         model = RecordingModel(responses=[AIMessage(content='{"labels":[{"id":"list-zones","label":"Listar zonas"}]}')])
-        anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "secret-test-key")
+        anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
         self.assertEqual(
             runtime_for(model).action_labels(anthropic, "Liste zonas", ("list-zones",)),
             (agent_runtime.ActionLabel("list-zones", "Listar zonas"),),

@@ -24,7 +24,7 @@ class ProviderModelTests(unittest.TestCase):
             agent_runtime.provider_model(
                 agent_runtime.ProviderConfig(
                     provider="anthropic",
-                    model="claude-sonnet-5",
+                    model="claude-sonnet-5-5",
                     api_key="secret-test-key",
                 )
             )
@@ -49,7 +49,7 @@ class ProviderModelTests(unittest.TestCase):
             agent_runtime.provider_model(
                 agent_runtime.ProviderConfig(
                     provider="anthropic",
-                    model="claude-sonnet-5",
+                    model="claude-sonnet-5-5",
                     api_key="secret-test-key",
                 ),
                 decision=True,
@@ -76,13 +76,13 @@ class ProviderModelTests(unittest.TestCase):
                 )
                 self.assertEqual(openai.call_args.kwargs["reasoning_effort"], effort)
                 agent_runtime.provider_model(
-                    agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "secret-test-key", effort)
+                    agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key", effort)
                 )
                 self.assertEqual(anthropic.call_args.kwargs["effort"], effort)
             agent_runtime.provider_model(agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"))
             self.assertNotIn("reasoning_effort", openai.call_args.kwargs)
             agent_runtime.provider_model(
-                agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "secret-test-key")
+                agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
             )
             self.assertNotIn("effort", anthropic.call_args.kwargs)
             agent_runtime.provider_model(

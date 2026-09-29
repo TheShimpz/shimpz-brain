@@ -151,7 +151,7 @@ class ConversationBridgeTests(unittest.TestCase):
             return Message(
                 id="msg",
                 content=[TextBlock(type="text", text="ok")],
-                model="claude-sonnet-5",
+                model="claude-sonnet-5-5",
                 role="assistant",
                 stop_reason="end_turn",
                 type="message",
@@ -161,7 +161,7 @@ class ConversationBridgeTests(unittest.TestCase):
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=agent_runtime.provider_model)
         with mock.patch.object(ChatAnthropic, "_create", send):
             self.assertEqual(
-                runtime.start(_context("anthropic", "claude-sonnet-5"), "Check it now.", WINDOW).reply, "ok"
+                runtime.start(_context("anthropic", "claude-sonnet-5-5"), "Check it now.", WINDOW).reply, "ok"
             )
         messages = payloads[0]["messages"]
         self.assertTrue(all(message["role"] == "user" for message in messages))

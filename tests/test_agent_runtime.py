@@ -781,7 +781,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         for provider, model in (
             ("openai", "gpt-well-formed-but-unknown"),
-            ("openai", "claude-sonnet-5"),
+            ("openai", "claude-sonnet-5-5"),
             ("anthropic", "gpt-6-sol"),
         ):
             with (

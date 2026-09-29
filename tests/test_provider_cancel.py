@@ -456,7 +456,7 @@ class PooledAnthropicTests(unittest.TestCase):
         with mock.patch.dict(os.environ, NO_PROXY_ENV):
             factory = agent_runtime.ProviderModelFactory()
         self.addCleanup(factory.close)
-        model = factory(agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5", "secret-test-key"))
+        model = factory(agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key"))
         self.assertIs(model._client._client, factory._http_client)
         self.assertIsInstance(factory._http_client._transport, provider_cancel._Transport)
         self.assertIs(type(model), agent_runtime._pooled_chat_anthropic())
