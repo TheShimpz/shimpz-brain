@@ -159,7 +159,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         duplicate_tool = SimpleNamespace(name="duplicate")
         turn = context(assistant("helper", action("first"), action("second")))
         with (
-            mock.patch.object(agent_runtime, "_request_action", return_value=duplicate_tool),
+            mock.patch.object(agent_runtime.action_tool, "request_action", return_value=duplicate_tool),
             self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action tool name collision"),
         ):
             runtime._agent(turn)

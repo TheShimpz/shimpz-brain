@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+import action_tool
 import capability_plan as capability_planner
 import context_budget
 import httpx
@@ -29,7 +30,6 @@ import intent_route as intent_router
 import provider_cancel
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
-from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 _MODEL_CATALOG = json.loads(Path(__file__).with_name("model_catalog.json").read_text(encoding="utf-8"))
@@ -53,7 +53,6 @@ MAX_ACTION_LABEL_CHARS = 80
 MAX_ACTION_LABEL_RESPONSE_CHARS = 32 * 1024
 MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
-MAX_ARGUMENT_CORRECTION_CHARS = 1_000
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 DECISION_TIMEOUT_SECONDS = 10.0
 # One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
@@ -316,50 +315,6 @@ def _assistant_scope(context: TurnContext) -> str:
     ]
     encoded = json.dumps(contract, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-def _invalid_arguments(tool_name: str, action: ActionDefinition) -> str:
-    """Closed correction text built only from the package-authored schema, never from the rejected arguments."""
-    required = [name for name in action.input_schema.get("required", ()) if isinstance(name, str)][:16]
-    listed = ", ".join(name[:64] for name in required) or "none"
-    return (
-        f"Action not executed: the arguments for {tool_name} did not match its input schema. Call it again with only "
-        f"its declared properties, every required property ({listed}), and values of the declared types and allowed "
-        "values."
-    )[:MAX_ARGUMENT_CORRECTION_CHARS]
-
-
-def _request_action(assistant_id: str, action: ActionDefinition) -> StructuredTool:
-    """Build a tool that can only suspend the graph with a typed Action request.
-
-    Arguments that violate the Action's input schema never suspend the graph: the model receives a closed correction
-    and may call again within the recursion limit (ADR-0080). Team still validates every request it receives.
-    """
-    from jsonschema import Draft202012Validator
-    from langgraph.types import interrupt
-
-    validator = Draft202012Validator(dict(action.input_schema))
-    tool_name = _tool_name(assistant_id, action.id)
-
-    def suspend_for_controller(**payload):
-        if next(validator.iter_errors(payload), None) is not None:
-            return _invalid_arguments(tool_name, action)
-        return interrupt(
-            {
-                "kind": "action",
-                "assistant_id": assistant_id,
-                "action": action.id,
-                "input": payload,
-            }
-        )
-
-    return StructuredTool.from_function(
-        suspend_for_controller,
-        name=tool_name,
-        description=f"Internal Assistant {assistant_id}, Action {action.id}: {action.summary}",
-        args_schema=dict(action.input_schema),
-        infer_schema=False,
-    )
 
 
 def _system_prompt(context: TurnContext) -> str:
@@ -764,7 +719,9 @@ class AgentRuntime:
 
         model = self._model_factory(context.provider)
         tools = [
-            _request_action(assistant.id, action) for assistant in context.assistants for action in assistant.actions
+            action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)
+            for assistant in context.assistants
+            for action in assistant.actions
         ]
         if len({tool.name for tool in tools}) != len(tools):
             raise RuntimeContractError("Action tool name collision")
