@@ -11,6 +11,7 @@ from unittest import mock
 import agent_runtime
 import instructions
 import runtime_api
+import turn_pins
 import turn_prompt
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, SystemMessage
@@ -95,15 +96,14 @@ class PinningTests(unittest.TestCase):
         self.assertIn(RULES[1], seen[2])
 
     def test_only_the_exact_recorded_json_is_accepted(self):
-        key = agent_runtime.TURN_INSTRUCTIONS_METADATA
-        self.assertEqual(agent_runtime._recorded_instructions({key: '["Use listas."]'}), ("Use listas.",))
-        self.assertEqual(agent_runtime._recorded_instructions({key: "[]"}), ())
+        def pins(rules: object) -> dict[str, object]:
+            return {turn_pins.DATE_METADATA: "2026-09-29", turn_pins.INSTRUCTIONS_METADATA: rules}
+
+        self.assertEqual(turn_pins.restore(pins('["Use listas."]'))[1], ("Use listas.",))
+        self.assertEqual(turn_pins.restore(pins("[]"))[1], ())
         for value in (None, ["Use listas."], "not json", '[ "Use listas." ]', '["a\\nb"]', "{}"):
-            with (
-                self.subTest(value=value),
-                self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint state is invalid"),
-            ):
-                agent_runtime._recorded_instructions({key: value})
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore(pins(value))
 
 
 class EndpointTests(unittest.TestCase):

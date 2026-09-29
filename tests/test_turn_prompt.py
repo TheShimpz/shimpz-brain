@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import agent_runtime
+import turn_pins
 import turn_prompt
 from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -85,13 +86,13 @@ class PinnedDateTests(unittest.TestCase):
         self.assertEqual(dates, ["2026-09-28", "2026-09-28", "2026-09-29"])
 
     def test_only_an_exact_recorded_date_is_accepted(self):
-        self.assertEqual(agent_runtime._recorded_turn_date({agent_runtime.TURN_DATE_METADATA: "2026-09-29"}), TODAY)
+        def pins(date: object) -> dict[str, object]:
+            return {turn_pins.DATE_METADATA: date, turn_pins.INSTRUCTIONS_METADATA: "[]"}
+
+        self.assertEqual(turn_pins.restore(pins("2026-09-29")), (TODAY, ()))
         for value in (None, 20260929, "20260929", "2026-9-29", "2026-02-30", "today"):
-            with (
-                self.subTest(value=value),
-                self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint state is invalid"),
-            ):
-                agent_runtime._recorded_turn_date({agent_runtime.TURN_DATE_METADATA: value})
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore(pins(value))
 
 
 if __name__ == "__main__":
