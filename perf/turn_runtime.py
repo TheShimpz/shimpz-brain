@@ -61,11 +61,12 @@ class TimedRuntime(agent_runtime.AgentRuntime):
         self.phase_ns: dict[str, int] = {}
         self.prior_messages = -1
 
-    def _prepare_scope(self, context: agent_runtime.TurnContext, *, resume: bool) -> int:
+    def _prepare_scope(self, context: agent_runtime.TurnContext, *, resume: bool):
         start = time.perf_counter_ns()
         try:
-            self.prior_messages = super()._prepare_scope(context, resume=resume)
-            return self.prior_messages
+            prepared = super()._prepare_scope(context, resume=resume)
+            self.prior_messages = len(prepared[1])
+            return prepared
         finally:
             self.phase_ns["scope"] = time.perf_counter_ns() - start
 
@@ -76,10 +77,10 @@ class TimedRuntime(agent_runtime.AgentRuntime):
         finally:
             self.phase_ns["prune"] = time.perf_counter_ns() - start
 
-    def _agent(self, context: agent_runtime.TurnContext):
+    def _agent(self, context: agent_runtime.TurnContext, *, clarification_allowed: bool):
         start = time.perf_counter_ns()
         try:
-            return super()._agent(context)
+            return super()._agent(context, clarification_allowed=clarification_allowed)
         finally:
             self.phase_ns["agent_build"] = time.perf_counter_ns() - start
 
@@ -146,7 +147,8 @@ def _sample(
     cpu_total = time.process_time_ns() - cpu_start
     if result.status != "completed" or result.reply != REPLY or result.actions:
         raise AssertionError("Brain turn result changed")
-    if runtime.prior_messages != prior_turns * 2 or (model.last_bound_count or 0) != tool_count:
+    # Every turn also binds the Brain's own clarification tool (ADR-0081).
+    if runtime.prior_messages != prior_turns * 2 or (model.last_bound_count or 0) != tool_count + 1:
         raise AssertionError("Brain scope or declared tool binding changed")
     if set(runtime.phase_ns) != {"scope", "prune", "agent_build"}:
         raise AssertionError("Brain turn phase changed")
