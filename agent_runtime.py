@@ -564,13 +564,6 @@ def _result(
     raise RuntimeContractError("graph completed without an Assistant reply")
 
 
-def _with_memory(result: TurnResult, state: Mapping[str, Any]) -> TurnResult:
-    """Attach the logical turn's accepted memory changes to its completed result only."""
-    if result.status != "completed":
-        return result
-    return replace(result, memory=team_memory.proposed(list(state.get("messages", ()))))
-
-
 def _has_pending_interrupt(pending_writes: object) -> bool:
     if pending_writes is not None and (
         not isinstance(pending_writes, Sequence) or isinstance(pending_writes, (str, bytes))
@@ -844,6 +837,11 @@ class AgentRuntime:
             client = self._decision_client
         return intent_fast_path.confident_ordinary(client, decision_key, task, admitted)
 
+    def _memory_check(self, context: TurnContext):
+        return team_memory.checker(
+            lambda: self._model_factory(context.provider), context.provider.provider, structured_output
+        )
+
     def action_labels(
         self,
         provider: ProviderConfig,
@@ -959,7 +957,7 @@ class AgentRuntime:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        return _with_memory(asked or _result(state, after_message_id=turn_id), state)
+        return team_memory.attach(asked or _result(state, after_message_id=turn_id), state, self._memory_check(context))
 
     def resume(self, context: TurnContext, results: Mapping[str, object]) -> TurnResult:
         if not results or not all(isinstance(key, str) and key for key in results):
@@ -983,4 +981,4 @@ class AgentRuntime:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        return _with_memory(_result(state, message_offset=message_offset), state)
+        return team_memory.attach(_result(state, message_offset=message_offset), state, self._memory_check(context))
