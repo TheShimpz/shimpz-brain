@@ -109,6 +109,29 @@ class GraphTests(unittest.TestCase):
         self.assertEqual({m.tool_call_id for m in refusals}, {"ask-1", "act-1"})
         self.assertTrue(all("cannot be combined" in m.content for m in refusals))
 
+    def test_an_unparsable_clarification_beside_an_action_stops_the_whole_response(self):
+        broken = {
+            "name": clarification.TOOL_NAME,
+            "args": "{not json",
+            "id": "ask-bad",
+            "error": "bad json",
+            "type": "invalid_tool_call",
+        }
+        runtime, saver = self._runtime(
+            AIMessage(content="", tool_calls=[_action()], invalid_tool_calls=[broken]),
+            AIMessage(content="", invalid_tool_calls=[{**broken, "id": "ask-bad-2"}]),
+            AIMessage(content="", tool_calls=[_clarify(VALID, "ask-2")]),
+        )
+        turn = context(assistant("hello-pulse", action()))
+        with mock.patch("langgraph.types.interrupt") as interrupt:
+            result = runtime.start(turn, "Faça algo")
+        interrupt.assert_not_called()
+        self.assertIsNotNone(result.clarification)
+        refusals = [m for m in _messages(saver, turn.thread_id) if isinstance(m, ToolMessage)]
+        self.assertEqual([m.tool_call_id for m in refusals[:3]], ["act-1", "ask-bad", "ask-bad-2"])
+        self.assertIn("cannot be combined", refusals[0].content)
+        self.assertTrue(refusals[2].content.startswith("Not executed: the clarification must"))
+
     def test_a_malformed_clarification_is_refused_and_can_be_corrected(self):
         runtime, saver = self._runtime(
             AIMessage(content="", tool_calls=[_clarify({**VALID, "default_index": 9})]),
