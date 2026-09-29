@@ -45,7 +45,8 @@ class StaticBrainImageContractTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn(
-            "agent_runtime.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py "
+            "action_labels.py agent_runtime.py capability_plan.py clarification.py context_budget.py action_tool.py "
+            "intent_fast_path.py "
             "intent_route.py memory.py model_usage.py provider_cancel.py runtime_api.py turn_pins.py "
             "turn_prompt.py \\\n"
             "    model_catalog.json /app/",

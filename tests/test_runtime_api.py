@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import get_args
 from unittest import mock
 
+import action_labels
 import agent_runtime
 import capability_plan
 import clarification
@@ -61,6 +62,7 @@ def body(**updates):
         ],
         "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET, "effort": "low"},
         "memories": [],
+        "skills": [],
         "message": "Hello",
         "conversation": [],
     }
@@ -97,8 +99,8 @@ class FakeRuntime:
         if self.error:
             raise self.error
         return (
-            agent_runtime.ActionLabel(id="list-zones", label="Listar zonas DNS"),
-            agent_runtime.ActionLabel(id="get-zone", label="Consultar zona DNS"),
+            action_labels.ActionLabel(id="list-zones", label="Listar zonas DNS"),
+            action_labels.ActionLabel(id="get-zone", label="Consultar zona DNS"),
         )
 
     def capability_plan(self, provider, objective, candidates):

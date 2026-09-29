@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from typing import Any
 from unittest import mock
 
+import action_labels
 import agent_runtime
 import capability_plan
 from eval import turns
@@ -122,21 +123,21 @@ class TurnEvalTests(unittest.TestCase):
         self.assertFalse(turns.run_plan(runtime, PROVIDER, turns.PLAN_CASES[0]))
         labels = next(case for case in turns.LABEL_CASES if case.language == "pt")
         runtime.action_labels.return_value = (
-            agent_runtime.ActionLabel("dns.create-record", "Criar registro"),
-            agent_runtime.ActionLabel("dns.list-zones", "Listar as zonas"),
+            action_labels.ActionLabel("dns.create-record", "Criar registro"),
+            action_labels.ActionLabel("dns.list-zones", "Listar as zonas"),
         )
         self.assertTrue(turns.run_labels(runtime, PROVIDER, labels))
         runtime.action_labels.return_value = (
-            agent_runtime.ActionLabel("dns.create-record", "Create the record"),
-            agent_runtime.ActionLabel("dns.list-zones", "List the zones"),
+            action_labels.ActionLabel("dns.create-record", "Create the record"),
+            action_labels.ActionLabel("dns.list-zones", "List the zones"),
         )
         self.assertFalse(turns.run_labels(runtime, PROVIDER, labels))
 
     def test_labels_without_a_detectable_language_fail(self):
         runtime = mock.Mock()
         runtime.action_labels.return_value = (
-            agent_runtime.ActionLabel("dns.create-record", "DNS +"),
-            agent_runtime.ActionLabel("dns.list-zones", "DNS ?"),
+            action_labels.ActionLabel("dns.create-record", "DNS +"),
+            action_labels.ActionLabel("dns.list-zones", "DNS ?"),
         )
         for case in turns.LABEL_CASES:
             with self.subTest(case=case.id):

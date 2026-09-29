@@ -87,9 +87,9 @@ class PinnedDateTests(unittest.TestCase):
 
     def test_only_an_exact_recorded_date_is_accepted(self):
         def pins(date: object) -> dict[str, object]:
-            return {turn_pins.DATE_METADATA: date, turn_pins.MEMORY_METADATA: "null"}
+            return {turn_pins.DATE_METADATA: date, turn_pins.MEMORY_METADATA: "null", turn_pins.SKILLS_METADATA: "null"}
 
-        self.assertEqual(turn_pins.restore(pins("2026-09-29")), (TODAY, None))
+        self.assertEqual(turn_pins.restore(pins("2026-09-29")), (TODAY, None, None))
         for value in (None, 20260929, "20260929", "2026-9-29", "2026-02-30", "today"):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore(pins(value))

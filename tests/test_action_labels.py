@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+import action_labels
 import agent_runtime
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -59,8 +60,8 @@ class ActionLabelTests(unittest.TestCase):
         self.assertEqual(
             labels,
             (
-                agent_runtime.ActionLabel(id="list-zones", label="Listar zonas DNS"),
-                agent_runtime.ActionLabel(id="delete-dns-record", label="Excluir registro DNS"),
+                action_labels.ActionLabel(id="list-zones", label="Listar zonas DNS"),
+                action_labels.ActionLabel(id="delete-dns-record", label="Excluir registro DNS"),
             ),
         )
         self.assertEqual(len(RecordingModel.seen_messages), 1)
@@ -70,7 +71,7 @@ class ActionLabelTests(unittest.TestCase):
         self.assertNotIn("input_schema", provider_text)
         self.assertEqual(
             RecordingModel.structured,
-            [(agent_runtime.ActionLabelsOutput, {"method": "json_schema", "include_raw": True, "strict": True})],
+            [(action_labels.ActionLabelsOutput, {"method": "json_schema", "include_raw": True, "strict": True})],
         )
 
     def test_anthropic_labels_use_native_schema_without_the_openai_strict_flag(self):
@@ -78,7 +79,7 @@ class ActionLabelTests(unittest.TestCase):
         anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
         self.assertEqual(
             runtime_for(model).action_labels(anthropic, "Liste zonas", ("list-zones",)),
-            (agent_runtime.ActionLabel("list-zones", "Listar zonas"),),
+            (action_labels.ActionLabel("list-zones", "Listar zonas"),),
         )
         self.assertEqual(RecordingModel.structured[-1][1], {"method": "json_schema", "include_raw": True})
 
@@ -181,8 +182,8 @@ class ActionLabelTests(unittest.TestCase):
                 ("list-zones", "get-zone"),
             ),
             (
-                agent_runtime.ActionLabel("list-zones", "Listar zonas"),
-                agent_runtime.ActionLabel("get-zone", "Consultar zona"),
+                action_labels.ActionLabel("list-zones", "Listar zonas"),
+                action_labels.ActionLabel("get-zone", "Consultar zona"),
             ),
         )
 
@@ -193,11 +194,11 @@ class ActionLabelTests(unittest.TestCase):
             agent_runtime.normalize_language_exemplar("desinstala 👩‍💻\r\nagora"),
             "desinstala 👩‍💻\r\nagora",
         )
-        for value in (object(), " label", "x" * (agent_runtime.MAX_ACTION_LABEL_CHARS + 1)):
+        for value in (object(), " label", "x" * (action_labels.MAX_ACTION_LABEL_CHARS + 1)):
             with self.subTest(value_type=type(value)), self.assertRaises(agent_runtime.RuntimeContractError):
-                agent_runtime._validated_action_label(value)
+                action_labels._validated_action_label(value)
         with self.assertRaises(agent_runtime.RuntimeContractError):
-            agent_runtime._action_label_items([object()], frozenset({"list-zones"}))
+            action_labels._action_label_items([object()], frozenset({"list-zones"}))
         for result in (
             object(),
             {"raw": AIMessage(content=""), "parsed": None},
@@ -207,32 +208,32 @@ class ActionLabelTests(unittest.TestCase):
             {"raw": AIMessage(content=""), "parsed": {"labels": [], "extra": True}, "parsing_error": None},
         ):
             with self.subTest(result=result), self.assertRaises(agent_runtime.RuntimeContractError):
-                agent_runtime._parse_action_labels(result, ("list-zones",))
+                action_labels._parse_action_labels(result, ("list-zones",))
         consistent = '{"labels":[{"id":"list-zones","label":"Listar zonas"}]}'
         disagreeing = {"labels": [{"id": "list-zones", "label": "Outra coisa"}]}
         for result in (
             {"raw": AIMessage(content=consistent), "parsed": disagreeing, "parsing_error": None},
             {
                 "raw": AIMessage(
-                    content=consistent.replace(":[", ":[" + " " * agent_runtime.MAX_ACTION_LABEL_RESPONSE_CHARS)
+                    content=consistent.replace(":[", ":[" + " " * action_labels.MAX_ACTION_LABEL_RESPONSE_CHARS)
                 ),
                 "parsed": {"labels": [{"id": "list-zones", "label": "Listar zonas"}]},
                 "parsing_error": None,
             },
         ):
             with self.subTest(raw=len(result["raw"].content)), self.assertRaises(agent_runtime.RuntimeContractError):
-                agent_runtime._parse_action_labels(result, ("list-zones",))
+                action_labels._parse_action_labels(result, ("list-zones",))
         self.assertEqual(
-            agent_runtime._parse_action_labels(
+            action_labels._parse_action_labels(
                 {"raw": AIMessage(content=consistent), "parsed": None, "parsing_error": None}
                 | {"parsed": {"labels": [{"id": "list-zones", "label": "Listar zonas"}]}},
                 ("list-zones",),
             ),
-            (agent_runtime.ActionLabel("list-zones", "Listar zonas"),),
+            (action_labels.ActionLabel("list-zones", "Listar zonas"),),
         )
-        too_many = [{"id": f"a-{index}", "label": f"L {index}"} for index in range(agent_runtime.MAX_ACTION_LABELS + 1)]
+        too_many = [{"id": f"a-{index}", "label": f"L {index}"} for index in range(action_labels.MAX_ACTION_LABELS + 1)]
         with self.assertRaises(ValueError):
-            agent_runtime.ActionLabelsOutput.model_validate({"labels": too_many})
+            action_labels.ActionLabelsOutput.model_validate({"labels": too_many})
 
     def test_provider_and_non_message_failures_are_redacted(self):
         for failure, expected in (

@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
+import action_labels
 import agent_runtime
 import capability_plan
 import intent_route
@@ -83,6 +84,8 @@ class TurnContextInput(BaseModel):
     provider: ChatProviderInput
     # What the Team remembers (ADR-0084); null where memory is unavailable, which also withholds the memory tool.
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
+    # The procedures the Team learned (ADR-0085); null where learning is unavailable.
+    skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -123,6 +126,7 @@ class TurnContextInput(BaseModel):
                 effort=self.provider.effort,
             ),
             memories=_memories(self.memories),
+            skills=None if self.skills is None else tuple(self.skills),
         )
 
 
@@ -177,7 +181,7 @@ class ActionLabelsInput(BaseModel):
 
     provider: ProviderInput
     language_exemplar: str = Field(min_length=1, max_length=agent_runtime.MAX_LANGUAGE_EXEMPLAR_CHARS)
-    actions: list[str] = Field(min_length=1, max_length=agent_runtime.MAX_ACTION_LABELS)
+    actions: list[str] = Field(min_length=1, max_length=action_labels.MAX_ACTION_LABELS)
 
     @field_validator("language_exemplar", mode="before")
     @classmethod
@@ -341,7 +345,7 @@ class RuntimeLike:
         provider: agent_runtime.ProviderConfig,
         language_exemplar: str,
         action_ids: tuple[str, ...],
-    ) -> tuple[agent_runtime.ActionLabel, ...]: ...
+    ) -> tuple[action_labels.ActionLabel, ...]: ...
 
     def capability_plan(
         self,
@@ -418,7 +422,7 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
     }
 
 
-def _action_labels_response(labels: tuple[agent_runtime.ActionLabel, ...]) -> dict[str, object]:
+def _action_labels_response(labels: tuple[action_labels.ActionLabel, ...]) -> dict[str, object]:
     return {"labels": [{"id": item.id, "label": item.label} for item in labels]}
 
 

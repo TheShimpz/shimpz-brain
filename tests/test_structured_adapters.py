@@ -9,6 +9,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+import action_labels
 import agent_runtime
 import capability_plan
 from anthropic.types import Message, TextBlock, Usage
@@ -70,7 +71,7 @@ class AnthropicStructuredOutputTests(unittest.TestCase):
             _anthropic_reply(json.dumps(LABELS)),
             lambda runtime: runtime.action_labels(self.provider, "Liste zonas", ("list-zones",)),
         )
-        self.assertEqual(labels, (agent_runtime.ActionLabel("list-zones", "Listar zonas"),))
+        self.assertEqual(labels, (action_labels.ActionLabel("list-zones", "Listar zonas"),))
 
     def test_malformed_unknown_and_refused_replies_are_response_failures(self):
         for reply in (
@@ -91,7 +92,7 @@ class SchemaTests(unittest.TestCase):
     def test_provider_schemas_carry_no_undocumented_string_limits(self):
         import json
 
-        for schema in (capability_plan.StructuredPlan, agent_runtime.ActionLabelsOutput):
+        for schema in (capability_plan.StructuredPlan, action_labels.ActionLabelsOutput):
             with self.subTest(schema=schema.__name__):
                 encoded = json.dumps(schema.model_json_schema())
                 self.assertNotIn("maxLength", encoded)
@@ -124,7 +125,7 @@ class OpenAIStructuredOutputTests(unittest.TestCase):
             result = call(_runtime())
         # A Pydantic schema reaches the OpenAI SDK's typed parse, which always requests strict JSON-schema output.
         self.assertIn(
-            requests[0]["response_format"], {capability_plan.StructuredPlan, agent_runtime.ActionLabelsOutput}
+            requests[0]["response_format"], {capability_plan.StructuredPlan, action_labels.ActionLabelsOutput}
         )
         return result
 
@@ -136,7 +137,7 @@ class OpenAIStructuredOutputTests(unittest.TestCase):
         labels = self._run(
             {"parsed": LABELS}, lambda runtime: runtime.action_labels(self.provider, "Liste zonas", ("list-zones",))
         )
-        self.assertEqual(labels, (agent_runtime.ActionLabel("list-zones", "Listar zonas"),))
+        self.assertEqual(labels, (action_labels.ActionLabel("list-zones", "Listar zonas"),))
 
     def test_refusal_and_semantic_failures_are_response_failures(self):
         for kwargs in (
