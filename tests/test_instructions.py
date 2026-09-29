@@ -64,6 +64,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn(json.dumps(list(RULES), ensure_ascii=False), prompt)
         self.assertIn("never supply the target or values of a change", prompt)
         self.assertIn("the current message wins", prompt)
+        self.assertIn("recommend the option the rule describes", prompt)
 
     def test_the_policy_says_where_a_lasting_preference_belongs(self):
         prompt = turn_prompt.system_prompt(context())
