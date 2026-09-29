@@ -35,7 +35,8 @@ SCHEMA = {
 }
 DESCRIPTION = (
     "Propose a change to what you remember about this user's lasting preferences. Use op remember with a short topic "
-    "key and the preference in one line; reuse the topic of an existing memory to replace it when the user's taste "
+    "key and the preference in one line, one subject per call and topic (for example language, tone, length, format, "
+    "emoji, units, or sources); reuse the topic of an existing memory to replace it when the user's taste "
     "changed. Use op forget with the topic and an empty preference when a message shows that memory no longer applies. "
     "evidence must copy the exact words of the user's current message that show it. The change is saved only after "
     "your reply; keep answering the request."
