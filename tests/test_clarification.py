@@ -119,7 +119,7 @@ class GraphTests(unittest.TestCase):
         }
         runtime, saver = self._runtime(
             AIMessage(content="", tool_calls=[_action()], invalid_tool_calls=[broken]),
-            AIMessage(content="", invalid_tool_calls=[{**broken, "id": "ask-bad-2"}]),
+            AIMessage(content="", invalid_tool_calls=[{**broken, "id": None}]),
             AIMessage(content="", tool_calls=[_clarify(VALID, "ask-2")]),
         )
         turn = context(assistant("hello-pulse", action()))
@@ -128,8 +128,9 @@ class GraphTests(unittest.TestCase):
         interrupt.assert_not_called()
         self.assertIsNotNone(result.clarification)
         refusals = [m for m in _messages(saver, turn.thread_id) if isinstance(m, ToolMessage)]
-        self.assertEqual([m.tool_call_id for m in refusals[:3]], ["act-1", "ask-bad", "ask-bad-2"])
+        self.assertEqual([m.tool_call_id for m in refusals[:3]], ["act-1", "ask-bad", "shimpz-unidentified-call-0"])
         self.assertIn("cannot be combined", refusals[0].content)
+        self.assertTrue(all(m.tool_call_id for m in refusals))
         self.assertTrue(refusals[2].content.startswith("Not executed: the clarification must"))
 
     def test_a_malformed_clarification_is_refused_and_can_be_corrected(self):

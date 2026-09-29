@@ -214,8 +214,13 @@ def _guard_class():
                 return None
             return {
                 "messages": [
-                    ToolMessage(content=_CORRECTIONS[reason], tool_call_id=call["id"], name=call["name"] or TOOL_NAME)
-                    for call in _calls(messages[-1])
+                    ToolMessage(
+                        content=_CORRECTIONS[reason],
+                        # An unparsable call may carry no id; its refusal still needs one to stay a closed correction.
+                        tool_call_id=call["id"] or f"shimpz-unidentified-call-{index}",
+                        name=call["name"] or TOOL_NAME,
+                    )
+                    for index, call in enumerate(_calls(messages[-1]))
                 ],
                 "jump_to": "model",
             }
