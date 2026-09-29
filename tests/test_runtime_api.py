@@ -14,11 +14,13 @@ import agent_runtime
 import capability_plan
 import clarification
 import intent_route
+import model_usage
 import runtime_api
 from fastapi.testclient import TestClient
 
 TOKEN = secrets.token_hex(24)
 SECRET = secrets.token_urlsafe(32)
+NO_USAGE = dict.fromkeys(model_usage.FIELDS, 0)
 
 
 def body(**updates):
@@ -180,7 +182,8 @@ class RuntimeApiTests(unittest.TestCase):
                 "labels": [
                     {"id": "list-zones", "label": "Listar zonas DNS"},
                     {"id": "get-zone", "label": "Consultar zona DNS"},
-                ]
+                ],
+                "usage": NO_USAGE,
             },
         )
         call = runtime.calls[0]
@@ -227,6 +230,7 @@ class RuntimeApiTests(unittest.TestCase):
             {
                 "status": "install-required",
                 "assistant_ids": ["shimpz-cloudflare", "shimpz-whatsapp"],
+                "usage": NO_USAGE,
             },
         )
         call = runtime.calls[0]
@@ -340,6 +344,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "query": "cloudflare",
                 "assistant_ids": [],
                 "reply": "",
+                "usage": NO_USAGE,
             },
         )
         call = runtime.calls[0]
@@ -372,6 +377,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "query": "",
                 "assistant_ids": ["shimpz-cloudflare"],
                 "reply": "",
+                "usage": NO_USAGE,
             },
         )
         self.assertEqual(runtime.calls[1][4][0].id, "shimpz-cloudflare")
@@ -520,7 +526,8 @@ class RuntimeApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json(), {"status": "completed", "reply": "Hello.", "clarification": None, "actions": []}
+            response.json(),
+            {"status": "completed", "reply": "Hello.", "clarification": None, "actions": [], "usage": NO_USAGE},
         )
         context = runtime.calls[0][1]
         self.assertEqual(context.provider.api_key, SECRET)
@@ -539,7 +546,8 @@ class RuntimeApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json(), {"status": "completed", "reply": "Brain only.", "clarification": None, "actions": []}
+            response.json(),
+            {"status": "completed", "reply": "Brain only.", "clarification": None, "actions": [], "usage": NO_USAGE},
         )
         self.assertEqual(runtime.calls[0][1].assistants, ())
 
@@ -578,6 +586,7 @@ class RuntimeApiTests(unittest.TestCase):
                         "input": {"name": "Ada"},
                     }
                 ],
+                "usage": NO_USAGE,
             },
         )
 

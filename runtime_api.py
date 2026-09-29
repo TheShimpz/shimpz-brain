@@ -16,6 +16,7 @@ from typing import Annotated, Any, Literal, Self
 import agent_runtime
 import capability_plan
 import intent_route
+import model_usage
 import provider_cancel
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -429,12 +430,14 @@ def _run_capability_plan(
     if not slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Capability planner capacity reached")
     try:
-        plan = runtime.capability_plan(
-            body.runtime_provider(),
-            body.objective,
-            body.runtime_candidates(),
+        plan, usage = model_usage.measure(
+            lambda: runtime.capability_plan(
+                body.runtime_provider(),
+                body.objective,
+                body.runtime_candidates(),
+            )
         )
-        return _capability_plan_response(plan)
+        return {**_capability_plan_response(plan), "usage": usage}
     finally:
         slots.release()
 
@@ -448,15 +451,17 @@ def _run_intent_route(
         raise HTTPException(status_code=429, detail="Intent route capacity reached")
     try:
         decision = body.decision_provider
-        route = runtime.intent_route(
-            body.runtime_provider(),
-            body.objective,
-            body.expected_intent,
-            body.runtime_candidates(),
-            body.runtime_context(),
-            decision_key=None if decision is None else decision.api_key.get_secret_value(),
+        route, usage = model_usage.measure(
+            lambda: runtime.intent_route(
+                body.runtime_provider(),
+                body.objective,
+                body.expected_intent,
+                body.runtime_candidates(),
+                body.runtime_context(),
+                decision_key=None if decision is None else decision.api_key.get_secret_value(),
+            )
         )
-        return _intent_route_response(route)
+        return {**_intent_route_response(route), "usage": usage}
     finally:
         slots.release()
 
@@ -500,14 +505,14 @@ async def _cancellable_turn(request: Request, work: Callable[[], agent_runtime.T
     scope = provider_cancel.CancelScope()
     watcher = asyncio.create_task(_cancel_on_disconnect(request, scope))
     try:
-        result = await run_in_threadpool(scope.run, work)
+        result, usage = await run_in_threadpool(scope.run, lambda: model_usage.measure(work))
     except provider_cancel.ProviderCallCancelled:
         raise HTTPException(status_code=409, detail="Chat turn cancelled") from None
     finally:
         watcher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await watcher
-    return _response(result)
+    return {**_response(result), "usage": usage}
 
 
 def create_app(
@@ -580,12 +585,14 @@ def create_app(
 
     @app.post("/v1/action-labels", dependencies=[Depends(require_auth)])
     def action_labels(body: ActionLabelsInput) -> dict[str, object]:
-        labels = current_runtime().action_labels(
-            body.runtime_provider(),
-            body.language_exemplar,
-            tuple(body.actions),
+        labels, usage = model_usage.measure(
+            lambda: current_runtime().action_labels(
+                body.runtime_provider(),
+                body.language_exemplar,
+                tuple(body.actions),
+            )
         )
-        return _action_labels_response(labels)
+        return {**_action_labels_response(labels), "usage": usage}
 
     @app.post("/v1/capability-plan", dependencies=[Depends(require_auth)])
     def create_capability_plan(body: CapabilityPlanInput) -> dict[str, object]:

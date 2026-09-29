@@ -46,7 +46,8 @@ class StaticBrainImageContractTests(unittest.TestCase):
 
         self.assertIn(
             "agent_runtime.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py "
-            "intent_route.py provider_cancel.py runtime_api.py turn_prompt.py \\\n    model_catalog.json /app/",
+            "intent_route.py model_usage.py provider_cancel.py runtime_api.py turn_prompt.py \\\n"
+            "    model_catalog.json /app/",
             dockerfile,
         )
         self.assertNotIn("egress/", dockerfile)
