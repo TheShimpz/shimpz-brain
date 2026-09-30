@@ -17,7 +17,7 @@ import secrets
 import threading
 import unicodedata
 import weakref
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -110,18 +110,48 @@ class ProviderConfig:
             raise RuntimeContractError("invalid model provider credential")
 
 
+_REFERENCE_KEYWORDS = ("$ref", "$dynamicRef")
+# The Draft 2020-12 positions that hold subschemas; every other value, such as a property name or a const, enum,
+# default, or examples value, is data and never a reference.
+_APPLICATOR_KEYWORDS = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "contentSchema",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
+_APPLICATOR_LIST_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+_APPLICATOR_MAP_KEYWORDS = frozenset({"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"})
+
+
+def _applied_subschemas(node: Mapping[str, Any]) -> Iterator[object]:
+    # The metaschema check already proved each applicator value has its Draft 2020-12 shape.
+    for keyword in _APPLICATOR_KEYWORDS & node.keys():
+        yield node[keyword]
+    for keyword in _APPLICATOR_LIST_KEYWORDS & node.keys():
+        yield from node[keyword]
+    for keyword in _APPLICATOR_MAP_KEYWORDS & node.keys():
+        yield from node[keyword].values()
+
+
 def _reject_external_references(schema: Mapping[str, Any]) -> None:
     """An Action schema is self-contained: every reference must point inside it, never at a URL or file."""
-    pending: list[Any] = [schema]
+    pending: list[object] = [schema]
     while pending:
         node = pending.pop()
         if isinstance(node, Mapping):
-            for key, value in node.items():
-                if key in {"$ref", "$dynamicRef"} and not (isinstance(value, str) and value.startswith("#")):
+            for keyword in _REFERENCE_KEYWORDS:
+                if keyword in node and not (isinstance(node[keyword], str) and node[keyword].startswith("#")):
                     raise RuntimeContractError("Action input schema references an external document")
-                pending.append(value)
-        elif isinstance(node, list):
-            pending.extend(node)
+            pending.extend(_applied_subschemas(node))
 
 
 @dataclass(frozen=True, slots=True)

@@ -194,6 +194,32 @@ class ExternalReferenceTests(unittest.TestCase):
         }
         agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=local)
 
+    def test_admission_reads_references_only_at_schema_nodes(self):
+        remote = {"$ref": "https://example.invalid/schema.json"}
+        # A property may be named "$ref", and instance data may carry a "$ref" key: neither is a reference.
+        data = {
+            "type": "object",
+            "properties": {
+                "$ref": {"type": "string"},
+                "mode": {"const": remote, "enum": [remote], "default": remote, "examples": [remote]},
+            },
+            "additionalProperties": False,
+        }
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=data)
+
+        nested = {
+            "type": "object",
+            "properties": {
+                "pages": {
+                    "type": "array",
+                    "items": {"anyOf": [{"type": "integer"}, {"not": {"contentSchema": remote}}]},
+                }
+            },
+            "additionalProperties": False,
+        }
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "external document"):
+            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=nested)
+
     def test_the_argument_validator_never_retrieves_a_reference(self):
         schema = {"type": "object", "properties": {"x": {"$ref": "http://example.invalid/schema.json"}}}
         with mock.patch("urllib.request.urlopen", side_effect=AssertionError("retrieved")) as urlopen:
