@@ -34,6 +34,13 @@ STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-
 MAX_TOKEN_BYTES = 4 * 1024
 CAPABILITY_PLAN_CONCURRENCY = 2
 INTENT_ROUTE_CONCURRENCY = 2
+# The largest request Team can send is a resume that scopes 16 Assistants, each with a canonical machine contract of
+# at most 512 KiB and a Genesis of at most 128 KiB that JSON escaping at most doubles (12 MiB), and answers at most
+# 64 Action results of at most 512 KiB each (32 MiB). The remaining 4 MiB covers the message, conversation, memory,
+# skills, Routines, provider settings, and JSON framing.
+MAX_REQUEST_BYTES = 48 * 1024 * 1024
+# Team writes one whole body at once over the private network; a body still incomplete after this is refused.
+REQUEST_BODY_SECONDS = 30.0
 _PRUNE_WRITES_SQL = (
     "WITH latest AS (SELECT checkpoint_ns,MAX(checkpoint_id) AS checkpoint_id "
     "FROM checkpoints WHERE thread_id=? GROUP BY checkpoint_ns) "
@@ -396,6 +403,71 @@ def _token_from_file() -> str:
     return token
 
 
+class _BodyTooLargeError(Exception):
+    """The request body grew past the ceiling while it was being received."""
+
+
+async def _refuse_body(scope, receive, send, status_code: int, detail: str) -> None:
+    response = JSONResponse(status_code=status_code, content={"detail": detail}, headers={"Connection": "close"})
+    await response(scope, receive, send)
+
+
+class BoundedBody:
+    """Receive each whole request body within a byte ceiling and an absolute deadline before anything parses it.
+
+    FastAPI buffers and decodes a body before the bearer dependency runs, so this bound holds for every caller while
+    the bearer check stays the sole authentication authority.
+    """
+
+    def __init__(self, app, *, max_bytes: int, deadline_seconds: float) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+        self.deadline_seconds = deadline_seconds
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        declared = dict(scope["headers"]).get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > self.max_bytes:
+            await _refuse_body(scope, receive, send, 413, "Request body is too large")
+            return
+        try:
+            async with asyncio.timeout(self.deadline_seconds):
+                body = await self._receive_body(receive)
+        except TimeoutError:
+            await _refuse_body(scope, receive, send, 408, "Request body was not received in time")
+            return
+        except _BodyTooLargeError:
+            await _refuse_body(scope, receive, send, 413, "Request body is too large")
+            return
+        if body is None:
+            return
+        delivered = False
+
+        async def replay() -> dict[str, Any]:
+            nonlocal delivered
+            if delivered:
+                return await receive()
+            delivered = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
+
+    async def _receive_body(self, receive) -> bytes | None:
+        """Return the whole body, or None when the client disconnected before sending it."""
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return None
+            body += message.get("body", b"")
+            if len(body) > self.max_bytes:
+                raise _BodyTooLargeError
+            if not message.get("more_body", False):
+                return bytes(body)
+
+
 def _sqlite_runtime(path: Path = STATE_PATH) -> agent_runtime.AgentRuntime:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.parent.chmod(0o700)
@@ -568,6 +640,7 @@ def create_app(
     app.state.intent_route_slots = threading.BoundedSemaphore(INTENT_ROUTE_CONCURRENCY)
     app.add_exception_handler(agent_runtime.RuntimeStateError, _state_error_response)
     app.add_exception_handler(RequestValidationError, _validation_error_response)
+    app.add_middleware(BoundedBody, max_bytes=MAX_REQUEST_BYTES, deadline_seconds=REQUEST_BODY_SECONDS)
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
         expected = token_reader()
