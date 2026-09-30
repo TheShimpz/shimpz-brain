@@ -1,4 +1,4 @@
-"""The HTTP boundary bounds every request body in bytes and time before anything parses or authenticates it."""
+"""The HTTP boundary bounds every request body before it is parsed and keeps health off the worker threads."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import unittest
 from typing import Any
 from unittest import mock
 
+import anyio.to_thread
 import runtime_api
 from test_runtime_api import TOKEN, FakeRuntime, body
 
@@ -116,6 +117,26 @@ class RequestBodyBoundTests(unittest.TestCase):
         status, reply = peer.response()
         self.assertEqual((status, reply["reply"]), (200, "Hello."))
         self.assertEqual(runtime.calls[0][0], "start")
+
+
+class HealthTests(unittest.TestCase):
+    def test_health_answers_while_every_worker_thread_is_busy(self):
+        peer = _Peer([b""])
+        app = runtime_api.create_app(runtime=FakeRuntime(), token_reader=lambda: TOKEN)
+
+        async def saturated() -> None:
+            limiter = anyio.to_thread.current_default_thread_limiter()
+            borrowers = [object() for _ in range(int(limiter.total_tokens))]
+            for borrower in borrowers:
+                await limiter.acquire_on_behalf_of(borrower)
+            try:
+                await asyncio.wait_for(app(_scope("/health", method="GET"), peer.receive, peer.send), 1)
+            finally:
+                for borrower in borrowers:
+                    limiter.release_on_behalf_of(borrower)
+
+        asyncio.run(saturated())
+        self.assertEqual(peer.response(), (200, {"status": "ok", "runtime": "langgraph"}))
 
 
 if __name__ == "__main__":

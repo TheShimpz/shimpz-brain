@@ -665,8 +665,9 @@ def create_app(
     async def provider_error(_request, _exc: agent_runtime.ProviderRequestError):
         return JSONResponse(status_code=502, content={"detail": "Model provider request failed"})
 
+    # Constant and non-blocking, so it stays off the worker threads that blocking turns can saturate.
     @app.get("/health")
-    def health() -> dict[str, str]:
+    async def health() -> dict[str, str]:
         return {"status": "ok", "runtime": "langgraph"}
 
     @app.post("/v1/turns", dependencies=[Depends(require_auth)])
