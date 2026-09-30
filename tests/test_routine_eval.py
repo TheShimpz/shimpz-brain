@@ -47,7 +47,7 @@ def _proposal(quote: str, schedule: dict[str, object]) -> AIMessage:
 def _confirming(names_work: bool = True):
     verdict = routine.Confirmation(explicit=True, names_work=names_work, schedule_matches=True, secret_free=True)
     return mock.patch.object(
-        agent_runtime.AgentRuntime, "_routine_check", lambda _self, _context: lambda _prompt: {"parsed": verdict}
+        agent_runtime.AgentRuntime, "_routine_check", lambda _self, _context: lambda _prompt: verdict
     )
 
 

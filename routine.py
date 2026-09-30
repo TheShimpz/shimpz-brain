@@ -26,6 +26,8 @@ TOOL_NAME = "shimpz_routine"
 MAX_ROUTINES = 8
 MAX_QUOTE_CHARS = 500
 MIN_QUOTE_CHARS = 8
+# Four compact booleans; the bound leaves room for provider whitespace.
+MAX_CONFIRMATION_CHARS = 1_024
 ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 # Mirrors the Team protocol's schedule and timezone grammar exactly; Team canonicalizes again before any card.
 TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}\Z")
@@ -317,21 +319,28 @@ def confirmed(
 ) -> bool:
     """Whether an independent check confirms the proposal; any doubt or failure confirms nothing."""
     try:
-        output = ask(_confirmation_prompt(message, candidate, routines))
+        verdict = ask(_confirmation_prompt(message, candidate, routines))
     except team_memory.CheckUnavailableError:
         return False
-    parsed = output.get("parsed") if isinstance(output, dict) else None
-    return isinstance(parsed, Confirmation) and (
-        parsed.explicit and parsed.names_work and parsed.schedule_matches and parsed.secret_free
+    return isinstance(verdict, Confirmation) and (
+        verdict.explicit and verdict.names_work and verdict.schedule_matches and verdict.secret_free
     )
 
 
-def checker(model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]) -> Callable[[str], object]:
-    """One structured call on the Team's model that confirms the proposal; any failure is CheckUnavailableError."""
+def checker(
+    model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
+) -> Callable[[str], Confirmation]:
+    """One structured call on the Team's model that confirms the proposal.
 
-    def ask(prompt: str) -> object:
+    The raw response passes the closed structured-response validator, so a refusal, a duplicate key, or a reply that
+    disagrees with the adapter's parse is CheckUnavailableError like any other failure.
+    """
+    from agent_runtime import structured_value
+
+    def ask(prompt: str) -> Confirmation:
         try:
-            return structured_output(model(), provider, Confirmation).invoke(prompt)
+            result = structured_output(model(), provider, Confirmation).invoke(prompt)
+            return structured_value(result, Confirmation, "Routine check", MAX_CONFIRMATION_CHARS)
         except Exception as exc:
             raise team_memory.CheckUnavailableError("routine check failed") from exc
 

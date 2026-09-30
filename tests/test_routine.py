@@ -43,11 +43,10 @@ def _action(call_id: str = "a1") -> dict:
 
 
 def _verdict(explicit: bool = True, schedule_matches: bool = True, secret_free: bool = True, names_work: bool = True):
-    def ask(_prompt: str) -> dict:
-        verdict = routine.Confirmation(
+    def ask(_prompt: str) -> routine.Confirmation:
+        return routine.Confirmation(
             explicit=explicit, names_work=names_work, schedule_matches=schedule_matches, secret_free=secret_free
         )
-        return {"parsed": verdict}
 
     return ask
 
@@ -215,14 +214,29 @@ class GraphTests(unittest.TestCase):
                     raise self.outcome
                 return self.outcome
 
-        verdict = {
-            "parsed": routine.Confirmation(explicit=True, names_work=True, schedule_matches=True, secret_free=True)
-        }
-        ask = routine.checker(lambda: "model", "openai", lambda _model, _provider, _schema: Structured(verdict))
+        verdict = routine.Confirmation(explicit=True, names_work=True, schedule_matches=True, secret_free=True)
+
+        def result(content: object) -> dict:
+            return {"raw": AIMessage(content=content), "parsed": verdict, "parsing_error": None}
+
+        ask = routine.checker(
+            lambda: "model", "openai", lambda _model, _provider, _schema: Structured(result(verdict.model_dump_json()))
+        )
         self.assertEqual(ask("prompt"), verdict)
         broken = routine.checker(lambda: "model", "openai", lambda *_args: Structured(RuntimeError("down")))
         with self.assertRaises(memory.CheckUnavailableError):
             broken("prompt")
+        # The adapter parsed an all-true verdict, but the raw reply refused, so nothing is confirmed.
+        refused = routine.checker(
+            lambda: "model",
+            "openai",
+            lambda *_args: Structured(result([{"type": "refusal", "refusal": "I can't help with that."}])),
+        )
+        with self.assertRaises(memory.CheckUnavailableError):
+            refused("prompt")
+        candidate = routine.Change("propose", QUOTE, WEEKLY, None, None)
+        self.assertTrue(routine.confirmed(candidate, MESSAGE, ask, ()))
+        self.assertFalse(routine.confirmed(candidate, MESSAGE, refused, ()))
 
     def test_the_independent_check_decides_and_its_failure_keeps_nothing(self):
         def failing(_prompt: str):
@@ -234,7 +248,7 @@ class GraphTests(unittest.TestCase):
             _verdict(schedule_matches=False),
             _verdict(secret_free=False),
         )
-        for ask in (*verdicts, failing, lambda _prompt: {"parsed": None}):
+        for ask in (*verdicts, failing, lambda _prompt: None):
             with self.subTest(ask=ask), _checking(ask):
                 runtime, model = self._runtime(
                     AIMessage(content="", tool_calls=[_propose()]), AIMessage(content="Nada foi agendado.")

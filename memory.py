@@ -30,6 +30,8 @@ TOPIC_RE = re.compile(r"[a-z][a-z0-9-]{0,39}\Z")
 # Skills the Team learned from completed tasks (ADR-0085); their keys are reserved and can only be forgotten.
 SKILL_KEY_RE = re.compile(r"procedure-[0-9a-f]{12}\Z")
 MAX_SKILLS = 8
+# One compact boolean per candidate change leaves room for far more candidates than a bounded turn proposes.
+MAX_CONFIRMATION_CHARS = 4_096
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -347,22 +349,28 @@ def accepted(messages: list[Any], ask: Callable[[str], object], known: dict[str,
     if not changes:
         return ()
     try:
-        output = ask(_confirmation_prompt(_current_message(messages) or "", changes, known))
-        parsed = output.get("parsed") if isinstance(output, dict) else None
-        verdicts = parsed.lasting if isinstance(parsed, Confirmation) else None
-        if verdicts is None or len(verdicts) != len(changes):
-            return ()
+        verdict = ask(_confirmation_prompt(_current_message(messages) or "", changes, known))
     except CheckUnavailableError:
         return ()
-    return tuple(change for change, keep in zip(changes, verdicts, strict=True) if keep)
+    if not isinstance(verdict, Confirmation) or len(verdict.lasting) != len(changes):
+        return ()
+    return tuple(change for change, keep in zip(changes, verdict.lasting, strict=True) if keep)
 
 
-def checker(model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]) -> Callable[[str], object]:
-    """One structured call on the Team's model that confirms proposed changes; any failure is CheckUnavailableError."""
+def checker(
+    model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
+) -> Callable[[str], Confirmation]:
+    """One structured call on the Team's model that confirms proposed changes.
 
-    def ask(prompt: str) -> object:
+    The raw response passes the closed structured-response validator, so a refusal, a duplicate key, or a reply that
+    disagrees with the adapter's parse is CheckUnavailableError like any other failure.
+    """
+    from agent_runtime import structured_value
+
+    def ask(prompt: str) -> Confirmation:
         try:
-            return structured_output(model(), provider, Confirmation).invoke(prompt)
+            result = structured_output(model(), provider, Confirmation).invoke(prompt)
+            return structured_value(result, Confirmation, "memory check", MAX_CONFIRMATION_CHARS)
         except Exception as exc:
             raise CheckUnavailableError("memory check failed") from exc
 
