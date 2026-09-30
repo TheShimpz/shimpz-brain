@@ -50,14 +50,16 @@ def action_schema_validator(schema: Mapping[str, Any]):
 def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) -> StructuredTool:
     """Build a tool that can only suspend the graph with a schema-valid, typed Action request."""
     from langgraph.types import interrupt
+    from referencing.exceptions import Unresolvable
 
     validator = action_schema_validator(action.input_schema)
 
     def suspend_for_controller(**payload):
         try:
             invalid = next(validator.iter_errors(payload), None) is not None
-        except RecursionError:
-            # A reference cycle the admission rule accepts never terminates: refuse it like any invalid argument.
+        except RecursionError, Unresolvable:
+            # A reference cycle or a missing named definition passes admission but can never validate: refuse it like
+            # any invalid argument.
             invalid = True
         if invalid:
             return correction(tool_name, action)

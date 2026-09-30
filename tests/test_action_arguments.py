@@ -296,10 +296,11 @@ class ExternalReferenceTests(unittest.TestCase):
         urlopen.assert_not_called()
         self.assertNotIsInstance(caught.exception, AssertionError)
 
-    def test_arguments_are_corrected_when_schema_references_recurse_without_end(self):
+    def test_arguments_are_corrected_when_schema_references_never_resolve(self):
         for schema in (
             {"type": "object", "$defs": {"a": {"$ref": "#/$defs/a"}}, "properties": {"x": {"$ref": "#/$defs/a"}}},
             {"type": "object", "$ref": "#"},
+            {"type": "object", "properties": {"x": {"$ref": "#/$defs/missing"}}},
         ):
             action = agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
             with self.subTest(schema=schema), mock.patch("langgraph.types.interrupt") as interrupt:
