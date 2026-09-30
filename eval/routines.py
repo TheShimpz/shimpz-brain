@@ -17,6 +17,7 @@ import argparse
 import contextlib
 import dataclasses
 import json
+import re
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -40,13 +41,9 @@ EXISTING = (
 # Proxies: a reply that claims a proposal the turn did not make, or that says the work is already scheduled before any
 # confirmation.
 _PROPOSAL_CLAIMS = ("i've proposed", "i proposed", "i have proposed", "propus", "criei uma proposta", "proposta criada")
-_SCHEDULED_CLAIMS = (
-    "já está agendad",
-    "já agendei",
-    "is scheduled",
-    "i scheduled",
-    "i've scheduled",
-    "has been scheduled",
+# "Nothing is scheduled yet" is the honest reply, not a claim.
+_SCHEDULED_CLAIMS = re.compile(
+    r"já está agendad|já agendei|(?<!nothing )\bis scheduled|\bi scheduled|i've scheduled|has been scheduled"
 )
 
 
@@ -142,7 +139,7 @@ def run_case(
         return False
     if change.quote.casefold() not in case.message.casefold():
         return False
-    return change.op == "cancel" or not any(claim in reply for claim in _SCHEDULED_CLAIMS)
+    return change.op == "cancel" or not _SCHEDULED_CLAIMS.search(reply)
 
 
 def validate_corpus() -> None:

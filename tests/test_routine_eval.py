@@ -75,11 +75,24 @@ class RoutineEvalTests(unittest.TestCase):
                 _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
                 "Já está agendada.",
             ),
+            (
+                _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
+                "It is scheduled for 09:00.",
+            ),
             ("Posso ajudar com isso.",),
         ):
             with self.subTest(responses=responses), _confirming():
                 messages = [item if isinstance(item, AIMessage) else AIMessage(content=item) for item in responses]
                 self.assertFalse(routines.run_case(_runtime(*messages), PROVIDER, case, 0))
+
+    def test_saying_nothing_is_scheduled_yet_is_not_a_scheduled_claim(self):
+        case = _case("daily-pt")
+        runtime = _runtime(
+            _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
+            AIMessage(content="Proposed a daily listing at 09:00. Nothing is scheduled yet—confirm the Routine below."),
+        )
+        with _confirming():
+            self.assertTrue(routines.run_case(runtime, PROVIDER, case, 0))
 
     def test_a_negative_case_passes_only_without_a_proposal_or_a_claim_of_one(self):
         case = _case("one-off-pt")
