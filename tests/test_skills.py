@@ -102,7 +102,7 @@ class SkillPromptTests(unittest.TestCase):
         date = turn_prompt.today()
         for skills in (None, (), (SKILL,)):
             with self.subTest(skills=skills):
-                self.assertEqual(turn_pins.restore(turn_pins.record(date, (), skills)), (date, (), skills))
+                self.assertEqual(turn_pins.restore(turn_pins.record(date, (), skills)), (date, (), skills, None, True))
         pins = turn_pins.record(date, (), None)
         for value in ('[{"key":"bad"}]', "not json", "[ ]"):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):

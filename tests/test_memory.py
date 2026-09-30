@@ -218,7 +218,9 @@ class PromptAndPinTests(unittest.TestCase):
         date = turn_prompt.today()
         for memories in (None, (), (LANGUAGE,)):
             with self.subTest(memories=memories):
-                self.assertEqual(turn_pins.restore(turn_pins.record(date, memories, None)), (date, memories, None))
+                self.assertEqual(
+                    turn_pins.restore(turn_pins.record(date, memories, None)), (date, memories, None, None, True)
+                )
         for value in ("not json", "{}", '[{"topic":"Bad","preference":"x"}]', "[ ]"):
             pins = {
                 turn_pins.DATE_METADATA: date.isoformat(),

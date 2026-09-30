@@ -24,7 +24,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
+
+import routine as team_routine
 
 TOKEN_FILE = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE", "/run/shimpz-brain-runtime/token"))
 STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-brain-runtime/checkpoints.sqlite3"))
@@ -86,6 +88,10 @@ class TurnContextInput(BaseModel):
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
     # The procedures the Team learned (ADR-0085); null where learning is unavailable.
     skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
+    # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
+    routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
+    # False in a Routine run, whose knowledge is read-only.
+    knowledge_writable: StrictBool
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -127,6 +133,8 @@ class TurnContextInput(BaseModel):
             ),
             memories=_memories(self.memories),
             skills=None if self.skills is None else tuple(self.skills),
+            routines=None if self.routines is None else tuple(self.routines),
+            knowledge_writable=self.knowledge_writable,
         )
 
 
@@ -410,6 +418,7 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
         "reply": result.reply,
         "clarification": None if result.clarification is None else result.clarification.to_dict(),
         "memory": [change.to_dict() for change in result.memory],
+        "routine": None if result.routine is None else result.routine.to_dict(),
         "actions": [
             {
                 "interrupt_id": request.interrupt_id,

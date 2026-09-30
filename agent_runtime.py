@@ -38,6 +38,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from pydantic import BaseModel, SecretStr
 
+import routine as team_routine
+
 _MODEL_CATALOG = json.loads(Path(__file__).with_name("model_catalog.json").read_text(encoding="utf-8"))
 MODELS_BY_PROVIDER = {
     provider["id"]: frozenset(model["id"] for model in provider["models"]) for provider in _MODEL_CATALOG["providers"]
@@ -177,6 +179,10 @@ class TurnContext:
     memories: tuple[team_memory.Memory, ...] | None = None
     # The procedures the Team learned from completed tasks (ADR-0085), pinned like memories; None where unavailable.
     skills: tuple[dict[str, object], ...] | None = None
+    # The Team's Routines as data (ADR-0086), pinned like memories; None withholds the Routine tool.
+    routines: tuple[dict[str, object], ...] | None = None
+    # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
+    knowledge_writable: bool = True
 
     def __post_init__(self) -> None:
         if type(self.turn_date) is not datetime.date:
@@ -192,6 +198,13 @@ class TurnContext:
                 object.__setattr__(self, "skills", team_memory.canonical_skills(self.skills))
             except team_memory.MemoryContractError as exc:
                 raise RuntimeContractError("invalid skills") from exc
+        if self.routines is not None:
+            try:
+                object.__setattr__(self, "routines", team_routine.canonical_routines(self.routines))
+            except team_routine.RoutineContractError as exc:
+                raise RuntimeContractError("invalid routines") from exc
+        if type(self.knowledge_writable) is not bool:
+            raise RuntimeContractError("invalid knowledge scope")
         if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
@@ -221,6 +234,8 @@ class TurnResult:
     clarification: clarifier.Clarification | None = None
     # The memory changes this completed logical turn proposed; the Team saves them when its reply commits.
     memory: tuple[team_memory.Change, ...] = ()
+    # The one Routine change it proposed and an independent check confirmed; the Team asks a human to confirm it.
+    routine: team_routine.Change | None = None
 
 
 class Checkpointer(Protocol):
@@ -306,6 +321,12 @@ class ProviderModelFactory:
 
     def close(self) -> None:
         self._http_client.close()
+
+
+def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
+    """Whether this turn offers the memory and the Routine tool; a Routine run's knowledge is read-only."""
+    writable = context.knowledge_writable
+    return writable and context.memories is not None, writable and context.routines is not None
 
 
 def _tool_name(assistant_id: str, action_id: str) -> str:
@@ -602,7 +623,9 @@ class AgentRuntime:
             "configurable": {"thread_id": context.thread_id},
             "metadata": {
                 ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
-                **turn_pins.record(context.turn_date, context.memories, context.skills),
+                **turn_pins.record(
+                    context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
+                ),
             },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
@@ -617,8 +640,11 @@ class AgentRuntime:
             for action in assistant.actions
         ]
         tools.append(clarifier.tool())
-        if context.memories is not None:
+        memory_tool, routine_tool = _knowledge_tools(context)
+        if memory_tool:
             tools.append(team_memory.tool())
+        if routine_tool:
+            tools.append(team_routine.tool())
         if len({tool.name for tool in tools}) != len(tools):
             raise RuntimeContractError("Action tool name collision")
         return create_agent(
@@ -629,7 +655,8 @@ class AgentRuntime:
             middleware=[
                 *_prompt_caching(context.provider),
                 clarifier.guard(allowed=clarification_allowed),
-                *([team_memory.guard(allowed=clarification_allowed)] if context.memories is not None else []),
+                *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
+                *([team_routine.guard(context.routines, allowed=clarification_allowed)] if routine_tool else []),
             ],
         )
 
@@ -685,10 +712,17 @@ class AgentRuntime:
             raise RuntimeStateError("checkpoint state is invalid")
         if resume:
             try:
-                turn_date, rules, skills = turn_pins.restore(metadata)
+                turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
             except turn_pins.PinError as exc:
                 raise RuntimeStateError("checkpoint state is invalid") from exc
-            context = replace(context, turn_date=turn_date, memories=rules, skills=skills)
+            context = replace(
+                context,
+                turn_date=turn_date,
+                memories=rules,
+                skills=skills,
+                routines=routines,
+                knowledge_writable=writable,
+            )
         return context, tuple(messages)
 
     @staticmethod
@@ -699,10 +733,10 @@ class AgentRuntime:
             for action in assistant.actions
         ]
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
-        if context.memories is not None:
-            tools.append(
-                {"name": team_memory.TOOL_NAME, "summary": team_memory.DESCRIPTION, "schema": team_memory.SCHEMA}
-            )
+        memory_tool, routine_tool = _knowledge_tools(context)
+        for included, module in ((memory_tool, team_memory), (routine_tool, team_routine)):
+            if included:
+                tools.append({"name": module.TOOL_NAME, "summary": module.DESCRIPTION, "schema": module.SCHEMA})
         return context_budget.fixed_tokens(turn_prompt.system_prompt(context), tools)
 
     def _fit_history(
@@ -774,6 +808,19 @@ class AgentRuntime:
         return team_memory.checker(
             lambda: self._model_factory(context.provider), context.provider.provider, structured_output
         )
+
+    def _routine_check(self, context: TurnContext):
+        return team_routine.checker(
+            lambda: self._model_factory(context.provider), context.provider.provider, structured_output
+        )
+
+    def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
+        """Attach a completed turn's independently confirmed memory and Routine changes."""
+        known = team_memory.describe(context.memories, context.skills)
+        result = team_memory.attach(result, state, self._memory_check(context), known)
+        if not _knowledge_tools(context)[1]:
+            return result
+        return team_routine.attach(result, state, self._routine_check(context), context.routines)
 
     def action_labels(
         self,
@@ -873,10 +920,7 @@ class AgentRuntime:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        known = team_memory.describe(context.memories, context.skills)
-        return team_memory.attach(
-            asked or _result(state, after_message_id=turn_id), state, self._memory_check(context), known
-        )
+        return self._attach(asked or _result(state, after_message_id=turn_id), state, context)
 
     def resume(self, context: TurnContext, results: Mapping[str, object]) -> TurnResult:
         if not results or not all(isinstance(key, str) and key for key in results):
@@ -900,7 +944,4 @@ class AgentRuntime:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        known = team_memory.describe(context.memories, context.skills)
-        return team_memory.attach(
-            _result(state, message_offset=message_offset), state, self._memory_check(context), known
-        )
+        return self._attach(_result(state, message_offset=message_offset), state, context)

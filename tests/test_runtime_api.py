@@ -63,6 +63,8 @@ def body(**updates):
         "provider": {"provider": "openai", "model": "gpt-6-sol", "api_key": SECRET, "effort": "low"},
         "memories": [],
         "skills": [],
+        "routines": [],
+        "knowledge_writable": True,
         "message": "Hello",
         "conversation": [],
     }
@@ -536,6 +538,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "clarification": None,
                 "actions": [],
                 "memory": [],
+                "routine": None,
                 "usage": NO_USAGE,
             },
         )
@@ -563,6 +566,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "clarification": None,
                 "actions": [],
                 "memory": [],
+                "routine": None,
                 "usage": NO_USAGE,
             },
         )
@@ -596,6 +600,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "reply": "",
                 "clarification": None,
                 "memory": [],
+                "routine": None,
                 "actions": [
                     {
                         "interrupt_id": "interrupt-1",
