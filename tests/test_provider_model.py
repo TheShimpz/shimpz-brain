@@ -17,7 +17,7 @@ class ProviderModelTests(unittest.TestCase):
             agent_runtime.provider_model(
                 agent_runtime.ProviderConfig(
                     provider="openai",
-                    model="gpt-6-sol",
+                    model="gpt-6.1-sol",
                     api_key="secret-test-key",
                 )
             )

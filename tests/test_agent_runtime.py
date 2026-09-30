@@ -91,7 +91,7 @@ def context(
         assistants=tuple(assistants or (assistant("hello-pulse", action()),)),
         provider=agent_runtime.ProviderConfig(
             provider="openai",
-            model="gpt-6-sol",
+            model="gpt-6.1-sol",
             api_key="secret-test-key",
         ),
     )
@@ -142,7 +142,7 @@ class AgentRuntimeTests(unittest.TestCase):
             assistants=(),
             provider=agent_runtime.ProviderConfig(
                 provider="openai",
-                model="gpt-6-sol",
+                model="gpt-6.1-sol",
                 api_key="secret-test-key",
             ),
         )
@@ -181,7 +181,7 @@ class AgentRuntimeTests(unittest.TestCase):
             assistants=(),
             provider=agent_runtime.ProviderConfig(
                 provider="openai",
-                model="gpt-6-sol",
+                model="gpt-6.1-sol",
                 api_key="secret-test-key",
             ),
         )
@@ -487,7 +487,7 @@ class AgentRuntimeTests(unittest.TestCase):
             assistants=(),
             provider=agent_runtime.ProviderConfig(
                 provider="openai",
-                model="gpt-6-sol",
+                model="gpt-6.1-sol",
                 api_key="secret-test-key",
             ),
         )
@@ -653,8 +653,8 @@ class AgentRuntimeTests(unittest.TestCase):
     def test_remaining_definition_contracts_fail_closed(self):
         for provider, model, api_key, message in (
             ("unknown", "model", "secret", "unsupported model provider"),
-            ("openai", "gpt-6-sol", "", "invalid model provider credential"),
-            ("openai", "gpt-6-sol", "bad\0secret", "invalid model provider credential"),
+            ("openai", "gpt-6.1-sol", "", "invalid model provider credential"),
+            ("openai", "gpt-6.1-sol", "bad\0secret", "invalid model provider credential"),
         ):
             with (
                 self.subTest(provider=provider, api_key=api_key),
@@ -782,7 +782,7 @@ class AgentRuntimeTests(unittest.TestCase):
         for provider, model in (
             ("openai", "gpt-well-formed-but-unknown"),
             ("openai", "claude-sonnet-5-5"),
-            ("anthropic", "gpt-6-sol"),
+            ("anthropic", "gpt-6.1-sol"),
         ):
             with (
                 self.subTest(provider=provider, model=model),
@@ -821,21 +821,21 @@ class AgentRuntimeTests(unittest.TestCase):
             factory(
                 agent_runtime.ProviderConfig(
                     provider="openai",
-                    model="gpt-6-sol",
+                    model="gpt-6.1-sol",
                     api_key="first-secret-key",
                 )
             )
             factory(
                 agent_runtime.ProviderConfig(
                     provider="openai",
-                    model="gpt-6-sol",
+                    model="gpt-6.1-sol",
                     api_key="second-secret-key",
                 )
             )
             factory.decision(
                 agent_runtime.ProviderConfig(
                     provider="openai",
-                    model="gpt-6-sol",
+                    model="gpt-6.1-sol",
                     api_key="decision-secret-key",
                 )
             )

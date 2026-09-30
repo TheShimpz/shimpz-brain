@@ -44,7 +44,7 @@ WINDOW = (
 )
 
 
-def _context(provider: str = "openai", model: str = "gpt-6-sol") -> agent_runtime.TurnContext:
+def _context(provider: str = "openai", model: str = "gpt-6.1-sol") -> agent_runtime.TurnContext:
     return agent_runtime.TurnContext(
         "bridge-thread", "Bridge Team", (PINGER,), agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789")
     )
@@ -172,7 +172,7 @@ class ConversationBridgeTests(unittest.TestCase):
 
 def _context_thread(thread: str) -> agent_runtime.TurnContext:
     return agent_runtime.TurnContext(
-        thread, "Bridge Team", (PINGER,), agent_runtime.ProviderConfig("openai", "gpt-6-sol", "sk-test-0123456789")
+        thread, "Bridge Team", (PINGER,), agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789")
     )
 
 

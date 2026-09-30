@@ -17,7 +17,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 MAX_HISTORY_EXCHANGES = 24
 HISTORY_BUDGET_TOKENS = 128_000
-# The smallest context window in the model catalog: 1M tokens for Claude Opus 5.5 and Sonnet 5, 1.05M for GPT-6 Sol
+# The smallest context window in the model catalog: 1M tokens for Claude Opus 5.5 and Sonnet 5, 1.05M for GPT-6.1 Sol
 # and Luna, per the providers' model tables on 2026-09-28. Every catalog model allows 128K output tokens.
 MODEL_WINDOW_TOKENS = 1_000_000
 OUTPUT_RESERVE_TOKENS = 128_000

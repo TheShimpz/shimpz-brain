@@ -44,7 +44,7 @@ def _loaded_modules(probe: str, connection) -> None:
         provider_probe = probe.removeprefix("serving-")
         provider, model = {
             "anthropic": ("anthropic", "claude-sonnet-5-5"),
-            "openai": ("openai", "gpt-6-sol"),
+            "openai": ("openai", "gpt-6.1-sol"),
         }[provider_probe]
         provider_config = agent_runtime.ProviderConfig(
             provider=provider,

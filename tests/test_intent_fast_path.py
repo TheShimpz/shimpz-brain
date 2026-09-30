@@ -133,7 +133,7 @@ class ConfidentOrdinaryTests(unittest.TestCase):
 
 
 class RuntimeFastPathTests(unittest.TestCase):
-    provider = agent_runtime.ProviderConfig("openai", "gpt-6-sol", "sk-test-0123456789")
+    provider = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789")
 
     def _runtime(self) -> tuple[agent_runtime.AgentRuntime, mock.Mock]:
         factory = mock.Mock()

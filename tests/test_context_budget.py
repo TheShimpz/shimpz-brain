@@ -42,7 +42,7 @@ def _context(*assistants: agent_runtime.AssistantDefinition) -> agent_runtime.Tu
         "budget-thread",
         "Budget Team",
         assistants or (PINGER,),
-        agent_runtime.ProviderConfig("openai", "gpt-6-sol", "secret-test-key"),
+        agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "secret-test-key"),
     )
 
 

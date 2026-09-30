@@ -74,7 +74,7 @@ class PromptCachingTests(unittest.TestCase):
         )
 
     def test_only_anthropic_turns_receive_the_caching_middleware(self):
-        openai = agent_runtime.ProviderConfig("openai", "gpt-6-sol", "sk-test-0123456789abcdef")
+        openai = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef")
         anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "sk-test-0123456789abcdef")
         self.assertEqual(agent_runtime._prompt_caching(openai), [])
         (middleware,) = agent_runtime._prompt_caching(anthropic)

@@ -15,7 +15,7 @@ RecordingModel = StructuredFakeModel
 def provider() -> agent_runtime.ProviderConfig:
     return agent_runtime.ProviderConfig(
         provider="openai",
-        model="gpt-6-sol",
+        model="gpt-6.1-sol",
         api_key="secret-test-key",
     )
 

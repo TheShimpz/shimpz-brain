@@ -111,7 +111,7 @@ class SchemaTests(unittest.TestCase):
 
 
 class OpenAIStructuredOutputTests(unittest.TestCase):
-    provider = agent_runtime.ProviderConfig("openai", "gpt-6-sol", KEY)
+    provider = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", KEY)
 
     def _run(self, additional_kwargs: dict, call):
         requests: list[dict] = []

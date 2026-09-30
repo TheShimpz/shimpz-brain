@@ -9,7 +9,7 @@ import intent_route
 
 
 def provider(name: str = "openai") -> agent_runtime.ProviderConfig:
-    model = "gpt-6-sol" if name == "openai" else "claude-sonnet-5-5"
+    model = "gpt-6.1-sol" if name == "openai" else "claude-sonnet-5-5"
     return agent_runtime.ProviderConfig(name, model, "secret-test-key")
 
 
@@ -509,7 +509,7 @@ class IntentRouteTests(unittest.TestCase):
                 intent_route._route(response, expected, shortlist)
 
     def test_an_unconsumed_reply_is_discarded_and_a_missing_clarification_stays_fatal(self):
-        # Live gpt-6-sol probes returned ordinary-task with a greeting in reply, which failed the whole message.
+        # Live gpt-6.1-sol probes returned ordinary-task with a greeting in reply, which failed the whole message.
         def route(intent, query="", reply="", ids=(), expected=None, shortlist=()):
             response = intent_route.StructuredRoute(
                 task_follows=False, intent=intent, query=query, assistant_ids=list(ids), reply=reply
