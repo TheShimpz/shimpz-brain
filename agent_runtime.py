@@ -113,7 +113,11 @@ class ProviderConfig:
             raise RuntimeContractError("invalid model provider credential")
 
 
-_REFERENCE_KEYWORDS = ("$ref", "$dynamicRef")
+_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+# A reference may name only the root or one direct definition. Both are walked schema positions, so a reference never
+# executes a const, enum, default, or examples value as a schema. A percent escape is refused because the resolver
+# decodes it before it splits the pointer.
+_LOCAL_REFERENCE = re.compile(r"#(?:/(?:\$defs|definitions)/[^/%]+)?")
 # The Draft 2020-12 positions that hold subschemas; every other value, such as a property name or a const, enum,
 # default, or examples value, is data and never a reference.
 _APPLICATOR_KEYWORDS = frozenset(
@@ -145,15 +149,27 @@ def _applied_subschemas(node: Mapping[str, Any]) -> Iterator[object]:
         yield from node[keyword].values()
 
 
-def _reject_external_references(schema: Mapping[str, Any]) -> None:
-    """An Action schema is self-contained: every reference must point inside it, never at a URL or file."""
+def _schema_node_problem(node: Mapping[str, Any], *, nested: bool) -> str | None:
+    reference = node.get("$ref", "#")
+    if "$dynamicRef" in node or not (isinstance(reference, str) and _LOCAL_REFERENCE.fullmatch(reference)):
+        return "must reference only its root or a named definition"
+    # Another dialect would apply keywords this walk never reads, and a nested base URI could rebind a reference.
+    if node.get("$schema", _DRAFT_2020_12) != _DRAFT_2020_12:
+        return "must use only the Draft 2020-12 dialect"
+    if nested and "$id" in node:
+        return "must not declare a nested identifier"
+    return None
+
+
+def _reject_unwalked_references(schema: Mapping[str, Any]) -> None:
+    """An Action schema is self-contained: every reference must land on a schema position this walk has checked."""
     pending: list[object] = [schema]
     while pending:
         node = pending.pop()
         if isinstance(node, Mapping):
-            for keyword in _REFERENCE_KEYWORDS:
-                if keyword in node and not (isinstance(node[keyword], str) and node[keyword].startswith("#")):
-                    raise RuntimeContractError("Action input schema references an external document")
+            problem = _schema_node_problem(node, nested=node is not schema)
+            if problem is not None:
+                raise RuntimeContractError(f"Action input schema {problem}")
             pending.extend(_applied_subschemas(node))
 
 
@@ -183,7 +199,7 @@ class ActionDefinition:
             Draft202012Validator.check_schema(dict(self.input_schema))
         except SchemaError as exc:
             raise RuntimeContractError("invalid Action input schema") from exc
-        _reject_external_references(self.input_schema)
+        _reject_unwalked_references(self.input_schema)
 
 
 @dataclass(frozen=True, slots=True)

@@ -178,21 +178,88 @@ if __name__ == "__main__":
 class ExternalReferenceTests(unittest.TestCase):
     """An Action schema is self-contained: no reference may reach outside the immutable package."""
 
-    def test_admission_refuses_references_outside_the_schema(self):
-        for reference in ("http://example.invalid/schema.json", "file:///etc/passwd", "other.json#/x", 7):
-            schema = {"type": "object", "properties": {"x": {"$ref": reference}}}
-            with self.subTest(reference=reference), self.assertRaises(agent_runtime.RuntimeContractError):
-                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
-        dynamic = {"type": "object", "properties": {"x": {"$dynamicRef": "https://example.invalid/s"}}}
-        with self.assertRaises(agent_runtime.RuntimeContractError):
-            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=dynamic)
-        local = {
+    def test_admission_admits_only_root_or_named_definition_references(self):
+        refused = (
+            "http://example.invalid/schema.json",
+            "file:///etc/passwd",
+            "other.json#/x",
+            "#/default",
+            "#/properties/x",
+            "#/$defs/name/default",
+            "#/$defs/name%2Fdefault",
+            "#/%24defs/name",
+            "#/$defs/",
+            "#name",
+        )
+        for keyword, references in (("$ref", refused), ("$dynamicRef", ("#", "#/$defs/name", *refused))):
+            for reference in references:
+                schema = {
+                    "type": "object",
+                    "$defs": {"name": {"type": "string", "default": {"type": "integer"}}},
+                    "default": {"$ref": "http://example.invalid/schema.json"},
+                    "properties": {"x": {keyword: reference}},
+                }
+                with (
+                    self.subTest(keyword=keyword, reference=reference),
+                    self.assertRaisesRegex(agent_runtime.RuntimeContractError, "root or a named definition"),
+                ):
+                    agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Action input schema"):
+            agent_runtime.ActionDefinition(
+                id="read", summary="Read.", input_schema={"type": "object", "properties": {"x": {"$ref": 7}}}
+            )
+
+        for definitions, reference in (
+            ("$defs", "#/$defs/name"),
+            ("definitions", "#/definitions/name"),
+            ("$defs", "#/$defs/a~1b~0c"),
+            ("$defs", "#"),
+        ):
+            local = {
+                "type": "object",
+                definitions: {"name": {"type": "string"}, "a/b~c": {"type": "string"}},
+                "properties": {"x": {"$ref": reference}},
+                "prefixItems": [{"$ref": reference}],
+            }
+            with self.subTest(reference=reference):
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=local)
+
+    def test_admission_refuses_a_dialect_switch_or_a_nested_identifier(self):
+        draft_07 = "http://json-schema.org/draft-07/schema#"
+        remote = {"$ref": "http://example.invalid/schema.json"}
+        switched_root = {
+            "$schema": draft_07,
             "type": "object",
-            "$defs": {"name": {"type": "string"}},
-            "properties": {"x": {"$ref": "#/$defs/name"}},
-            "prefixItems": [{"$ref": "#/$defs/name"}],
+            "dependencies": {"x": remote},
+            "properties": {"x": {"$ref": "#"}},
         }
-        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=local)
+        switched_nested = {
+            "type": "object",
+            "properties": {"x": {"$schema": draft_07, "type": "object", "dependencies": {"x": remote}}},
+        }
+        for schema in (switched_root, switched_nested):
+            with (
+                self.subTest(schema=schema),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Draft 2020-12 dialect"),
+            ):
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+
+        rebound = {
+            "type": "object",
+            "properties": {
+                "x": {"$id": "https://json-schema.org/draft/2020-12/meta/validation", "$ref": "#/$defs/simpleTypes"}
+            },
+        }
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "nested identifier"):
+            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=rebound)
+
+        current = {
+            "$schema": agent_runtime._DRAFT_2020_12,
+            "$id": "https://example.invalid/action.json",
+            "type": "object",
+            "properties": {"x": {"$schema": agent_runtime._DRAFT_2020_12, "type": "string"}},
+        }
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=current)
 
     def test_admission_reads_references_only_at_schema_nodes(self):
         remote = {"$ref": "https://example.invalid/schema.json"}
@@ -217,7 +284,7 @@ class ExternalReferenceTests(unittest.TestCase):
             },
             "additionalProperties": False,
         }
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "external document"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "root or a named definition"):
             agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=nested)
 
     def test_the_argument_validator_never_retrieves_a_reference(self):
