@@ -42,9 +42,11 @@ def _action(call_id: str = "a1") -> dict:
     return {"name": ACTION_TOOL, "args": {}, "id": call_id, "type": "tool_call"}
 
 
-def _verdict(explicit: bool = True, schedule_matches: bool = True, secret_free: bool = True):
+def _verdict(explicit: bool = True, schedule_matches: bool = True, secret_free: bool = True, names_work: bool = True):
     def ask(_prompt: str) -> dict:
-        verdict = routine.Confirmation(explicit=explicit, schedule_matches=schedule_matches, secret_free=secret_free)
+        verdict = routine.Confirmation(
+            explicit=explicit, names_work=names_work, schedule_matches=schedule_matches, secret_free=secret_free
+        )
         return {"parsed": verdict}
 
     return ask
@@ -182,7 +184,7 @@ class GraphTests(unittest.TestCase):
             ToolMessage(content=routine.PROPOSED, tool_call_id="r1", name=routine.TOOL_NAME),
             AIMessage(content="", tool_calls=[_propose("r2")]),
         ]
-        self.assertEqual(routine._review(ran, (), allowed=True), "invalid")
+        self.assertEqual(routine._review(ran, (), _verdict(), allowed=True), "invalid")
 
     def test_an_unparsable_call_beside_a_routine_proposal_runs_nothing(self):
         broken = {
@@ -194,7 +196,7 @@ class GraphTests(unittest.TestCase):
         }
         response = AIMessage(content="", tool_calls=[_propose()], invalid_tool_calls=[broken])
         with self.assertRaises(clarification.UnanswerableToolCallError):
-            routine._review([HumanMessage(content=MESSAGE), response], (), allowed=True)
+            routine._review([HumanMessage(content=MESSAGE), response], (), _verdict(), allowed=True)
         runtime, _model = self._runtime(response)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unparsable tool call"):
             runtime.start(_chat(), MESSAGE)
@@ -213,7 +215,9 @@ class GraphTests(unittest.TestCase):
                     raise self.outcome
                 return self.outcome
 
-        verdict = {"parsed": routine.Confirmation(explicit=True, schedule_matches=True, secret_free=True)}
+        verdict = {
+            "parsed": routine.Confirmation(explicit=True, names_work=True, schedule_matches=True, secret_free=True)
+        }
         ask = routine.checker(lambda: "model", "openai", lambda _model, _provider, _schema: Structured(verdict))
         self.assertEqual(ask("prompt"), verdict)
         broken = routine.checker(lambda: "model", "openai", lambda *_args: Structured(RuntimeError("down")))
@@ -224,13 +228,25 @@ class GraphTests(unittest.TestCase):
         def failing(_prompt: str):
             raise memory.CheckUnavailableError("down")
 
-        verdicts = (_verdict(explicit=False), _verdict(schedule_matches=False), _verdict(secret_free=False))
+        verdicts = (
+            _verdict(explicit=False),
+            _verdict(names_work=False),
+            _verdict(schedule_matches=False),
+            _verdict(secret_free=False),
+        )
         for ask in (*verdicts, failing, lambda _prompt: {"parsed": None}):
             with self.subTest(ask=ask), _checking(ask):
-                runtime, _model = self._runtime(
-                    AIMessage(content="", tool_calls=[_propose()]), AIMessage(content="Ok.")
+                runtime, model = self._runtime(
+                    AIMessage(content="", tool_calls=[_propose()]), AIMessage(content="Nada foi agendado.")
                 )
                 self.assertIsNone(runtime.start(_chat(), MESSAGE).routine)
+                # The refusal reaches the model before it replies, so its reply never claims a proposal.
+                refused = [
+                    message
+                    for message in model.seen_messages[-1]
+                    if isinstance(message, ToolMessage) and message.name == routine.TOOL_NAME
+                ]
+                self.assertEqual([message.content for message in refused], [routine._CORRECTIONS["unconfirmed"]])
 
     def test_a_routine_run_reads_knowledge_but_offers_neither_tool(self):
         runtime, model = self._runtime(AIMessage(content="Resumo pronto."))
@@ -281,7 +297,7 @@ class GraphTests(unittest.TestCase):
         self.assertIsNone(routine.proposed([AIMessage(content="no user message")], ()))
         refused = [*messages[:3], ToolMessage(content="Not proposed", tool_call_id="r1", name=routine.TOOL_NAME)]
         self.assertIsNone(routine.proposed(refused, ()))
-        self.assertIsNone(routine._review([HumanMessage(content=MESSAGE)], (), allowed=True))
+        self.assertIsNone(routine._review([HumanMessage(content=MESSAGE)], (), _verdict(), allowed=True))
 
 
 class PromptPinAndEndpointTests(unittest.TestCase):

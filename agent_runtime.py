@@ -656,7 +656,11 @@ class AgentRuntime:
                 *_prompt_caching(context.provider),
                 clarifier.guard(allowed=clarification_allowed),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
-                *([team_routine.guard(context.routines, allowed=clarification_allowed)] if routine_tool else []),
+                *(
+                    [team_routine.guard(context.routines, self._routine_check(context), allowed=clarification_allowed)]
+                    if routine_tool
+                    else []
+                ),
             ],
         )
 
@@ -820,7 +824,7 @@ class AgentRuntime:
         result = team_memory.attach(result, state, self._memory_check(context), known)
         if not _knowledge_tools(context)[1]:
             return result
-        return team_routine.attach(result, state, self._routine_check(context), context.routines)
+        return team_routine.attach(result, state, context.routines)
 
     def action_labels(
         self,
