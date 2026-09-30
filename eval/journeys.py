@@ -30,9 +30,14 @@ from eval.intent_route import _key
 from langgraph.checkpoint.memory import InMemorySaver
 
 MAX_ROUNDS = 8
+# "with-skills" learns every executed Action as Team does today; "with-clean-skills" drops the ones that failed.
+MODES = ("without-skills", "with-skills", "with-clean-skills")
 TURN_EFFORT = "low"
 FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 ZONE_ID = "0123456789abcdef0123456789abcdef"
+# Blind rules: every name in the zone already exists and is updated only by id; names must be absolute.
+UPDATE_BY_ID = "update-by-id"
+ABSOLUTE_NAMES = "absolute-names"
 _WRITE_ACTIONS = frozenset({"replace-dns-record", "ensure-dns-record"})
 _ZONE_ACTIONS = frozenset({"list-dns-records", *_WRITE_ACTIONS})
 _OBJECT = {"type": "object", "additionalProperties": False}
@@ -92,10 +97,21 @@ def _host(arguments: Mapping[str, object]) -> str:
     return name if name.endswith("exemplo.com") else f"{name}.exemplo.com"
 
 
-def _zone(action: str, arguments: Mapping[str, object]) -> dict[str, object]:
-    """The DNS Assistant's zone Actions: one zone whose every name has one A record, replaced only by its id."""
+def _zone(action: str, arguments: Mapping[str, object], rules: frozenset[str]) -> dict[str, object]:
+    """The DNS Assistant's zone Actions: one zone whose every name has one A record, replaced only by its id.
+
+    A blind rule is behavior the contract never states, as real providers have; the Brain meets it only as an error.
+    Each such error is a successful call carrying a hypothetical declared error result: today a real Action that
+    fails exits nonzero and ends the Team turn, so these scenarios measure the model under that simulated contract,
+    not deployed Team behavior. "with-clean-skills" is likewise a counterfactual: Team cannot tell an Assistant's
+    error-shaped result from success.
+    """
     if arguments.get("zone_id") != ZONE_ID:
         return {"error": "zone-not-found"}
+    if ABSOLUTE_NAMES in rules and not str(arguments.get("name", "")).endswith("."):
+        return {"error": "invalid-name", "detail": "The name must be absolute."}
+    if UPDATE_BY_ID in rules and action == "ensure-dns-record":
+        return {"error": "record-exists"}
     name = _host(arguments)
     if action == "list-dns-records":
         return {"records": [{"id": _record_id(name), "type": "A", "name": name, "content": "192.0.2.1"}]}
@@ -104,12 +120,14 @@ def _zone(action: str, arguments: Mapping[str, object]) -> dict[str, object]:
     return {"record": {"id": _record_id(name), **dict(arguments)}}
 
 
-def _simulate(action: str, arguments: Mapping[str, object], facts: Mapping[str, str]) -> dict[str, object]:
-    """Deterministic Assistants: the same call always returns the same result for a scenario's facts."""
+def _simulate(
+    action: str, arguments: Mapping[str, object], facts: Mapping[str, str], rules: frozenset[str] = frozenset()
+) -> dict[str, object]:
+    """Deterministic Assistants: the same call always returns the same result for a scenario's facts and rules."""
     if action == "list-zones":
         return {"zones": [{"id": ZONE_ID, "name": "exemplo.com"}]}
     if action in _ZONE_ACTIONS:
-        return _zone(action, arguments)
+        return _zone(action, arguments, rules)
     return _lookup(action, arguments, facts)
 
 
@@ -142,6 +160,7 @@ class Scenario:
     id: str
     assistants: tuple[agent_runtime.AssistantDefinition, ...]
     requests: tuple[Request, ...]
+    rules: frozenset[str] = frozenset()
 
 
 def records(calls: list[tuple[str, dict]]) -> dict[str, str]:
@@ -242,6 +261,22 @@ SCENARIOS = (
             _migrate("core.example.io", ("mail", "vpn", "git"), "198.51.100.22"),
         ),
     ),
+    Scenario(
+        "blind-update-by-id",
+        (DNS,),
+        tuple(
+            _update(host, f"198.51.100.{30 + index}") for index, host in enumerate(("www", "api", "app", "cdn", "vpn"))
+        ),
+        frozenset({UPDATE_BY_ID}),
+    ),
+    Scenario(
+        "blind-absolute-names",
+        (DNS,),
+        tuple(
+            _bulk((host,), f"198.51.100.{40 + index}") for index, host in enumerate(("www", "api", "app", "cdn", "vpn"))
+        ),
+        frozenset({ABSOLUTE_NAMES}),
+    ),
 )
 
 
@@ -283,6 +318,7 @@ class Outcome:
     succeeded: bool
     ended: str
     repeated_writes: int
+    failed_calls: int
     rounds: int
     model_calls: int
     input_tokens: int
@@ -290,7 +326,8 @@ class Outcome:
     output_tokens: int
     usd: float
     seconds: float
-    steps: tuple[tuple[str, str, tuple[str, ...]], ...]
+    # (assistant, action, input names, whether its result was an error)
+    steps: tuple[tuple[str, str, tuple[str, ...], bool], ...]
 
 
 def _price(model: str) -> tuple[float, float]:
@@ -321,7 +358,7 @@ def run_request(
         thread_id, "Journey Team", scenario.assistants, provider, memories=(), skills=tuple(skills)
     )
     calls: list[tuple[str, dict]] = []
-    steps: list[tuple[str, str, tuple[str, ...]]] = []
+    steps: list[tuple[str, str, tuple[str, ...], bool]] = []
     rounds = 0
     started = time.monotonic()
 
@@ -334,9 +371,12 @@ def run_request(
             rounds += 1
             results = {}
             for action in result.actions:
-                calls.append((action.action, dict(action.input)))
-                steps.append((action.assistant_id, action.action, tuple(sorted(action.input))))
-                results[action.interrupt_id] = _simulate(action.action, action.input, request.facts)
+                outcome = _simulate(action.action, action.input, request.facts, scenario.rules)
+                failed = "error" in outcome
+                if not failed:
+                    calls.append((action.action, dict(action.input)))
+                steps.append((action.assistant_id, action.action, tuple(sorted(action.input)), failed))
+                results[action.interrupt_id] = outcome
             result = runtime.resume(context, results)
         return result
 
@@ -348,6 +388,7 @@ def run_request(
         succeeded=result.status == "completed" and request.succeeded(calls),
         ended=_ended(result),
         repeated_writes=repeated_writes(calls),
+        failed_calls=sum(step[3] for step in steps),
         rounds=rounds,
         model_calls=usage["model_calls"],
         input_tokens=usage["input_tokens"],
@@ -380,7 +421,7 @@ def evaluate(runtime, provider, budget: float, only: str | None = None) -> dict[
     for scenario in SCENARIOS:
         if only is not None and scenario.id != only:
             continue
-        for mode in ("without-skills", "with-skills"):
+        for mode in MODES:
             skills: list[dict[str, object]] = []
             runs = []
             for index, request in enumerate(scenario.requests):
@@ -392,10 +433,9 @@ def evaluate(runtime, provider, budget: float, only: str | None = None) -> dict[
                 )
                 spent += outcome.usd
                 # Team learns from every completed turn, right or wrong; only the score knows which was right.
-                if mode == "with-skills" and outcome.ended != "round-limit":
-                    skills = remember(
-                        skills, learned_skill(scenario.assistants, [list(step) for step in outcome.steps])
-                    )
+                if mode != "without-skills" and outcome.ended != "round-limit":
+                    kept = [step for step in outcome.steps if mode == "with-skills" or not step[3]]
+                    skills = remember(skills, learned_skill(scenario.assistants, [list(step[:3]) for step in kept]))
                 runs.append({key: value for key, value in dataclasses.asdict(outcome).items() if key != "steps"})
             report[f"{scenario.id}/{mode}"] = runs
     report["usd_spent"] = round(spent, 6)

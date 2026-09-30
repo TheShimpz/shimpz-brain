@@ -70,11 +70,12 @@ class JourneyEvalTests(unittest.TestCase):
         self.assertEqual(
             outcome.steps,
             (
-                ("dns", "list-zones", ()),
-                ("dns", "list-dns-records", ("name", "zone_id")),
-                ("dns", "replace-dns-record", ("content", "name", "record_id", "type", "zone_id")),
+                ("dns", "list-zones", (), False),
+                ("dns", "list-dns-records", ("name", "zone_id"), False),
+                ("dns", "replace-dns-record", ("content", "name", "record_id", "type", "zone_id"), False),
             ),
         )
+        self.assertEqual(outcome.failed_calls, 0)
         self.assertNotIn("198.51.100.7", repr(outcome.steps))
 
     def test_a_write_to_another_zone_fails_and_changes_nothing(self):
@@ -92,6 +93,23 @@ class JourneyEvalTests(unittest.TestCase):
         pages = journeys._simulate("read-pages", {"urls": ["https://other.example/ip", page]}, facts)["pages"]
         self.assertEqual([facts["ip"] in item["text"] for item in pages], [False, True])
         self.assertEqual(journeys._simulate("read-pages", {"urls": page}, facts), {"pages": []})
+
+    def test_blind_rules_surface_only_as_errors_and_failed_calls_never_count_as_writes(self):
+        scenario = _scenario("blind-update-by-id")
+        self.assertEqual(journeys._simulate("ensure-dns-record", WWW, {}, scenario.rules), {"error": "record-exists"})
+        self.assertIn("record", journeys._simulate("ensure-dns-record", WWW, {}))
+        absolute = _scenario("blind-absolute-names").rules
+        self.assertEqual(journeys._simulate("ensure-dns-record", WWW, {}, absolute)["error"], "invalid-name")
+        self.assertIn(
+            "record", journeys._simulate("ensure-dns-record", {**WWW, "name": "www.exemplo.com."}, {}, absolute)
+        )
+        runtime = _runtime(
+            AIMessage(content="", tool_calls=[_call(journeys.DNS, "ensure-dns-record", WWW, "c1")]),
+            AIMessage(content="Updated www.exemplo.com."),
+        )
+        outcome = journeys.run_request(runtime, PROVIDER, scenario, scenario.requests[0], "j:4", [])
+        self.assertEqual((outcome.succeeded, outcome.failed_calls), (False, 1))
+        self.assertEqual(outcome.steps[0][3], True)
 
     def test_a_replace_with_an_unknown_record_id_changes_nothing(self):
         scenario = _scenario("dns-update")
