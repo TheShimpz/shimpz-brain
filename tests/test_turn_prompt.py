@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import unittest
-from unittest import mock
 
 import agent_runtime
 import turn_pins
@@ -56,8 +55,11 @@ class PromptTests(unittest.TestCase):
         value = turn_prompt.today()
         after = datetime.datetime.now(datetime.UTC).date()
         self.assertIn(value, {before, after})
-        with mock.patch.object(turn_prompt, "today", return_value=TODAY):
-            self.assertEqual(context().turn_date, TODAY)
+        self.assertIs(agent_runtime.TurnContext.__dataclass_fields__["turn_date"].default_factory, turn_prompt.today)
+        before = datetime.datetime.now(datetime.UTC).date()
+        value = context().turn_date
+        after = datetime.datetime.now(datetime.UTC).date()
+        self.assertIn(value, {before, after})
 
     def test_the_turn_date_must_be_a_plain_date(self):
         for value in (datetime.datetime(2026, 9, 29, tzinfo=datetime.UTC), "2026-09-29", None):
