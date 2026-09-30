@@ -173,3 +173,32 @@ class GraphCorrectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExternalReferenceTests(unittest.TestCase):
+    """An Action schema is self-contained: no reference may reach outside the immutable package."""
+
+    def test_admission_refuses_references_outside_the_schema(self):
+        for reference in ("http://example.invalid/schema.json", "file:///etc/passwd", "other.json#/x", 7):
+            schema = {"type": "object", "properties": {"x": {"$ref": reference}}}
+            with self.subTest(reference=reference), self.assertRaises(agent_runtime.RuntimeContractError):
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+        dynamic = {"type": "object", "properties": {"x": {"$dynamicRef": "https://example.invalid/s"}}}
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=dynamic)
+        local = {
+            "type": "object",
+            "$defs": {"name": {"type": "string"}},
+            "properties": {"x": {"$ref": "#/$defs/name"}},
+            "prefixItems": [{"$ref": "#/$defs/name"}],
+        }
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=local)
+
+    def test_the_argument_validator_never_retrieves_a_reference(self):
+        schema = {"type": "object", "properties": {"x": {"$ref": "http://example.invalid/schema.json"}}}
+        with mock.patch("urllib.request.urlopen", side_effect=AssertionError("retrieved")) as urlopen:
+            validator = action_tool.action_schema_validator(schema)
+            with self.assertRaises(Exception) as caught:
+                list(validator.iter_errors({"x": 1}))
+        urlopen.assert_not_called()
+        self.assertNotIsInstance(caught.exception, AssertionError)

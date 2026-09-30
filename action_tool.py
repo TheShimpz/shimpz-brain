@@ -7,7 +7,8 @@ may call again within the recursion limit (ADR-0080). Team still validates every
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.tools import StructuredTool
 
@@ -32,12 +33,25 @@ def correction(tool_name: str, action: ActionDefinition) -> str:
     )[:MAX_CORRECTION_CHARS]
 
 
+def _refuse_retrieval(uri: str):
+    from referencing.exceptions import NoSuchResource
+
+    raise NoSuchResource(ref=uri)
+
+
+def action_schema_validator(schema: Mapping[str, Any]):
+    """Validate Action arguments without ever retrieving a reference from the network or the filesystem."""
+    from jsonschema import Draft202012Validator
+    from referencing import Registry
+
+    return Draft202012Validator(dict(schema), registry=Registry(retrieve=_refuse_retrieval))
+
+
 def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) -> StructuredTool:
     """Build a tool that can only suspend the graph with a schema-valid, typed Action request."""
-    from jsonschema import Draft202012Validator
     from langgraph.types import interrupt
 
-    validator = Draft202012Validator(dict(action.input_schema))
+    validator = action_schema_validator(action.input_schema)
 
     def suspend_for_controller(**payload):
         if next(validator.iter_errors(payload), None) is not None:

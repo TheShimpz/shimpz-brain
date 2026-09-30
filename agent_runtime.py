@@ -110,6 +110,20 @@ class ProviderConfig:
             raise RuntimeContractError("invalid model provider credential")
 
 
+def _reject_external_references(schema: Mapping[str, Any]) -> None:
+    """An Action schema is self-contained: every reference must point inside it, never at a URL or file."""
+    pending: list[Any] = [schema]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                if key in {"$ref", "$dynamicRef"} and not (isinstance(value, str) and value.startswith("#")):
+                    raise RuntimeContractError("Action input schema references an external document")
+                pending.append(value)
+        elif isinstance(node, list):
+            pending.extend(node)
+
+
 @dataclass(frozen=True, slots=True)
 class ActionDefinition:
     id: str
@@ -136,6 +150,7 @@ class ActionDefinition:
             Draft202012Validator.check_schema(dict(self.input_schema))
         except SchemaError as exc:
             raise RuntimeContractError("invalid Action input schema") from exc
+        _reject_external_references(self.input_schema)
 
 
 @dataclass(frozen=True, slots=True)
