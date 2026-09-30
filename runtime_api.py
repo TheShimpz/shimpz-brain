@@ -22,6 +22,7 @@ import model_usage
 import provider_cancel
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
@@ -501,6 +502,12 @@ def _close_owned_runtime(runtime: object, *, owned: bool) -> None:
         close()
 
 
+async def _validation_error_response(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Say only where and why a request is malformed; its own values, such as a provider key, are never echoed."""
+    errors = [{"loc": list(error["loc"]), "type": error["type"], "msg": error["msg"]} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
 async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
 
@@ -566,6 +573,7 @@ def create_app(
     app.state.capability_plan_slots = threading.BoundedSemaphore(CAPABILITY_PLAN_CONCURRENCY)
     app.state.intent_route_slots = threading.BoundedSemaphore(INTENT_ROUTE_CONCURRENCY)
     app.add_exception_handler(agent_runtime.RuntimeStateError, _state_error_response)
+    app.add_exception_handler(RequestValidationError, _validation_error_response)
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
         expected = token_reader()

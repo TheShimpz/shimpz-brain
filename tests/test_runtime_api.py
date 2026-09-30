@@ -505,6 +505,21 @@ class RuntimeApiTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [])
 
+    def test_a_malformed_request_never_echoes_its_input_or_provider_key(self):
+        missing = body()
+        missing.pop("conversation")
+        wrong = body()
+        wrong["provider"]["effort"] = SECRET
+        for request_body in (missing, wrong):
+            with self.subTest(fields=sorted(request_body)):
+                response = client(FakeRuntime()).post(
+                    "/v1/turns", json=request_body, headers={"Authorization": f"Bearer {TOKEN}"}
+                )
+                self.assertEqual(response.status_code, 422)
+                self.assertNotIn(SECRET, response.text)
+                self.assertNotIn("input", response.json()["detail"][0])
+                self.assertNotIn("ctx", response.json()["detail"][0])
+
     def test_invalid_action_label_model_output_is_a_redacted_upstream_failure(self):
         runtime = FakeRuntime(error=agent_runtime.ProviderResponseError(f"invalid output beside {SECRET}"))
         response = client(runtime).post(
