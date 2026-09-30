@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import unittest
 from unittest import mock
 
@@ -18,6 +19,26 @@ PROBABILITIES = {"ordinary-task": 0.9, "assistant-install": 0.05, "assistant-uni
 def _answer(choice: str = "ordinary-task", confidence: float = 0.9, **overrides: object) -> dict[str, object]:
     answer = {"type": "choice", "choice": choice, "confidence": confidence, "probabilities": dict(PROBABILITIES)}
     return {"model": intent_fast_path.MODEL, "answers": {"intent": answer}, "usage": {"input_tokens": 9}, **overrides}
+
+
+class _CountingStream(httpx.SyncByteStream):
+    """A large response body that records how much of it the fast path consumed and whether it was closed."""
+
+    def __init__(self, chunks: int, size: int = 64 * 1024, pause: float = 0.0) -> None:
+        self.chunks = chunks
+        self.size = size
+        self.pause = pause
+        self.consumed = 0
+        self.closed = False
+
+    def __iter__(self):
+        for _ in range(self.chunks):
+            self.consumed += 1
+            yield b" " * self.size
+            time.sleep(self.pause)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _client(handler) -> httpx.Client:
@@ -108,6 +129,7 @@ class ConfidentOrdinaryTests(unittest.TestCase):
         self.assertEqual(request.headers["Authorization"], f"Bearer {KEY}")
         self.assertEqual(json.loads(request.content)["state"], {"current_message": "Oi!"})
         self.assertEqual(request.extensions["timeout"]["read"], intent_fast_path.TIMEOUT_SECONDS)
+        self.assertEqual(request.headers["Accept-Encoding"], "identity")
         for response in (
             _answer(confidence=intent_fast_path.CONFIDENCE_THRESHOLD - 0.01),
             _answer(choice="assistant-install", confidence=1.0),
@@ -130,6 +152,31 @@ class ConfidentOrdinaryTests(unittest.TestCase):
         ):
             with self.subTest(handler=handler):
                 self.assertFalse(self._ask(handler))
+
+    def test_an_error_or_oversized_response_is_closed_without_reading_it_whole(self):
+        # 4 MiB bodies: an error status and a declared oversized length are never read, and an undeclared oversized
+        # body stops at the first chunk past the bound. Every rejected response is closed.
+        cases = (
+            (503, {}, 0),
+            (200, {"Content-Length": str(4 * 1024 * 1024)}, 0),
+            (200, {"Content-Encoding": "gzip"}, 0),
+            (200, {}, 1),
+        )
+        for status, headers, consumed in cases:
+            stream = _CountingStream(64)
+            with self.subTest(status=status, headers=headers):
+                self.assertFalse(
+                    self._ask(lambda _request, s=stream, h=headers, c=status: httpx.Response(c, headers=h, stream=s))
+                )
+                self.assertEqual(stream.consumed, consumed)
+                self.assertTrue(stream.closed)
+
+    def test_a_trickled_response_is_abandoned_at_the_deadline(self):
+        stream = _CountingStream(64, size=1, pause=0.05)
+        with mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.1):
+            self.assertFalse(self._ask(lambda _request: httpx.Response(200, stream=stream)))
+        self.assertLess(stream.consumed, 10)
+        self.assertTrue(stream.closed)
 
 
 class RuntimeFastPathTests(unittest.TestCase):

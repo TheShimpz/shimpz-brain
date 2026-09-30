@@ -8,7 +8,9 @@ reply, Assistant id, or authority. The Supervisor's key is request-scoped and ne
 
 from __future__ import annotations
 
+import json
 import math
+import time
 from collections.abc import Mapping
 
 import httpx
@@ -21,6 +23,8 @@ MODEL = "jev-1.13.0"
 CONFIDENCE_THRESHOLD = 0.85
 # One attempt, well inside the Admin route timeout together with the LLM fallback.
 TIMEOUT_SECONDS = 1.5
+# A closed Choice over four intents plus usage counters is a few hundred bytes; anything larger is not a decision.
+MAX_RESPONSE_BYTES = 8 * 1024
 INTENTS = ("ordinary-task", "assistant-install", "assistant-uninstall", "unresolved")
 CRITERIA = {
     "ordinary-task": {
@@ -113,16 +117,37 @@ def confident_ordinary(
     context: intent_route.LifecycleContext,
 ) -> bool:
     """Return True only for a confident ordinary task; every other outcome keeps the LLM route authoritative."""
+    deadline = time.monotonic() + TIMEOUT_SECONDS
     try:
-        response = client.post(
+        with client.stream(
+            "POST",
             ENDPOINT,
             json=request_body(objective, context),
-            headers={"Authorization": f"Bearer {api_key}"},
+            # Identity encoding keeps the byte bound on what is actually decoded.
+            headers={"Authorization": f"Bearer {api_key}", "Accept-Encoding": "identity"},
             timeout=TIMEOUT_SECONDS,
-        )
-        if response.status_code != 200:
+        ) as response:
+            raw = _bounded_body(response, deadline)
+        if raw is None:
             return False
-        choice, confidence = parse(response.json())
+        choice, confidence = parse(json.loads(raw))
     except httpx.HTTPError, ValueError:
         return False
     return choice == "ordinary-task" and confidence >= CONFIDENCE_THRESHOLD
+
+
+def _bounded_body(response: httpx.Response, deadline: float) -> bytes | None:
+    """Return a successful identity-encoded body within the size bound and deadline; None leaves the rest unread."""
+    declared = response.headers.get("content-length", "")
+    if (
+        response.status_code != 200
+        or response.headers.get("content-encoding", "identity") != "identity"
+        or (declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES)
+    ):
+        return None
+    body = bytearray()
+    for chunk in response.iter_bytes():
+        body += chunk
+        if len(body) > MAX_RESPONSE_BYTES or time.monotonic() > deadline:
+            return None
+    return bytes(body)
