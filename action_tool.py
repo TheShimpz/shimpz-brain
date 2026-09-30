@@ -54,7 +54,12 @@ def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) 
     validator = action_schema_validator(action.input_schema)
 
     def suspend_for_controller(**payload):
-        if next(validator.iter_errors(payload), None) is not None:
+        try:
+            invalid = next(validator.iter_errors(payload), None) is not None
+        except RecursionError:
+            # A reference cycle the admission rule accepts never terminates: refuse it like any invalid argument.
+            invalid = True
+        if invalid:
             return correction(tool_name, action)
         return interrupt(
             {

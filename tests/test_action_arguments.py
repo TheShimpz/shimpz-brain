@@ -295,3 +295,14 @@ class ExternalReferenceTests(unittest.TestCase):
                 list(validator.iter_errors({"x": 1}))
         urlopen.assert_not_called()
         self.assertNotIsInstance(caught.exception, AssertionError)
+
+    def test_arguments_are_corrected_when_schema_references_recurse_without_end(self):
+        for schema in (
+            {"type": "object", "$defs": {"a": {"$ref": "#/$defs/a"}}, "properties": {"x": {"$ref": "#/$defs/a"}}},
+            {"type": "object", "$ref": "#"},
+        ):
+            action = agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+            with self.subTest(schema=schema), mock.patch("langgraph.types.interrupt") as interrupt:
+                message = action_tool.request_action(TOOL, "shimpz-exa", action).func(x=1)
+                self.assertTrue(message.startswith("Action not executed:"))
+                interrupt.assert_not_called()
