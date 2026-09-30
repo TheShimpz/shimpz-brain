@@ -17,12 +17,13 @@ import secrets
 import threading
 import unicodedata
 import weakref
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import action_labels
+import action_schema
 import action_tool
 import capability_plan as capability_planner
 import clarification as clarifier
@@ -113,66 +114,6 @@ class ProviderConfig:
             raise RuntimeContractError("invalid model provider credential")
 
 
-_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
-# A reference may name only the root or one direct definition. Both are walked schema positions, so a reference never
-# executes a const, enum, default, or examples value as a schema. A percent escape is refused because the resolver
-# decodes it before it splits the pointer.
-_LOCAL_REFERENCE = re.compile(r"#(?:/(?:\$defs|definitions)/[^/%]+)?")
-# The Draft 2020-12 positions that hold subschemas; every other value, such as a property name or a const, enum,
-# default, or examples value, is data and never a reference.
-_APPLICATOR_KEYWORDS = frozenset(
-    {
-        "additionalProperties",
-        "contains",
-        "contentSchema",
-        "else",
-        "if",
-        "items",
-        "not",
-        "propertyNames",
-        "then",
-        "unevaluatedItems",
-        "unevaluatedProperties",
-    }
-)
-_APPLICATOR_LIST_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
-_APPLICATOR_MAP_KEYWORDS = frozenset({"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"})
-
-
-def _applied_subschemas(node: Mapping[str, Any]) -> Iterator[object]:
-    # The metaschema check already proved each applicator value has its Draft 2020-12 shape.
-    for keyword in _APPLICATOR_KEYWORDS & node.keys():
-        yield node[keyword]
-    for keyword in _APPLICATOR_LIST_KEYWORDS & node.keys():
-        yield from node[keyword]
-    for keyword in _APPLICATOR_MAP_KEYWORDS & node.keys():
-        yield from node[keyword].values()
-
-
-def _schema_node_problem(node: Mapping[str, Any], *, nested: bool) -> str | None:
-    reference = node.get("$ref", "#")
-    if "$dynamicRef" in node or not (isinstance(reference, str) and _LOCAL_REFERENCE.fullmatch(reference)):
-        return "must reference only its root or a named definition"
-    # Another dialect would apply keywords this walk never reads, and a nested base URI could rebind a reference.
-    if node.get("$schema", _DRAFT_2020_12) != _DRAFT_2020_12:
-        return "must use only the Draft 2020-12 dialect"
-    if nested and "$id" in node:
-        return "must not declare a nested identifier"
-    return None
-
-
-def _reject_unwalked_references(schema: Mapping[str, Any]) -> None:
-    """An Action schema is self-contained: every reference must land on a schema position this walk has checked."""
-    pending: list[object] = [schema]
-    while pending:
-        node = pending.pop()
-        if isinstance(node, Mapping):
-            problem = _schema_node_problem(node, nested=node is not schema)
-            if problem is not None:
-                raise RuntimeContractError(f"Action input schema {problem}")
-            pending.extend(_applied_subschemas(node))
-
-
 @dataclass(frozen=True, slots=True)
 class ActionDefinition:
     id: str
@@ -199,7 +140,9 @@ class ActionDefinition:
             Draft202012Validator.check_schema(dict(self.input_schema))
         except SchemaError as exc:
             raise RuntimeContractError("invalid Action input schema") from exc
-        _reject_unwalked_references(self.input_schema)
+        problem = action_schema.reference_problem(self.input_schema)
+        if problem is not None:
+            raise RuntimeContractError(f"Action input schema {problem}")
 
 
 @dataclass(frozen=True, slots=True)

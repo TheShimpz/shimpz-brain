@@ -6,6 +6,7 @@ import unittest
 from typing import Any
 from unittest import mock
 
+import action_schema
 import action_tool
 import agent_runtime
 from langchain_core.messages import AIMessage, ToolMessage
@@ -254,10 +255,10 @@ class ExternalReferenceTests(unittest.TestCase):
             agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=rebound)
 
         current = {
-            "$schema": agent_runtime._DRAFT_2020_12,
+            "$schema": action_schema.DRAFT_2020_12,
             "$id": "https://example.invalid/action.json",
             "type": "object",
-            "properties": {"x": {"$schema": agent_runtime._DRAFT_2020_12, "type": "string"}},
+            "properties": {"x": {"$schema": action_schema.DRAFT_2020_12, "type": "string"}},
         }
         agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=current)
 
