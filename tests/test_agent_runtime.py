@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import json
 import sqlite3
 import tempfile
 import threading
@@ -905,14 +906,27 @@ class AgentRuntimeTests(unittest.TestCase):
             context(
                 assistant(
                     "busy-helper-one",
-                    *(action(f"action-{index}") for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)),
+                    *(action(f"action-{index}") for index in range(agent_runtime.MAX_TEAM_ACTIONS)),
                 ),
-                assistant(
-                    "busy-helper-two",
-                    *(action(f"action-{index}") for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)),
-                ),
-                assistant("busy-helper-three", action("overflow")),
+                assistant("busy-helper-two", action("overflow")),
             )
+
+    def test_brain_admits_exactly_the_action_bounds_team_admits(self):
+        # Team admits 128 Actions per Assistant and a compact input schema of at most 128 KiB.
+        empty = len(json.dumps({"type": "object", "description": ""}, separators=(",", ":")).encode())
+        for size, admitted in ((128 * 1024, True), (128 * 1024 + 1, False)):
+            schema = {"type": "object", "description": "x" * (size - empty)}
+            with self.subTest(size=size):
+                if admitted:
+                    agent_runtime.ActionDefinition(id="action", summary="Summary", input_schema=schema)
+                else:
+                    with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too large"):
+                        agent_runtime.ActionDefinition(id="action", summary="Summary", input_schema=schema)
+
+        actions = tuple(action(f"action-{index}") for index in range(129))
+        self.assertEqual(len(context(assistant("busy-helper", *actions[:128])).assistants[0].actions), 128)
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Actions"):
+            assistant("busy-helper", *actions)
 
     def test_provider_failures_do_not_expose_the_secret(self):
         class FailedModelFactory:

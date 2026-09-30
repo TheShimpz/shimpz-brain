@@ -775,6 +775,23 @@ class RuntimeApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_an_assistant_with_the_team_admitted_128_actions_is_accepted(self):
+        runtime = FakeRuntime()
+        payload = body()
+        action = payload["assistants"][0]["actions"][0]
+        payload["assistants"] = [
+            {**payload["assistants"][0], "actions": [{**action, "id": f"action-{index}"} for index in range(128)]}
+        ]
+
+        response = client(runtime).post(
+            "/v1/turns",
+            json=payload,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(runtime.calls[0][1].assistants[0].actions), 128)
+
     def test_total_team_action_bound_is_enforced_across_assistants(self):
         api = client(FakeRuntime())
         payload = body()
