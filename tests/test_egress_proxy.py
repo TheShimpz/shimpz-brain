@@ -7,8 +7,9 @@ import json
 import socket
 import sys
 import tempfile
+import threading
 import unittest
-from contextlib import ExitStack, redirect_stderr
+from contextlib import ExitStack, redirect_stderr, suppress
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -356,6 +357,46 @@ class BrainEgressHealthcheckTests(unittest.TestCase):
 
 
 class BrainEgressAuditTests(unittest.TestCase):
+    def test_concurrent_audit_writes_rotate_one_at_a_time_and_keep_every_line(self) -> None:
+        # Each rotation waits up to a second for the other writer to rotate too; the audit lock must keep them apart.
+        audit = app.audit
+        active = peak = 0
+        guard = threading.Lock()
+        barrier = threading.Barrier(2, timeout=1)
+        rotate = audit._rotate
+
+        def overlapping_rotate() -> None:
+            nonlocal active, peak
+            with guard:
+                active += 1
+                peak = max(peak, active)
+            with suppress(threading.BrokenBarrierError):
+                barrier.wait()
+            rotate()
+            with guard:
+                active -= 1
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "audit.jsonl")
+            with (
+                mock.patch.object(audit, "AUDIT_PATH", path),
+                mock.patch.object(audit, "_rotate", overlapping_rotate),
+                mock.patch("sys.stdout", io.StringIO()),
+            ):
+                writers = [
+                    threading.Thread(
+                        target=audit.log, args=("connect", f"host{index}.example:443"), kwargs={"result": "ok"}
+                    )
+                    for index in range(2)
+                ]
+                for writer in writers:
+                    writer.start()
+                for writer in writers:
+                    writer.join()
+            lines = path.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(peak, 1)
+        self.assertEqual(len(lines), 2)
+
     def test_audit_writes_structured_events_and_rotates_bounded_files(self) -> None:
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

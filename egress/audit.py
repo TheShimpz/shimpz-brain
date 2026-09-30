@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 AUDIT_PATH = Path(os.environ.get("SHIMPZ_EGRESS_AUDIT_LOG", "/var/log/brain-egress/audit.jsonl"))
 MAX_BYTES = 10 * 1024 * 1024
 BACKUPS = 3
+_AUDIT_LOCK = threading.Lock()
 
 
 def _rotate() -> None:
@@ -46,8 +48,10 @@ def log(op: str, subject: str, *, result: str, level: str | None = None, **extra
     }
     line = json.dumps(event, sort_keys=True)
     print(line, file=sys.stdout, flush=True)
-    AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _rotate()
-    with AUDIT_PATH.open("a") as fh:
-        fh.write(line + "\n")
+    # Concurrent CONNECT handlers share one file: rotation and append run as one step, so no line is lost to a rename.
+    with _AUDIT_LOCK:
+        AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _rotate()
+        with AUDIT_PATH.open("a") as fh:
+            fh.write(line + "\n")
     return trace_id
