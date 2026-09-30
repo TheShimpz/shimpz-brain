@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import io
 import ipaddress
+import itertools
 import json
 import socket
 import sys
@@ -136,6 +137,14 @@ class BrainEgressHandlerTests(unittest.TestCase):
         handler.client_address = ("10.0.0.2", 1234)
         with mock.patch.object(app.Handler, "_read_request_line", return_value=None):
             self.assertIsNone(handler.handle())
+
+    def test_a_trickled_request_header_is_dropped_at_an_absolute_deadline(self) -> None:
+        trickle = mock.Mock()
+        trickle.recv.return_value = b"C"  # each byte arrives well inside the per-read inactivity timeout
+        with mock.patch("time.monotonic", side_effect=itertools.count()):
+            self.assertIsNone(app.Handler._read_request_line(trickle))
+        self.assertLess(trickle.recv.call_count, app.CONNECT_TIMEOUT)
+        self.assertTrue(all(0 < call.args[0] <= app.CONNECT_TIMEOUT for call in trickle.settimeout.call_args_list))
 
     def test_resolution_rejects_errors_invalid_mixed_and_empty_answers(self) -> None:
         with mock.patch.object(app.socket, "getaddrinfo", side_effect=OSError):

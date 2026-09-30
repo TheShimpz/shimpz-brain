@@ -28,6 +28,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 
 import audit
 import policy
@@ -35,6 +36,7 @@ import policy
 LISTEN_PORT = int(os.environ.get("SHIMPZ_EGRESS_PORT", "8888"))
 ALLOWED_PORTS = {443}  # HTTPS only — every legitimate brain destination is TLS
 CONNECT_TIMEOUT = 15
+HEADER_DEADLINE = CONNECT_TIMEOUT  # the whole CONNECT header, however slowly it trickles in
 IDLE_TIMEOUT = 300  # tear down a tunnel idle this long
 BUFSIZE = 65536
 MAX_CONCURRENCY = int(os.environ.get("SHIMPZ_EGRESS_MAX_CONCURRENCY", "64"))
@@ -98,6 +100,7 @@ class Handler(socketserver.BaseRequestHandler):
         header = self._read_request_line(cli)
         if header is None:
             return
+        cli.settimeout(CONNECT_TIMEOUT)
         parts = header.split(" ")
         if len(parts) < 2 or parts[0] != "CONNECT":
             self._reply(cli, 405)
@@ -144,8 +147,13 @@ class Handler(socketserver.BaseRequestHandler):
     def _read_request_line(sock: socket.socket) -> str | None:
         """Read up to the end of the CONNECT request headers; return the request line (or None)."""
         buf = b""
+        deadline = time.monotonic() + HEADER_DEADLINE
         while b"\r\n\r\n" not in buf:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
             try:
+                sock.settimeout(remaining)
                 chunk = sock.recv(4096)
             except OSError:
                 return None
