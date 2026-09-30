@@ -94,7 +94,7 @@ def _record_id(name: str) -> str:
 def _host(arguments: Mapping[str, object]) -> str:
     """The fully qualified record name, however the model spelled it."""
     name = str(arguments.get("name", "")).rstrip(".").lower()
-    return name if name.endswith("exemplo.com") else f"{name}.exemplo.com"
+    return name if name == "exemplo.com" or name.endswith(".exemplo.com") else f"{name}.exemplo.com"
 
 
 def _zone(action: str, arguments: Mapping[str, object], rules: frozenset[str]) -> dict[str, object]:
