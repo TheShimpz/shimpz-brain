@@ -256,9 +256,9 @@ class RuntimeBudgetTests(unittest.TestCase):
                 "Wide.",
                 {"type": "object", "properties": {"v": filler}, "additionalProperties": False},
             )
-            for index in range(agent_runtime.MAX_TEAM_ACTIONS)
+            for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)
         )
-        # One Assistant carries the Team's 128 Actions at the maximum schema size; the rest carry maximum Genesis only.
+        # One Assistant carries its 128 Actions at the maximum schema size; the rest carry maximum Genesis only.
         heaviest = tuple(
             agent_runtime.AssistantDefinition(f"assistant-{index}", genesis, wide if index == 0 else ())
             for index in range(agent_runtime.MAX_ASSISTANTS)

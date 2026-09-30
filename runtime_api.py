@@ -101,12 +101,6 @@ class TurnContextInput(BaseModel):
             return value
         return agent_runtime.normalize_team_name(value)
 
-    @model_validator(mode="after")
-    def bound_total_actions(self) -> Self:
-        if sum(len(assistant.actions) for assistant in self.assistants) > agent_runtime.MAX_TEAM_ACTIONS:
-            raise ValueError("a Team exposes too many Actions")
-        return self
-
     def runtime_context(self) -> agent_runtime.TurnContext:
         return agent_runtime.TurnContext(
             thread_id=self.thread_id,
@@ -169,7 +163,7 @@ class StartTurnInput(TurnContextInput):
 
 
 class ResumeTurnInput(TurnContextInput):
-    results: dict[str, Any] = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_ACTIONS)
+    results: dict[str, Any] = Field(min_length=1, max_length=agent_runtime.MAX_ACTION_RESULTS)
 
 
 class DeleteThreadInput(BaseModel):

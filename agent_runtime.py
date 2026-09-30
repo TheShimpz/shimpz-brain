@@ -48,9 +48,12 @@ PROVIDERS = frozenset(MODELS_BY_PROVIDER)
 ACTION_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 TEAM_NAME_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+# Team scopes a Brain request to at most 16 Assistants of at most 128 Actions each, so these two bounds are the
+# total: a request carries at most 2,048 Actions, exactly what Team can admit.
 MAX_ASSISTANTS = 16
 MAX_ACTIONS_PER_ASSISTANT = 128
-MAX_TEAM_ACTIONS = 128
+# One resume answers the Action requests of one suspension, of which Team accepts at most 64.
+MAX_ACTION_RESULTS = 128
 MAX_TEAM_NAME_CHARS = 80
 MAX_GENESIS_BYTES = 128 * 1024
 MAX_MESSAGE_CHARS = 64 * 1024
@@ -258,8 +261,6 @@ class TurnContext:
         assistant_ids = [assistant.id for assistant in self.assistants]
         if len(assistant_ids) != len(set(assistant_ids)):
             raise RuntimeContractError("duplicate Assistant id")
-        if sum(len(assistant.actions) for assistant in self.assistants) > MAX_TEAM_ACTIONS:
-            raise RuntimeContractError("a Team exposes too many Actions")
         object.__setattr__(self, "assistants", tuple(sorted(self.assistants, key=lambda item: item.id)))
 
 

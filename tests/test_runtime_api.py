@@ -792,26 +792,39 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(runtime.calls[0][1].assistants[0].actions), 128)
 
-    def test_total_team_action_bound_is_enforced_across_assistants(self):
-        api = client(FakeRuntime())
-        payload = body()
-        action = payload["assistants"][0]["actions"][0]
-        payload["assistants"] = [
-            {
-                "id": f"assistant-{index}",
-                "genesis": "Bounded Assistant.",
-                "actions": [{**action, "id": f"action-{index}-{action_index}"} for action_index in range(64)],
-            }
-            for index in range(3)
-        ]
+    def test_every_action_team_can_scope_across_assistants_is_accepted(self):
+        # Team scopes at most 16 Assistants of at most 128 Actions each into one request: 2,048 Actions in total.
+        action = body()["assistants"][0]["actions"][0]
 
-        response = api.post(
-            "/v1/turns",
-            json=payload,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        def scoped(*counts: int) -> dict[str, object]:
+            payload = body()
+            payload["assistants"] = [
+                {
+                    "id": f"assistant-{index}",
+                    "genesis": "Bounded Assistant.",
+                    "actions": [{**action, "id": f"action-{action_index}"} for action_index in range(count)],
+                }
+                for index, count in enumerate(counts)
+            ]
+            return payload
 
-        self.assertEqual(response.status_code, 422)
+        for counts, status in (
+            ((65, 65), 200),
+            ((128,) * 16, 200),
+            ((128,) * 15 + (129,), 422),
+            ((128,) * 16 + (1,), 422),
+        ):
+            runtime = FakeRuntime()
+            with self.subTest(total=sum(counts), assistants=len(counts)):
+                response = client(runtime).post(
+                    "/v1/turns",
+                    json=scoped(*counts),
+                    headers={"Authorization": f"Bearer {TOKEN}"},
+                )
+                self.assertEqual(response.status_code, status)
+                if status == 200:
+                    admitted = runtime.calls[0][1].assistants
+                    self.assertEqual(sum(len(item.actions) for item in admitted), sum(counts))
 
     def test_provider_error_is_generic_and_never_echoes_credential(self):
         runtime = FakeRuntime(error=agent_runtime.ProviderRequestError(f"provider rejected {SECRET}"))

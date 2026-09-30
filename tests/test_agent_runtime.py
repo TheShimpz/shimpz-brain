@@ -902,14 +902,20 @@ class AgentRuntimeTests(unittest.TestCase):
             context(*(assistant(f"helper-{index}") for index in range(agent_runtime.MAX_ASSISTANTS + 1)))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "duplicate Assistant id"):
             context(assistant("same-helper"), assistant("same-helper"))
+
+    def test_a_context_admits_every_action_team_can_scope_across_assistants(self):
+        # Team scopes at most 16 Assistants of at most 128 Actions each into one request: 2,048 Actions in total.
+        actions = tuple(action(f"action-{index}") for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT + 1))
+        two = context(assistant("helper-one", *actions[:65]), assistant("helper-two", *actions[:65]))
+        self.assertEqual(sum(len(item.actions) for item in two.assistants), 130)
+        full = tuple(assistant(f"helper-{index}", *actions[:128]) for index in range(agent_runtime.MAX_ASSISTANTS))
+        self.assertEqual(sum(len(item.actions) for item in context(*full).assistants), 2_048)
+
+        # One more Action needs either a 129th Action on an Assistant or a 17th Assistant; both are refused.
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Actions"):
-            context(
-                assistant(
-                    "busy-helper-one",
-                    *(action(f"action-{index}") for index in range(agent_runtime.MAX_TEAM_ACTIONS)),
-                ),
-                assistant("busy-helper-two", action("overflow")),
-            )
+            context(*full[1:], assistant("helper-0", *actions))
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "at most 16 Assistants"):
+            context(*full, assistant("helper-overflow", action("overflow")))
 
     def test_brain_admits_exactly_the_action_bounds_team_admits(self):
         # Team admits 128 Actions per Assistant and a compact input schema of at most 128 KiB.
