@@ -8,6 +8,7 @@ import json
 import threading
 import time
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -255,6 +256,7 @@ class CreateTests(unittest.TestCase):
             (ImportError("missing adapter"), ImportError),
         ):
             model = mock.Mock()
+            model.model_copy.return_value = model
             model.with_structured_output.return_value.invoke.side_effect = failure
             with self.subTest(failure=type(failure).__name__), self.assertRaises(expected):
                 action_purpose.create(lambda model=model: model, "openai", request)
@@ -265,6 +267,19 @@ class CreateTests(unittest.TestCase):
                 self.assertRaisesRegex(agent_runtime.ProviderResponseError, "^model provider response failed$"),
             ):
                 action_purpose.create(lambda model=model: model, "openai", request)
+
+    def test_both_providers_send_the_purpose_output_cap(self):
+        catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
+        for entry in catalog["providers"]:
+            config = agent_runtime.ProviderConfig(
+                provider=entry["id"], model=entry["models"][0]["id"], api_key="secret-test-key"
+            )
+            model = agent_runtime.provider_model(config, decision=True)
+            payload = action_purpose.capped(model)._get_request_payload([("user", "hi")])
+            with self.subTest(provider=entry["id"]):
+                key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
+                self.assertEqual(payload[key], action_purpose.MAX_PURPOSE_OUTPUT_TOKENS)
+                self.assertIs(type(action_purpose.capped(model)), type(model))
 
     def test_a_checkpoint_read_failure_is_a_state_error(self):
         class BrokenSaver:

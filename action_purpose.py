@@ -24,6 +24,8 @@ MAX_ACTION_SUMMARY_CHARS = 2_000
 # Team admits a chat message of at most 16,000 characters into its start envelope.
 MAX_OBJECTIVE_CHARS = 16_000
 MAX_PURPOSE_RESPONSE_CHARS = 4 * 1024
+# The provider may generate at most this many output tokens, its low-effort reasoning included, for one sentence.
+MAX_PURPOSE_OUTPUT_TOKENS = 1_024
 INTERRUPT_CHANNEL = "__interrupt__"
 
 
@@ -195,6 +197,11 @@ def _prompt(request: PurposeRequest) -> list[object]:
     ]
 
 
+def capped(model: BaseChatModel) -> BaseChatModel:
+    """The same provider client with the purpose output bound; both providers send it as their output token cap."""
+    return model.model_copy(update={"max_tokens": MAX_PURPOSE_OUTPUT_TOKENS})
+
+
 def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRequest) -> str | None:
     """One stateless structured call; a sentence that breaks the plain-text rule yields None."""
     from agent_runtime import (
@@ -206,7 +213,7 @@ def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRe
     )
 
     try:
-        result = structured_output(model(), provider, PurposeOutput).invoke(_prompt(request))
+        result = structured_output(capped(model()), provider, PurposeOutput).invoke(_prompt(request))
     except ImportError:
         raise
     except Exception as exc:
