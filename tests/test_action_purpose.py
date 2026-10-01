@@ -400,5 +400,6 @@ class PurposeApiTests(unittest.TestCase):
         content = b"".join(message.get("body", b"") for message in sent if message["type"] == "http.response.body")
         self.assertEqual((start["status"], json.loads(content)), (409, {"detail": "Action purpose cancelled"}))
 
+
 if __name__ == "__main__":
     unittest.main()
