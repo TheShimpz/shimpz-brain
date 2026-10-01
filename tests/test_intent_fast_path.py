@@ -8,6 +8,7 @@ import socket
 import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 import agent_runtime
@@ -291,6 +292,45 @@ class ConfidentOrdinaryTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 0.5)
         self.assertTrue(server.finished.wait(5))
         self.assertLess(time.monotonic() - started, 0.6)
+
+    def test_stalled_workers_send_further_calls_to_the_llm_route_without_queueing_them(self):
+        executor = ThreadPoolExecutor(max_workers=intent_fast_path.EXCHANGE_WORKERS)
+        self.addCleanup(executor.shutdown)
+        stall = threading.Event()
+        self.addCleanup(stall.set)
+        resolved: list[str] = []
+
+        def resolver(request: httpx.Request) -> httpx.Response:
+            stall.wait(5)
+            resolved.append(request.headers["Authorization"])
+            return httpx.Response(200, json=_answer())
+
+        client = _client(resolver)
+        self.addCleanup(client.close)
+
+        def ask() -> bool:
+            return intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext())
+
+        with (
+            mock.patch.object(intent_fast_path, "_EXCHANGES", executor),
+            mock.patch.object(
+                intent_fast_path, "_OUTSTANDING", threading.BoundedSemaphore(intent_fast_path.EXCHANGE_WORKERS)
+            ),
+        ):
+            with mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.05):
+                for _ in range(intent_fast_path.EXCHANGE_WORKERS):
+                    self.assertFalse(ask())
+            # Every worker is still stalled inside its resolver call, so twenty more calls return at once without
+            # waiting out their deadline and without leaving a work item, with its key and context, in the queue.
+            started = time.monotonic()
+            for _ in range(20):
+                self.assertFalse(ask())
+            self.assertLess(time.monotonic() - started, intent_fast_path.TIMEOUT_SECONDS / 3)
+            self.assertEqual(executor._work_queue.qsize(), 0)
+            stall.set()
+            self.assertTrue(_eventually(lambda: len(resolved) == intent_fast_path.EXCHANGE_WORKERS))
+            # Once the stalled exchanges drain, their slots admit a new exchange again.
+            self.assertTrue(_eventually(ask))
 
 
 class RuntimeFastPathTests(unittest.TestCase):

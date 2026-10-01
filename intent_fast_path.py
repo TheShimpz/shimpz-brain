@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -31,6 +32,9 @@ MAX_RESPONSE_BYTES = 8 * 1024
 # socket shutdown interrupts, is still blocked. Its cancelled scope then refuses every later step of that late work.
 EXCHANGE_WORKERS = 4
 _EXCHANGES = ThreadPoolExecutor(max_workers=EXCHANGE_WORKERS, thread_name_prefix="jev-fast-path")
+# Admits at most one outstanding exchange per worker, so no exchange waits in the executor queue behind a stalled one
+# while holding its key and context; a slot is freed only when its exchange finishes, fails, or is cancelled unstarted.
+_OUTSTANDING = threading.BoundedSemaphore(EXCHANGE_WORKERS)
 INTENTS = ("ordinary-task", "assistant-install", "assistant-uninstall", "unresolved")
 CRITERIA = {
     "ordinary-task": {
@@ -126,13 +130,19 @@ def confident_ordinary(
 
     The whole exchange has one absolute deadline: the caller stops waiting when it passes, and the exchange's scope
     is then cancelled, which over the runtime's cancellable pool shuts down any blocked connect, write, or read and
-    refuses any later one. A body that completes late is still refused.
+    refuses any later one. A body that completes late is still refused. While every worker is still occupied by an
+    earlier exchange, the call takes the LLM route at once instead of queueing behind them.
     """
     deadline = time.monotonic() + TIMEOUT_SECONDS
+    outstanding = _OUTSTANDING
+    if not outstanding.acquire(blocking=False):
+        return False
     scope = provider_cancel.CancelScope()
     exchange = _EXCHANGES.submit(scope.run, lambda: _exchange(client, api_key, objective, context, deadline))
+    # A future completes exactly once: when its exchange returns or raises, or when it is cancelled while queued.
+    exchange.add_done_callback(lambda _done: outstanding.release())
     try:
-        raw = exchange.result(timeout=TIMEOUT_SECONDS)
+        raw = exchange.result(timeout=max(0.0, deadline - time.monotonic()))
         if raw is None:
             return False
         choice, confidence = parse(json.loads(raw))
