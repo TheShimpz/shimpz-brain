@@ -128,7 +128,7 @@ class PlanCase:
 class LabelCase:
     id: str
     contract: str
-    exemplar: str
+    locale: str
     action_ids: tuple[str, ...]
     language: str
 
@@ -247,15 +247,15 @@ PLAN_CASES = (
 LABEL_CASES = (
     LabelCase(
         "labels-pt",
-        "labels follow the exemplar language",
-        "Crie um registro DNS",
+        "labels follow the interface language",
+        "pt",
         ("dns.create-record", "dns.list-zones"),
         "pt",
     ),
     LabelCase(
         "labels-en",
-        "labels follow the exemplar language",
-        "Create a DNS record",
+        "labels follow the interface language",
+        "en",
         ("dns.create-record", "dns.list-zones"),
         "en",
     ),
@@ -318,7 +318,7 @@ def run_plan(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
 
 
 def run_labels(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, case: LabelCase) -> bool:
-    labels = runtime.action_labels(provider, case.exemplar, case.action_ids)
+    labels = runtime.action_labels(provider, case.locale, case.action_ids)
     if tuple(label.id for label in labels) != case.action_ids:
         return False
     return language_proxy(" ".join(label.label for label in labels)) == case.language
@@ -343,8 +343,8 @@ def validate_corpus() -> None:
         ):
             raise ValueError("invalid plan case")
     for labels in LABEL_CASES:
-        agent_runtime.normalize_language_exemplar(labels.exemplar)
-        if labels.language not in {"pt", "en"} or labels.action_ids != tuple(sorted(set(labels.action_ids))):
+        valid = labels.locale == labels.language in {"pt", "en"}
+        if not valid or labels.action_ids != tuple(sorted(set(labels.action_ids))):
             raise ValueError("invalid label case")
 
 

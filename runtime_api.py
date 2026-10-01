@@ -11,6 +11,7 @@ import sqlite3
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
@@ -18,6 +19,7 @@ import action_labels
 import agent_runtime
 import capability_plan
 import intent_route
+import interface_language
 import memory as team_memory
 import model_usage
 import provider_cancel
@@ -189,11 +191,16 @@ class ConversationEntryInput(ClosedInput):
 
 class StartTurnInput(TurnContextInput):
     message: str = Field(min_length=1, max_length=agent_runtime.MAX_MESSAGE_CHARS)
+    # The interface language this logical turn writes in (ADR-0090); null follows the user's message. Its start pins it.
+    locale: interface_language.Locale | None
     # Eight entries of at most 512 characters cannot exceed the 4,096-character window total.
     conversation: list[ConversationEntryInput] = Field(max_length=intent_route.MAX_CONVERSATION_ENTRIES)
 
     def runtime_conversation(self) -> tuple[intent_route.ConversationEntry, ...]:
         return tuple(entry.runtime_entry() for entry in self.conversation)
+
+    def runtime_context(self) -> agent_runtime.TurnContext:
+        return replace(super().runtime_context(), locale=self.locale)
 
 
 class ResumeTurnInput(TurnContextInput):
@@ -213,15 +220,8 @@ class DeleteThreadInput(ClosedInput):
 
 class ActionLabelsInput(ClosedInput):
     provider: ProviderInput
-    language_exemplar: str = Field(min_length=1, max_length=agent_runtime.MAX_LANGUAGE_EXEMPLAR_CHARS)
+    locale: interface_language.Locale
     actions: list[str] = Field(min_length=1, max_length=action_labels.MAX_ACTION_LABELS)
-
-    @field_validator("language_exemplar", mode="before")
-    @classmethod
-    def normalize_language_exemplar(cls, value: object) -> object:
-        if not isinstance(value, str):
-            return value
-        return agent_runtime.normalize_language_exemplar(value)
 
     @field_validator("actions")
     @classmethod
@@ -315,14 +315,14 @@ class IntentRouteInput(ClosedInput):
     candidates: list[DirectoryCandidateInput] = Field(max_length=intent_route.MAX_CANDIDATES)
     lifecycle_reference: LifecycleReferenceInput | None
     conversation: list[ConversationEntryInput] = Field(max_length=intent_route.MAX_CONVERSATION_ENTRIES)
-    language_exemplar: str | None = Field(max_length=intent_route.MAX_LANGUAGE_EXEMPLAR_CHARS)
+    # The interface language the presentation-only reply is written in (ADR-0090).
+    locale: interface_language.Locale
 
     @model_validator(mode="after")
     def validate_lifecycle_context(self) -> Self:
-        if self.expected_intent is None:
-            if self.language_exemplar is not None:
-                raise ValueError("classification cannot include a language exemplar")
-        elif self.lifecycle_reference is not None or self.conversation or self.decision_provider is not None:
+        if self.expected_intent is not None and (
+            self.lifecycle_reference is not None or self.conversation or self.decision_provider is not None
+        ):
             raise ValueError("selection cannot include lifecycle state or a decision provider")
         if sum(len(entry.text) for entry in self.conversation) > intent_route.MAX_CONVERSATION_CHARS:
             raise ValueError("conversation window is too large")
@@ -341,9 +341,9 @@ class IntentRouteInput(ClosedInput):
     def runtime_context(self) -> intent_route.LifecycleContext | None:
         reference = None if self.lifecycle_reference is None else self.lifecycle_reference.runtime_reference()
         conversation = tuple(entry.runtime_entry() for entry in self.conversation)
-        if reference is None and not conversation and self.language_exemplar is None:
+        if reference is None and not conversation:
             return None
-        return intent_route.LifecycleContext(reference, conversation, self.language_exemplar)
+        return intent_route.LifecycleContext(reference, conversation)
 
 
 class RuntimeLike:
@@ -362,7 +362,7 @@ class RuntimeLike:
     def action_labels(
         self,
         provider: agent_runtime.ProviderConfig,
-        language_exemplar: str,
+        locale: str,
         action_ids: tuple[str, ...],
     ) -> tuple[action_labels.ActionLabel, ...]: ...
 
@@ -380,6 +380,7 @@ class RuntimeLike:
         expected_intent: intent_route.LifecycleIntent | None,
         candidates: tuple[intent_route.DirectoryCandidate, ...],
         context: intent_route.LifecycleContext | None,
+        locale: str,
         decision_key: str | None = None,
     ) -> intent_route.IntentRoute: ...
 
@@ -626,6 +627,7 @@ def _run_intent_route(
                 body.expected_intent,
                 body.runtime_candidates(),
                 body.runtime_context(),
+                body.locale,
                 decision_key=None if decision is None else decision.api_key.get_secret_value(),
             )
         )
@@ -674,18 +676,22 @@ async def _cancel_on_disconnect(request: Request, scope: provider_cancel.CancelS
     scope.cancel()
 
 
-async def _cancellable_turn(request: Request, work: Callable[[], agent_runtime.TurnResult]) -> dict[str, object]:
-    """Run one synchronous turn to completion; a Team disconnect cancels only this turn's provider I/O (ADR-0079)."""
+async def _cancellable[T](request: Request, work: Callable[[], T], cancelled: str) -> tuple[T, dict[str, object]]:
+    """Run one synchronous operation to completion; a Team disconnect cancels only its provider I/O (ADR-0079)."""
     scope = provider_cancel.CancelScope()
     watcher = asyncio.create_task(_cancel_on_disconnect(request, scope))
     try:
-        result, usage = await run_in_threadpool(scope.run, lambda: model_usage.measure(work))
+        return await run_in_threadpool(scope.run, lambda: model_usage.measure(work))
     except provider_cancel.ProviderCallCancelled:
-        raise HTTPException(status_code=409, detail="Chat turn cancelled") from None
+        raise HTTPException(status_code=409, detail=cancelled) from None
     finally:
         watcher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await watcher
+
+
+async def _cancellable_turn(request: Request, work: Callable[[], agent_runtime.TurnResult]) -> dict[str, object]:
+    result, usage = await _cancellable(request, work, "Chat turn cancelled")
     return {**_response(result), "usage": usage}
 
 
@@ -769,7 +775,7 @@ def create_app(
         labels, usage = model_usage.measure(
             lambda: current_runtime().action_labels(
                 body.runtime_provider(),
-                body.language_exemplar,
+                body.locale,
                 tuple(body.actions),
             )
         )

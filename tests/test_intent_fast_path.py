@@ -344,8 +344,8 @@ class RuntimeFastPathTests(unittest.TestCase):
     def test_a_confident_ordinary_task_skips_the_llm_route(self):
         runtime, factory = self._runtime()
         with mock.patch.object(intent_fast_path, "confident_ordinary", return_value=True) as ask:
-            route = runtime.intent_route(self.provider, "Oi!", None, (), None, decision_key=KEY)
-            runtime.intent_route(self.provider, "Tudo certo?", None, (), None, decision_key=KEY)
+            route = runtime.intent_route(self.provider, "Oi!", None, (), None, "pt", decision_key=KEY)
+            runtime.intent_route(self.provider, "Tudo certo?", None, (), None, "pt", decision_key=KEY)
         self.assertEqual(route, intent_route.IntentRoute("ordinary-task"))
         self.assertEqual(ask.call_args_list[0].args[1:3], (KEY, "Oi!"))
         # Both classifications reuse one pooled decision client.
@@ -361,19 +361,20 @@ class RuntimeFastPathTests(unittest.TestCase):
             mock.patch.object(intent_fast_path, "confident_ordinary", return_value=False),
             mock.patch.object(intent_route, "create", return_value=llm) as create,
         ):
-            self.assertEqual(runtime.intent_route(self.provider, "Instala o Cloudflare", None, (), None, KEY), llm)
+            route = runtime.intent_route(self.provider, "Instala o Cloudflare", None, (), None, "pt", KEY)
+            self.assertEqual(route, llm)
         create.assert_called_once()
         with mock.patch.object(intent_route, "create", return_value=llm) as create:
-            runtime.intent_route(self.provider, "Instala o Cloudflare", None, (), None)
+            runtime.intent_route(self.provider, "Instala o Cloudflare", None, (), None, "pt")
         create.assert_called_once()
 
     def test_selection_and_invalid_input_never_reach_the_fast_path(self):
         runtime, _factory = self._runtime()
         with mock.patch.object(intent_fast_path, "confident_ordinary") as ask:
             with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "only to classification"):
-                runtime.intent_route(self.provider, "cloudflare", "assistant-install", (), None, decision_key=KEY)
+                runtime.intent_route(self.provider, "cloudflare", "assistant-install", (), None, "pt", decision_key=KEY)
             with self.assertRaises(agent_runtime.RuntimeContractError):
-                runtime.intent_route(self.provider, "   ", None, (), None, decision_key=KEY)
+                runtime.intent_route(self.provider, "   ", None, (), None, "pt", decision_key=KEY)
         ask.assert_not_called()
 
 

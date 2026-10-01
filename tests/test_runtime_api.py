@@ -67,6 +67,7 @@ def body(**updates):
         "knowledge_writable": True,
         "message": "Hello",
         "conversation": [],
+        "locale": "pt",
     }
     value.update(updates)
     return value
@@ -96,8 +97,8 @@ class FakeRuntime:
         if self.error:
             raise self.error
 
-    def action_labels(self, provider, language_exemplar, action_ids):
-        self.calls.append(("action_labels", provider, language_exemplar, action_ids))
+    def action_labels(self, provider, locale, action_ids):
+        self.calls.append(("action_labels", provider, locale, action_ids))
         if self.error:
             raise self.error
         return (
@@ -114,8 +115,8 @@ class FakeRuntime:
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
 
-    def intent_route(self, provider, objective, expected_intent, candidates, context, decision_key=None):
-        self.calls.append(("intent_route", provider, objective, expected_intent, candidates, context))
+    def intent_route(self, provider, objective, expected_intent, candidates, context, locale, decision_key=None):
+        self.calls.append(("intent_route", provider, objective, expected_intent, candidates, context, locale))
         self.decision_key = decision_key
         if self.error:
             raise self.error
@@ -286,6 +287,7 @@ class RuntimeApiTests(unittest.TestCase):
         payload = body(message=None)
         payload.pop("message")
         payload.pop("conversation")
+        payload.pop("locale")
         payload["results"] = {"interrupt-1": {"message": "Hello, Ada."}}
         response = client(runtime).post(
             "/v1/turns/resume",
@@ -296,6 +298,30 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(runtime.calls[0][0], "resume")
         self.assertEqual(runtime.calls[0][2], {"interrupt-1": {"message": "Hello, Ada."}})
+        self.assertIsNone(runtime.calls[0][1].locale)
+        # A resumed turn keeps the language its start pinned; it never carries one of its own.
+        response = client(FakeRuntime()).post(
+            "/v1/turns/resume", json={**payload, "locale": "en"}, headers={"Authorization": f"Bearer {TOKEN}"}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_a_start_names_one_closed_interface_language_or_none(self):
+        for locale in ("pt", "ar", None):
+            with self.subTest(locale=locale):
+                runtime = FakeRuntime()
+                response = client(runtime).post(
+                    "/v1/turns", json=body(locale=locale), headers={"Authorization": f"Bearer {TOKEN}"}
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(runtime.calls[0][1].locale, locale)
+        missing = body()
+        missing.pop("locale")
+        for invalid in (missing, body(locale="pt-BR"), body(locale="Portuguese"), body(locale=1)):
+            with self.subTest(invalid=invalid.get("locale")):
+                response = client(FakeRuntime()).post(
+                    "/v1/turns", json=invalid, headers={"Authorization": f"Bearer {TOKEN}"}
+                )
+                self.assertEqual(response.status_code, 422)
 
     def test_thread_deletion_is_authenticated_idempotent_and_closed(self):
         runtime = FakeRuntime()

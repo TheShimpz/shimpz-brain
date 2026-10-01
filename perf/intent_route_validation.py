@@ -48,7 +48,7 @@ def _percentile(samples: list[float], percentage: float) -> float:
 
 def _case(runtime, provider, objective: str, context: intent_route.LifecycleContext, samples: int) -> dict[str, float]:
     def route() -> None:
-        result = runtime.intent_route(provider, objective, None, (), context)
+        result = runtime.intent_route(provider, objective, None, (), context, "en")
         if result != intent_route.IntentRoute("ordinary-task"):
             raise AssertionError("intent route result changed")
 

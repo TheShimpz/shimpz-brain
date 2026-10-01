@@ -17,7 +17,7 @@ class DecisionApiTests(unittest.TestCase):
         runtime = FakeRuntime()
         payload = {
             "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
-            "language_exemplar": "  Quero listar minhas zonas DNS  ",
+            "locale": "pt",
             "actions": ["list-zones", "get-zone"],
         }
         api = client(runtime)
@@ -43,7 +43,7 @@ class DecisionApiTests(unittest.TestCase):
         call = runtime.calls[0]
         self.assertEqual(call[0], "action_labels")
         self.assertEqual(call[1].api_key, SECRET)
-        self.assertEqual(call[2], "Quero listar minhas zonas DNS")
+        self.assertEqual(call[2], "pt")
         self.assertEqual(call[3], ("list-zones", "get-zone"))
         self.assertNotIn(SECRET, response.text)
 
@@ -129,7 +129,7 @@ class DecisionApiTests(unittest.TestCase):
             "candidates": [],
             "lifecycle_reference": None,
             "conversation": [],
-            "language_exemplar": None,
+            "locale": "en",
         }
         decision = {"provider": "typesafe", "api_key": "tsk-test-0123456789abcdef"}
         headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -180,7 +180,7 @@ class DecisionApiTests(unittest.TestCase):
                     "truncated": False,
                 }
             ],
-            "language_exemplar": None,
+            "locale": "en",
         }
 
         self.assertEqual(api.post("/v1/intent-route", json=classification).status_code, 401)
@@ -216,7 +216,7 @@ class DecisionApiTests(unittest.TestCase):
             "candidates": [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
             "lifecycle_reference": None,
             "conversation": [],
-            "language_exemplar": "Desinstala esse então.",
+            "locale": "pt",
         }
         selected = api.post(
             "/v1/intent-route",
@@ -235,6 +235,7 @@ class DecisionApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(runtime.calls[1][4][0].id, "shimpz-cloudflare")
+        self.assertEqual((call[6], runtime.calls[1][6]), ("en", "pt"))
 
     def test_intent_route_response_carries_the_task_continuation(self):
         self.assertEqual(
@@ -252,7 +253,7 @@ class DecisionApiTests(unittest.TestCase):
             "candidates": [],
             "lifecycle_reference": None,
             "conversation": [],
-            "language_exemplar": None,
+            "locale": "en",
         }
         self.assertIsNone(runtime_api.IntentRouteInput.model_validate(base).runtime_context())
         invalid = (
@@ -261,6 +262,9 @@ class DecisionApiTests(unittest.TestCase):
                 "pending_intent": "assistant-uninstall",
             },
             {**base, "language_exemplar": "remove it"},
+            {key: value for key, value in base.items() if key != "locale"},
+            {**base, "locale": None},
+            {**base, "locale": "pt-BR"},
             {
                 **base,
                 "expected_intent": "assistant-uninstall",
@@ -319,7 +323,7 @@ class DecisionApiTests(unittest.TestCase):
                 "candidates": [],
                 "lifecycle_reference": None,
                 "conversation": [],
-                "language_exemplar": None,
+                "locale": "en",
             },
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
@@ -332,7 +336,7 @@ class DecisionApiTests(unittest.TestCase):
         runtime = FakeRuntime()
         valid = {
             "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
-            "language_exemplar": "Liste minhas zonas",
+            "locale": "pt",
             "actions": ["list-zones", "get-zone"],
         }
         invalid_values = (
@@ -340,8 +344,10 @@ class DecisionApiTests(unittest.TestCase):
             {**valid, "actions": []},
             {**valid, "actions": ["list-zones", "list-zones"]},
             {**valid, "actions": ["../shell"]},
-            {**valid, "language_exemplar": 1},
-            {**valid, "language_exemplar": "hidden\0instruction"},
+            {**valid, "locale": 1},
+            {**valid, "locale": "pt-BR"},
+            {key: value for key, value in valid.items() if key != "locale"},
+            {**valid, "language_exemplar": "Liste minhas zonas"},
         )
 
         for payload in invalid_values:
@@ -375,7 +381,7 @@ class DecisionApiTests(unittest.TestCase):
             "/v1/action-labels",
             json={
                 "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
-                "language_exemplar": "Liste minhas zonas",
+                "locale": "pt",
                 "actions": ["list-zones"],
             },
             headers={"Authorization": f"Bearer {TOKEN}"},

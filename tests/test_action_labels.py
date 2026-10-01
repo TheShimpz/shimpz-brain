@@ -53,7 +53,7 @@ class ActionLabelTests(unittest.TestCase):
 
         labels = runtime.action_labels(
             provider(),
-            "Quero listar minhas zonas DNS da Cloudflare",
+            "pt",
             ("list-zones", "delete-dns-record"),
         )
 
@@ -66,8 +66,8 @@ class ActionLabelTests(unittest.TestCase):
         )
         self.assertEqual(len(RecordingModel.seen_messages), 1)
         provider_text = "\n".join(str(message.content) for message in model.seen_messages[0])
-        self.assertIn("Quero listar minhas zonas DNS da Cloudflare", provider_text)
-        self.assertIn('"action_ids":["list-zones","delete-dns-record"]', provider_text)
+        self.assertIn("Brazilian Portuguese, the language the user selected in the interface", provider_text)
+        self.assertIn('{"action_ids":["list-zones","delete-dns-record"]}', provider_text)
         self.assertNotIn("input_schema", provider_text)
         self.assertEqual(
             RecordingModel.structured,
@@ -78,7 +78,7 @@ class ActionLabelTests(unittest.TestCase):
         model = RecordingModel(responses=[AIMessage(content='{"labels":[{"id":"list-zones","label":"Listar zonas"}]}')])
         anthropic = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
         self.assertEqual(
-            runtime_for(model).action_labels(anthropic, "Liste zonas", ("list-zones",)),
+            runtime_for(model).action_labels(anthropic, "pt", ("list-zones",)),
             (action_labels.ActionLabel("list-zones", "Listar zonas"),),
         )
         self.assertEqual(RecordingModel.structured[-1][1], {"method": "json_schema", "include_raw": True})
@@ -108,7 +108,7 @@ class ActionLabelTests(unittest.TestCase):
                 with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "model provider response failed"):
                     runtime_for(model).action_labels(
                         provider(),
-                        "Liste minhas zonas",
+                        "pt",
                         ("list-zones", "get-zone"),
                     )
 
@@ -171,14 +171,14 @@ class ActionLabelTests(unittest.TestCase):
             with self.subTest(model=model), self.assertRaises(agent_runtime.ProviderResponseError):
                 runtime_for(model).action_labels(
                     provider(),
-                    "Liste minhas zonas",
+                    "pt",
                     ("list-zones", "get-zone"),
                 )
 
         self.assertEqual(
             runtime_for(provider_envelope).action_labels(
                 provider(),
-                "Liste zonas",
+                "pt",
                 ("list-zones", "get-zone"),
             ),
             (
@@ -188,12 +188,6 @@ class ActionLabelTests(unittest.TestCase):
         )
 
     def test_closed_label_helpers_reject_remaining_boundary_shapes(self):
-        with self.assertRaises(agent_runtime.RuntimeContractError):
-            agent_runtime.normalize_language_exemplar(object())
-        self.assertEqual(
-            agent_runtime.normalize_language_exemplar("desinstala 👩‍💻\r\nagora"),
-            "desinstala 👩‍💻\r\nagora",
-        )
         for value in (object(), " label", "x" * (action_labels.MAX_ACTION_LABEL_CHARS + 1)):
             with self.subTest(value_type=type(value)), self.assertRaises(agent_runtime.RuntimeContractError):
                 action_labels._validated_action_label(value)
@@ -243,28 +237,29 @@ class ActionLabelTests(unittest.TestCase):
             model = mock.Mock()
             model.with_structured_output.return_value.invoke.side_effect = failure
             with self.subTest(failure=type(failure).__name__), self.assertRaises(expected):
-                runtime_for(model).action_labels(provider(), "Liste zonas", ("list-zones",))
+                runtime_for(model).action_labels(provider(), "pt", ("list-zones",))
 
         model = mock.Mock()
         model.with_structured_output.return_value.invoke.return_value = object()
         with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "^model provider response failed$"):
-            runtime_for(model).action_labels(provider(), "Liste zonas", ("list-zones",))
+            runtime_for(model).action_labels(provider(), "pt", ("list-zones",))
 
     def test_inputs_fail_before_provider_or_checkpoint_access(self):
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=mock.Mock())
 
-        for exemplar, action_ids in (
+        for locale, action_ids in (
             ("", ("list-zones",)),
-            ("hidden\0instruction", ("list-zones",)),
-            ("Liste zonas", ()),
-            ("Liste zonas", ("list-zones", "list-zones")),
-            ("Liste zonas", ("../shell",)),
+            ("pt-BR", ("list-zones",)),
+            ("Liste zonas", ("list-zones",)),
+            ("pt", ()),
+            ("pt", ("list-zones", "list-zones")),
+            ("pt", ("../shell",)),
         ):
             with (
-                self.subTest(exemplar=exemplar, action_ids=action_ids),
+                self.subTest(locale=locale, action_ids=action_ids),
                 self.assertRaises(agent_runtime.RuntimeContractError),
             ):
-                runtime.action_labels(provider(), exemplar, action_ids)
+                runtime.action_labels(provider(), locale, action_ids)
         runtime._model_factory.assert_not_called()
 
 

@@ -7,6 +7,7 @@ import json
 from typing import TYPE_CHECKING
 
 import clarification
+import interface_language
 import memory
 
 import routine
@@ -134,6 +135,17 @@ def _routines_section(routines: tuple | None, writable: bool) -> str:
     )
 
 
+def _language_section(locale: str | None) -> str:
+    """The interface language every reply follows (ADR-0090); nothing when the turn names none."""
+    if locale is None:
+        return ""
+    return (
+        f"Write every reply, clarification question, and option in {interface_language.language_name(locale)}, the "
+        "language the user selected in the interface, even when the user's message or an Action result uses another "
+        "language. Keep names, identifiers, quoted text, and data as they are.\n\n"
+    )
+
+
 def system_prompt(context: TurnContext) -> str:
     """The Team turn's policy prompt: identity, Action authority, clarification, completeness, contracts, and date."""
     assistant_contracts = [
@@ -202,6 +214,7 @@ def system_prompt(context: TurnContext) -> str:
         f"{_memory_section(context.memories, context.knowledge_writable)}"
         f"{_skills_section(context.skills, context.knowledge_writable)}"
         f"{_routines_section(context.routines, context.knowledge_writable)}"
+        f"{_language_section(context.locale)}"
         # The date changes daily, so it stays last and everything before it remains a stable cacheable prefix.
         f"Current date: {context.turn_date.isoformat()} (UTC). "
         "When the user's local date could differ and it matters, say which date you used."

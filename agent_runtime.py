@@ -15,7 +15,6 @@ import json
 import re
 import secrets
 import threading
-import unicodedata
 import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -66,7 +65,6 @@ MAX_SCHEMA_BYTES = 128 * 1024
 MAX_SCHEMA_NODES = 4096
 MAX_ASSISTANT_SCHEMA_NODES = 32_768
 MAX_REPLY_CHARS = 60_000
-MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 DECISION_TIMEOUT_SECONDS = 10.0
@@ -203,10 +201,16 @@ class TurnContext:
     routines: tuple[dict[str, object], ...] | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
+    # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
+    # language its start recorded, and the id of the message that started it.
+    locale: str | None = None
+    turn_message_id: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.turn_date) is not datetime.date:
             raise RuntimeContractError("invalid turn date")
+        if not turn_pins.valid_turn(self.locale, self.turn_message_id, started=False):
+            raise RuntimeContractError("invalid turn language or message")
         if self.memories is not None:
             try:
                 team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in self.memories])
@@ -449,23 +453,6 @@ def structured_value[Schema: BaseModel](result: object, schema: type[Schema], la
     return parsed
 
 
-def normalize_language_exemplar(value: str) -> str:
-    """Return bounded user text that may influence presentation but never authority."""
-    if not isinstance(value, str):
-        raise RuntimeContractError("invalid language exemplar")
-    normalized = value.strip()
-    if not 1 <= len(normalized) <= MAX_LANGUAGE_EXEMPLAR_CHARS:
-        raise RuntimeContractError("invalid language exemplar")
-    if any(
-        unicodedata.category(character).startswith("C")
-        and unicodedata.category(character) != "Cf"
-        and character not in {"\n", "\r", "\t"}
-        for character in normalized
-    ):
-        raise RuntimeContractError("invalid language exemplar")
-    return normalized
-
-
 def _pending_result(pending: object) -> TurnResult:
     requests: list[ActionRequest] = []
     if not isinstance(pending, Sequence):
@@ -644,6 +631,7 @@ class AgentRuntime:
                 **turn_pins.record(
                     context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
                 ),
+                **turn_pins.record_turn(context.locale, context.turn_message_id),
             },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
@@ -735,6 +723,7 @@ class AgentRuntime:
         if resume:
             try:
                 turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
+                locale, turn_message_id = turn_pins.restore_turn(metadata)
             except turn_pins.PinError as exc:
                 raise RuntimeStateError("checkpoint state is invalid") from exc
             context = replace(
@@ -744,6 +733,8 @@ class AgentRuntime:
                 skills=skills,
                 routines=routines,
                 knowledge_writable=writable,
+                locale=locale,
+                turn_message_id=turn_message_id,
             )
         return context, tuple(messages)
 
@@ -847,13 +838,16 @@ class AgentRuntime:
     def action_labels(
         self,
         provider: ProviderConfig,
-        language_exemplar: str,
+        locale: str,
         action_ids: tuple[str, ...],
     ) -> tuple[action_labels.ActionLabel, ...]:
         """Create inert labels without conversation state, tools, or execution authority."""
-        return action_labels.create(
-            lambda: self._model_factory(provider), provider.provider, language_exemplar, action_ids
-        )
+        return action_labels.create(lambda: self._model_factory(provider), provider.provider, locale, action_ids)
+
+    def _decision_model(self, provider: ProviderConfig) -> BaseChatModel:
+        """A short model with at most one retry for one stateless structured decision."""
+        decision_factory = getattr(self._model_factory, "decision", None)
+        return decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
 
     def capability_plan(
         self,
@@ -884,6 +878,7 @@ class AgentRuntime:
         expected_intent: intent_router.LifecycleIntent | None,
         candidates: tuple[intent_router.DirectoryCandidate, ...],
         context: intent_router.LifecycleContext | None,
+        locale: str,
         decision_key: str | None = None,
     ) -> intent_router.IntentRoute:
         """Classify or resolve lifecycle intent without conversation or lifecycle authority.
@@ -894,13 +889,10 @@ class AgentRuntime:
         if decision_key is not None and self._confident_ordinary(decision_key, objective, expected_intent, context):
             return intent_router.IntentRoute("ordinary-task")
 
-        def model_factory() -> BaseChatModel:
-            decision_factory = getattr(self._model_factory, "decision", None)
-            return decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
-
         try:
+            model = functools.partial(self._decision_model, provider)
             return intent_router.create(
-                model_factory, provider.provider, objective, expected_intent, candidates, context
+                model, provider.provider, objective, expected_intent, candidates, context, locale
             )
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError(str(exc)) from exc
@@ -926,6 +918,7 @@ class AgentRuntime:
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError("invalid conversation window") from exc
         turn_id = f"shimpz-turn-{secrets.token_hex(16)}"
+        context = replace(context, turn_message_id=turn_id)
         lock = self._thread_lock(context.thread_id)
         try:
             with lock:

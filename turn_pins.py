@@ -1,11 +1,16 @@
-"""What one logical turn records at its start and keeps across every resume: its date and the Team's knowledge."""
+"""What one logical turn records at its start and keeps across every resume.
+
+Its date and the Team's knowledge, and its interface language and exact start message (ADR-0090).
+"""
 
 from __future__ import annotations
 
 import datetime
 import json
+import re
 from collections.abc import Mapping
 
+import interface_language
 import memory as team_memory
 
 import routine as team_routine
@@ -15,6 +20,9 @@ MEMORY_METADATA = "shimpz_turn_memory"
 SKILLS_METADATA = "shimpz_turn_skills"
 ROUTINES_METADATA = "shimpz_turn_routines"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
+LOCALE_METADATA = "shimpz_turn_locale"
+MESSAGE_METADATA = "shimpz_turn_message"
+TURN_MESSAGE_RE = re.compile(r"shimpz-turn-[0-9a-f]{32}\Z")
 
 
 class PinError(ValueError):
@@ -84,3 +92,30 @@ def restore(
     ):
         raise PinError("recorded turn pins are invalid")
     return recorded_date, recorded_memory, recorded_skills, recorded_routines, writable_value == "true"
+
+
+def record_turn(locale: str | None, message_id: str | None) -> dict[str, str]:
+    """The checkpoint entries naming the turn's interface language and the id of the message that started it."""
+    return {LOCALE_METADATA: _json(locale), MESSAGE_METADATA: _json(message_id)}
+
+
+def restore_turn(metadata: Mapping[str, object]) -> tuple[str | None, str]:
+    """The exact interface language and start message id a start recorded; anything else is corrupt state."""
+    locale_value, message_value = metadata.get(LOCALE_METADATA), metadata.get(MESSAGE_METADATA)
+    try:
+        if not isinstance(locale_value, str) or not isinstance(message_value, str):
+            raise ValueError
+        locale, message_id = json.loads(locale_value), json.loads(message_value)
+    except ValueError as exc:
+        raise PinError("recorded turn pins are invalid") from exc
+    if not valid_turn(locale, message_id) or _json(locale) != locale_value or _json(message_id) != message_value:
+        raise PinError("recorded turn pins are invalid")
+    return locale, message_id
+
+
+def valid_turn(locale: object, message_id: object, *, started: bool = True) -> bool:
+    """Whether a turn names one closed interface language or none, and, once started, its exact start message."""
+    return (locale is None or interface_language.valid(locale)) and (
+        (message_id is None and not started)
+        or (isinstance(message_id, str) and TURN_MESSAGE_RE.fullmatch(message_id) is not None)
+    )

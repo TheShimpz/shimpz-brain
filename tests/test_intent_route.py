@@ -74,7 +74,7 @@ class IntentRouteTests(unittest.TestCase):
         )
         factory = mock.Mock(return_value=model)
 
-        result = intent_route.create(factory, "openai", "por favor tire o cloudflare", None, (), None)
+        result = intent_route.create(factory, "openai", "por favor tire o cloudflare", None, (), None, "pt")
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
         factory.assert_called_once_with()
@@ -84,7 +84,16 @@ class IntentRouteTests(unittest.TestCase):
         self.assertIn("untrusted data", prompt)
         self.assertIn("exactly one line", prompt)
         self.assertIn("por favor tire o cloudflare", prompt)
+        self.assertIn("Write it in Brazilian Portuguese, the language the user selected in the interface", prompt)
+        self.assertNotIn("language_exemplar", prompt)
         self.assertNotIn("api_key", prompt)
+
+    def test_an_unknown_interface_language_fails_before_provider_access(self):
+        factory = mock.Mock()
+        for locale in ("", "pt-BR", "Portuguese", None, 1):
+            with self.subTest(locale=locale), self.assertRaisesRegex(intent_route.IntentRouteError, "language"):
+                intent_route.create(factory, "openai", "hello", None, (), None, locale)
+        factory.assert_not_called()
 
     def test_classification_admits_one_untrusted_lifecycle_reference_only(self):
         reference = intent_route.LifecycleReference("shimpz-cloudflare", "Shimpz Cloudflare")
@@ -99,7 +108,7 @@ class IntentRouteTests(unittest.TestCase):
         )
 
         context = intent_route.LifecycleContext(reference=reference)
-        result = intent_route.create(lambda: model, "openai", "instale ele de novo", None, (), context)
+        result = intent_route.create(lambda: model, "openai", "instale ele de novo", None, (), context, "pt")
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-install", "shimpz-cloudflare"))
         self.assertNotIn("shimpz-cloudflare", str(model.messages[0].content))
@@ -119,7 +128,7 @@ class IntentRouteTests(unittest.TestCase):
             }
         )
         with self.assertRaises(intent_route.IntentRouteResponseError):
-            intent_route.create(lambda: echo, "openai", "instale ele", None, (), context)
+            intent_route.create(lambda: echo, "openai", "instale ele", None, (), context, "pt")
 
     def test_classification_uses_bounded_conversation_to_resolve_a_reference(self):
         context = intent_route.LifecycleContext(
@@ -142,7 +151,7 @@ class IntentRouteTests(unittest.TestCase):
             )
         )
 
-        result = intent_route.create(lambda: model, "openai", "Desinstala esse então.", None, (), context)
+        result = intent_route.create(lambda: model, "openai", "Desinstala esse então.", None, (), context, "pt")
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
         payload = str(model.messages[1].content)
@@ -159,7 +168,7 @@ class IntentRouteTests(unittest.TestCase):
             )
         )
 
-        result = intent_route.create(lambda: model, "anthropic", "liste minhas zonas", None, (), None)
+        result = intent_route.create(lambda: model, "anthropic", "liste minhas zonas", None, (), None, "pt")
 
         self.assertEqual(result, intent_route.IntentRoute("ordinary-task"))
         self.assertEqual(model.options, {"method": "json_schema"})
@@ -182,6 +191,7 @@ class IntentRouteTests(unittest.TestCase):
             "assistant-install",
             candidates(),
             None,
+            "pt",
         )
 
         self.assertEqual(
@@ -238,6 +248,7 @@ class IntentRouteTests(unittest.TestCase):
                     expected,
                     shortlist,
                     None,
+                    "pt",
                 )
 
     def test_unresolved_selection_is_non_authorizing(self):
@@ -256,6 +267,7 @@ class IntentRouteTests(unittest.TestCase):
             "assistant-uninstall",
             candidates(uninstall=True),
             None,
+            "pt",
         )
 
         self.assertEqual(
@@ -283,6 +295,7 @@ class IntentRouteTests(unittest.TestCase):
             None,
             (),
             None,
+            "pt",
         )
 
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", reply=reply))
@@ -304,6 +317,7 @@ class IntentRouteTests(unittest.TestCase):
             None,
             (),
             None,
+            "pt",
         )
         self.assertEqual(result.reply, reply)
 
@@ -326,6 +340,7 @@ class IntentRouteTests(unittest.TestCase):
                     None,
                     (),
                     None,
+                    "pt",
                 )
 
     def test_conversation_admits_user_unicode_format_and_layout(self):
@@ -342,7 +357,7 @@ class IntentRouteTests(unittest.TestCase):
             }
         )
 
-        result = intent_route.create(lambda: model, "openai", "cloudflare", None, (), context)
+        result = intent_route.create(lambda: model, "openai", "cloudflare", None, (), context, "pt")
 
         self.assertEqual(result.query, "cloudflare")
 
@@ -373,7 +388,8 @@ class IntentRouteTests(unittest.TestCase):
             "desinstale desconhecido",
             "assistant-uninstall",
             (),
-            intent_route.LifecycleContext(language_exemplar="desinstale desconhecido"),
+            None,
+            "pt",
         )
 
         self.assertEqual(result, intent_route.IntentRoute("unresolved", reply=reply))
@@ -390,7 +406,7 @@ class IntentRouteTests(unittest.TestCase):
         )
         for objective, expected, shortlist in invalid:
             with self.subTest(objective=objective, expected=expected), self.assertRaises(intent_route.IntentRouteError):
-                intent_route.create(factory, "openai", objective, expected, shortlist, None)
+                intent_route.create(factory, "openai", objective, expected, shortlist, None, "pt")
         factory.assert_not_called()
         model.with_structured_output.assert_not_called()
 
@@ -427,7 +443,6 @@ class IntentRouteTests(unittest.TestCase):
             intent_route.LifecycleContext(
                 conversation=tuple(intent_route.ConversationEntry("user", str(index), False) for index in range(9)),
             ),
-            intent_route.LifecycleContext(language_exemplar="remove it"),
         )
 
         for context in invalid:
@@ -581,6 +596,7 @@ class IntentRouteTests(unittest.TestCase):
                 None,
                 (),
                 None,
+                "pt",
             )
         for value in (
             None,
@@ -601,23 +617,25 @@ class IntentRouteTests(unittest.TestCase):
                     "^model provider response failed$",
                 ),
             ):
-                intent_route.create(mock.Mock(return_value=StructuredModel(value)), "openai", "hello", None, (), None)
+                intent_route.create(
+                    mock.Mock(return_value=StructuredModel(value)), "openai", "hello", None, (), None, "pt"
+                )
 
     def test_provider_adapter_and_dependency_failures_remain_distinct(self):
         factory = mock.Mock(side_effect=RuntimeError("secret provider detail"))
         with self.assertRaises(intent_route.IntentRouteError):
-            intent_route.create(factory, "unsupported", "hello", None, (), None)
+            intent_route.create(factory, "unsupported", "hello", None, (), None, "pt")
         factory.assert_not_called()
         with self.assertRaisesRegex(intent_route.IntentRouteError, "invalid route objective"):
-            intent_route.create(factory, "unsupported", "", None, (), None)
+            intent_route.create(factory, "unsupported", "", None, (), None, "pt")
         factory.assert_not_called()
         with self.assertRaisesRegex(intent_route.IntentRouteProviderError, "^model provider request failed$"):
-            intent_route.create(factory, "openai", "hello", None, (), None)
+            intent_route.create(factory, "openai", "hello", None, (), None, "pt")
         factory.assert_called_once_with()
 
         missing = mock.Mock(side_effect=ImportError("missing factory dependency"))
         with self.assertRaisesRegex(ImportError, "missing factory dependency"):
-            intent_route.create(missing, "openai", "hello", None, (), None)
+            intent_route.create(missing, "openai", "hello", None, (), None, "pt")
         with self.assertRaisesRegex(ImportError, "missing structured adapter"):
             intent_route.create(
                 lambda: StructuredModel(error=ImportError("missing structured adapter")),
@@ -626,6 +644,7 @@ class IntentRouteTests(unittest.TestCase):
                 None,
                 (),
                 None,
+                "pt",
             )
 
     def test_runtime_uses_only_the_decision_factory_without_checkpoint_access(self):
@@ -636,7 +655,7 @@ class IntentRouteTests(unittest.TestCase):
         runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=factory)
 
         with mock.patch.object(intent_route, "validate_inputs", wraps=intent_route.validate_inputs) as validate:
-            result = runtime.intent_route(provider(), "hello", None, (), None)
+            result = runtime.intent_route(provider(), "hello", None, (), None, "pt")
 
         self.assertEqual(result, intent_route.IntentRoute("ordinary-task"))
         validate.assert_called_once_with("hello", None, (), None)
@@ -645,7 +664,7 @@ class IntentRouteTests(unittest.TestCase):
         fallback = mock.Mock(spec=lambda _config: None, return_value=StructuredModel(model.response))
         self.assertEqual(
             agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=fallback).intent_route(
-                provider(), "hello", None, (), None
+                provider(), "hello", None, (), None, "pt"
             ),
             intent_route.IntentRoute("ordinary-task"),
         )
@@ -657,14 +676,14 @@ class IntentRouteTests(unittest.TestCase):
             model_factory=mock.Mock(spec=lambda _config: None, side_effect=RuntimeError("secret provider detail")),
         )
         with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
-            failed.intent_route(provider(), "hello", None, (), None)
+            failed.intent_route(provider(), "hello", None, (), None, "pt")
 
         missing = agent_runtime.AgentRuntime(
             SimpleNamespace(),
             model_factory=mock.Mock(spec=lambda _config: None, side_effect=ImportError("missing dependency")),
         )
         with self.assertRaisesRegex(ImportError, "missing dependency"):
-            missing.intent_route(provider(), "hello", None, (), None)
+            missing.intent_route(provider(), "hello", None, (), None, "pt")
 
     def test_runtime_projects_every_intent_route_failure_without_provider_detail(self):
         cases = (
@@ -687,7 +706,7 @@ class IntentRouteTests(unittest.TestCase):
                 mock.patch.object(intent_route, "create", side_effect=failure),
                 self.assertRaises(projected),
             ):
-                runtime.intent_route(provider(), "hello", None, (), None)
+                runtime.intent_route(provider(), "hello", None, (), None, "pt")
 
 
 if __name__ == "__main__":

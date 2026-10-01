@@ -69,7 +69,7 @@ class AnthropicStructuredOutputTests(unittest.TestCase):
         self.assertEqual(plan, capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)))
         labels = self._run(
             _anthropic_reply(json.dumps(LABELS)),
-            lambda runtime: runtime.action_labels(self.provider, "Liste zonas", ("list-zones",)),
+            lambda runtime: runtime.action_labels(self.provider, "pt", ("list-zones",)),
         )
         self.assertEqual(labels, (action_labels.ActionLabel("list-zones", "Listar zonas"),))
 
@@ -135,7 +135,7 @@ class OpenAIStructuredOutputTests(unittest.TestCase):
         )
         self.assertEqual(plan, capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)))
         labels = self._run(
-            {"parsed": LABELS}, lambda runtime: runtime.action_labels(self.provider, "Liste zonas", ("list-zones",))
+            {"parsed": LABELS}, lambda runtime: runtime.action_labels(self.provider, "pt", ("list-zones",))
         )
         self.assertEqual(labels, (action_labels.ActionLabel("list-zones", "Listar zonas"),))
 
@@ -151,7 +151,7 @@ class OpenAIStructuredOutputTests(unittest.TestCase):
         with self.assertRaises(agent_runtime.ProviderResponseError):
             self._run(
                 {"parsed": {"labels": [{"id": "list-zones", "label": "Listar\nzonas"}]}},
-                lambda runtime: runtime.action_labels(self.provider, "Liste zonas", ("list-zones",)),
+                lambda runtime: runtime.action_labels(self.provider, "pt", ("list-zones",)),
             )
 
 

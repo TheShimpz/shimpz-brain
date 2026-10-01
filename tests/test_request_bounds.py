@@ -164,7 +164,7 @@ class RequestBodyBoundTests(unittest.TestCase):
         ) * context_budget.BYTES_PER_TOKEN
         results = {interrupt: "x" * (window - len(_encoded({interrupt: ""})))}
         self.assertEqual(len(_encoded(results)), window)
-        context = {key: value for key, value in body().items() if key not in {"message", "conversation"}}
+        context = {key: value for key, value in body().items() if key not in {"message", "conversation", "locale"}}
         raw = _encoded({**context, **_largest_uncounted(), "results": results})
         conversation = _encoded(
             [{"role": "assistant", "text": WIDE * intent_route.MAX_CONVERSATION_TEXT_CHARS, "truncated": False}]

@@ -8,9 +8,12 @@ result validation, cancellation, and audit; the runtime never executes an Action
 The authenticated API is intentionally small:
 
 - `GET /health` reports process/runtime health without exposing state or credentials;
-- `POST /v1/turns` starts one turn from controller-supplied Team/Assistant context;
-- `POST /v1/turns/resume` resumes a suspended turn with controller-brokered Action results; and
-- `POST /v1/intent-route` classifies one fresh Assistant lifecycle intent with bounded untrusted conversation evidence, or resolves it against a closed candidate directory;
+- `POST /v1/turns` starts one turn from controller-supplied Team/Assistant context and a required nullable interface
+  `locale` (`ar`, `de`, `en`, `es`, `fr`, `ja`, `pt`, or `zh`); the start pins it, and every reply and
+  clarification of that logical turn is written in it;
+- `POST /v1/turns/resume` resumes a suspended turn with controller-brokered Action results;
+- `POST /v1/intent-route` classifies one fresh Assistant lifecycle intent with bounded untrusted conversation evidence, or resolves it against a closed candidate directory, writing its presentation-only reply in the required `locale`;
+- `POST /v1/action-labels` labels Action ids in the required `locale`;
 - `POST /v1/threads/delete` deletes one exact conversation checkpoint during Team teardown.
 
 All POST endpoints require the private bearer mounted read-only at

@@ -282,6 +282,8 @@ def evaluate(factory: agent_runtime.ProviderModelFactory, provider: agent_runtim
                     case.mode,
                     case.candidates,
                     case.context,
+                    # The interface language only shapes the reply; Portuguese cases run with Portuguese selected.
+                    "pt" if case.id.endswith("-pt") else "en",
                 )
             except intent_route.IntentRouteResponseError:
                 rejected += 1
