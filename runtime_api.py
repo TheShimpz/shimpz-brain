@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
 import action_labels
+import action_purpose
 import agent_runtime
 import capability_plan
 import intent_route
@@ -207,6 +208,35 @@ class ResumeTurnInput(TurnContextInput):
     results: dict[str, Any] = Field(min_length=1, max_length=agent_runtime.MAX_ACTION_RESULTS)
 
 
+class ActionPurposeInput(ClosedInput):
+    """One exact pending Action interrupt and the reviewed names its human request shows (ADR-0090)."""
+
+    thread_id: str = Field(min_length=1, max_length=256)
+    interrupt_id: str = Field(min_length=1, max_length=256)
+    assistant_id: str = Field(min_length=1, max_length=128)
+    assistant_name: str = Field(min_length=1, max_length=action_purpose.MAX_ASSISTANT_NAME_CHARS)
+    action_id: str = Field(min_length=1, max_length=128)
+    action_summary: str = Field(min_length=1, max_length=action_purpose.MAX_ACTION_SUMMARY_CHARS)
+    provider: ProviderInput
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+    def pending_action(self) -> action_purpose.PendingAction:
+        return action_purpose.PendingAction(
+            thread_id=self.thread_id,
+            interrupt_id=self.interrupt_id,
+            assistant_id=self.assistant_id,
+            action_id=self.action_id,
+            assistant_name=self.assistant_name,
+            action_summary=self.action_summary,
+        )
+
+
 class DeleteThreadInput(ClosedInput):
     thread_id: str = Field(min_length=1, max_length=256)
 
@@ -365,6 +395,12 @@ class RuntimeLike:
         locale: str,
         action_ids: tuple[str, ...],
     ) -> tuple[action_labels.ActionLabel, ...]: ...
+
+    def action_purpose(
+        self,
+        provider: agent_runtime.ProviderConfig,
+        pending: action_purpose.PendingAction,
+    ) -> str | None: ...
 
     def capability_plan(
         self,
@@ -760,6 +796,16 @@ def create_app(
             request,
             lambda: current_runtime().start(body.runtime_context(), body.message, body.runtime_conversation()),
         )
+
+    # Why a pending Action pauses for a person (ADR-0090); a Team disconnect cancels its provider call.
+    @app.post("/v1/turns/purpose", dependencies=[Depends(require_auth)])
+    async def action_purpose(request: Request, body: ActionPurposeInput) -> dict[str, object]:
+        purpose, usage = await _cancellable(
+            request,
+            lambda: current_runtime().action_purpose(body.runtime_provider(), body.pending_action()),
+            "Action purpose cancelled",
+        )
+        return {"purpose": purpose, "usage": usage}
 
     @app.post("/v1/turns/resume", dependencies=[Depends(require_auth)])
     async def resume_turn(request: Request, body: ResumeTurnInput) -> dict[str, object]:

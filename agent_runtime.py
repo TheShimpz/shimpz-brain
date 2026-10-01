@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import action_labels
+import action_purpose
 import action_schema
 import action_tool
 import capability_plan as capability_planner
@@ -848,6 +849,16 @@ class AgentRuntime:
         """A short model with at most one retry for one stateless structured decision."""
         decision_factory = getattr(self._model_factory, "decision", None)
         return decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
+
+    def action_purpose(self, provider: ProviderConfig, pending: action_purpose.PendingAction) -> str | None:
+        """Write why a pending Action pauses for a person, from its exact interrupt and the turn's own message."""
+        try:
+            with self._thread_lock(pending.thread_id):
+                checkpoint = self._checkpointer.get_tuple({"configurable": {"thread_id": pending.thread_id}})
+        except Exception as exc:
+            raise RuntimeStateError("checkpoint read failed") from exc
+        request = action_purpose.pending_request(checkpoint, pending)
+        return action_purpose.create(functools.partial(self._decision_model, provider), provider.provider, request)
 
     def capability_plan(
         self,

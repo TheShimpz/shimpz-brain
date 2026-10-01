@@ -12,6 +12,10 @@ The authenticated API is intentionally small:
   `locale` (`ar`, `de`, `en`, `es`, `fr`, `ja`, `pt`, or `zh`); the start pins it, and every reply and
   clarification of that logical turn is written in it;
 - `POST /v1/turns/resume` resumes a suspended turn with controller-brokered Action results;
+- `POST /v1/turns/purpose` writes one short task-bound sentence, in the turn's pinned language, for why the exact
+  pending Action interrupt pauses for a person. It reads only that interrupt and the `message` of the turn's own
+  start envelope, never other history, Action results, Genesis, the human request, or credentials, and returns
+  `{"purpose": string | null, "usage": ...}`; a sentence that breaks the plain-text rule is null;
 - `POST /v1/intent-route` classifies one fresh Assistant lifecycle intent with bounded untrusted conversation evidence, or resolves it against a closed candidate directory, writing its presentation-only reply in the required `locale`;
 - `POST /v1/action-labels` labels Action ids in the required `locale`;
 - `POST /v1/threads/delete` deletes one exact conversation checkpoint during Team teardown.

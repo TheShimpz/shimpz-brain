@@ -115,6 +115,12 @@ class FakeRuntime:
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
 
+    def action_purpose(self, provider, pending):
+        self.calls.append(("action_purpose", provider, pending))
+        if self.error:
+            raise self.error
+        return "Para trazer as notícias de hoje, preciso pesquisar na web com o Exa."
+
     def intent_route(self, provider, objective, expected_intent, candidates, context, locale, decision_key=None):
         self.calls.append(("intent_route", provider, objective, expected_intent, candidates, context, locale))
         self.decision_key = decision_key
