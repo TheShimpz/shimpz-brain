@@ -59,6 +59,12 @@ MAX_TEAM_NAME_CHARS = 80
 MAX_GENESIS_BYTES = 128 * 1024
 MAX_MESSAGE_CHARS = 64 * 1024
 MAX_SCHEMA_BYTES = 128 * 1024
+# Team admits at most 4,096 JSON values in one Action schema and 32,768 in one whole machine contract, so the input
+# schemas of one Assistant together hold at most 32,768. Dense annotation or literal data costs far more decoded memory
+# than its encoded bytes, so only these value counts together with the byte bounds limit the schema data a request
+# retains.
+MAX_SCHEMA_NODES = 4096
+MAX_ASSISTANT_SCHEMA_NODES = 32_768
 MAX_REPLY_CHARS = 60_000
 MAX_LANGUAGE_EXEMPLAR_CHARS = 2_000
 DEFAULT_RECURSION_LIMIT = 12
@@ -127,6 +133,8 @@ class ActionDefinition:
             raise RuntimeContractError("invalid Action summary")
         if self.input_schema.get("type") != "object":
             raise RuntimeContractError("Action input schema must describe an object")
+        if action_schema.json_nodes(self.input_schema, MAX_SCHEMA_NODES) > MAX_SCHEMA_NODES:
+            raise RuntimeContractError("Action input schema is too large")
         try:
             encoded = json.dumps(self.input_schema, separators=(",", ":"), sort_keys=True).encode()
         except (TypeError, ValueError) as exc:
@@ -170,6 +178,11 @@ class AssistantDefinition:
         ids = [action.id for action in self.actions]
         if len(ids) != len(set(ids)):
             raise RuntimeContractError("duplicate Action id within Assistant")
+        remaining = MAX_ASSISTANT_SCHEMA_NODES
+        for action in self.actions:
+            remaining -= action_schema.json_nodes(action.input_schema, remaining)
+            if remaining < 0:
+                raise RuntimeContractError("Assistant Action input schemas are too large")
         object.__setattr__(self, "actions", tuple(sorted(self.actions, key=lambda item: item.id)))
 
 

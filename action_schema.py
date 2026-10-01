@@ -58,6 +58,24 @@ def _node_problem(node: Mapping[str, Any], *, nested: bool) -> str | None:
     return None
 
 
+def json_nodes(value: object, limit: int) -> int:
+    """Count JSON values, stopping once the count exceeds limit.
+
+    The value itself, every array element, and every object member value count at any depth, whether a subschema, an
+    annotation such as `default`, or a literal such as `enum`; member names do not count separately.
+    """
+    pending = [value]
+    count = 0
+    while pending and count <= limit:
+        node = pending.pop()
+        count += 1
+        if isinstance(node, Mapping):
+            pending.extend(node.values())
+        elif isinstance(node, list | tuple):
+            pending.extend(node)
+    return count
+
+
 def reference_problem(schema: Mapping[str, Any]) -> str | None:
     """The first unwalked-reference problem in a metaschema-valid schema, or None when it is self-contained."""
     pending: list[object] = [schema]

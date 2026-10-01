@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest import mock
 
+import action_schema
 import agent_runtime
 import clarification
 import context_budget
@@ -933,6 +934,47 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(len(context(assistant("busy-helper", *actions[:128])).assistants[0].actions), 128)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Actions"):
             assistant("busy-helper", *actions)
+
+    def test_brain_admits_exactly_the_json_value_bounds_team_admits(self):
+        def schema(nodes: int) -> dict[str, object]:
+            # Root, type, additionalProperties, and the default and const containers are five values; nested rows of
+            # three values and scalar literals fill the rest.
+            data = nodes - 5
+            return {
+                "type": "object",
+                "additionalProperties": False,
+                "default": [{"a": [None]}] * (data // 3),
+                "const": [0] * (data % 3),
+            }
+
+        def dense(action_id: str, nodes: int) -> agent_runtime.ActionDefinition:
+            return agent_runtime.ActionDefinition(id=action_id, summary="Summary", input_schema=schema(nodes))
+
+        # Team admits 4,096 values in one Action schema and 32,768 in one whole machine contract.
+        limit = 4096
+        self.assertEqual(action_schema.json_nodes(schema(limit), limit), limit)
+        dense("action", limit)
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "input schema is too large"):
+            dense("action", limit + 1)
+        # The value bound is checked before the schema is encoded or checked against the metaschema.
+        with (
+            mock.patch.object(agent_runtime.json, "dumps") as dumps,
+            self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too large"),
+        ):
+            agent_runtime.ActionDefinition(
+                id="action",
+                summary="Summary",
+                input_schema={**schema(limit + 1), "required": "invalid"},
+            )
+        dumps.assert_not_called()
+
+        # Team's whole-contract bound caps the input schemas one Assistant carries together.
+        total = 32_768
+        actions = [dense(f"action-{index}", limit - 1) for index in range(total // limit)]
+        last = total - (limit - 1) * len(actions)
+        self.assertEqual(len(assistant("dense-helper", *actions, dense("last", last)).actions), len(actions) + 1)
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action input schemas are too large"):
+            assistant("dense-helper", *actions, dense("last", last + 1))
 
     def test_provider_failures_do_not_expose_the_secret(self):
         class FailedModelFactory:
