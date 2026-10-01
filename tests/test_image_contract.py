@@ -33,13 +33,15 @@ class StaticBrainImageContractTests(unittest.TestCase):
         self.assertNotIn("COPY rootfs", dockerfile)
         self.assertNotIn("COPY codex", dockerfile)
 
-    def test_profile_owns_runtime_paths_while_image_owns_tracing_defaults(self):
+    def test_profile_owns_runtime_paths_while_image_owns_tracing_and_allocator_defaults(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("SHIMPZ_BRAIN_RUNTIME_TOKEN_GID=10016", dockerfile)
         self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE=", dockerfile)
         self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_STATE=", dockerfile)
         self.assertIn("LANGSMITH_TRACING=false", dockerfile)
+        self.assertIn("MALLOC_ARENA_MAX=2", dockerfile)
+        self.assertIn("MALLOC_MMAP_THRESHOLD_=131072", dockerfile)
 
     def test_runtime_artifact_excludes_the_independent_egress_role(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

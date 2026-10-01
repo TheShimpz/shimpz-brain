@@ -3,19 +3,40 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
+import threading
 import time
 import unittest
+import weakref
 from typing import Any
 from unittest import mock
 
+import agent_runtime
 import anyio.to_thread
+import context_budget
+import intent_route
+import memory as team_memory
 import runtime_api
-from test_runtime_api import TOKEN, FakeRuntime, body
+from langchain_core.messages import AIMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from test_agent_runtime import ToolAwareFakeModel
+from test_runtime_api import TOKEN, FakeRuntime, body, client
+
+import routine as team_routine
+
+HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+# The widest character a validated text field can hold: four UTF-8 bytes.
+WIDE = "\U0001f600"
+MiB = 1024 * 1024
 
 
 class _Peer:
-    """One scripted ASGI client: it sends body chunks, then stalls or disconnects, and records what it received."""
+    """One scripted ASGI client: it sends body chunks, then stalls or disconnects, and records what it received.
+
+    After its chunks, "wait" ends the body and waits, "stall" and "disconnect" leave the body unfinished, and "hangup"
+    ends the body and then disconnects.
+    """
 
     def __init__(self, chunks: list[bytes], *, then: str = "wait") -> None:
         self.chunks = list(chunks)
@@ -27,8 +48,9 @@ class _Peer:
         if self.chunks:
             self.received += 1
             chunk = self.chunks.pop(0)
-            return {"type": "http.request", "body": chunk, "more_body": bool(self.chunks) or self.then != "wait"}
-        if self.then == "disconnect":
+            more = bool(self.chunks) or self.then not in {"wait", "hangup"}
+            return {"type": "http.request", "body": chunk, "more_body": more}
+        if self.then in {"disconnect", "hangup"}:
             return {"type": "http.disconnect"}
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
@@ -74,9 +96,49 @@ def _scope(
     }
 
 
-async def _call(app, peer: _Peer, scope: dict[str, Any]) -> tuple[int | None, dict[str, Any] | None]:
-    await asyncio.wait_for(app(scope, peer.receive, peer.send), 5)
+async def _call(
+    app, peer: _Peer, scope: dict[str, Any], seconds: float = 5
+) -> tuple[int | None, dict[str, Any] | None]:
+    await asyncio.wait_for(app(scope, peer.receive, peer.send), seconds)
     return peer.response()
+
+
+def _encoded(value: object) -> bytes:
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _skill(index: int) -> dict[str, object]:
+    steps = [
+        {
+            "assistant_id": f"s{step:02d}-" + "a" * 76,
+            "action": f"a{index}" + "b" * 126,
+            "inputs": [f"i{name:02d}" + "x" * 61 for name in range(32)],
+        }
+        for step in range(16)
+    ]
+    contracts = {step["assistant_id"]: "sha256:" + "0" * 64 for step in steps}
+    return {"key": team_memory._skill_key(contracts, steps), "contracts": contracts, "steps": steps, "usable": False}
+
+
+def _largest_uncounted() -> dict[str, object]:
+    """Every field of a resume that the model window does not count, each at the most its validation admits."""
+    return {
+        "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "\x01" * 16 * 1024, "effort": "medium"},
+        "memories": [
+            {"topic": f"t{index:02d}" + "a" * 37, "preference": WIDE * team_memory.MAX_PREFERENCE_CHARS}
+            for index in range(team_memory.MAX_MEMORIES)
+        ],
+        "skills": [_skill(index) for index in range(team_memory.MAX_SKILLS)],
+        "routines": [
+            {
+                "routine_id": f"{index:032x}",
+                "quote": WIDE * team_routine.MAX_QUOTE_CHARS,
+                "schedule": {"kind": "monthly", "day": 28, "time": "23:59"},
+                "timezone": "/".join(letter * 32 for letter in "ABC"),
+            }
+            for index in range(team_routine.MAX_ROUTINES)
+        ],
+    }
 
 
 def _serve(peer: _Peer, scope: dict[str, Any], runtime: FakeRuntime | None = None) -> FakeRuntime:
@@ -87,10 +149,33 @@ def _serve(peer: _Peer, scope: dict[str, Any], runtime: FakeRuntime | None = Non
 
 
 class RequestBodyBoundTests(unittest.TestCase):
-    def test_the_ceiling_admits_the_largest_request_team_can_send(self):
-        largest = 16 * (512 + 2 * 128) * 1024 + 64 * 512 * 1024
-        self.assertGreater(runtime_api.MAX_REQUEST_BYTES, largest)
-        self.assertLessEqual(runtime_api.MAX_REQUEST_BYTES, 64 * 1024 * 1024)
+    def test_the_ceiling_admits_every_request_that_can_fit_the_model_window(self):
+        tool = agent_runtime._tool_name("hello-pulse", "hello")
+        call = {"name": tool, "args": {}, "id": "call"}
+        model = ToolAwareFakeModel(responses=[AIMessage(content="", tool_calls=[call])])
+        api = client(agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model))
+        interrupt = api.post("/v1/turns", json=body(), headers=HEADERS).json()["actions"][0]["interrupt_id"]
+
+        # Action results that alone fill the smallest window, beside every uncounted field at its maximum. The fixed
+        # prompt and the pending history make the real window guard refuse it, so no resume that can succeed is
+        # larger; a start carries the conversation window instead of resumed knowledge and stays smaller still.
+        window = (
+            context_budget.MODEL_WINDOW_TOKENS - context_budget.OUTPUT_RESERVE_TOKENS
+        ) * context_budget.BYTES_PER_TOKEN
+        results = {interrupt: "x" * (window - len(_encoded({interrupt: ""})))}
+        self.assertEqual(len(_encoded(results)), window)
+        context = {key: value for key, value in body().items() if key not in {"message", "conversation"}}
+        raw = _encoded({**context, **_largest_uncounted(), "results": results})
+        conversation = _encoded(
+            [{"role": "assistant", "text": WIDE * intent_route.MAX_CONVERSATION_TEXT_CHARS, "truncated": False}]
+            * intent_route.MAX_CONVERSATION_ENTRIES
+        )
+        self.assertLessEqual(len(raw) + len(conversation), runtime_api.MAX_REQUEST_BYTES)
+
+        refused = api.post("/v1/turns/resume", content=raw, headers={**HEADERS, "Content-Type": "application/json"})
+        self.assertEqual(
+            (refused.status_code, refused.json()), (400, {"detail": "conversation context exceeds the model window"})
+        )
 
     def test_an_unauthenticated_body_is_refused_before_any_byte_is_read_or_decoded(self):
         largest = runtime_api.MAX_REQUEST_BYTES
@@ -166,7 +251,9 @@ class AdmissionTests(unittest.TestCase):
     def setUp(self) -> None:
         for name, value in (
             ("MAX_REQUEST_BYTES", self.CEILING),
-            ("MAX_BUFFERED_REQUEST_BYTES", 2 * self.CEILING),
+            ("MEMORY_PER_REQUEST", 0),
+            ("MEMORY_PER_BODY_BYTE", 1),
+            ("MAX_REQUEST_MEMORY", 2 * self.CEILING),
             ("REQUEST_BODY_SECONDS", 0.2),
         ):
             patcher = mock.patch.object(runtime_api, name, value)
@@ -224,6 +311,116 @@ class AdmissionTests(unittest.TestCase):
 
         statuses = [status for status, _detail in asyncio.run(scenario())]
         self.assertEqual(statuses, [503, 200, 408, 408])
+
+    def test_a_turn_keeps_its_admission_after_a_disconnect_until_its_worker_returns(self):
+        class BlockedRuntime(FakeRuntime):
+            def __init__(self) -> None:
+                super().__init__()
+                self.entered = threading.Event()
+                self.release = threading.Event()
+
+            def start(self, context, message, conversation=()):
+                self.entered.set()
+                if not self.release.wait(5):
+                    raise AssertionError("the test never released the turn")
+                return super().start(context, message, conversation)
+
+        runtime = BlockedRuntime()
+        raw = json.dumps(body()).encode()
+        # The turn alone fills the budget, and Team's disconnect cancels only its provider I/O.
+        with mock.patch.object(runtime_api, "MAX_REQUEST_MEMORY", len(raw)):
+            app = self._app(runtime)
+
+        async def scenario() -> list[Any]:
+            turn = asyncio.create_task(_call(app, _Peer([raw], then="hangup"), _scope(length=len(raw))))
+            self.assertTrue(await asyncio.to_thread(runtime.entered.wait, 2))
+            refused = await _call(app, _Peer([b"{}"]), _scope(length=2))
+            runtime.release.set()
+            await turn
+            admitted = await _call(app, _Peer([b"{}"]), _scope(length=2))
+            return [refused[0], admitted[0]]
+
+        self.assertEqual(asyncio.run(scenario()), [503, 422])
+        self.assertEqual([call[0] for call in runtime.calls], ["start"])
+
+    def test_a_request_frees_its_cyclic_garbage_before_its_admission_returns(self):
+        class Garbage:
+            pass
+
+        class LitteringRuntime(FakeRuntime):
+            def start(self, context, message, conversation=()):
+                garbage = Garbage()
+                garbage.cycle = garbage
+                self.left = weakref.ref(garbage)
+                return super().start(context, message, conversation)
+
+        runtime = LitteringRuntime()
+        raw = json.dumps(body()).encode()
+        enabled = gc.isenabled()
+        gc.disable()
+        try:
+            status, _reply = asyncio.run(_call(self._app(runtime), _Peer([raw]), _scope(length=len(raw))))
+        finally:
+            if enabled:
+                gc.enable()
+        self.assertEqual(status, 200)
+        self.assertIsNone(runtime.left())
+
+
+class ProductionAdmissionTests(unittest.TestCase):
+    """The production reservation: a fixed amount per request plus a multiple of each declared byte."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(runtime_api, "REQUEST_BODY_SECONDS", 0.2)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.app = runtime_api.create_app(runtime=FakeRuntime(), token_reader=lambda: TOKEN)
+
+    async def _held(self, lengths: list[int]) -> tuple[list[Any], tuple[int | None, dict[str, Any] | None], int]:
+        """Hold stalled bodies of these lengths; return what each got, what one more byte got, and what it read."""
+        holders = [
+            asyncio.create_task(_call(self.app, _Peer([], then="stall"), _scope(length=length), seconds=30))
+            for length in lengths
+        ]
+        await asyncio.sleep(0.05)
+        excess = _Peer([b"{"], then="stall")
+        refused = await _call(self.app, excess, _scope(length=1))
+        return [status for status, _detail in await asyncio.gather(*holders)], refused, excess.received
+
+    def test_one_largest_request_is_admitted_beside_exactly_what_the_budget_has_left(self):
+        largest = runtime_api.MEMORY_PER_REQUEST + runtime_api.MAX_REQUEST_BYTES * runtime_api.MEMORY_PER_BODY_BYTE
+        self.assertEqual(largest, 560 * MiB)
+        remaining = (
+            runtime_api.MAX_REQUEST_MEMORY - largest - runtime_api.MEMORY_PER_REQUEST
+        ) // runtime_api.MEMORY_PER_BODY_BYTE
+        self.assertEqual(remaining, 1_310_720)
+        capacity = (503, {"detail": "Brain runtime request capacity reached"})
+
+        statuses, refused, read = asyncio.run(self._held([runtime_api.MAX_REQUEST_BYTES, remaining]))
+        self.assertEqual((statuses, refused, read), ([408, 408], capacity, 0))
+        # Everything was released, and one byte more than what was left is refused unread.
+        statuses, refused, read = asyncio.run(self._held([runtime_api.MAX_REQUEST_BYTES, remaining + 1]))
+        self.assertEqual((statuses, refused[0], read), ([408, 503], 408, 1))
+
+    def test_fifteen_small_requests_fill_the_budget(self):
+        statuses, refused, read = asyncio.run(self._held([1] * 15))
+        self.assertEqual((statuses, refused[0], read), ([408] * 15, 503, 0))
+        statuses, refused, read = asyncio.run(self._held([1] * 14))
+        self.assertEqual((statuses, refused[0]), ([408] * 14, 408))
+
+
+class ClosedInputTests(unittest.TestCase):
+    def test_an_object_with_unknown_fields_is_refused_with_one_error(self):
+        unknown = (400, {"loc": ["body"], "type": "value_error", "msg": "Value error, unknown field"})
+        nested = body()
+        nested["assistants"][1]["actions"][0] = {"id": "hello", "first": 1, "second": 2}
+        for request, loc in (
+            (body(**{f"field-{index}": index for index in range(10_000)}), ["body"]),
+            (nested, ["body", "assistants", 1, "actions", 0]),
+        ):
+            with self.subTest(loc=loc):
+                response = client(FakeRuntime()).post("/v1/turns", json=request, headers=HEADERS)
+                self.assertEqual((response.status_code, response.json()["detail"]), (422, [{**unknown[1], "loc": loc}]))
 
 
 class HealthTests(unittest.TestCase):

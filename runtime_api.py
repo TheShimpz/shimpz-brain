@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import gc
 import hmac
 import os
 import sqlite3
@@ -34,17 +35,29 @@ STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-
 MAX_TOKEN_BYTES = 4 * 1024
 CAPABILITY_PLAN_CONCURRENCY = 2
 INTENT_ROUTE_CONCURRENCY = 2
-# The largest request Team can send is a resume that scopes 16 Assistants, each with a canonical machine contract of
-# at most 512 KiB and a Genesis of at most 128 KiB that JSON escaping at most doubles (12 MiB), and answers at most
-# 64 Action results of at most 512 KiB each (32 MiB). The remaining 4 MiB covers the message, conversation, memory,
-# skills, Routines, provider settings, and JSON framing.
-MAX_REQUEST_BYTES = 48 * 1024 * 1024
+# Team sends compact canonical JSON, and a start or resume succeeds only when what the model window counts (genesis,
+# Assistant and Action ids and summaries, input schemas, start-time knowledge, and the message or Action results) fits
+# the smallest window: (1,000,000 - 128,000) tokens of 3 bytes, about 2.5 MiB. What a canonical request carries beyond
+# that (resumed knowledge, skill contracts, the conversation window, provider settings, identifiers, and framing) stays
+# under 0.6 MiB, and the other endpoints carry far less. A larger body could only fail after it was decoded, so it is
+# refused before it is read.
+MAX_REQUEST_BYTES = 4 * 1024 * 1024
 # Team writes one whole body at once over the private network; a body still incomplete after this is refused.
 REQUEST_BODY_SECONDS = 30.0
-# Every admitted request reserves its declared length, or the whole ceiling when it streams, until it completes. Two
-# largest requests at once stay far below the 1 GiB container while leaving room to decode them and run their turns;
-# a request past the budget is refused before any byte of it is read.
-MAX_BUFFERED_REQUEST_BYTES = 2 * MAX_REQUEST_BYTES
+# Each admitted body reserves memory until its request has completed and its garbage is collected; a body that would
+# exceed the budget is refused before any byte of it is read. Python holds every decoded JSON value as an object, so
+# dense data costs far more than its bytes: through this app and a whole turn, depth-32 nested lists in Action input
+# schemas grew peak RSS by 118 bytes per body byte (tool conversion copies them), dense Action results by 65, and JSON
+# of any shape by 53 in decoding alone. A body therefore reserves 128 bytes per byte of its declared length, or of the
+# whole ceiling when it streams, plus 48 MiB for what its length does not measure: the history a turn restores from
+# its checkpoint (about 30 MiB for a near-window pending turn), provider serialization, and validation errors, which
+# ClosedInput bounds by the objects a body's lists admit. The budget admits one largest request beside four small
+# ones, or fifteen small ones, and leaves the rest of the 1 GiB container to the loaded process (about 140 MiB). In a
+# warmed process with the image's allocator settings, four dense starts at once peaked at 530 MiB and fifteen resumes of
+# near-window pending turns at 540 MiB. These are measured bounds for this code and its dependencies, not proofs.
+MEMORY_PER_REQUEST = 48 * 1024 * 1024
+MEMORY_PER_BODY_BYTE = 128
+MAX_REQUEST_MEMORY = 768 * 1024 * 1024
 _PRUNE_WRITES_SQL = (
     "WITH latest AS (SELECT checkpoint_ns,MAX(checkpoint_id) AS checkpoint_id "
     "FROM checkpoints WHERE thread_id=? GROUP BY checkpoint_ns) "
@@ -61,9 +74,25 @@ _PRUNE_CHECKPOINTS_SQL = (
 )
 
 
-class ProviderInput(BaseModel):
+class ClosedInput(BaseModel):
+    """A request object refused whole, with one constant error, when it carries any field it does not declare.
+
+    Pydantic's own `extra="forbid"` reports each unknown field separately, and every error costs about a kilobyte of
+    memory, far more than the few body bytes that create it. One error per object keeps the errors a body can cause
+    bounded by the objects its lists admit.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_unknown_fields(cls, value: object) -> object:
+        if isinstance(value, dict) and any(key not in cls.model_fields for key in value):
+            raise ValueError("unknown field")
+        return value
+
+
+class ProviderInput(ClosedInput):
     provider: Literal["anthropic", "openai"]
     model: str = Field(min_length=1, max_length=128)
     api_key: SecretStr = Field(min_length=1, max_length=16 * 1024)
@@ -73,25 +102,19 @@ class ChatProviderInput(ProviderInput):
     effort: Literal["low", "medium", "high"]
 
 
-class ActionInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ActionInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     summary: str = Field(min_length=1, max_length=2_000)
     input_schema: dict[str, Any]
 
 
-class AssistantInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class AssistantInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     genesis: str = Field(min_length=1, max_length=agent_runtime.MAX_GENESIS_BYTES)
     actions: list[ActionInput] = Field(max_length=agent_runtime.MAX_ACTIONS_PER_ASSISTANT)
 
 
-class TurnContextInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TurnContextInput(ClosedInput):
     thread_id: str = Field(min_length=1, max_length=256)
     team_name: str = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_NAME_CHARS)
     assistants: list[AssistantInput] = Field(max_length=agent_runtime.MAX_ASSISTANTS)
@@ -153,8 +176,8 @@ def _memories(value: list[dict[str, Any]] | None) -> tuple[team_memory.Memory, .
         raise agent_runtime.RuntimeContractError("invalid memory") from exc
 
 
-class ConversationEntryInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+class ConversationEntryInput(ClosedInput):
+    model_config = ConfigDict(strict=True)
 
     role: Literal["user", "assistant"]
     text: str = Field(min_length=1, max_length=intent_route.MAX_CONVERSATION_TEXT_CHARS)
@@ -177,9 +200,7 @@ class ResumeTurnInput(TurnContextInput):
     results: dict[str, Any] = Field(min_length=1, max_length=agent_runtime.MAX_ACTION_RESULTS)
 
 
-class DeleteThreadInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DeleteThreadInput(ClosedInput):
     thread_id: str = Field(min_length=1, max_length=256)
 
     @field_validator("thread_id")
@@ -190,9 +211,7 @@ class DeleteThreadInput(BaseModel):
         return value
 
 
-class ActionLabelsInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ActionLabelsInput(ClosedInput):
     provider: ProviderInput
     language_exemplar: str = Field(min_length=1, max_length=agent_runtime.MAX_LANGUAGE_EXEMPLAR_CHARS)
     actions: list[str] = Field(min_length=1, max_length=action_labels.MAX_ACTION_LABELS)
@@ -221,16 +240,12 @@ class ActionLabelsInput(BaseModel):
         )
 
 
-class CapabilityIntegrationInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CapabilityIntegrationInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=128)
 
 
-class CapabilityCandidateInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CapabilityCandidateInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=capability_plan.MAX_NAME_CHARS)
     summary: str = Field(min_length=1, max_length=capability_plan.MAX_SUMMARY_CHARS)
@@ -249,9 +264,7 @@ class CapabilityCandidateInput(BaseModel):
         )
 
 
-class CapabilityPlanInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CapabilityPlanInput(ClosedInput):
     provider: ProviderInput
     objective: str = Field(min_length=1, max_length=capability_plan.MAX_OBJECTIVE_CHARS)
     candidates: list[CapabilityCandidateInput] = Field(
@@ -270,9 +283,7 @@ class CapabilityPlanInput(BaseModel):
         return tuple(item.runtime_candidate() for item in self.candidates)
 
 
-class DirectoryCandidateInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DirectoryCandidateInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=intent_route.MAX_NAME_CHARS)
     summary: str = Field(max_length=intent_route.MAX_SUMMARY_CHARS)
@@ -281,9 +292,7 @@ class DirectoryCandidateInput(BaseModel):
         return intent_route.DirectoryCandidate(id=self.id, name=self.name, summary=self.summary)
 
 
-class LifecycleReferenceInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class LifecycleReferenceInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=intent_route.MAX_NAME_CHARS)
 
@@ -291,18 +300,14 @@ class LifecycleReferenceInput(BaseModel):
         return intent_route.LifecycleReference(id=self.id, name=self.name)
 
 
-class DecisionProviderInput(BaseModel):
+class DecisionProviderInput(ClosedInput):
     """The Supervisor's request-scoped TypeSafe key for the classification fast path."""
-
-    model_config = ConfigDict(extra="forbid")
 
     provider: Literal["typesafe"]
     api_key: SecretStr = Field(min_length=16, max_length=8192)
 
 
-class IntentRouteInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class IntentRouteInput(ClosedInput):
     provider: ProviderInput
     decision_provider: DecisionProviderInput | None = None
     objective: str = Field(min_length=1, max_length=intent_route.MAX_OBJECTIVE_CHARS)
@@ -438,6 +443,10 @@ def _reservation(headers: dict[bytes, bytes], max_bytes: int) -> int:
 class BoundedBody:
     """Admit and receive each whole request body within byte, memory, and time bounds before anything parses it.
 
+    A body reserves a fixed amount of memory plus a multiple of its length for its whole request, and the reservation
+    returns to the budget only after a full collection has freed what the request left behind: a turn leaves cyclic
+    garbage that would otherwise stay resident until some later collection, unaccounted for.
+
     FastAPI buffers and decodes a body before the bearer dependency runs, so a request with a body must first pass
     the same bearer check here: no byte of an unauthenticated body is read or decoded. A bodyless request, such as
     health, needs neither admission nor this early check; its route's own dependency still applies.
@@ -449,13 +458,17 @@ class BoundedBody:
         *,
         authenticate: Callable[[str | None], None],
         max_bytes: int,
-        budget_bytes: int,
+        memory_per_request: int,
+        memory_per_body_byte: int,
+        memory_budget: int,
         deadline_seconds: float,
     ) -> None:
         self.app = app
         self.authenticate = authenticate
         self.max_bytes = max_bytes
-        self.budget_bytes = budget_bytes
+        self.memory_per_request = memory_per_request
+        self.memory_per_body_byte = memory_per_body_byte
+        self.memory_budget = memory_budget
         self.deadline_seconds = deadline_seconds
         # Only the event loop thread changes this, with no await between its check and its update.
         self.reserved = 0
@@ -475,18 +488,20 @@ class BoundedBody:
         except HTTPException as exc:
             await _refuse_body(scope, receive, send, exc.status_code, exc.detail)
             return
+        memory = self.memory_per_request + size * self.memory_per_body_byte
         if size > self.max_bytes:
             await _refuse_body(scope, receive, send, 413, "Request body is too large")
-        elif self.reserved + size > self.budget_bytes:
+        elif self.reserved + memory > self.memory_budget:
             await _refuse_body(
                 scope, receive, send, 503, "Brain runtime request capacity reached", **{"Retry-After": "1"}
             )
         else:
-            self.reserved += size
+            self.reserved += memory
             try:
                 await self._admitted(scope, receive, send, size)
             finally:
-                self.reserved -= size
+                gc.collect()
+                self.reserved -= memory
 
     async def _admitted(self, scope, receive, send, size: int) -> None:
         """Receive the admitted body within its reservation and the deadline, then hand it on exactly once."""
@@ -703,7 +718,9 @@ def create_app(
         BoundedBody,
         authenticate=lambda authorization: _authenticate(authorization, token_reader),
         max_bytes=MAX_REQUEST_BYTES,
-        budget_bytes=MAX_BUFFERED_REQUEST_BYTES,
+        memory_per_request=MEMORY_PER_REQUEST,
+        memory_per_body_byte=MEMORY_PER_BODY_BYTE,
+        memory_budget=MAX_REQUEST_MEMORY,
         deadline_seconds=REQUEST_BODY_SECONDS,
     )
 

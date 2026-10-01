@@ -35,8 +35,12 @@ COPY --from=builder /opt/venv /opt/venv
 COPY --chown=brainruntime:brainruntime action_labels.py action_schema.py agent_runtime.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py intent_route.py memory.py model_usage.py provider_cancel.py routine.py runtime_api.py turn_pins.py turn_prompt.py \
     model_catalog.json /app/
 
+# Two allocator arenas and a fixed mmap threshold hand freed request memory back instead of keeping it in per-thread
+# arenas, so resident memory follows what runtime_api admits rather than ratcheting toward the container limit.
 ENV LANGCHAIN_TRACING_V2=false \
     LANGSMITH_TRACING=false \
+    MALLOC_ARENA_MAX=2 \
+    MALLOC_MMAP_THRESHOLD_=131072 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
