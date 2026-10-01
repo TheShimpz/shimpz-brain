@@ -102,17 +102,43 @@ class ActionPatternTests(unittest.TestCase):
             {
                 "$schema": draft,
                 "type": "object",
+                "$defs": {"a": {"$schema": draft, "type": "string", "pattern": "^a$"}},
                 "properties": {
                     "q": {"anyOf": [{"$schema": draft, "type": "string", "pattern": "^a$"}]},
-                    "self": {"$ref": "#"},
+                    "r": {"$ref": "#/$defs/a"},
                 },
                 "default": {"$schema": "data"},
             }
         )
         # Python `re` would accept the trailing newline; RE2 matches `$` only at the end of the text.
         self.assertFalse(_accepts(action, q="a\n"))
-        self.assertFalse(_accepts(action, self={"q": "a\n"}))
-        self.assertTrue(_accepts(action, self={"q": "a"}))
+        self.assertFalse(_accepts(action, r="a\n"))
+        self.assertTrue(_accepts(action, r="a"))
+
+    def test_one_validation_charges_every_search_against_one_budget(self) -> None:
+        # `a.{900}c` compiles to 7,206 instructions; RE2 runs it without its DFA at several nanoseconds per byte.
+        heavy = "a.{900}c"
+        fits = action_schema.MAX_PATTERN_WORK // action_schema._compiled_pattern(heavy).programsize
+        self.assertFalse(action_schema.pattern_matches(heavy, "b" * fits))
+        with self.assertRaisesRegex(action_schema.PatternError, "work budget"):
+            action_schema.pattern_matches(heavy, "\u00e9" * (fits // 2 + 1))
+        with action_schema.pattern_work_budget():
+            self.assertFalse(action_schema.pattern_matches(heavy, "b" * (fits // 2)))
+            with self.assertRaisesRegex(action_schema.PatternError, "work budget"):
+                action_schema.pattern_matches(heavy, "b" * (fits - fits // 2 + 1))
+        self.assertFalse(action_schema.pattern_matches(heavy, "b" * fits))
+        # One argument checked by the heavy pattern from 64 expanded positions: each search alone fits.
+        action = _action(
+            {
+                "type": "object",
+                "$defs": {"heavy": {"type": "string", "not": {"pattern": heavy}}},
+                "properties": {"q": {"allOf": [{"$ref": "#/$defs/heavy"}] * 64}},
+            }
+        )
+        self.assertTrue(_accepts(action, q="b" * (fits // 64)))
+        started = time.perf_counter()
+        self.assertFalse(_accepts(action, q="b" * (fits // 64 + 1)))
+        self.assertLess(time.perf_counter() - started, 2.0)
 
     def test_additional_properties_consult_each_pattern_property_separately(self) -> None:
         validator = action_tool.action_schema_validator(

@@ -214,7 +214,6 @@ class ExternalReferenceTests(unittest.TestCase):
             ("$defs", "#/$defs/name"),
             ("definitions", "#/definitions/name"),
             ("$defs", "#/$defs/a~1b~0c"),
-            ("$defs", "#"),
         ):
             local = {
                 "type": "object",
@@ -297,14 +296,46 @@ class ExternalReferenceTests(unittest.TestCase):
         urlopen.assert_not_called()
         self.assertNotIsInstance(caught.exception, AssertionError)
 
-    def test_arguments_are_corrected_when_schema_references_never_resolve(self):
+    def test_admission_refuses_a_missing_or_cyclic_reference(self):
         for schema in (
             {"type": "object", "$defs": {"a": {"$ref": "#/$defs/a"}}, "properties": {"x": {"$ref": "#/$defs/a"}}},
             {"type": "object", "$ref": "#"},
+            {"type": "object", "properties": {"x": {"$ref": "#"}}},
+            {
+                "type": "object",
+                "$defs": {"a": {"anyOf": [{"type": "null"}, {"$ref": "#/definitions/b"}]}},
+                "definitions": {"b": {"type": "array", "items": {"$ref": "#/$defs/a"}}},
+            },
             {"type": "object", "properties": {"x": {"$ref": "#/$defs/missing"}}},
         ):
-            action = agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
-            with self.subTest(schema=schema), mock.patch("langgraph.types.interrupt") as interrupt:
-                message = action_tool.request_action(TOOL, "shimpz-exa", action).func(x=1)
-                self.assertTrue(message.startswith("Action not executed:"))
-                interrupt.assert_not_called()
+            with (
+                self.subTest(schema=schema),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "every reference without a cycle"),
+            ):
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+
+    def test_admission_bounds_validation_work_with_every_reference_expanded(self):
+        def doubling(levels: int) -> dict[str, object]:
+            definitions: dict[str, object] = {"d0": {"type": "string"}}
+            for level in range(1, levels + 1):
+                definitions[f"d{level}"] = {"allOf": [{"$ref": f"#/$defs/d{level - 1}"}] * 2}
+            return {
+                "type": "object",
+                "additionalProperties": False,
+                "$defs": definitions,
+                "properties": {"a": {"$ref": f"#/$defs/d{levels}"}},
+            }
+
+        # 189 JSON values whose validation of `{}` alone would visit about 2^33 subschemas.
+        self.assertEqual(action_schema.json_nodes(doubling(30), 4096), 189)
+        self.assertEqual(action_schema.expanded_subschemas(doubling(30)), 12_884_901_791)
+        for levels in (9, 30):
+            with (
+                self.subTest(levels=levels),
+                self.assertRaisesRegex(
+                    agent_runtime.RuntimeContractError, "too large once its references are expanded"
+                ),
+            ):
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(levels))
+        self.assertEqual(action_schema.expanded_subschemas(doubling(8)), 3_041)
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(8))

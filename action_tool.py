@@ -56,10 +56,11 @@ def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) 
 
     def suspend_for_controller(**payload):
         try:
-            invalid = next(validator.iter_errors(payload), None) is not None
+            with action_schema.pattern_work_budget():
+                invalid = next(validator.iter_errors(payload), None) is not None
         except RecursionError, Unresolvable, action_schema.PatternError:
-            # A reference cycle or a missing named definition passes admission but can never validate, and an argument
-            # that is not valid Unicode cannot be matched: refuse it like any invalid argument.
+            # An unresolvable reference, validation deeper than the recursion limit, an argument that is not valid
+            # Unicode, or matching beyond its work budget cannot complete: refuse it like any invalid argument.
             invalid = True
         if invalid:
             return correction(tool_name, action)
