@@ -30,6 +30,8 @@ TOPIC_RE = re.compile(r"[a-z][a-z0-9-]{0,39}\Z")
 # Skills the Team learned from completed tasks (ADR-0085); their keys are reserved and can only be forgotten.
 SKILL_KEY_RE = re.compile(r"procedure-[0-9a-f]{12}\Z")
 MAX_SKILLS = 8
+# Team admits a chat message of at most 16,000 characters into the closed start envelope it sends the Brain.
+MAX_TURN_MESSAGE_CHARS = 16_000
 # One compact boolean per candidate change leaves room for far more candidates than a bounded turn proposes.
 MAX_CONFIRMATION_CHARS = 4_096
 SCHEMA = {
@@ -192,9 +194,30 @@ def _own_words(message: str) -> str:
     return _comparable(_QUOTED_RE.sub(" \u2063 ", unicodedata.normalize("NFC", message)))
 
 
+def turn_message(content: object) -> str | None:
+    """The user's `message` in Team's closed start envelope, never its file metadata; None for anything else."""
+    if not isinstance(content, str):
+        return None
+    try:
+        envelope = json.loads(content)
+    except ValueError, RecursionError:
+        return None
+    if (
+        not isinstance(envelope, dict)
+        or set(envelope) != {"files", "message"}
+        or not isinstance(envelope["files"], list)
+        or not isinstance(envelope["message"], str)
+        or not envelope["message"].strip()
+        or len(envelope["message"]) > MAX_TURN_MESSAGE_CHARS
+    ):
+        return None
+    return envelope["message"]
+
+
 def _current_message(messages: list[Any]) -> str | None:
+    """The user's own message of the latest turn, read from Team's start envelope."""
     human = next((message for message in reversed(messages) if isinstance(message, HumanMessage)), None)
-    return human.content if human is not None and isinstance(human.content, str) else None
+    return None if human is None else turn_message(human.content)
 
 
 def change(arguments: object, current_message: str | None) -> Change | None:

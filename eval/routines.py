@@ -119,7 +119,9 @@ def run_case(
     context = agent_runtime.TurnContext(
         f"eval:routine:{case.id}:{index}", "Eval Team", (DNS, MESSAGES), provider, routines=case.routines
     )
-    result = runtime.start(context, case.message)
+    # The exact closed start envelope Team sends; the guards read only its message.
+    envelope = json.dumps({"files": [], "message": case.message}, separators=(",", ":"), ensure_ascii=False)
+    result = runtime.start(context, envelope)
     for _round in range(4):
         if result.status != "action-required":
             break

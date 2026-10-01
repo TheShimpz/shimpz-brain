@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 import interface_language
+import memory as team_memory
 import turn_pins
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -21,8 +22,6 @@ from pydantic import BaseModel, ConfigDict
 MAX_PURPOSE_CHARS = 280
 MAX_ASSISTANT_NAME_CHARS = 80
 MAX_ACTION_SUMMARY_CHARS = 2_000
-# Team admits a chat message of at most 16,000 characters into its start envelope.
-MAX_OBJECTIVE_CHARS = 16_000
 MAX_PURPOSE_RESPONSE_CHARS = 4 * 1024
 # The provider may generate at most this many output tokens, its low-effort reasoning included, for one sentence.
 MAX_PURPOSE_OUTPUT_TOKENS = 1_024
@@ -133,20 +132,10 @@ def _objective(messages: object, message_id: str) -> str:
     matches = [message for message in messages if getattr(message, "id", None) == message_id]
     if len(matches) != 1 or not isinstance(matches[0], HumanMessage) or not isinstance(matches[0].content, str):
         raise RuntimeContractError("pending turn message is unavailable")
-    try:
-        envelope = json.loads(matches[0].content)
-    except ValueError as exc:
-        raise RuntimeContractError("pending turn message is invalid") from exc
-    if (
-        not isinstance(envelope, dict)
-        or set(envelope) != {"files", "message"}
-        or not isinstance(envelope["files"], list)
-        or not isinstance(envelope["message"], str)
-        or not envelope["message"].strip()
-        or len(envelope["message"]) > MAX_OBJECTIVE_CHARS
-    ):
+    objective = team_memory.turn_message(matches[0].content)
+    if objective is None:
         raise RuntimeContractError("pending turn message is invalid")
-    return envelope["message"]
+    return objective
 
 
 def pending_request(checkpoint_tuple: object, pending: PendingAction) -> PurposeRequest:

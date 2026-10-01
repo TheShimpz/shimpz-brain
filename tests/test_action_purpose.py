@@ -14,6 +14,7 @@ from unittest import mock
 
 import action_purpose
 import agent_runtime
+import memory
 import provider_cancel
 import runtime_api
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -179,7 +180,7 @@ class PendingRequestTests(unittest.TestCase):
             json.dumps({"files": {}, "message": MESSAGE}),
             json.dumps({"files": [], "message": 1}),
             json.dumps({"files": [], "message": "   "}),
-            json.dumps({"files": [], "message": "x" * (action_purpose.MAX_OBJECTIVE_CHARS + 1)}),
+            json.dumps({"files": [], "message": "x" * (memory.MAX_TURN_MESSAGE_CHARS + 1)}),
             [{"type": "text", "text": envelope()}],
         ):
             checkpoint = real._replace(
