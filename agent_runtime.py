@@ -147,7 +147,7 @@ class ActionDefinition:
             Draft202012Validator.check_schema(dict(self.input_schema))
         except SchemaError as exc:
             raise RuntimeContractError("invalid Action input schema") from exc
-        problem = action_schema.reference_problem(self.input_schema)
+        problem = action_schema.schema_problem(self.input_schema)
         if problem is not None:
             raise RuntimeContractError(f"Action input schema {problem}")
 

@@ -6,6 +6,8 @@ dependencies = [
     # Provider-neutral Team Brain.  Every agent/tool/runtime dependency is exact so a rebuilt
     # image cannot silently alter the Action boundary or checkpoint format.
     "fastapi==0.139.2",
+    # RE2 matches an Action schema `pattern` in time linear in the subject and releases the GIL while it runs.
+    "google-re2==1.1.20251105",
     "httpx==0.28.1",
     "jsonschema==4.25.1",
     "langchain==1.3.14",

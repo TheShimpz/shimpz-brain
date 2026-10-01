@@ -1,14 +1,26 @@
-"""Reference admission for a self-contained Draft 2020-12 Action input schema.
+"""Admission and validation of a self-contained Draft 2020-12 Action input schema.
 
 The walk reads only the positions Draft 2020-12 defines as subschemas, so every reference it admits lands on a schema
-position this walk has checked.
+position this walk has checked. Validation evaluates every `pattern` and `patternProperties` with RE2, never Python
+`re`, whose backtracking would hold the GIL for time exponential in the model's arguments.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator, Mapping
+from functools import cache
 from typing import Any
+
+# RE2 matches in time linear in the subject and releases the GIL while it searches. Its semantics are those Team pins
+# in the Assistant protocol's pattern vectors: `\d`, `\w`, `\s`, and `\b` are ASCII, `$` without `m` matches only at
+# the end of the text, and `i` folds Unicode case. Team admits only patterns within the same memory and program bounds.
+MAX_PATTERN_PROGRAM = 16_384
+
+
+class PatternError(ValueError):
+    """The matcher refused a pattern, or a subject that is not valid Unicode; validation must fail closed."""
+
 
 DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
 # A reference may name only the root or one direct definition. Both are walked schema positions, so a reference never
@@ -55,6 +67,16 @@ def _node_problem(node: Mapping[str, Any], *, nested: bool) -> str | None:
         return "must use only the Draft 2020-12 dialect"
     if nested and "$id" in node:
         return "must not declare a nested identifier"
+    if "unevaluatedProperties" in node:
+        return "must not use unevaluatedProperties"
+    patterns = [*node.get("patternProperties", ())]
+    if isinstance(node.get("pattern"), str):
+        patterns.append(node["pattern"])
+    try:
+        for pattern in patterns:
+            _compiled_pattern(pattern)
+    except PatternError:
+        return "must use only patterns the linear-time matcher admits"
     return None
 
 
@@ -76,8 +98,8 @@ def json_nodes(value: object, limit: int) -> int:
     return count
 
 
-def reference_problem(schema: Mapping[str, Any]) -> str | None:
-    """The first unwalked-reference problem in a metaschema-valid schema, or None when it is self-contained."""
+def schema_problem(schema: Mapping[str, Any]) -> str | None:
+    """The first reference or pattern problem in a metaschema-valid schema, or None when Brain can validate it."""
     pending: list[object] = [schema]
     while pending:
         node = pending.pop()
@@ -87,3 +109,112 @@ def reference_problem(schema: Mapping[str, Any]) -> str | None:
                 return problem
             pending.extend(_applied_subschemas(node))
     return None
+
+
+@cache
+def _pattern_options():
+    import re2
+
+    options = re2.Options()
+    options.max_mem = 1 << 20
+    options.never_capture = True
+    options.log_errors = False
+    return options
+
+
+def _compiled_pattern(pattern: str):
+    import re2
+
+    try:
+        compiled = re2.compile(pattern, _pattern_options())
+    except (re2.error, UnicodeEncodeError) as exc:
+        raise PatternError("pattern is outside the linear-time matcher") from exc
+    if compiled.programsize > MAX_PATTERN_PROGRAM:
+        raise PatternError("pattern exceeds the linear-time matcher bound")
+    return compiled
+
+
+def pattern_matches(pattern: str, subject: str) -> bool:
+    """Whether pattern matches anywhere in subject, as JSON Schema `pattern` requires; raises PatternError."""
+    compiled = _compiled_pattern(pattern)
+    try:
+        return compiled.search(subject) is not None
+    except UnicodeEncodeError as exc:
+        raise PatternError("subject is not valid Unicode") from exc
+
+
+def _pattern(validator, pattern, instance, schema):
+    from jsonschema.exceptions import ValidationError
+
+    if validator.is_type(instance, "string") and not pattern_matches(pattern, instance):
+        yield ValidationError("value does not match its pattern")
+
+
+def _pattern_properties(validator, patterns, instance, schema):
+    if not validator.is_type(instance, "object"):
+        return
+    for pattern, subschema in patterns.items():
+        for name, value in instance.items():
+            if pattern_matches(pattern, name):
+                yield from validator.descend(value, subschema, path=name, schema_path=pattern)
+
+
+def _additional_properties(validator, additional, instance, schema):
+    from jsonschema.exceptions import ValidationError
+
+    if not validator.is_type(instance, "object"):
+        return
+    declared = schema.get("properties", {})
+    patterns = schema.get("patternProperties", {})
+    extras = [
+        name
+        for name in instance
+        if name not in declared and not any(pattern_matches(pattern, name) for pattern in patterns)
+    ]
+    if validator.is_type(additional, "object"):
+        for extra in extras:
+            yield from validator.descend(instance[extra], additional, path=extra)
+    elif not additional and extras:
+        yield ValidationError("additional properties are not allowed")
+
+
+def _unevaluated_properties(validator, unevaluated, instance, schema):
+    # jsonschema evaluates this keyword's pattern properties with Python `re`; admission refuses it.
+    raise PatternError("unevaluatedProperties is outside the linear-time matcher")
+
+
+@cache
+def _validator_class():
+    from jsonschema import Draft202012Validator, validators
+
+    # Every keyword that reads a pattern goes through pattern_matches; `format` is never asserted.
+    return validators.extend(
+        Draft202012Validator,
+        {
+            "additionalProperties": _additional_properties,
+            "pattern": _pattern,
+            "patternProperties": _pattern_properties,
+            "unevaluatedProperties": _unevaluated_properties,
+        },
+    )
+
+
+def _without_dialects(node: object) -> object:
+    # jsonschema switches to the stock validator class at any subschema declaring `$schema`, which would bypass the
+    # pattern keywords above. Admission proved every declaration names Draft 2020-12, so dropping it changes nothing
+    # else; data positions such as `const` or `default` are copied untouched.
+    if not isinstance(node, Mapping):
+        return node
+    copied = {key: value for key, value in node.items() if key != "$schema"}
+    for keyword in _APPLICATOR_KEYWORDS & copied.keys():
+        copied[keyword] = _without_dialects(copied[keyword])
+    for keyword in _APPLICATOR_LIST_KEYWORDS & copied.keys():
+        copied[keyword] = [_without_dialects(child) for child in copied[keyword]]
+    for keyword in _APPLICATOR_MAP_KEYWORDS & copied.keys():
+        copied[keyword] = {name: _without_dialects(child) for name, child in copied[keyword].items()}
+    return copied
+
+
+def payload_validator(schema: Mapping[str, Any], registry):
+    """Validate against an admitted schema with the linear-time matcher and the caller's reference registry."""
+    return _validator_class()(_without_dialects(schema), registry=registry)

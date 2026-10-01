@@ -10,6 +10,7 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+import action_schema
 from langchain_core.tools import StructuredTool
 
 if TYPE_CHECKING:
@@ -40,11 +41,10 @@ def _refuse_retrieval(uri: str):
 
 
 def action_schema_validator(schema: Mapping[str, Any]):
-    """Validate Action arguments without ever retrieving a reference from the network or the filesystem."""
-    from jsonschema import Draft202012Validator
+    """Validate Action arguments with the linear-time matcher, never retrieving a reference from anywhere."""
     from referencing import Registry
 
-    return Draft202012Validator(dict(schema), registry=Registry(retrieve=_refuse_retrieval))
+    return action_schema.payload_validator(schema, Registry(retrieve=_refuse_retrieval))
 
 
 def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) -> StructuredTool:
@@ -57,9 +57,9 @@ def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) 
     def suspend_for_controller(**payload):
         try:
             invalid = next(validator.iter_errors(payload), None) is not None
-        except RecursionError, Unresolvable:
-            # A reference cycle or a missing named definition passes admission but can never validate: refuse it like
-            # any invalid argument.
+        except RecursionError, Unresolvable, action_schema.PatternError:
+            # A reference cycle or a missing named definition passes admission but can never validate, and an argument
+            # that is not valid Unicode cannot be matched: refuse it like any invalid argument.
             invalid = True
         if invalid:
             return correction(tool_name, action)
