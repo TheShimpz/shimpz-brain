@@ -44,8 +44,16 @@ class _Peer:
         return start["status"], json.loads(content)
 
 
-def _scope(path: str = "/v1/turns", *, method: str = "POST", length: int | None = None) -> dict[str, Any]:
-    headers = [(b"authorization", f"Bearer {TOKEN}".encode()), (b"content-type", b"application/json")]
+def _scope(
+    path: str = "/v1/turns",
+    *,
+    method: str = "POST",
+    length: int | None = None,
+    authorization: bytes | None = f"Bearer {TOKEN}".encode(),
+) -> dict[str, Any]:
+    headers = [(b"content-type", b"application/json")]
+    if authorization is not None:
+        headers.append((b"authorization", authorization))
     if length is not None:
         headers.append((b"content-length", str(length).encode()))
     elif method == "POST":
@@ -83,6 +91,32 @@ class RequestBodyBoundTests(unittest.TestCase):
         largest = 16 * (512 + 2 * 128) * 1024 + 64 * 512 * 1024
         self.assertGreater(runtime_api.MAX_REQUEST_BYTES, largest)
         self.assertLessEqual(runtime_api.MAX_REQUEST_BYTES, 64 * 1024 * 1024)
+
+    def test_an_unauthenticated_body_is_refused_before_any_byte_is_read_or_decoded(self):
+        largest = runtime_api.MAX_REQUEST_BYTES
+        for authorization, length in (
+            (None, largest),
+            (b"Bearer wrong", largest),
+            (f"Bearer {TOKEN}x".encode(), None),
+            ("Bearer \u00e9".encode("latin-1"), 2),
+            (TOKEN.encode(), 2),
+        ):
+            peer = _Peer([b"{}"])
+            with self.subTest(authorization=authorization, length=length):
+                runtime = _serve(peer, _scope(length=length, authorization=authorization))
+                self.assertEqual(peer.response(), (401, {"detail": "Unauthorized"}))
+                self.assertEqual(peer.received, 0)
+                self.assertEqual(runtime.calls, [])
+
+    def test_an_unavailable_runtime_token_refuses_a_body_unread(self):
+        def unavailable() -> str:
+            raise runtime_api.HTTPException(status_code=503, detail="Brain runtime authentication is unavailable")
+
+        peer = _Peer([b"{}"])
+        app = runtime_api.create_app(runtime=FakeRuntime(), token_reader=unavailable)
+        asyncio.run(_call(app, peer, _scope(length=2)))
+        self.assertEqual(peer.response(), (503, {"detail": "Brain runtime authentication is unavailable"}))
+        self.assertEqual(peer.received, 0)
 
     def test_a_declared_oversized_body_is_refused_before_any_byte_is_read(self):
         peer = _Peer([b"x"])

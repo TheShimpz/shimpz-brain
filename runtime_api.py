@@ -418,6 +418,15 @@ async def _refuse_body(scope, receive, send, status_code: int, detail: str, **he
     await response(scope, receive, send)
 
 
+def _authenticate(authorization: str | None, token_reader: TokenReader) -> None:
+    """The one bearer check: the private runtime token, compared in constant time, or 401."""
+    expected = token_reader()
+    prefix = "Bearer "
+    supplied = authorization[len(prefix) :] if authorization and authorization.startswith(prefix) else ""
+    if not supplied or not hmac.compare_digest(supplied.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 def _reservation(headers: dict[bytes, bytes], max_bytes: int) -> int:
     """The bytes a request may buffer: zero without a body, its declared length, or the ceiling when it streams."""
     declared = headers.get(b"content-length")
@@ -429,12 +438,22 @@ def _reservation(headers: dict[bytes, bytes], max_bytes: int) -> int:
 class BoundedBody:
     """Admit and receive each whole request body within byte, memory, and time bounds before anything parses it.
 
-    FastAPI buffers and decodes a body before the bearer dependency runs, so these bounds hold for every caller while
-    the bearer check stays the sole authentication authority. A bodyless request, such as health, needs no admission.
+    FastAPI buffers and decodes a body before the bearer dependency runs, so a request with a body must first pass
+    the same bearer check here: no byte of an unauthenticated body is read or decoded. A bodyless request, such as
+    health, needs neither admission nor this early check; its route's own dependency still applies.
     """
 
-    def __init__(self, app, *, max_bytes: int, budget_bytes: int, deadline_seconds: float) -> None:
+    def __init__(
+        self,
+        app,
+        *,
+        authenticate: Callable[[str | None], None],
+        max_bytes: int,
+        budget_bytes: int,
+        deadline_seconds: float,
+    ) -> None:
         self.app = app
+        self.authenticate = authenticate
         self.max_bytes = max_bytes
         self.budget_bytes = budget_bytes
         self.deadline_seconds = deadline_seconds
@@ -445,10 +464,18 @@ class BoundedBody:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        size = _reservation(dict(scope["headers"]), self.max_bytes)
+        headers = dict(scope["headers"])
+        size = _reservation(headers, self.max_bytes)
         if size == 0:
             await self.app(scope, receive, send)
-        elif size > self.max_bytes:
+            return
+        authorization = headers.get(b"authorization")
+        try:
+            self.authenticate(None if authorization is None else authorization.decode("latin-1"))
+        except HTTPException as exc:
+            await _refuse_body(scope, receive, send, exc.status_code, exc.detail)
+            return
+        if size > self.max_bytes:
             await _refuse_body(scope, receive, send, 413, "Request body is too large")
         elif self.reserved + size > self.budget_bytes:
             await _refuse_body(
@@ -674,17 +701,14 @@ def create_app(
     app.add_exception_handler(RequestValidationError, _validation_error_response)
     app.add_middleware(
         BoundedBody,
+        authenticate=lambda authorization: _authenticate(authorization, token_reader),
         max_bytes=MAX_REQUEST_BYTES,
         budget_bytes=MAX_BUFFERED_REQUEST_BYTES,
         deadline_seconds=REQUEST_BODY_SECONDS,
     )
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
-        expected = token_reader()
-        prefix = "Bearer "
-        supplied = authorization[len(prefix) :] if authorization and authorization.startswith(prefix) else ""
-        if not supplied or not hmac.compare_digest(supplied, expected):
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        _authenticate(authorization, token_reader)
 
     def current_runtime() -> RuntimeLike:
         if app.state.runtime is not None:
