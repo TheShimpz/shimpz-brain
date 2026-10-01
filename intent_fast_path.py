@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 import math
-import threading
 import time
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import intent_route
@@ -27,6 +27,10 @@ CONFIDENCE_THRESHOLD = 0.85
 TIMEOUT_SECONDS = 1.5
 # A closed Choice over four intents plus usage counters is a few hundred bytes; anything larger is not a decision.
 MAX_RESPONSE_BYTES = 8 * 1024
+# Each exchange runs on these workers, so its caller returns at the deadline even while a name resolution, which no
+# socket shutdown interrupts, is still blocked. Its cancelled scope then refuses every later step of that late work.
+EXCHANGE_WORKERS = 4
+_EXCHANGES = ThreadPoolExecutor(max_workers=EXCHANGE_WORKERS, thread_name_prefix="jev-fast-path")
 INTENTS = ("ordinary-task", "assistant-install", "assistant-uninstall", "unresolved")
 CRITERIA = {
     "ordinary-task": {
@@ -120,37 +124,41 @@ def confident_ordinary(
 ) -> bool:
     """Return True only for a confident ordinary task; every other outcome keeps the LLM route authoritative.
 
-    The whole exchange has one absolute deadline. Over the runtime's cancellable pool, a watchdog shuts down the
-    exchange's socket when it passes, so no connect, write, or read can outlive it; a body that completes late is
-    still refused.
+    The whole exchange has one absolute deadline: the caller stops waiting when it passes, and the exchange's scope
+    is then cancelled, which over the runtime's cancellable pool shuts down any blocked connect, write, or read and
+    refuses any later one. A body that completes late is still refused.
     """
     deadline = time.monotonic() + TIMEOUT_SECONDS
     scope = provider_cancel.CancelScope()
-    watchdog = threading.Timer(TIMEOUT_SECONDS, scope.cancel)
-    watchdog.daemon = True
-    watchdog.start()
+    exchange = _EXCHANGES.submit(scope.run, lambda: _exchange(client, api_key, objective, context, deadline))
     try:
-        raw = scope.run(lambda: _exchange(client, api_key, objective, context, deadline))
+        raw = exchange.result(timeout=TIMEOUT_SECONDS)
         if raw is None:
             return False
         choice, confidence = parse(json.loads(raw))
-    except httpx.HTTPError, ValueError, provider_cancel.ProviderCallCancelled:
+    except TimeoutError:
+        exchange.cancel()
+        scope.cancel()
         return False
-    finally:
-        watchdog.cancel()
+    except httpx.HTTPError, ValueError:
+        return False
     return choice == "ordinary-task" and confidence >= CONFIDENCE_THRESHOLD
 
 
 def _exchange(
     client: httpx.Client, api_key: str, objective: str, context: intent_route.LifecycleContext, deadline: float
 ) -> bytes | None:
+    # Every connect, pool, write, and read wait is bounded by what remains of the deadline.
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
     with client.stream(
         "POST",
         ENDPOINT,
         json=request_body(objective, context),
         # Identity encoding keeps the byte bound on what is actually decoded.
         headers={"Authorization": f"Bearer {api_key}", "Accept-Encoding": "identity"},
-        timeout=TIMEOUT_SECONDS,
+        timeout=remaining,
     ) as response:
         return _bounded_body(response, deadline)
 

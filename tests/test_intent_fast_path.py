@@ -61,6 +61,8 @@ class _PacedServer:
 
     def __init__(self, pause: float) -> None:
         self.pause = pause
+        self.requested = threading.Event()
+        self.finished = threading.Event()
         self._listener = socket.create_server(("127.0.0.1", 0))
         self.port = self._listener.getsockname()[1]
         threading.Thread(target=self._serve, daemon=True).start()
@@ -70,15 +72,27 @@ class _PacedServer:
         with connection:
             buffer = b""
             while b"\r\n\r\n" not in buffer:
-                buffer += connection.recv(65536)
+                chunk = connection.recv(65536)
+                if not chunk:
+                    return
+                buffer += chunk
+            self.requested.set()
             connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 300\r\n\r\n")
             time.sleep(self.pause)
             connection.sendall(b"{")
             while connection.recv(65536):
                 pass
+            self.finished.set()
 
     def close(self) -> None:
         self._listener.close()
+
+
+def _eventually(condition, seconds: float = 5) -> bool:
+    limit = time.monotonic() + seconds
+    while not condition() and time.monotonic() < limit:
+        time.sleep(0.01)
+    return condition()
 
 
 def _client(handler) -> httpx.Client:
@@ -168,7 +182,9 @@ class ConfidentOrdinaryTests(unittest.TestCase):
         self.assertEqual(str(request.url), intent_fast_path.ENDPOINT)
         self.assertEqual(request.headers["Authorization"], f"Bearer {KEY}")
         self.assertEqual(json.loads(request.content)["state"], {"current_message": "Oi!"})
-        self.assertEqual(request.extensions["timeout"]["read"], intent_fast_path.TIMEOUT_SECONDS)
+        # Every wait of the exchange is bounded by what remains of its deadline.
+        self.assertTrue(0 < request.extensions["timeout"]["read"] <= intent_fast_path.TIMEOUT_SECONDS)
+        self.assertTrue(0 < request.extensions["timeout"]["connect"] <= intent_fast_path.TIMEOUT_SECONDS)
         self.assertEqual(request.headers["Accept-Encoding"], "identity")
         for response in (
             _answer(confidence=intent_fast_path.CONFIDENCE_THRESHOLD - 0.01),
@@ -215,16 +231,52 @@ class ConfidentOrdinaryTests(unittest.TestCase):
         stream = _CountingStream(64, size=1, pause=0.05)
         with mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.1):
             self.assertFalse(self._ask(lambda _request: httpx.Response(200, stream=stream)))
+        # The abandoned exchange stops reading at its own deadline check and closes the response.
+        self.assertTrue(_eventually(lambda: stream.closed))
         self.assertLess(stream.consumed, 10)
-        self.assertTrue(stream.closed)
 
     def test_a_valid_answer_whose_stream_ends_after_the_deadline_is_refused(self):
-        with mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.03):
-            self.assertFalse(self._ask(lambda _request: httpx.Response(200, stream=_LateEnd(0.1))))
+        late = httpx.Response(200, stream=_LateEnd(0.1))
+        self.assertIsNone(intent_fast_path._bounded_body(late, time.monotonic() + 0.03))
+        on_time = httpx.Response(200, stream=_LateEnd(0))
+        self.assertEqual(json.loads(intent_fast_path._bounded_body(on_time, time.monotonic() + 1)), _answer())
+
+    def test_an_exchange_that_starts_after_its_deadline_never_sends(self):
+        with _client(lambda _request: self.fail("a late exchange must not send")) as client:
+            self.assertIsNone(
+                intent_fast_path._exchange(client, KEY, "Oi!", intent_route.LifecycleContext(), time.monotonic())
+            )
+
+    def test_a_delayed_resolver_cannot_hold_the_caller_past_the_deadline(self):
+        server = _PacedServer(pause=0)
+        self.addCleanup(server.close)
+        with mock.patch.dict(os.environ, {"HTTPS_PROXY": "", "https_proxy": ""}):
+            client = provider_cancel.client()
+        self.addCleanup(client.close)
+        resolve = socket.getaddrinfo
+
+        def slow(host, *args, **kwargs):
+            # Name resolution blocks in the C library, where no socket shutdown can reach it.
+            if host == "jev.test":
+                time.sleep(0.3)
+                return resolve("127.0.0.1", *args, **kwargs)
+            return resolve(host, *args, **kwargs)
+
+        started = time.monotonic()
+        with (
+            mock.patch.object(socket, "getaddrinfo", slow),
+            mock.patch.object(intent_fast_path, "ENDPOINT", f"http://jev.test:{server.port}/"),
+            mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.05),
+        ):
+            self.assertFalse(intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext()))
+            self.assertLess(time.monotonic() - started, 0.2)
+            # The late work resolves, finds its scope cancelled, and never sends the request.
+            time.sleep(0.5)
+        self.assertFalse(server.requested.is_set())
 
     def test_the_deadline_wakes_a_read_blocked_on_the_runtime_pool(self):
-        # The one body byte arrives inside both the read timeout and the deadline; the next read would wait a whole
-        # read timeout past the deadline without the watchdog.
+        # The one body byte arrives inside both the read timeout and the deadline; without the scope cancellation the
+        # abandoned exchange's next read would hold its socket a whole read timeout past the deadline.
         server = _PacedServer(pause=0.3)
         self.addCleanup(server.close)
         with mock.patch.dict(os.environ, {"HTTPS_PROXY": "", "https_proxy": ""}):
@@ -236,6 +288,8 @@ class ConfidentOrdinaryTests(unittest.TestCase):
             mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.4),
         ):
             self.assertFalse(intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext()))
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertTrue(server.finished.wait(5))
         self.assertLess(time.monotonic() - started, 0.6)
 
 
