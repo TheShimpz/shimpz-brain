@@ -48,6 +48,8 @@ def _scope(path: str = "/v1/turns", *, method: str = "POST", length: int | None 
     headers = [(b"authorization", f"Bearer {TOKEN}".encode()), (b"content-type", b"application/json")]
     if length is not None:
         headers.append((b"content-length", str(length).encode()))
+    elif method == "POST":
+        headers.append((b"transfer-encoding", b"chunked"))
     return {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -62,6 +64,11 @@ def _scope(path: str = "/v1/turns", *, method: str = "POST", length: int | None 
         "client": ("127.0.0.1", 1),
         "server": ("127.0.0.1", 80),
     }
+
+
+async def _call(app, peer: _Peer, scope: dict[str, Any]) -> tuple[int | None, dict[str, Any] | None]:
+    await asyncio.wait_for(app(scope, peer.receive, peer.send), 5)
+    return peer.response()
 
 
 def _serve(peer: _Peer, scope: dict[str, Any], runtime: FakeRuntime | None = None) -> FakeRuntime:
@@ -117,6 +124,72 @@ class RequestBodyBoundTests(unittest.TestCase):
         status, reply = peer.response()
         self.assertEqual((status, reply["reply"]), (200, "Hello."))
         self.assertEqual(runtime.calls[0][0], "start")
+
+
+class AdmissionTests(unittest.TestCase):
+    CEILING = 4096
+
+    def setUp(self) -> None:
+        for name, value in (
+            ("MAX_REQUEST_BYTES", self.CEILING),
+            ("MAX_BUFFERED_REQUEST_BYTES", 2 * self.CEILING),
+            ("REQUEST_BODY_SECONDS", 0.2),
+        ):
+            patcher = mock.patch.object(runtime_api, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _app(self, runtime: FakeRuntime):
+        return runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
+
+    async def _saturate(self, app) -> list[tuple[int | None, dict[str, Any] | None]]:
+        """Hold the whole budget with stalled bodies; return what excess and bodyless requests got meanwhile."""
+        holders = [
+            asyncio.create_task(_call(app, _Peer([], then="stall"), _scope(length=self.CEILING))),
+            asyncio.create_task(_call(app, _Peer([], then="stall"), _scope())),
+        ]
+        await asyncio.sleep(0.05)
+        excess = _Peer([b"{}"])
+        refused = await _call(app, excess, _scope(length=2))
+        self.assertEqual(excess.received, 0)
+        self.assertIn((b"retry-after", b"1"), excess.sent[0]["headers"])
+        health = await _call(app, _Peer([]), _scope("/health", method="GET"))
+        return [refused, health, *await asyncio.gather(*holders)]
+
+    def test_excess_bodies_are_refused_unread_and_every_outcome_releases_its_admission(self):
+        runtime = FakeRuntime()
+        app = self._app(runtime)
+        raw = json.dumps(body()).encode()
+
+        async def scenario() -> list[Any]:
+            first = await self._saturate(app)
+            # A completed turn, a body cut off by a disconnect, and a refused oversized stream each give back the
+            # admission they held, so the whole budget is free again afterwards.
+            completed = await _call(app, _Peer([raw]), _scope(length=len(raw)))
+            await _call(app, _Peer([b"{"], then="disconnect"), _scope(length=10))
+            oversized = await _call(app, _Peer([b"x" * self.CEILING, b"x"]), _scope())
+            return [first, completed[0], oversized[0], await self._saturate(app)]
+
+        first, completed, oversized, again = asyncio.run(scenario())
+        refused = (503, {"detail": "Brain runtime request capacity reached"})
+        healthy = (200, {"status": "ok", "runtime": "langgraph"})
+        timed_out = (408, {"detail": "Request body was not received in time"})
+        self.assertEqual(first, [refused, healthy, timed_out, timed_out])
+        self.assertEqual((completed, oversized), (200, 413))
+        self.assertEqual(again, first)
+        self.assertEqual([call[0] for call in runtime.calls], ["start"])
+
+    def test_a_failing_request_releases_its_admission(self):
+        app = self._app(FakeRuntime(error=RuntimeError("boom")))
+        raw = json.dumps(body()).encode()
+
+        async def scenario() -> list[Any]:
+            with self.assertRaises(RuntimeError):
+                await _call(app, _Peer([raw]), _scope(length=len(raw)))
+            return await self._saturate(app)
+
+        statuses = [status for status, _detail in asyncio.run(scenario())]
+        self.assertEqual(statuses, [503, 200, 408, 408])
 
 
 class HealthTests(unittest.TestCase):

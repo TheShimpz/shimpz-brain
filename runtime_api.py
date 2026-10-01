@@ -41,6 +41,10 @@ INTENT_ROUTE_CONCURRENCY = 2
 MAX_REQUEST_BYTES = 48 * 1024 * 1024
 # Team writes one whole body at once over the private network; a body still incomplete after this is refused.
 REQUEST_BODY_SECONDS = 30.0
+# Every admitted request reserves its declared length, or the whole ceiling when it streams, until it completes. Two
+# largest requests at once stay far below the 1 GiB container while leaving room to decode them and run their turns;
+# a request past the budget is refused before any byte of it is read.
+MAX_BUFFERED_REQUEST_BYTES = 2 * MAX_REQUEST_BYTES
 _PRUNE_WRITES_SQL = (
     "WITH latest AS (SELECT checkpoint_ns,MAX(checkpoint_id) AS checkpoint_id "
     "FROM checkpoints WHERE thread_id=? GROUP BY checkpoint_ns) "
@@ -407,34 +411,61 @@ class _BodyTooLargeError(Exception):
     """The request body grew past the ceiling while it was being received."""
 
 
-async def _refuse_body(scope, receive, send, status_code: int, detail: str) -> None:
-    response = JSONResponse(status_code=status_code, content={"detail": detail}, headers={"Connection": "close"})
+async def _refuse_body(scope, receive, send, status_code: int, detail: str, **headers: str) -> None:
+    response = JSONResponse(
+        status_code=status_code, content={"detail": detail}, headers={"Connection": "close", **headers}
+    )
     await response(scope, receive, send)
 
 
-class BoundedBody:
-    """Receive each whole request body within a byte ceiling and an absolute deadline before anything parses it.
+def _reservation(headers: dict[bytes, bytes], max_bytes: int) -> int:
+    """The bytes a request may buffer: zero without a body, its declared length, or the ceiling when it streams."""
+    declared = headers.get(b"content-length")
+    if declared is None:
+        return max_bytes if b"transfer-encoding" in headers else 0
+    return int(declared) if declared.isdigit() else max_bytes
 
-    FastAPI buffers and decodes a body before the bearer dependency runs, so this bound holds for every caller while
-    the bearer check stays the sole authentication authority.
+
+class BoundedBody:
+    """Admit and receive each whole request body within byte, memory, and time bounds before anything parses it.
+
+    FastAPI buffers and decodes a body before the bearer dependency runs, so these bounds hold for every caller while
+    the bearer check stays the sole authentication authority. A bodyless request, such as health, needs no admission.
     """
 
-    def __init__(self, app, *, max_bytes: int, deadline_seconds: float) -> None:
+    def __init__(self, app, *, max_bytes: int, budget_bytes: int, deadline_seconds: float) -> None:
         self.app = app
         self.max_bytes = max_bytes
+        self.budget_bytes = budget_bytes
         self.deadline_seconds = deadline_seconds
+        # Only the event loop thread changes this, with no await between its check and its update.
+        self.reserved = 0
 
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        declared = dict(scope["headers"]).get(b"content-length", b"")
-        if declared.isdigit() and int(declared) > self.max_bytes:
+        size = _reservation(dict(scope["headers"]), self.max_bytes)
+        if size == 0:
+            await self.app(scope, receive, send)
+        elif size > self.max_bytes:
             await _refuse_body(scope, receive, send, 413, "Request body is too large")
-            return
+        elif self.reserved + size > self.budget_bytes:
+            await _refuse_body(
+                scope, receive, send, 503, "Brain runtime request capacity reached", **{"Retry-After": "1"}
+            )
+        else:
+            self.reserved += size
+            try:
+                await self._admitted(scope, receive, send, size)
+            finally:
+                self.reserved -= size
+
+    async def _admitted(self, scope, receive, send, size: int) -> None:
+        """Receive the admitted body within its reservation and the deadline, then hand it on exactly once."""
         try:
             async with asyncio.timeout(self.deadline_seconds):
-                body = await self._receive_body(receive)
+                body = await self._receive_body(receive, size)
         except TimeoutError:
             await _refuse_body(scope, receive, send, 408, "Request body was not received in time")
             return
@@ -454,7 +485,8 @@ class BoundedBody:
 
         await self.app(scope, replay, send)
 
-    async def _receive_body(self, receive) -> bytes | None:
+    @staticmethod
+    async def _receive_body(receive, limit: int) -> bytes | None:
         """Return the whole body, or None when the client disconnected before sending it."""
         body = bytearray()
         while True:
@@ -462,7 +494,7 @@ class BoundedBody:
             if message["type"] != "http.request":
                 return None
             body += message.get("body", b"")
-            if len(body) > self.max_bytes:
+            if len(body) > limit:
                 raise _BodyTooLargeError
             if not message.get("more_body", False):
                 return bytes(body)
@@ -640,7 +672,12 @@ def create_app(
     app.state.intent_route_slots = threading.BoundedSemaphore(INTENT_ROUTE_CONCURRENCY)
     app.add_exception_handler(agent_runtime.RuntimeStateError, _state_error_response)
     app.add_exception_handler(RequestValidationError, _validation_error_response)
-    app.add_middleware(BoundedBody, max_bytes=MAX_REQUEST_BYTES, deadline_seconds=REQUEST_BODY_SECONDS)
+    app.add_middleware(
+        BoundedBody,
+        max_bytes=MAX_REQUEST_BYTES,
+        budget_bytes=MAX_BUFFERED_REQUEST_BYTES,
+        deadline_seconds=REQUEST_BODY_SECONDS,
+    )
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
         expected = token_reader()
