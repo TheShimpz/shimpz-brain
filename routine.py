@@ -288,7 +288,7 @@ def proposed(messages: list[Any], routines: tuple[dict[str, object], ...]) -> Ch
 class Confirmation(BaseModel):
     """One independent verdict on the turn's Routine proposal."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     explicit: bool
     names_work: bool

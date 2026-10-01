@@ -332,7 +332,7 @@ class CheckUnavailableError(RuntimeError):
 class Confirmation(BaseModel):
     """One independent verdict per candidate change, in candidate order."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     lasting: list[bool]
 

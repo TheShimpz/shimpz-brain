@@ -368,6 +368,19 @@ class ConfirmationTests(unittest.TestCase):
                     ask("x")
                 self.assertEqual(memory.accepted(messages, ask, {}), ())
 
+    def test_only_json_booleans_are_verdicts(self):
+        messages = self._turn(_remember())
+        for value in ('"yes"', '"true"', "1"):
+            raw = f'{{"lasting":[{value}]}}'
+            ask = memory.checker(lambda: "model", "openai", lambda *_args, raw=raw: _Invoked(_structured(raw)))
+            with self.subTest(raw=raw):
+                with self.assertRaises(memory.CheckUnavailableError):
+                    ask("x")
+                self.assertEqual(memory.accepted(messages, ask, {}), ())
+                parsed = {"raw": AIMessage(content=""), "parsed": json.loads(raw), "parsing_error": None}
+                with self.assertRaises(memory.CheckUnavailableError):
+                    memory.checker(lambda: "model", "openai", lambda *_args, parsed=parsed: _Invoked(parsed))("x")
+
     def test_a_real_turn_keeps_nothing_when_the_check_rejects_it(self):
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="", tool_calls=[_remember()]), AIMessage(content="Ok.")]

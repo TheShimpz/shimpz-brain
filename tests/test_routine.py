@@ -270,6 +270,27 @@ class GraphTests(unittest.TestCase):
         self.assertTrue(routine.confirmed(candidate, MESSAGE, ask, ()))
         self.assertFalse(routine.confirmed(candidate, MESSAGE, refused, ()))
 
+    def test_only_json_booleans_are_verdicts(self):
+        candidate = routine.Change("propose", QUOTE, WEEKLY, None, None)
+        for field in ("explicit", "names_work", "schedule_matches", "secret_free"):
+            for value in ("yes", "true", 1):
+                verdict = {"explicit": True, "names_work": True, "schedule_matches": True, "secret_free": True}
+                verdict[field] = value
+                outcomes = (
+                    {"raw": AIMessage(content=json.dumps(verdict)), "parsed": verdict, "parsing_error": None},
+                    {"raw": AIMessage(content=""), "parsed": verdict, "parsing_error": None},
+                )
+                for outcome in outcomes:
+                    ask = routine.checker(
+                        lambda: "model",
+                        "openai",
+                        lambda *_args, outcome=outcome: mock.Mock(invoke=lambda _prompt: outcome),
+                    )
+                    with self.subTest(field=field, value=value, raw=outcome["raw"].content):
+                        with self.assertRaises(memory.CheckUnavailableError):
+                            ask("prompt")
+                        self.assertFalse(routine.confirmed(candidate, MESSAGE, ask, ()))
+
     def test_the_independent_check_decides_and_its_failure_keeps_nothing(self):
         def failing(_prompt: str):
             raise memory.CheckUnavailableError("down")
