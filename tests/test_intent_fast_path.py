@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
+import threading
 import time
 import unittest
 from unittest import mock
@@ -11,6 +14,7 @@ import agent_runtime
 import httpx
 import intent_fast_path
 import intent_route
+import provider_cancel
 
 KEY = "tsk-test-0123456789abcdef"
 PROBABILITIES = {"ordinary-task": 0.9, "assistant-install": 0.05, "assistant-uninstall": 0.03, "unresolved": 0.02}
@@ -39,6 +43,42 @@ class _CountingStream(httpx.SyncByteStream):
 
     def close(self) -> None:
         self.closed = True
+
+
+class _LateEnd(httpx.SyncByteStream):
+    """A complete, valid answer whose stream ends only after a pause."""
+
+    def __init__(self, pause: float) -> None:
+        self.pause = pause
+
+    def __iter__(self):
+        yield json.dumps(_answer()).encode()
+        time.sleep(self.pause)
+
+
+class _PacedServer:
+    """Sends response headers at once, one body byte after ``pause``, then nothing until the client leaves."""
+
+    def __init__(self, pause: float) -> None:
+        self.pause = pause
+        self._listener = socket.create_server(("127.0.0.1", 0))
+        self.port = self._listener.getsockname()[1]
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        connection, _address = self._listener.accept()
+        with connection:
+            buffer = b""
+            while b"\r\n\r\n" not in buffer:
+                buffer += connection.recv(65536)
+            connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 300\r\n\r\n")
+            time.sleep(self.pause)
+            connection.sendall(b"{")
+            while connection.recv(65536):
+                pass
+
+    def close(self) -> None:
+        self._listener.close()
 
 
 def _client(handler) -> httpx.Client:
@@ -177,6 +217,26 @@ class ConfidentOrdinaryTests(unittest.TestCase):
             self.assertFalse(self._ask(lambda _request: httpx.Response(200, stream=stream)))
         self.assertLess(stream.consumed, 10)
         self.assertTrue(stream.closed)
+
+    def test_a_valid_answer_whose_stream_ends_after_the_deadline_is_refused(self):
+        with mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.03):
+            self.assertFalse(self._ask(lambda _request: httpx.Response(200, stream=_LateEnd(0.1))))
+
+    def test_the_deadline_wakes_a_read_blocked_on_the_runtime_pool(self):
+        # The one body byte arrives inside both the read timeout and the deadline; the next read would wait a whole
+        # read timeout past the deadline without the watchdog.
+        server = _PacedServer(pause=0.3)
+        self.addCleanup(server.close)
+        with mock.patch.dict(os.environ, {"HTTPS_PROXY": "", "https_proxy": ""}):
+            client = provider_cancel.client()
+        self.addCleanup(client.close)
+        started = time.monotonic()
+        with (
+            mock.patch.object(intent_fast_path, "ENDPOINT", f"http://127.0.0.1:{server.port}/"),
+            mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.4),
+        ):
+            self.assertFalse(intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext()))
+        self.assertLess(time.monotonic() - started, 0.6)
 
 
 class RuntimeFastPathTests(unittest.TestCase):

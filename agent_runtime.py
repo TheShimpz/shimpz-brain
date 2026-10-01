@@ -809,7 +809,7 @@ class AgentRuntime:
             raise RuntimeContractError(str(exc)) from exc
         with self._decision_client_guard:
             if self._decision_client is None:
-                self._decision_client = httpx.Client()
+                self._decision_client = provider_cancel.client()
             client = self._decision_client
         return intent_fast_path.confident_ordinary(client, decision_key, task, admitted)
 

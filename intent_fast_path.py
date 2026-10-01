@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 from collections.abc import Mapping
 
 import httpx
 import intent_route
+import provider_cancel
 
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 # Pinned so a tuned threshold keeps meaning what eval/intent_fast_path measured.
@@ -116,24 +118,41 @@ def confident_ordinary(
     objective: str,
     context: intent_route.LifecycleContext,
 ) -> bool:
-    """Return True only for a confident ordinary task; every other outcome keeps the LLM route authoritative."""
+    """Return True only for a confident ordinary task; every other outcome keeps the LLM route authoritative.
+
+    The whole exchange has one absolute deadline. Over the runtime's cancellable pool, a watchdog shuts down the
+    exchange's socket when it passes, so no connect, write, or read can outlive it; a body that completes late is
+    still refused.
+    """
     deadline = time.monotonic() + TIMEOUT_SECONDS
+    scope = provider_cancel.CancelScope()
+    watchdog = threading.Timer(TIMEOUT_SECONDS, scope.cancel)
+    watchdog.daemon = True
+    watchdog.start()
     try:
-        with client.stream(
-            "POST",
-            ENDPOINT,
-            json=request_body(objective, context),
-            # Identity encoding keeps the byte bound on what is actually decoded.
-            headers={"Authorization": f"Bearer {api_key}", "Accept-Encoding": "identity"},
-            timeout=TIMEOUT_SECONDS,
-        ) as response:
-            raw = _bounded_body(response, deadline)
+        raw = scope.run(lambda: _exchange(client, api_key, objective, context, deadline))
         if raw is None:
             return False
         choice, confidence = parse(json.loads(raw))
-    except httpx.HTTPError, ValueError:
+    except httpx.HTTPError, ValueError, provider_cancel.ProviderCallCancelled:
         return False
+    finally:
+        watchdog.cancel()
     return choice == "ordinary-task" and confidence >= CONFIDENCE_THRESHOLD
+
+
+def _exchange(
+    client: httpx.Client, api_key: str, objective: str, context: intent_route.LifecycleContext, deadline: float
+) -> bytes | None:
+    with client.stream(
+        "POST",
+        ENDPOINT,
+        json=request_body(objective, context),
+        # Identity encoding keeps the byte bound on what is actually decoded.
+        headers={"Authorization": f"Bearer {api_key}", "Accept-Encoding": "identity"},
+        timeout=TIMEOUT_SECONDS,
+    ) as response:
+        return _bounded_body(response, deadline)
 
 
 def _bounded_body(response: httpx.Response, deadline: float) -> bytes | None:
@@ -150,4 +169,5 @@ def _bounded_body(response: httpx.Response, deadline: float) -> bytes | None:
         body += chunk
         if len(body) > MAX_RESPONSE_BYTES or time.monotonic() > deadline:
             return None
-    return bytes(body)
+    # End of body is checked too: a valid answer whose stream ended after the deadline is still too late.
+    return bytes(body) if time.monotonic() <= deadline else None
