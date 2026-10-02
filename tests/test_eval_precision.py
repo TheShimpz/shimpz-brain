@@ -78,26 +78,14 @@ class JudgingTests(unittest.TestCase):
         self.assertEqual(precision.attempt_key(attempt), "c|openai|gpt-6-luna|a|0|dns-create.en")
         self.assertEqual(precision.judge_item(attempt).scenario.id, "dns-create.en")
 
-    def test_metered_judgments_reserve_settle_and_keep_the_reservation_on_failure(self):
-        budget = eval_cost.Budget(1.0)
+    def test_metered_judgments_record_what_each_call_reported(self):
         spend: list[eval_cost.Cost] = []
         with mock.patch.object(model_usage, "measure", lambda work: (work(), USAGE)):
-            verdict = precision.metered("gpt-6-luna", lambda _item: GOOD, budget, spend)(
+            verdict = precision.metered("gpt-6-luna", lambda _item: GOOD, spend)(
                 precision.judge_item(_attempt("dns-create.en"))
             )
         self.assertEqual(verdict, GOOD)
         self.assertAlmostEqual(spend[0].usd, 1000 * 0.1e-6 + 50 * 0.5e-6)
-
-        def fail(_item):
-            raise judge.JudgeError("x")
-
-        with self.assertRaises(judge.JudgeError):
-            precision.metered("gpt-6-luna", fail, budget, spend)(precision.judge_item(_attempt("dns-create.en")))
-        self.assertEqual(budget.summary()["unknown_settlements"], 1)
-        with self.assertRaises(eval_cost.BudgetExhaustedError):
-            precision.metered("gpt-6-luna", fail, eval_cost.Budget(0.0), spend)(
-                precision.judge_item(_attempt("dns-create.en"))
-            )
 
     def test_only_completed_attempts_are_judged_and_failed_judgments_stay_unjudged(self):
         attempts = [

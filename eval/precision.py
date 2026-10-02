@@ -45,7 +45,6 @@ CONTRACTS = {
 REPORT_SCHEMA = "shimpz.precision-eval.report/v1"
 STATUSES = ("completed", "turn-failed", "brain-error", "budget-stopped")
 STRATA = ("language", "scope", "behavior", "multi_assistant", "min_rounds")
-REQUEST_ALLOWANCE_TOKENS = 4_096
 WORKERS = 8
 
 
@@ -74,25 +73,13 @@ def judge_item(attempt: Mapping[str, object]) -> judge.Item:
 Judgment = Callable[[judge.Item], judge.Verdict]
 
 
-def metered(
-    model: str, verdict: Callable[[judge.Item], judge.Verdict], budget: eval_cost.Budget, spend: list[eval_cost.Cost]
-) -> Judgment:
-    """Reserve a conservative bound before each judge call and settle what it reported."""
+def metered(model: str, verdict: Callable[[judge.Item], judge.Verdict], spend: list[eval_cost.Cost]) -> Judgment:
+    """Record what each judge call reported; the installed ``eval.ceiling`` bounds and reserves the request itself."""
     import model_usage
 
     def run(item: judge.Item) -> judge.Verdict:
-        messages = judge.prompt(item)
-        # A token covers at least one byte; the allowance covers provider formatting and the structured-output schema.
-        tokens = sum(len(str(message.content).encode()) for message in messages) + REQUEST_ALLOWANCE_TOKENS
-        reservation = budget.reserve(eval_cost.call_bound(model, tokens, judge.MAX_OUTPUT_TOKENS))
-        try:
-            result, counts = model_usage.measure(lambda: verdict(item))
-        except BaseException:
-            budget.settle(reservation, eval_cost.Cost(0.0, known=False))
-            raise
-        spent = eval_cost.cost(eval_cost.Usage.of(counts), model)
-        budget.settle(reservation, spent)
-        spend.append(spent)
+        result, counts = model_usage.measure(lambda: verdict(item))
+        spend.append(eval_cost.cost(eval_cost.Usage.of(counts), model))
         return result
 
     return run
@@ -522,9 +509,7 @@ def brain_assistants(scenario: corpus.Scenario, contracts: str = "a") -> tuple:
     )
 
 
-def _judges(
-    args: argparse.Namespace, budget: eval_cost.Budget, spend: list[eval_cost.Cost]
-) -> tuple[Judgment, Judgment]:
+def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[Judgment, Judgment]:
     from eval.intent_route import _key
 
     judgments = []
@@ -534,7 +519,6 @@ def _judges(
             metered(
                 judge.JUDGE_MODELS[provider],
                 lambda item, model=model, provider=provider: judge.judge(model, provider, item),
-                budget,
                 spend,
             )
         )
@@ -564,15 +548,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = build_report(read_jsonl(args.transcript), read_jsonl(args.judged), meta, calibration, args.split)
             args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
-        budget = eval_cost.Budget(args.cap)
-        spend: list[eval_cost.Cost] = []
-        primary, tiebreak = _judges(args, budget, spend)
-        if args.command == "calibrate":
-            result: object = calibrate(primary, tiebreak)
-            text = json.dumps({**result, "judge_budget": budget.summary()}, indent=1, sort_keys=True) + "\n"
-        else:
-            judged = judge_attempts(read_jsonl(args.transcript), primary, tiebreak)
-            text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
+        from eval.ceiling import Ceiling
+
+        # Installed before any judge model exists: no SDK retries, clamped output, a reserved worst case per request.
+        ceiling = Ceiling(args.cap, judge.MAX_OUTPUT_TOKENS)
+        ceiling.install()
+        budget = ceiling.budget
+        try:
+            spend: list[eval_cost.Cost] = []
+            primary, tiebreak = _judges(args, spend)
+            if args.command == "calibrate":
+                result: object = calibrate(primary, tiebreak)
+                text = json.dumps({**result, "judge_budget": budget.summary()}, indent=1, sort_keys=True) + "\n"
+            else:
+                judged = judge_attempts(read_jsonl(args.transcript), primary, tiebreak)
+                text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
+        finally:
+            ceiling.uninstall()
         private.write_private(args.out, text)
         print(json.dumps({"command": args.command, "judge_budget": budget.summary()}, sort_keys=True))
     except OSError, ValueError, KeyError, TypeError:
