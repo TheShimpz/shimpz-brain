@@ -17,6 +17,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import secrets
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -27,6 +28,7 @@ import agent_runtime
 import memory
 import model_usage
 from eval import cost as eval_cost
+from eval import stats as eval_stats
 from eval.intent_route import _key
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -415,13 +417,19 @@ def _offline() -> agent_runtime.ProviderConfig:
     return agent_runtime.ProviderConfig("openai", FLOOR_MODELS["openai"], "offline-validation", TURN_EFFORT)
 
 
-def evaluate(runtime, provider, budget: float, only: str | None = None) -> dict[str, object]:
+def evaluate(runtime, provider, budget: float, only: str | None = None, seed: str = "journeys") -> dict[str, object]:
+    """Run each scenario once per mode, in a random mode order per provider and scenario drawn from ``seed``.
+
+    A fixed order would hand every later mode the provider cache the earlier ones warmed.
+    """
     spent = 0.0
-    report: dict[str, object] = {}
+    report: dict[str, object] = {"seed": seed}
     for scenario in SCENARIOS:
         if only is not None and scenario.id != only:
             continue
-        for mode in MODES:
+        order = eval_stats.arm_order(seed, provider.provider, scenario.id, MODES)
+        report[f"{scenario.id}/order"] = list(order)
+        for mode in order:
             skills: list[dict[str, object]] = []
             runs = []
             for index, request in enumerate(scenario.requests):
@@ -449,6 +457,7 @@ def main() -> int:
     parser.add_argument("--model")
     parser.add_argument("--budget", type=float, default=0.10)
     parser.add_argument("--scenario", choices=[scenario.id for scenario in SCENARIOS])
+    parser.add_argument("--seed", default=None, help="mode-order seed; a fresh one is drawn and reported by default")
     args = parser.parse_args()
     model = args.model or FLOOR_MODELS[args.provider]
     try:
@@ -459,7 +468,7 @@ def main() -> int:
         provider = agent_runtime.ProviderConfig(args.provider, model, _key(args.key_file), TURN_EFFORT)
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:
-            result = evaluate(runtime, provider, args.budget, args.scenario)
+            result = evaluate(runtime, provider, args.budget, args.scenario, args.seed or secrets.token_hex(8))
         finally:
             runtime.close()
     except OSError, ValueError:

@@ -164,8 +164,17 @@ class JourneyEvalTests(unittest.TestCase):
         memory.canonical_skills(kept)
 
     def test_evaluation_stops_before_spending_past_its_budget(self):
-        self.assertEqual(journeys.evaluate(_runtime(), PROVIDER, 0.0), {"stopped": "budget"})
-        self.assertEqual(journeys.evaluate(_runtime(), PROVIDER, 0.0, "bulk-records"), {"stopped": "budget"})
+        stopped = journeys.evaluate(_runtime(), PROVIDER, 0.0)
+        self.assertEqual((stopped["stopped"], stopped["seed"]), ("budget", "journeys"))
+        self.assertEqual(journeys.evaluate(_runtime(), PROVIDER, 0.0, "bulk-records", "s")["stopped"], "budget")
+
+    def test_mode_order_is_random_per_scenario_and_recorded(self):
+        orders = {
+            tuple(journeys.evaluate(_runtime(), PROVIDER, 0.0, "dns-update", f"seed-{index}")["dns-update/order"])
+            for index in range(12)
+        }
+        self.assertGreater(len(orders), 1)
+        self.assertTrue(all(sorted(order) == sorted(journeys.MODES) for order in orders))
 
     def test_an_outcome_prices_cache_categories_and_labels_unreported_usage_unknown(self):
         scenario = _scenario("dns-update")
