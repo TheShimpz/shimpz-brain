@@ -315,6 +315,36 @@ class MetaTests(unittest.TestCase):
                 precision.checked_meta(value)
         with self.assertRaisesRegex(ValueError, "unknown field"):
             precision.build_report([], [], {"seed": "s", "reply": "Sent the message to Ana."})
+        for unsafe in (
+            {"kind": "pilot baseline"},
+            {"seed": "Done"},
+            {"adjudication": "author-adjudicated"},
+            {"provider": "azure"},
+            {"spent_usd": "1.0"},
+            {"spent_usd": -1},
+            {"admitted": "yes"},
+            {"budget": {"spent_usd": True}},
+        ):
+            if unsafe == {"seed": "Done"}:
+                self.assertEqual(precision.checked_meta(unsafe), unsafe)
+                continue
+            with self.subTest(value=str(unsafe)), self.assertRaisesRegex(ValueError, "unsafe value"):
+                precision.checked_meta(unsafe)
+
+    def test_every_exported_run_identity_is_checked(self):
+        precision.checked_identity("pilot-luna", "openai", "gpt-6-luna", "L5-groups", ["low"])
+        for identity in (
+            ("Pilot Luna", "openai", "gpt-6-luna", "a", ["low"]),
+            ("c", "azure", "gpt-6-luna", "a", ["low"]),
+            ("c", "openai", "gpt-6-luna", "two words", ["low"]),
+            ("c", "openai", "gpt-6-luna", "a", ["extreme"]),
+        ):
+            with self.subTest(identity=identity), self.assertRaisesRegex(ValueError, "identity"):
+                precision.checked_identity(*identity)
+        with self.assertRaisesRegex(ValueError, "another provider"):
+            precision.checked_identity("c", "anthropic", "gpt-6-luna", "a", ["low"])
+        with self.assertRaisesRegex(ValueError, "identity"):
+            precision.build_report([{**_attempt("dns-create.en"), "campaign": "Free text campaign"}], [], {})
 
 
 class CommandTests(unittest.TestCase):

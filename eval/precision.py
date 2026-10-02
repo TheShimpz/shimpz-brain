@@ -289,93 +289,165 @@ def _paired(
     }
 
 
-# The closed vocabulary of campaign metadata and calibration summaries a report may carry (ADR-0094).
-META_KEYS = frozenset(
+# The closed vocabulary of campaign metadata and calibration summaries a report may carry (ADR-0094): every string is
+# one token from IDENT_RE (no spaces, so no prose), and some fields take only an enumerated value or a number.
+NUMBER_FIELDS = frozenset(
     {
-        *(
-            "a",
-            "b",
-            "adjudication",
-            "blind",
-            "admitted",
-            "agree",
-            "all_criteria",
-            "anthropic",
-            "arms",
-            "asks_for_missing_information",
-        ),
-        *(
-            "baseline_arm",
-            "brain",
-            "budget",
-            "budget_plan_usd",
-            "campaign",
-            "campaigns",
-            "canary",
-            "cap_usd",
-            "commits",
-        ),
-        *("corpus", "date", "digest", "effort", "efforts", "failed", "final_judging", "id", "identical_arms", "items"),
-        *(
-            "judge_budget",
-            "judge_identity",
-            "judge_spend",
-            "judge_version",
-            "judges",
-            "kind",
-            "label",
-            "language_matches",
-        ),
-        *("max_output_tokens", "max_reservation_usd", "model", "openai_paired", "path", "primary", "provider", "rate"),
-        *("refused", "repetitions", "reply_correct", "requests", "reservations_exceeded", "scenario_patterns"),
-        *("scenarios", "sdk_retries", "seconds", "seed", "spent_usd", "stopped_by_cap", "team", "tiebreak", "total"),
-        *(
-            "total_estimated_spend_usd",
-            "umbrella",
-            "unknown_settlements",
-            "unreported",
-            "unsupported_claim",
-            "wilson95",
-        ),
-        *("workers", "superseded_usd", "calibration_usd", "comparisons", "escalation_model", "arms_features"),
+        "agree",
+        "calibration_usd",
+        "cap_usd",
+        "failed",
+        "held_out_repetitions",
+        "items",
+        "max_output_tokens",
+        "max_reservation_usd",
+        "rate",
+        "refused",
+        "repetitions",
+        "requests",
+        "reservations_exceeded",
+        "scenarios",
+        "sdk_retries",
+        "seconds",
+        "spent_usd",
+        "superseded_usd",
+        "total",
+        "total_estimated_spend_usd",
+        "tuning_repetitions",
+        "unknown_settlements",
+        "unreported",
+        "unreserved",
+        "workers",
     }
 )
-ARM_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,15}\Z")
-SAFE_TEXT_RE = re.compile(r"[A-Za-z0-9 ._:;/()+,=*#-]{0,160}\Z")
+BOOLEAN_FIELDS = frozenset({"admitted", "blind", "identical_arms", "stopped_by_cap"})
+ENUM_FIELDS = {
+    "adjudication": frozenset({"owner", "author"}),
+    "effort": frozenset({"low", "medium", "high"}),
+    "label": frozenset({"exploratory"}),
+    "provider": frozenset({"openai", "anthropic"}),
+}
+CONTAINER_FIELDS = frozenset(
+    {
+        "anthropic",
+        "all_criteria",
+        "arms",
+        "asks_for_missing_information",
+        "budget",
+        "budget_plan_usd",
+        "campaigns",
+        "canary",
+        "commits",
+        "comparisons",
+        "corpus",
+        "efforts",
+        "final_judging",
+        "jev_budget",
+        "judge_budget",
+        "judge_spend",
+        "judges",
+        "language_matches",
+        "namespaces_budget",
+        "openai_paired",
+        "primary",
+        "reply_correct",
+        "tiebreak",
+        "unsupported_claim",
+        "wilson95",
+    }
+)
+TOKEN_FIELDS = frozenset(
+    {
+        "baseline_arm",
+        "brain",
+        "campaign",
+        "date",
+        "digest",
+        "id",
+        "judge_identity",
+        "judge_version",
+        "kind",
+        "model",
+        "path",
+        "scenario_patterns",
+        "seed",
+        "stratum",
+        "team",
+        "umbrella",
+    }
+)
+META_KEYS = NUMBER_FIELDS | BOOLEAN_FIELDS | frozenset(ENUM_FIELDS) | CONTAINER_FIELDS | TOKEN_FIELDS
+ARM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,23}\Z")
+IDENT_RE = re.compile(r"[A-Za-z0-9*][A-Za-z0-9._:/*,+=@-]{0,79}\Z")
 FINGERPRINT_RE = re.compile(r"(sha256:[0-9a-f]{64}|[0-9a-f]{40})\Z")
 # A provider key prefix at a word start; "task-create" is not one.
 CREDENTIAL_RE = re.compile(r"(?<![A-Za-z0-9])sk-")
 MAX_META_DEPTH = 5
+CAMPAIGN_RE = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}\Z")
+
+
+def _token(value: object) -> bool:
+    return isinstance(value, str) and (
+        FINGERPRINT_RE.fullmatch(value) is not None
+        or (IDENT_RE.fullmatch(value) is not None and len(value) <= 40 and CREDENTIAL_RE.search(value) is None)
+    )
+
+
+def _number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
 
 
 def checked_meta(value: object, depth: int = 0, parent: str = "") -> object:
-    """Return metadata only when it fits the closed vocabulary: known keys, numbers, and short safe text.
+    """Return metadata only when every field fits its closed type: numbers, booleans, enums, or single tokens.
 
-    Free text such as a reply, and anything shaped like a credential (``sk-`` or a long unbroken token other than a
-    digest or commit), is refused rather than copied into a committed report.
+    No field may hold prose: a string is one token without spaces, at most 40 characters unless it is a digest or a
+    commit, and never shaped like a provider key. A reply, a sentence, or a credential is refused.
     """
     if depth > MAX_META_DEPTH:
         raise ValueError("report metadata nests too deeply")
     if isinstance(value, dict):
         for key in value:
-            known = key in META_KEYS or (parent == "efforts" and ARM_RE.fullmatch(str(key)))
-            if not isinstance(key, str) or not known:
+            arm_key = parent == "efforts" and isinstance(key, str) and ARM_RE.fullmatch(key) is not None
+            if not isinstance(key, str) or not (key in META_KEYS or arm_key):
                 raise ValueError("report metadata has an unknown field")
-        return {key: checked_meta(item, depth + 1, key) for key, item in value.items()}
+        return {key: _field(key if key in META_KEYS else "arm", item, depth + 1) for key, item in value.items()}
     if isinstance(value, list):
         return [checked_meta(item, depth + 1, parent) for item in value]
-    if isinstance(value, str):
-        unbroken = max((len(part) for part in value.split()), default=0)
-        if (
-            CREDENTIAL_RE.search(value)
-            or SAFE_TEXT_RE.fullmatch(value) is None
-            or (unbroken > 40 and not FINGERPRINT_RE.fullmatch(value))
-        ):
-            raise ValueError("report metadata has unsafe text")
-        return value
-    if value is None or isinstance(value, bool | int) or (isinstance(value, float) and math.isfinite(value)):
-        return value
-    raise ValueError("report metadata has an unsupported value")
+    return _field(parent, value, depth)
+
+
+def _field(key: str, value: object, depth: int) -> object:
+    if value is None:
+        return None
+    if isinstance(value, dict | list):
+        return checked_meta(value, depth, key)
+    if key in NUMBER_FIELDS:
+        valid = _number(value)
+    elif key in BOOLEAN_FIELDS:
+        valid = isinstance(value, bool)
+    elif key in ENUM_FIELDS:
+        valid = value in ENUM_FIELDS[key]
+    elif key in CONTAINER_FIELDS:
+        # A container's leaves (an arm list, an interval, a budget plan line) are numbers or tokens.
+        valid = _number(value) or _token(value)
+    else:
+        valid = _token(value)
+    if not valid:
+        raise ValueError("report metadata has an unsafe value")
+    return value
+
+
+def checked_identity(campaign: str, provider: str, model: str, arm: str, efforts: Sequence[str]) -> None:
+    """A run's exported identity: a campaign token, a catalog provider and model, an arm label, and known efforts."""
+    if (
+        CAMPAIGN_RE.fullmatch(campaign) is None
+        or provider not in ENUM_FIELDS["provider"]
+        or ARM_RE.fullmatch(arm) is None
+        or not set(efforts) <= ENUM_FIELDS["effort"]
+    ):
+        raise ValueError("a run has an invalid identity")
+    if eval_cost.price(model).provider != provider:
+        raise ValueError("a run names a model of another provider")
 
 
 def grade(
@@ -446,6 +518,7 @@ def build_report(
     for (campaign, provider, model, arm), rows in sorted(groups.items()):
         effort = {str(attempt["effort"]) for attempt, _ in rows}
         name = f"{campaign}:{provider}:{model}:{arm}"
+        checked_identity(campaign, provider, model, arm, sorted(effort))
         identity = {"campaign": campaign, "provider": provider, "model": model, "arm": arm, "effort": sorted(effort)}
         runs.append({**identity, **_group(rows, seed, name)})
         by_campaign[campaign, provider, model][arm] = rows
