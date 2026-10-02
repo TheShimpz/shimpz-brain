@@ -738,9 +738,12 @@ def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], Runti
     """The one model decision of a held Routine run's automatic recovery, with no tools or history (ADR-0092)."""
 
     @app.post("/v1/routine-recovery", dependencies=[Depends(require_auth)])
-    def routine_recovery_decision(body: RoutineRecoveryInput) -> dict[str, object]:
-        decision, usage = model_usage.measure(
-            lambda: current_runtime().routine_recovery(body.runtime_provider(), body.runtime_request())
+    async def routine_recovery_decision(request: Request, body: RoutineRecoveryInput) -> dict[str, object]:
+        # Team's Stop or recovery deadline closes its request; that cancels only this decision's provider I/O.
+        decision, usage = await _cancellable(
+            request,
+            lambda: current_runtime().routine_recovery(body.runtime_provider(), body.runtime_request()),
+            "Routine recovery cancelled",
         )
         return {"decision": decision, "usage": usage}
 
