@@ -8,10 +8,13 @@ the Team's default reasoning effort; plans and labels keep the provider default,
 Output contains only case identifiers, pass counts, and estimated cost (``eval.cost``: cache-aware, per attempted
 and per successful attempt, unknown when a call reported no usage), never prompts, replies, or Action input.
 
-Exact checks score Action identity, Action arguments, round boundaries, and terminal status. Reply markers and
-the language check are labeled proxies: they catch an obviously wrong reply, not semantic quality. Three of three
-is a conservative floor for a future prompt or runtime change, not a reliability estimate. Keep the first complete
-run, including misses; never rerun only to turn a missed case green.
+The ``turns`` section is a contract test: exact checks score Action identity, Action arguments, round boundaries,
+and terminal status, and reply markers and the language check are labeled proxies that catch an obviously wrong
+reply, not semantic quality. It never scores an optimization experiment (ADR-0094). The ``outcomes`` section does:
+the same turn cases scored only by their final effects, so any round structure, extra lookup, or parallel split that
+leaves exactly the expected writes passes. Reply quality belongs to the calibrated judges of ``eval.precision``.
+Three of three is a conservative floor for a future prompt or runtime change, not a reliability estimate. Keep the
+first complete run, including misses; never rerun only to turn a missed case green.
 """
 
 from __future__ import annotations
@@ -34,6 +37,8 @@ from eval.intent_route import _key
 from langgraph.checkpoint.memory import InMemorySaver
 
 ATTEMPTS = 3
+# Team's Action round limit (teams/chat/orchestrator.py MAX_ACTION_ROUNDS).
+OUTCOME_ROUNDS = 8
 # The Team's default chat-turn effort (teams/inference/config.py DEFAULT_EFFORT, pinned by a test).
 TURN_EFFORT = "low"
 # Least expensive model per provider in the umbrella model catalog on 2026-09-28.
@@ -315,6 +320,65 @@ def run_turn(
     return result.status == "completed" and not result.actions and _reply_matches(case, result.reply)
 
 
+CONTRACT_SECTIONS = ("turns", "plans", "labels")
+# Actions without a side effect and their result in every case: an outcome run may call them freely.
+READ_ACTIONS = {("dns", "list-zones"): _ZONES}
+
+
+def _expected_result(case: TurnCase, request: agent_runtime.ActionRequest) -> Mapping[str, object] | None:
+    """The scripted result of the first expected Action this request matches, a lookup's result, or None."""
+    for current in case.rounds:
+        for item in current.actions:
+            if (item.assistant, item.action) == (request.assistant_id, request.action) and (
+                item.arguments is None or dict(request.input) == dict(item.arguments)
+            ):
+                return current.result
+    return READ_ACTIONS.get((request.assistant_id, request.action))
+
+
+def _writes_match(case: TurnCase, writes: list[agent_runtime.ActionRequest]) -> bool:
+    """Exactly the expected writes ran, each once, in any order or round."""
+    remaining = [
+        item for current in case.rounds for item in current.actions if (item.assistant, item.action) not in READ_ACTIONS
+    ]
+    for request in writes:
+        match = next(
+            (
+                item
+                for item in remaining
+                if (item.assistant, item.action) == (request.assistant_id, request.action)
+                and (item.arguments is None or dict(request.input) == dict(item.arguments))
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.remove(match)
+    return not remaining
+
+
+def run_outcome(
+    runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, case: TurnCase, index: int
+) -> bool:
+    """Drive one case to completion, scoring only its final effects: no unexpected Action and exactly its writes."""
+    context = agent_runtime.TurnContext(f"eval:{case.id}:outcome:{index}", "Eval Team", case.assistants, provider)
+    result = runtime.start(context, case.message)
+    writes: list[agent_runtime.ActionRequest] = []
+    for _round in range(OUTCOME_ROUNDS):
+        if result.status != "action-required":
+            break
+        results = {}
+        for request in result.actions:
+            scripted = _expected_result(case, request)
+            if scripted is None:
+                return False
+            if (request.assistant_id, request.action) not in READ_ACTIONS:
+                writes.append(request)
+            results[request.interrupt_id] = dict(scripted)
+        result = runtime.resume(context, results)
+    return result.status == "completed" and _writes_match(case, writes)
+
+
 def run_plan(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, case: PlanCase) -> bool:
     plan = runtime.capability_plan(provider, case.objective, _CANDIDATES)
     return plan.status == case.status and plan.assistant_ids == case.assistant_ids
@@ -356,8 +420,8 @@ def _offline_provider() -> agent_runtime.ProviderConfig:
 
 
 def logical_model_invocations() -> int:
-    """Invocations when every case follows its expected rounds: each start and resume, each plan and label case."""
-    per_attempt = sum(len(case.rounds) + 1 for case in TURN_CASES) + len(PLAN_CASES) + len(LABEL_CASES)
+    """Invocations when every case follows its expected rounds: each start and resume, twice, plus each decision."""
+    per_attempt = 2 * sum(len(case.rounds) + 1 for case in TURN_CASES) + len(PLAN_CASES) + len(LABEL_CASES)
     return per_attempt * ATTEMPTS
 
 
@@ -389,6 +453,7 @@ def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
     model = provider.model
     sections = {
         "turns": _score(TURN_CASES, lambda case, index: run_turn(runtime, turn_provider, case, index), model),
+        "outcomes": _score(TURN_CASES, lambda case, index: run_outcome(runtime, turn_provider, case, index), model),
         "plans": _score(PLAN_CASES, lambda case, _index: run_plan(runtime, provider, case), model),
         "labels": _score(LABEL_CASES, lambda case, _index: run_labels(runtime, provider, case), model),
     }
@@ -401,8 +466,10 @@ def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
         "attempts_per_case": ATTEMPTS,
         "turn_effort": TURN_EFFORT,
         **sections,
-        "passing_cases": sum(item["passed"] == ATTEMPTS for item in cases),
-        "cases": len(cases),
+        # Contract cases; outcome cases are counted apart so that neither score can mask the other.
+        "passing_cases": sum(item["passed"] == ATTEMPTS for name in CONTRACT_SECTIONS for item in sections[name]),
+        "cases": sum(len(sections[name]) for name in CONTRACT_SECTIONS),
+        "passing_outcomes": sum(item["passed"] == ATTEMPTS for item in sections["outcomes"]),
     }
 
 

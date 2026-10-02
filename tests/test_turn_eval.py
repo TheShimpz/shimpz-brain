@@ -49,7 +49,7 @@ class TurnEvalTests(unittest.TestCase):
         rounds = sum(len(case.rounds) + 1 for case in turns.TURN_CASES)
         self.assertEqual(
             turns.logical_model_invocations(),
-            turns.ATTEMPTS * (rounds + len(turns.PLAN_CASES) + len(turns.LABEL_CASES)),
+            turns.ATTEMPTS * (2 * rounds + len(turns.PLAN_CASES) + len(turns.LABEL_CASES)),
         )
         self.assertTrue(any(len(current.actions) == 2 for case in turns.TURN_CASES for current in case.rounds))
         self.assertTrue(any(not case.rounds for case in turns.TURN_CASES))
@@ -92,6 +92,40 @@ class TurnEvalTests(unittest.TestCase):
             AIMessage(content="", tool_calls=[_call(turns.DNS, "list-zones", {}, "c2")]),
         )
         self.assertFalse(turns.run_turn(extra, PROVIDER, _case("list-zones-pt"), 0))
+
+    def test_outcomes_score_final_writes_whatever_the_round_structure(self):
+        create = _case("create-record-exact-en")
+        looked_up_first = _runtime(
+            AIMessage(content="", tool_calls=[_call(turns.DNS, "list-zones", {}, "c1")]),
+            AIMessage(content="", tool_calls=[_call(turns.DNS, "create-record", EXACT, "c2")]),
+            AIMessage(content="Done."),
+        )
+        # An extra lookup round fails the contract test but is a correct outcome.
+        self.assertTrue(turns.run_outcome(looked_up_first, PROVIDER, create, 0))
+        twice = _runtime(
+            AIMessage(content="", tool_calls=[_call(turns.DNS, "create-record", EXACT, "c1")]),
+            AIMessage(content="", tool_calls=[_call(turns.DNS, "create-record", EXACT, "c2")]),
+            AIMessage(content="Done."),
+        )
+        self.assertFalse(turns.run_outcome(twice, PROVIDER, create, 1))
+        wrong = _runtime(
+            AIMessage(content="", tool_calls=[_call(turns.DNS, "create-record", {**EXACT, "name": "api"}, "c1")])
+        )
+        self.assertFalse(turns.run_outcome(wrong, PROVIDER, create, 2))
+        ana = _call(turns.MESSAGES, "send-message", {"to": "ana", "text": "Deploy done"}, "c1")
+        bruno = _call(turns.MESSAGES, "send-message", {"to": "bruno", "text": "Deploy done"}, "c2")
+        split = _runtime(
+            AIMessage(content="", tool_calls=[ana]), AIMessage(content="", tool_calls=[bruno]), AIMessage(content="Ok.")
+        )
+        self.assertTrue(turns.run_outcome(split, PROVIDER, _case("two-messages-one-round-en"), 0))
+        missing = _runtime(AIMessage(content="", tool_calls=[ana]), AIMessage(content="Only ana."))
+        self.assertFalse(turns.run_outcome(missing, PROVIDER, _case("two-messages-one-round-en"), 1))
+        self.assertTrue(turns.run_outcome(_runtime(AIMessage(content="Hi!")), PROVIDER, _case("greeting-en"), 0))
+        endless = _runtime(
+            *(AIMessage(content="", tool_calls=[_call(turns.DNS, "list-zones", {}, f"c{index}")]) for index in range(3))
+        )
+        with mock.patch.object(turns, "OUTCOME_ROUNDS", 2):
+            self.assertFalse(turns.run_outcome(endless, PROVIDER, _case("list-zones-pt"), 0))
 
     def test_reply_proxies_require_a_marker_and_the_user_language(self):
         grounded = _runtime(
@@ -200,6 +234,7 @@ class TurnEvalTests(unittest.TestCase):
         ):
             report = turns.evaluate(runtime, PROVIDER)
         self.assertEqual((report["usd"], report["usd_known"]), (0, True))
+        self.assertEqual((report["cases"], report["passing_outcomes"]), (1, 1))
 
 
 if __name__ == "__main__":
