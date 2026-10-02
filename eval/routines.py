@@ -75,7 +75,7 @@ CASES = (
     RoutineCase(
         "hourly-pt",
         "an explicit hourly request is created with its period",
-        "A cada 6 horas, verifique minhas zonas DNS.",
+        "A cada 6 horas, liste minhas zonas DNS.",
         _create({"kind": "hourly", "every": 6}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
@@ -91,7 +91,7 @@ CASES = (
         {
             "op": "update",
             "schedule": {"kind": "daily", "time": "07:00"},
-            "timezone": None,
+            "timezone": "America/Sao_Paulo",
             "actions": [["dns", "list-zones"]],
         },
         EXISTING,

@@ -50,9 +50,9 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "op": {"type": "string", "enum": ["create", "update"]},
-        "routine_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "routine_id": {"type": ["string", "null"], "description": "The listed Routine to update; null to create."},
     },
-    "required": ["op"],
+    "required": ["op", "routine_id"],
     "additionalProperties": False,
 }
 DESCRIPTION = (
@@ -426,7 +426,8 @@ def _prompt(message: str, assistants: tuple[Any, ...], target: Mapping[str, obje
         "Action does the work. Otherwise compile: name is a short title; request copies word for word one single "
         "line of the user's own words that states the recurring work and its timing; schedule is hourly every 1-24 "
         "hours, daily at HH:MM, weekly on weekday 0-6 (0 is Monday) at HH:MM, or monthly on day 1-28 at HH:MM, "
-        "with the other fields null; timezone is an IANA zone only when the user names a place or zone, else null; "
+        "with the other fields null; timezone is an IANA zone only when the user names a place or zone, or when "
+        "changing the listed Routine its own zone unless the user names another, else null; "
         "steps are at most 8 listed Actions in order, ids lowercase, filling required input members and only "
         "members the user asked for. A member is a literal (value_json holds its JSON value; each scalar of it has "
         "one origin: at is its JSON Pointer inside the value, empty for the whole value; source message with text "
@@ -462,12 +463,17 @@ def compiler(
 
 
 def _target(arguments: object, routines: tuple[dict[str, object], ...]) -> tuple[bool, dict[str, object] | None]:
-    """Whether the call is a closed create or update of a listed Routine, and that Routine for an update."""
-    if arguments == {"op": "create"}:
-        return True, None
-    if not isinstance(arguments, dict) or set(arguments) != {"op", "routine_id"} or arguments["op"] != "update":
+    """Whether the call is a closed create or update of a listed Routine, and that Routine for an update.
+
+    A create names no Routine; a strict provider schema may still fill routine_id, which a create ignores.
+    """
+    if not isinstance(arguments, dict) or not {"op"} <= set(arguments) <= {"op", "routine_id"}:
         return False, None
-    target = next((item for item in routines if item["routine_id"] == arguments["routine_id"]), None)
+    if arguments["op"] == "create":
+        return True, None
+    if arguments["op"] != "update":
+        return False, None
+    target = next((item for item in routines if item["routine_id"] == arguments.get("routine_id")), None)
     return target is not None, target
 
 

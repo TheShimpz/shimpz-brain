@@ -369,6 +369,7 @@ class GraphTests(unittest.TestCase):
             for calls, reason in (
                 ([_call(), _action()], "mixed"),
                 ([_call(op="delete")], "invalid"),
+                ([_call(op="create", extra=1)], "invalid"),
                 ([_call(op="update", routine_id="b" * 32)], "invalid"),
                 ([_call(op="update")], "invalid"),
             ):
@@ -405,6 +406,11 @@ class GraphTests(unittest.TestCase):
         response = AIMessage(content="", tool_calls=[_call()], invalid_tool_calls=[broken])
         with self.assertRaises(clarification.UnanswerableToolCallError):
             routine._review([HumanMessage(content=envelope(MESSAGE)), response], _chat(), None, allowed=True)
+
+    def test_a_create_ignores_a_routine_id_a_strict_schema_filled(self):
+        self.assertEqual(routine._target({"op": "create", "routine_id": "0" * 32}, (LISTED,)), (True, None))
+        self.assertEqual(routine._target({"op": "create", "routine_id": None}, ()), (True, None))
+        self.assertEqual(routine._target(["create"], ()), (False, None))
 
     def test_an_update_names_its_listed_routine_and_revision(self):
         kept = _compiled(
