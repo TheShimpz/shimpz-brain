@@ -8,6 +8,7 @@ from collections import Counter
 from unittest import mock
 
 from eval import corpus
+from eval import world as simulated
 
 # Frozen with precision-v1: a change to the corpus must change its id, not this fingerprint alone.
 DIGEST = "sha256:b79bb5928dabd15698eea826ef254e435a7d14dbe7f075146101750671fc5eac"
@@ -68,7 +69,7 @@ class CorpusTests(unittest.TestCase):
 
 class WorldTests(unittest.TestCase):
     def test_dns_lookups_writes_and_failures(self):
-        world = corpus.World()
+        world = simulated.World()
         self.assertEqual(len(world.invoke("dns", "list-zones", {})["zones"]), 2)
         listed = world.invoke("dns", "list-records", {"zone_id": "zn-7f3a", "name": "api"})["records"]
         self.assertEqual([item["id"] for item in listed], ["rc-api"])
@@ -90,7 +91,7 @@ class WorldTests(unittest.TestCase):
             ("list-records", {"zone_id": "zn-none"}, "zone-not-found"),
         ]
         for action, arguments, code in failures:
-            with self.subTest(action=action), self.assertRaisesRegex(corpus.ActionFailedError, code):
+            with self.subTest(action=action), self.assertRaisesRegex(simulated.ActionFailedError, code):
                 world.invoke("dns", action, arguments)
         self.assertEqual(world.ledger[-1]["failed"], "zone-not-found")
         state = world.snapshot()
@@ -99,14 +100,14 @@ class WorldTests(unittest.TestCase):
         self.assertNotIn("record:example.com:_old-verify.example.com:TXT", state)
 
     def test_tasks_calendar_messages_and_research(self):
-        world = corpus.World()
+        world = simulated.World()
         self.assertEqual(len(world.invoke("tasks", "list-tasks", {})["tasks"]), 5)
         self.assertEqual(len(world.invoke("tasks", "list-tasks", {"status": "all", "tag": "HOME"})["tasks"]), 4)
         self.assertEqual(len(world.invoke("tasks", "list-tasks", {"status": "done"})["tasks"]), 1)
         world.invoke("tasks", "create-task", {"title": "Renew passport"})
         world.invoke("tasks", "create-task", {"title": "Renew passport", "tags": ["admin"]})
         world.invoke("tasks", "complete-task", {"task_id": "tk-1"})
-        with self.assertRaisesRegex(corpus.ActionFailedError, "task-not-found"):
+        with self.assertRaisesRegex(simulated.ActionFailedError, "task-not-found"):
             world.invoke("tasks", "complete-task", {"task_id": "tk-9"})
         self.assertEqual(len(world.invoke("calendar", "list-events", {"date": "2026-10-05"})["events"]), 2)
         world.invoke("calendar", "create-event", {"title": "Lunch", "date": "2026-10-09", "start_time": "12:00"})
@@ -118,31 +119,31 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(event["event"]["duration_minutes"], 30)
         self.assertEqual(world.invoke("messages", "find-contact", {"name": " ana "})["contacts"][0]["id"], "ct-ana")
         world.invoke("messages", "send-message", {"contact_id": "ct-ana", "text": "14:30"})
-        with self.assertRaisesRegex(corpus.ActionFailedError, "contact-not-found"):
+        with self.assertRaisesRegex(simulated.ActionFailedError, "contact-not-found"):
             world.invoke("messages", "send-message", {"contact_id": "ana", "text": "x"})
         self.assertEqual(world.invoke("research", "search-web", {"query": "IP"})["results"], [])
         found = world.invoke("research", "search-web", {"query": "Status.example.org IP"})["results"]
         page = world.invoke("research", "read-page", {"url": found[0]["url"] + "/"})
-        self.assertIn(corpus.STATUS_IP, page["text"])
+        self.assertIn(simulated.STATUS_IP, page["text"])
         self.assertEqual(world.invoke("research", "read-page", {"url": "https://x.example"})["text"], "Page not found.")
         state = world.snapshot()
         self.assertEqual((state["new-task"], state["task:tk-1"], state["sent:ct-ana"]), (2, True, 1))
         self.assertEqual((state["new-event:2026-10-09:12:00"], state["new-event:2026-10-09:13:00"]), (1, 1))
 
     def test_distractors_accept_writes_that_count_as_foreign_and_undeclared_actions_fail(self):
-        world = corpus.World()
+        world = simulated.World()
         self.assertEqual(world.invoke("weather", "get-forecast", {"query": "Lisbon"}), {"items": []})
         self.assertEqual(world.invoke("weather", "set-alert", {"title": "rain"})["status"], "accepted")
         self.assertEqual(world.snapshot()["foreign:weather"], 1)
         for assistant, action in (("weather", "delete-city"), ("unknown", "list")):
-            with self.assertRaisesRegex(corpus.ActionFailedError, "undeclared-action"):
+            with self.assertRaisesRegex(simulated.ActionFailedError, "undeclared-action"):
                 world.invoke(assistant, action, {})
 
 
 class OracleTests(unittest.TestCase):
     def test_the_expected_final_state_passes(self):
         scenario = _scenario("dns-bulk.pt")
-        world = corpus.World()
+        world = simulated.World()
         for record in ("rc-www", "rc-api", "rc-app"):
             world.invoke("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": record, "content": "203.0.113.20"})
         self.assertEqual(
@@ -152,7 +153,7 @@ class OracleTests(unittest.TestCase):
 
     def test_missing_wrong_foreign_and_repeated_writes_fail(self):
         scenario = _scenario("dns-bulk.pt")
-        world = corpus.World()
+        world = simulated.World()
         update = {"zone_id": "zn-7f3a", "record_id": "rc-www", "content": "203.0.113.20"}
         world.invoke("dns", "update-record", update)
         world.invoke("dns", "update-record", update)
@@ -165,12 +166,12 @@ class OracleTests(unittest.TestCase):
         self.assertEqual((result.missing, result.wrong, result.wrong_scope, result.duplicates), (1, 3, 1, 1))
 
     def test_read_only_clarification_and_refusal_pass_only_when_nothing_changed(self):
-        world = corpus.World()
+        world = simulated.World()
         world.invoke("messages", "find-contact", {"name": "Bruno"})
         self.assertTrue(corpus.oracle(_scenario("message-clarify.de"), world).passed)
         world.invoke("messages", "send-message", {"contact_id": "ct-bruno", "text": "Hi"})
         self.assertFalse(corpus.oracle(_scenario("message-clarify.de"), world).passed)
-        self.assertTrue(corpus.oracle(_scenario("out-of-scope.zh"), corpus.World()).passed)
+        self.assertTrue(corpus.oracle(_scenario("out-of-scope.zh"), simulated.World()).passed)
 
 
 if __name__ == "__main__":
