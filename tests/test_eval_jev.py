@@ -6,7 +6,7 @@ import json
 import unittest
 
 import httpx
-from eval import jev, large_api
+from eval import jev, large_api_contract
 
 
 class JevTests(unittest.TestCase):
@@ -20,21 +20,21 @@ class JevTests(unittest.TestCase):
         return send, sent
 
     def test_group_selection_reads_one_noul_per_group(self):
-        questions = jev.group_questions(large_api.GROUPS)
+        questions = jev.group_questions(large_api_contract.GROUPS)
         answers = {key: {"type": "noul", "noul": 0.9 if "cache" in key else 0.1} for key in questions}
         send, sent = self._transport(answers)
         decision = jev.ask(send, "Purge the cache.", questions)
-        probabilities = jev.selected_groups(decision, large_api.GROUPS)
+        probabilities = jev.selected_groups(decision, large_api_contract.GROUPS)
         self.assertEqual([g for g, p in probabilities.items() if p >= jev.GROUP_THRESHOLD], ["cache"])
         self.assertAlmostEqual(decision.usd, 700 * 0.042e-6)
         self.assertEqual(sent[0]["state"], {"current_message": "Purge the cache."})
         bad = dict(answers, group_cache={"type": "choice"})
         with self.assertRaises(jev.JevError):
-            jev.selected_groups(jev.ask(self._transport(bad)[0], "x", questions), large_api.GROUPS)
+            jev.selected_groups(jev.ask(self._transport(bad)[0], "x", questions), large_api_contract.GROUPS)
         with self.assertRaises(jev.JevError):
             jev.selected_groups(
                 jev.ask(self._transport(dict(answers, group_cache={"type": "noul", "noul": 2}))[0], "x", questions),
-                large_api.GROUPS,
+                large_api_contract.GROUPS,
             )
 
     def test_routing_sends_only_a_confident_simple_turn_to_luna(self):

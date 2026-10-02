@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from eval import large_api
+from eval import large_api, large_api_contract
 from eval.fixtures import _DATE, _OBJECT, _STRING, DISTRACTORS, Action, Assistant
 from eval.world import ActionFailedError
 
@@ -60,7 +60,7 @@ def rank_groups(message: str) -> tuple[str, ...]:
     """The always-exposed groups, then up to ``GROUP_LIMIT`` matched groups by descending matched terms."""
     text = message.casefold()
     scores = {group: sum(term in text for term in terms) for group, terms in GROUP_TERMS.items()}
-    order = list(large_api.GROUPS)
+    order = list(large_api_contract.GROUPS)
     ranked = sorted(
         (g for g in order if scores[g] > 0 and g not in ALWAYS_GROUPS), key=lambda g: (-scores[g], order.index(g))
     )
@@ -68,7 +68,9 @@ def rank_groups(message: str) -> tuple[str, ...]:
 
 
 def group_actions(groups: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(action.id for action in large_api.EDGE.actions if large_api.ACTION_GROUP[action.id] in groups)
+    return tuple(
+        action.id for action in large_api_contract.EDGE.actions if large_api_contract.ACTION_GROUP[action.id] in groups
+    )
 
 
 def recall(template_id: str, exposed: tuple[str, ...]) -> bool:
@@ -88,7 +90,7 @@ def _e(*values: str) -> dict[str, object]:
 
 
 TASK_EDGE = Assistant(
-    large_api.ASSISTANT_ID,
+    large_api_contract.ASSISTANT_ID,
     "Edge manages the user's edge network account. Every Action takes the domain itself (such as example.com); the "
     "Assistant resolves zone and record ids, so no lookup is needed first.",
     (
@@ -245,7 +247,7 @@ class TaskWorld(large_api.EdgeWorld):
         self.assistants = ASSISTANTS_TASKS
 
     def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
-        if assistant_id != large_api.ASSISTANT_ID:
+        if assistant_id != large_api_contract.ASSISTANT_ID:
             return super().invoke(assistant_id, action_id, arguments)
         entry: dict[str, object] = {"assistant": assistant_id, "action": action_id, "input": dict(arguments)}
         self.ledger.append(entry)

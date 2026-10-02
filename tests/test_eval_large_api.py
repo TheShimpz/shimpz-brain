@@ -7,7 +7,7 @@ import unittest
 from collections import Counter
 from unittest import mock
 
-from eval import corpus, large_api, split
+from eval import corpus, large_api, large_api_contract, split
 from eval import world as simulated
 
 DIGEST = "sha256:a8f5f0b0a5aba19fcd701cf8a2d5cd36e3d113fe8f38c7560fe09499061fa112"
@@ -26,10 +26,10 @@ class LargeApiTests(unittest.TestCase):
     def test_the_stratum_is_frozen_with_its_own_split(self):
         large_api.validate()
         self.assertEqual((large_api.CORPUS_ID, large_api.digest()), ("large-api-v1", DIGEST))
-        self.assertEqual((len(large_api.EDGE.actions), len(large_api.GROUPS)), (120, 14))
+        self.assertEqual((len(large_api_contract.EDGE.actions), len(large_api_contract.GROUPS)), (120, 14))
         self.assertEqual(set(Counter(s.scope for s in large_api.SCENARIOS)), set(corpus.SCOPES))
         self.assertEqual(len(large_api.SCENARIOS), 80)
-        self.assertEqual(large_api.ACTION_GROUP["dns-records-update"], "dns")
+        self.assertEqual(large_api_contract.ACTION_GROUP["dns-records-update"], "dns")
         sets = split.load(split.LARGE_API_SPLIT)
         self.assertEqual((len(sets["held-out"]), len(sets["tuning"])), (5, 5))
         self.assertEqual(split.part("cf-ssl-strict.ja", sets), "held-out")
@@ -37,8 +37,8 @@ class LargeApiTests(unittest.TestCase):
     def test_validation_refuses_defects(self):
         template = large_api.TEMPLATES[0]
         broken = (
-            ("EDGE", dataclasses.replace(large_api.EDGE, actions=large_api.EDGE.actions[:-1])),
-            ("GROUPS", {**large_api.GROUPS, "extra": ("x", large_api.GROUPS["dns"][1] * 2)}),
+            ("EDGE", dataclasses.replace(large_api_contract.EDGE, actions=large_api_contract.EDGE.actions[:-1])),
+            ("GROUPS", {**large_api_contract.GROUPS, "extra": ("x", large_api_contract.GROUPS["dns"][1] * 2)}),
             ("TEMPLATES", (dataclasses.replace(template, changes={}), *large_api.TEMPLATES[1:])),
             ("SCENARIOS", tuple(dataclasses.replace(s, scope="needed") for s in large_api.SCENARIOS)),
         )

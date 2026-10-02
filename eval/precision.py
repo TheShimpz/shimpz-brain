@@ -28,14 +28,19 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import corpus, judge, large_api, private, split
+from eval import corpus, judge, large_api, large_api_contract, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
 from eval.large_api_arms import ASSISTANTS_TASKS
 
 SCENARIOS = {**corpus.SCENARIOS_BY_ID, **large_api.SCENARIOS_BY_ID}
-CONTRACTS = {"a": corpus.ASSISTANTS, "b": ASSISTANTS_B, "large": large_api.ASSISTANTS, "large-tasks": ASSISTANTS_TASKS}
+CONTRACTS = {
+    "a": corpus.ASSISTANTS,
+    "b": ASSISTANTS_B,
+    "large": large_api_contract.ASSISTANTS,
+    "large-tasks": ASSISTANTS_TASKS,
+}
 
 REPORT_SCHEMA = "shimpz.precision-eval.report/v1"
 STATUSES = ("completed", "turn-failed", "brain-error", "budget-stopped")
@@ -59,7 +64,7 @@ def judge_item(attempt: Mapping[str, object]) -> judge.Item:
     only = set(attempt.get("exposed_actions") or ())
     exposed = tuple(
         dataclasses.replace(contracts[name], actions=tuple(a for a in contracts[name].actions if a.id in only))
-        if only and name == large_api.ASSISTANT_ID
+        if only and name == large_api_contract.ASSISTANT_ID
         else contracts[name]
         for name in attempt.get("exposed") or scenario.assistants
     )
