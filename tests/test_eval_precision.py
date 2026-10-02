@@ -180,7 +180,7 @@ class ReportTests(unittest.TestCase):
 class ArmReportTests(unittest.TestCase):
     def test_arm_attempts_report_signals_comparisons_and_one_split_part(self):
         attempts, judged = [], []
-        arm_fields = {"contracts": "b", "refusals": 1, "escalation_blocked": False}
+        arm_fields = {"contracts": "b", "refusals": 1, "escalation_blocked": False, "selection_fallback": False}
         for scenario in corpus.SCENARIOS[:32]:
             for arm, escalated in (("A", False), ("B", False), ("E", True)):
                 attempt = {
@@ -249,8 +249,11 @@ class ArmReportTests(unittest.TestCase):
         )
         self.assertEqual((signals["mean_exposed_assistants"], signals["refusals"]), (2.0, 2))
         self.assertEqual((signals["escalation_rate"], signals["escalation_blocked"]), (1.0, 1))
+        fell_back = precision._arm_signals([stopped, ran, {**ran, "selection_fallback": True}])["arm_signals"]
+        self.assertEqual((fell_back["selection_fallbacks"], fell_back["selection_fallback_rate"]), (1, 0.5))
+        self.assertEqual((signals["selection_fallbacks"], signals["selection_fallback_rate"]), (0, 0.0))
         only = precision._arm_signals([stopped])["arm_signals"]
-        self.assertEqual((only["working_set_recall"], only["mean_exposed_assistants"]), (None, None))
+        self.assertEqual((only["working_set_recall"], only["selection_fallback_rate"]), (None, None))
 
 
 class LargeApiReportTests(unittest.TestCase):
@@ -261,6 +264,7 @@ class LargeApiReportTests(unittest.TestCase):
             "exposed": ["edge"],
             "exposed_actions": ["zones-list", "ssl-settings-update"],
             "recall": True,
+            "selection_fallback": False,
             "refusals": 0,
             "escalated": False,
             "escalation_signal": None,

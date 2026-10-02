@@ -260,6 +260,9 @@ def _arm_signals(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
             "dispatched_attempts": len(dispatched),
             "working_set_recall": _share(sum(bool(a["recall"]) for a in exposed), len(exposed)),
             "mean_exposed_assistants": _share(sum(len(a["exposed"]) for a in exposed), len(exposed)),
+            # A selecting arm (L6) that found no confident group fell back to its declared exposure.
+            "selection_fallbacks": sum(bool(a["selection_fallback"]) for a in exposed),
+            "selection_fallback_rate": _share(sum(bool(a["selection_fallback"]) for a in exposed), len(exposed)),
             "refusals": sum(int(a["refusals"]) for a in engineering),
             "escalated": sum(signals.values()),
             "escalation_rate": _share(sum(signals.values()), len(dispatched)),
