@@ -13,6 +13,7 @@ from typing import Any, ClassVar
 from unittest import mock
 
 import agent_runtime
+import clarification
 import context_budget
 import httpx
 import runtime_api
@@ -55,6 +56,60 @@ def _call(host: str, call_id: str) -> dict:
 
 def _user_texts(messages: Sequence[Any]) -> list[str]:
     return [str(message.content) for message in messages if isinstance(message, HumanMessage)]
+
+
+def _openai_body(text_or_tool: str, arguments: dict | None, *, incomplete: bool) -> dict:
+    """An OpenAI Responses body holding one text reply, or one function call when arguments are given."""
+    status = "incomplete" if incomplete else "completed"
+    if arguments is None:
+        item = {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "status": status,
+            "content": [{"type": "output_text", "text": text_or_tool, "annotations": []}],
+        }
+    else:
+        item = {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": text_or_tool,
+            "arguments": json.dumps(arguments),
+            "status": status,
+        }
+    body = {
+        "id": "resp_1",
+        "object": "response",
+        "created_at": 1,
+        "model": "gpt-6.1-sol",
+        "status": status,
+        "output": [item],
+        "parallel_tool_calls": True,
+        "tool_choice": "auto",
+        "tools": [],
+    }
+    if incomplete:
+        body["incomplete_details"] = {"reason": "max_output_tokens"}
+    return body
+
+
+def _anthropic_body(text_or_tool: str, arguments: dict | None, *, incomplete: bool) -> dict:
+    """An Anthropic Messages body holding one text reply, or one tool use when arguments are given."""
+    if arguments is None:
+        block = {"type": "text", "text": text_or_tool}
+    else:
+        block = {"type": "tool_use", "id": "toolu_1", "name": text_or_tool, "input": arguments}
+    return {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-5-5",
+        "content": [block],
+        "stop_reason": "max_tokens" if incomplete else "end_turn",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
 
 
 class ExchangeTests(unittest.TestCase):
@@ -255,74 +310,55 @@ class RuntimeBudgetTests(unittest.TestCase):
         self.assertEqual(runtime.start(turn, "three").reply, "r3")
         self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["one", "three"])
 
-    def test_a_reply_cut_short_by_either_real_adapter_fails_and_is_forgotten(self):
-        def openai_reply(text: str, status: str) -> dict:
-            body = {
-                "id": "resp_1",
-                "object": "response",
-                "created_at": 1,
-                "model": "gpt-6.1-sol",
-                "status": status,
-                "output": [
-                    {
-                        "type": "message",
-                        "id": "msg_1",
-                        "role": "assistant",
-                        "status": status,
-                        "content": [{"type": "output_text", "text": text, "annotations": []}],
-                    }
-                ],
-                "parallel_tool_calls": True,
-                "tool_choice": "auto",
-                "tools": [],
-            }
-            if status == "incomplete":
-                body["incomplete_details"] = {"reason": "max_output_tokens"}
-            return body
-
-        def anthropic_reply(text: str, status: str) -> dict:
-            return {
-                "id": "msg_1",
-                "type": "message",
-                "role": "assistant",
-                "model": "claude-sonnet-5-5",
-                "content": [{"type": "text", "text": text}],
-                "stop_reason": "max_tokens" if status == "incomplete" else "end_turn",
-                "stop_sequence": None,
-                "usage": {"input_tokens": 1, "output_tokens": 1},
-            }
-
-        for provider, model, reply in (
-            ("openai", "gpt-6.1-sol", openai_reply),
-            ("anthropic", "claude-sonnet-5-5", anthropic_reply),
+    def test_a_response_cut_short_by_either_real_adapter_fails_before_any_tool_and_is_forgotten(self):
+        clarify = {
+            "question": "Which host?",
+            "options": [{"label": "a.example", "description": ""}, {"label": "b.example", "description": ""}],
+            "default_index": 0,
+        }
+        for provider, model, body in (
+            ("openai", "gpt-6.1-sol", _openai_body),
+            ("anthropic", "claude-sonnet-5-5", _anthropic_body),
         ):
-            with self.subTest(provider=provider):
-                replies = [reply("TRUNCATED-PARTIAL", "incomplete"), reply("whole answer", "completed")]
-                requests: list[str] = []
+            for kind, cut in (
+                ("reply", ("TRUNCATED-PARTIAL", None)),
+                ("action", (TOOL, {"host": "TRUNCATED-PARTIAL"})),
+                ("clarification", (clarification.TOOL_NAME, {**clarify, "question": "TRUNCATED-PARTIAL?"})),
+            ):
+                with self.subTest(provider=provider, kind=kind):
+                    replies = [body(*cut, incomplete=True), body("whole answer", None, incomplete=False)]
+                    requests: list[str] = []
 
-                def handle(request: httpx.Request, replies=replies, requests=requests) -> httpx.Response:
-                    requests.append(request.content.decode())
-                    return httpx.Response(200, json=replies.pop(0))
+                    def handle(request: httpx.Request, replies=replies, requests=requests) -> httpx.Response:
+                        requests.append(request.content.decode())
+                        return httpx.Response(200, json=replies.pop(0))
 
-                client = httpx.Client(transport=httpx.MockTransport(handle))
-                self.addCleanup(client.close)
-                connection = sqlite3.connect(self.path, check_same_thread=False)
-                self.connections.append(connection)
-                saver = runtime_api.PruningSqliteSaver(connection)
-                saver.setup()
-                factory = functools.partial(agent_runtime.provider_model, http_client=client)
-                runtime = agent_runtime.AgentRuntime(saver, model_factory=factory)
-                config = agent_runtime.ProviderConfig(provider, model, "sk-test")
-                turn = agent_runtime.TurnContext(f"cut-{provider}", "Budget Team", (PINGER,), config)
-                with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "cut short"):
-                    runtime.start(turn, "first question")
-                result = runtime.start(turn, "second question")
-                self.assertEqual((result.status, result.reply), ("completed", "whole answer"))
-                self.assertIn("first question", requests[0])
-                self.assertNotIn("first question", requests[1])
-                self.assertNotIn("TRUNCATED-PARTIAL", requests[1])
-                stored = saver.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
-                self.assertNotIn("TRUNCATED-PARTIAL", json.dumps([m.model_dump(mode="json") for m in stored]))
+                    client = httpx.Client(transport=httpx.MockTransport(handle))
+                    self.addCleanup(client.close)
+                    connection = sqlite3.connect(self.path, check_same_thread=False)
+                    self.connections.append(connection)
+                    saver = runtime_api.PruningSqliteSaver(connection)
+                    saver.setup()
+                    factory = functools.partial(agent_runtime.provider_model, http_client=client)
+                    runtime = agent_runtime.AgentRuntime(saver, model_factory=factory)
+                    config = agent_runtime.ProviderConfig(provider, model, "sk-test")
+                    turn = agent_runtime.TurnContext(f"cut-{provider}-{kind}", "Budget Team", (PINGER,), config)
+                    with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "cut short"):
+                        runtime.start(turn, "first question")
+                    failed = saver.get_tuple(runtime._config(turn))
+                    self.assertFalse(agent_runtime._has_pending_interrupt(failed.pending_writes))
+                    messages = failed.checkpoint["channel_values"]["messages"]
+                    self.assertFalse(any(isinstance(message, ToolMessage) for message in messages))
+                    self.assertFalse(context_budget.completed(context_budget.exchanges(messages)[-1]))
+
+                    result = runtime.start(turn, "second question")
+                    self.assertEqual((result.status, result.reply), ("completed", "whole answer"))
+                    self.assertEqual(len(requests), 2)
+                    self.assertIn("first question", requests[0])
+                    self.assertNotIn("first question", requests[1])
+                    self.assertNotIn("TRUNCATED-PARTIAL", requests[1])
+                    stored = saver.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
+                    self.assertNotIn("TRUNCATED-PARTIAL", json.dumps([m.model_dump(mode="json") for m in stored]))
 
     def test_corrupt_history_and_failed_trimming_fail_closed_as_state_errors(self):
         runtime = self._runtime()

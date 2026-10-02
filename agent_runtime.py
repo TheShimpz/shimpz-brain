@@ -495,8 +495,6 @@ def _result(
     if pending:
         return _pending_result(pending)
     reply_message = _turn_reply(state, after_message_id=after_message_id, message_offset=message_offset)
-    if context_budget.truncated(reply_message):
-        raise ProviderResponseError("model provider response was cut short")
     reply = context_budget.final_reply(reply_message)
     if reply:
         return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
@@ -565,6 +563,27 @@ def _prompt_caching(provider: ProviderConfig) -> list[object]:
     from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
 
     return [AnthropicPromptCachingMiddleware(ttl="5m", unsupported_model_behavior="raise")]
+
+
+@functools.cache
+def _termination_guard_class():
+    # The agent middleware stack loads with the graph, never when the runtime API module is imported.
+    from langchain.agents.middleware import AgentMiddleware
+
+    class TerminationGuard(AgentMiddleware):
+        """Fail a model response the provider cut short before it enters the graph state.
+
+        Checking inside the model call, rather than in a separate ``after_model`` step, runs before every guard, tool,
+        Action, or clarification sees the response and costs no step of the turn's recursion limit.
+        """
+
+        def wrap_model_call(self, request, handler):
+            response = handler(request)
+            if any(context_budget.truncated(message) for message in response.result):
+                raise ProviderResponseError("model provider response was cut short")
+            return response
+
+    return TerminationGuard
 
 
 CONVERSATION_BRIDGE_ID_PREFIX = "shimpz-context-"
@@ -679,6 +698,8 @@ class AgentRuntime:
                     if routine_tool
                     else []
                 ),
+                # The innermost model-call wrapper sees each provider response before any other middleware.
+                _termination_guard_class()(),
             ],
         )
 
