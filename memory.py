@@ -102,7 +102,6 @@ def _line(value: object, maximum: int) -> str | None:
 
 
 _ASSISTANT_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
-_ACTION_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
 _CONTRACT_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _INPUT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}\Z")
 
@@ -113,6 +112,8 @@ def _skill_key(contracts: dict[str, str], steps: list[dict[str, object]]) -> str
 
 
 def _step_admitted(step: object) -> bool:
+    from agent_runtime import ACTION_ID_RE
+
     return (
         isinstance(step, dict)
         and set(step) == {"assistant_id", "action", "inputs"}
@@ -121,7 +122,7 @@ def _step_admitted(step: object) -> bool:
         and _ASSISTANT_ID_RE.fullmatch(step["assistant_id"]) is not None
         and isinstance(step["action"], str)
         and len(step["action"]) <= 128
-        and _ACTION_ID_RE.fullmatch(step["action"]) is not None
+        and ACTION_ID_RE.fullmatch(step["action"]) is not None
         and isinstance(step["inputs"], list)
         and len(step["inputs"]) <= 32
         and all(isinstance(name, str) and _INPUT_RE.fullmatch(name) for name in step["inputs"])
