@@ -24,6 +24,13 @@ OUTPUT_RESERVE_TOKENS = 128_000
 # About 2.5 Unicode characters per token on current tokenizers; three UTF-8 bytes per token stays pessimistic for
 # ASCII prose and JSON while counting a multi-byte character as roughly one token.
 BYTES_PER_TOKEN = 3
+# Provider termination metadata that marks output cut short: the OpenAI Responses status, the OpenAI Chat Completions
+# finish reason, and the Anthropic stop reasons for the output limit and the context window.
+INCOMPLETE_TERMINATION = {
+    "status": frozenset({"incomplete"}),
+    "finish_reason": frozenset({"length"}),
+    "stop_reason": frozenset({"max_tokens", "model_context_window_exceeded"}),
+}
 
 
 class ContextStateError(RuntimeError):
@@ -72,12 +79,25 @@ def message_text(value: object) -> str:
     return "\n".join(text)
 
 
+def truncated(message: object) -> bool:
+    """Whether the provider reports that it cut this message short instead of finishing it.
+
+    The adapters keep provider termination in ``response_metadata``: OpenAI Responses as ``status``, OpenAI Chat
+    Completions as ``finish_reason``, and Anthropic Messages as ``stop_reason``.
+    """
+    metadata = getattr(message, "response_metadata", None)
+    return isinstance(metadata, Mapping) and any(
+        isinstance(metadata.get(key), str) and metadata[key] in values for key, values in INCOMPLETE_TERMINATION.items()
+    )
+
+
 def final_reply(message: object) -> str:
     """Return the user-facing reply a message ends a turn with, or "" when it cannot end one.
 
-    The runtime accepts a turn's result and this module keeps an exchange by this one criterion.
+    The runtime accepts a turn's result and this module keeps an exchange by this one criterion; a reply the provider
+    cut short never ends a turn.
     """
-    if not isinstance(message, AIMessage) or message.tool_calls or message.invalid_tool_calls:
+    if not isinstance(message, AIMessage) or message.tool_calls or message.invalid_tool_calls or truncated(message):
         return ""
     return message_text(message.content).strip()
 

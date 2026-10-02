@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -12,6 +14,7 @@ from unittest import mock
 
 import agent_runtime
 import context_budget
+import httpx
 import runtime_api
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -96,6 +99,32 @@ class ExchangeTests(unittest.TestCase):
         self.assertEqual(
             [message.id for message in context_budget.history_to_drop(unfinished, 0, 1)], ["hf", "h1", "at"]
         )
+
+    def test_a_reply_the_provider_cut_short_never_completes_an_exchange(self):
+        for metadata in (
+            {"model_provider": "openai", "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}},
+            {"model_provider": "openai", "finish_reason": "length"},
+            {"model_provider": "anthropic", "stop_reason": "max_tokens"},
+            {"model_provider": "anthropic", "stop_reason": "model_context_window_exceeded"},
+        ):
+            with self.subTest(metadata=metadata):
+                cut = AIMessage("partial answer", response_metadata=metadata, id="a1")
+                self.assertTrue(context_budget.truncated(cut))
+                self.assertEqual(context_budget.final_reply(cut), "")
+                self.assertFalse(context_budget.completed((HumanMessage("q", id="h1"), cut)))
+                history = [HumanMessage("q0", id="h0"), AIMessage("r0", id="a0"), HumanMessage("q", id="h1"), cut]
+                self.assertEqual([m.id for m in context_budget.history_to_drop(history, 0, 1)], ["h1", "a1"])
+        for metadata in (
+            {},
+            {"status": "completed"},
+            {"finish_reason": "stop"},
+            {"stop_reason": "end_turn"},
+            {"stop_reason": ["max_tokens"]},
+        ):
+            with self.subTest(metadata=metadata):
+                finished = AIMessage("answer", response_metadata=metadata, id="a1")
+                self.assertFalse(context_budget.truncated(finished))
+                self.assertEqual(context_budget.final_reply(finished), "answer")
 
     def test_fixed_prompt_and_current_message_alone_can_exceed_the_window(self):
         with self.assertRaises(context_budget.ContextWindowError):
@@ -225,6 +254,75 @@ class RuntimeBudgetTests(unittest.TestCase):
             runtime.start(turn, "empty")
         self.assertEqual(runtime.start(turn, "three").reply, "r3")
         self.assertEqual(_user_texts(RecordingModel.seen[-1]), ["one", "three"])
+
+    def test_a_reply_cut_short_by_either_real_adapter_fails_and_is_forgotten(self):
+        def openai_reply(text: str, status: str) -> dict:
+            body = {
+                "id": "resp_1",
+                "object": "response",
+                "created_at": 1,
+                "model": "gpt-6.1-sol",
+                "status": status,
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": status,
+                        "content": [{"type": "output_text", "text": text, "annotations": []}],
+                    }
+                ],
+                "parallel_tool_calls": True,
+                "tool_choice": "auto",
+                "tools": [],
+            }
+            if status == "incomplete":
+                body["incomplete_details"] = {"reason": "max_output_tokens"}
+            return body
+
+        def anthropic_reply(text: str, status: str) -> dict:
+            return {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-5-5",
+                "content": [{"type": "text", "text": text}],
+                "stop_reason": "max_tokens" if status == "incomplete" else "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+
+        for provider, model, reply in (
+            ("openai", "gpt-6.1-sol", openai_reply),
+            ("anthropic", "claude-sonnet-5-5", anthropic_reply),
+        ):
+            with self.subTest(provider=provider):
+                replies = [reply("TRUNCATED-PARTIAL", "incomplete"), reply("whole answer", "completed")]
+                requests: list[str] = []
+
+                def handle(request: httpx.Request, replies=replies, requests=requests) -> httpx.Response:
+                    requests.append(request.content.decode())
+                    return httpx.Response(200, json=replies.pop(0))
+
+                client = httpx.Client(transport=httpx.MockTransport(handle))
+                self.addCleanup(client.close)
+                connection = sqlite3.connect(self.path, check_same_thread=False)
+                self.connections.append(connection)
+                saver = runtime_api.PruningSqliteSaver(connection)
+                saver.setup()
+                factory = functools.partial(agent_runtime.provider_model, http_client=client)
+                runtime = agent_runtime.AgentRuntime(saver, model_factory=factory)
+                config = agent_runtime.ProviderConfig(provider, model, "sk-test")
+                turn = agent_runtime.TurnContext(f"cut-{provider}", "Budget Team", (PINGER,), config)
+                with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "cut short"):
+                    runtime.start(turn, "first question")
+                result = runtime.start(turn, "second question")
+                self.assertEqual((result.status, result.reply), ("completed", "whole answer"))
+                self.assertIn("first question", requests[0])
+                self.assertNotIn("first question", requests[1])
+                self.assertNotIn("TRUNCATED-PARTIAL", requests[1])
+                stored = saver.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
+                self.assertNotIn("TRUNCATED-PARTIAL", json.dumps([m.model_dump(mode="json") for m in stored]))
 
     def test_corrupt_history_and_failed_trimming_fail_closed_as_state_errors(self):
         runtime = self._runtime()

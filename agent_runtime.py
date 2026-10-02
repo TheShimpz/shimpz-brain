@@ -518,6 +518,8 @@ def _result(
         (message for message in reversed(current_messages) if isinstance(message, AIMessage)),
         None,
     )
+    if context_budget.truncated(reply_message):
+        raise ProviderResponseError("model provider response was cut short")
     reply = context_budget.final_reply(reply_message)
     if reply:
         return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
