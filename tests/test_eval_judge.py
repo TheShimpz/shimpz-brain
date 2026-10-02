@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import agent_runtime
 from eval import corpus, judge
 from langchain_core.messages import AIMessage
 from structured_fake import StructuredFakeModel
@@ -48,7 +47,7 @@ class JudgeTests(unittest.TestCase):
         model = StructuredFakeModel(responses=[AIMessage(content=GOOD.model_dump_json())])
         self.assertEqual(judge.judge(model, "openai", _item()), GOOD)
         self.assertEqual(StructuredFakeModel.structured[-1][0], judge.Verdict)
-        with self.assertRaises(agent_runtime.RuntimeContractError):
+        with self.assertRaises(judge.JudgeError):
             judge.judge(StructuredFakeModel(responses=[AIMessage(content="{}")]), "anthropic", _item())
 
     def test_reply_success_requires_every_criterion_and_the_expected_clarification(self):

@@ -80,11 +80,18 @@ def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
     return [SystemMessage(SYSTEM), HumanMessage(json.dumps(body, ensure_ascii=False, indent=1))]
 
 
+class JudgeError(RuntimeError):
+    """The judge request or its response failed; the attempt stays unjudged."""
+
+
 def judge(model: BaseChatModel, provider: str, item: Item) -> Verdict:
     from structured_response import structured_output, structured_value
 
-    result = structured_output(model, provider, Verdict).invoke(prompt(item))
-    return structured_value(result, Verdict, "judge", MAX_RESPONSE_CHARS)
+    try:
+        result = structured_output(model, provider, Verdict).invoke(prompt(item))
+        return structured_value(result, Verdict, "judge", MAX_RESPONSE_CHARS)
+    except Exception as exc:
+        raise JudgeError("judge request failed") from exc
 
 
 def succeeded(verdict: Verdict, item: Item) -> bool:
