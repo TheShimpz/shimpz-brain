@@ -27,9 +27,10 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import corpus, judge, private
+from eval import corpus, judge, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
+from eval.contracts import ASSISTANTS_B
 
 REPORT_SCHEMA = "shimpz.precision-eval.report/v1"
 STATUSES = ("completed", "turn-failed", "brain-error", "budget-stopped")
@@ -47,7 +48,11 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 def judge_item(attempt: Mapping[str, object]) -> judge.Item:
-    return judge.Item(corpus.SCENARIOS_BY_ID[str(attempt["scenario"])], tuple(attempt["ledger"]), str(attempt["reply"]))
+    """The judge input; an experiment arm's exposed Assistants and contract variant replace the scenario's."""
+    scenario = corpus.SCENARIOS_BY_ID[str(attempt["scenario"])]
+    contracts = ASSISTANTS_B if attempt.get("contracts") == "b" else corpus.ASSISTANTS
+    exposed = tuple(contracts[name] for name in attempt.get("exposed") or scenario.assistants)
+    return judge.Item(scenario, tuple(attempt["ledger"]), str(attempt["reply"]), exposed)
 
 
 Judgment = Callable[[judge.Item], judge.Verdict]
@@ -213,6 +218,29 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
             "wall_p95": eval_stats.percentile([float(a["seconds_wall"]) for a, _ in conclusive], 0.95),
         },
         "strata": strata,
+        **_arm_signals(attempts),
+    }
+
+
+def _arm_signals(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """What an engineering arm recorded: working-set recall and size, refusals, and escalations."""
+    if not attempts or "exposed" not in attempts[0]:
+        return {}
+    dispatched = [attempt for attempt in attempts if int(attempt["operations"]) > 0]
+    signals: dict[str, int] = defaultdict(int)
+    for attempt in dispatched:
+        if attempt["escalated"]:
+            signals[str(attempt["escalation_signal"])] += 1
+    return {
+        "arm_signals": {
+            "working_set_recall": sum(bool(a["recall"]) for a in attempts) / len(attempts),
+            "mean_exposed_assistants": sum(len(a["exposed"]) for a in attempts) / len(attempts),
+            "refusals": sum(int(a["refusals"]) for a in attempts),
+            "escalated": sum(signals.values()),
+            "escalation_rate": sum(signals.values()) / len(dispatched) if dispatched else None,
+            "escalation_signals": dict(sorted(signals.items())),
+            "escalation_blocked": sum(bool(a["escalation_blocked"]) for a in attempts),
+        }
     }
 
 
@@ -291,7 +319,7 @@ META_KEYS = frozenset(
             "unsupported_claim",
             "wilson95",
         ),
-        *("workers", "superseded_usd", "calibration_usd"),
+        *("workers", "superseded_usd", "calibration_usd", "comparisons", "escalation_model", "arms_features"),
     }
 )
 ARM_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,15}\Z")
@@ -360,12 +388,16 @@ def build_report(
     judged: Sequence[Mapping[str, object]],
     meta: Mapping[str, object],
     calibration: Mapping[str, object] | None = None,
+    part: str | None = None,
 ) -> dict[str, object]:
     """Group attempts by campaign, provider, model, and arm; pair arms only within one campaign.
 
     Every attempt key (campaign, provider, model, arm, repetition, scenario) must be unique, so two campaigns are
     never merged into one pair. Each arm is paired against the ``baseline_arm`` the metadata names, or the first arm.
     """
+    sets = None if part is None else split.load()
+    if part is not None:
+        attempts = [attempt for attempt in attempts if split.part(str(attempt["scenario"]), sets) == part]
     keys = [attempt_key(attempt) for attempt in attempts]
     if len(keys) != len(set(keys)):
         raise ValueError("duplicate attempt or pairing key")
@@ -392,11 +424,10 @@ def build_report(
         rows = [row for items in arms.values() for row in items]
         baseline = meta.get("baseline_arm") if meta.get("baseline_arm") in arms else sorted(arms)[0]
         identity = {"campaign": campaign, "provider": provider, "model": model}
-        paired.extend(
-            {**identity, **_paired(rows, baseline, candidate, seed)}
-            for candidate in sorted(arms)
-            if candidate != baseline
-        )
+        comparisons = [
+            (base, candidate) for base, candidate in meta.get("comparisons", ()) if {base, candidate} <= set(arms)
+        ] or [(baseline, candidate) for candidate in sorted(arms) if candidate != baseline]
+        paired.extend({**identity, **_paired(rows, base, candidate, seed)} for base, candidate in comparisons)
         if meta.get("identical_arms"):
             pooled.append({**identity, **_pass_k(rows, seed, f"{campaign}:{provider}:{model}:pooled")})
     tiebreaks = [item for item in judged if item["tiebreak"] is not None]
@@ -404,6 +435,7 @@ def build_report(
         "schema": REPORT_SCHEMA,
         "corpus": {"id": corpus.CORPUS_ID, "digest": corpus.digest(), "scenarios": len(corpus.SCENARIOS)},
         "meta": checked_meta(dict(meta)),
+        "split": None if part is None else {"part": part, "templates": sets[part], "digest": split.digest(sets)},
         "decision": grade(calibration, judged, meta),
         "judge_calibration": None if calibration is None else checked_meta(dict(calibration)),
         "runs": runs,
@@ -487,6 +519,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tiebreak-key-file", type=Path)
     parser.add_argument("--cap", type=float, default=0.0, help="hard US dollar cap for judge calls")
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--split", choices=("held-out", "tuning"), help="report only this part of the frozen split")
     args = parser.parse_args(argv)
     try:
         if args.command == "validate":
@@ -495,7 +528,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "report":
             meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
             calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
-            report = build_report(read_jsonl(args.transcript), read_jsonl(args.judged), meta, calibration)
+            report = build_report(read_jsonl(args.transcript), read_jsonl(args.judged), meta, calibration, args.split)
             args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         budget = eval_cost.Budget(args.cap)

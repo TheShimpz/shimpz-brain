@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import model_usage
-from eval import corpus, judge, precision, private
+from eval import corpus, judge, precision, private, split
 from eval import cost as eval_cost
 
 GOOD = judge.Verdict(
@@ -187,6 +187,46 @@ class ReportTests(unittest.TestCase):
         single = precision.build_report(attempts[:1], [], {})
         self.assertEqual((single["paired"], single["runs"][0]["mean_rounds"]), ([], 2.0))
         self.assertIsNone(precision._group([], "s", "empty")["mean_rounds"])
+
+
+class ArmReportTests(unittest.TestCase):
+    def test_arm_attempts_report_signals_comparisons_and_one_split_part(self):
+        attempts, judged = [], []
+        arm_fields = {"contracts": "b", "refusals": 1, "escalation_blocked": False}
+        for scenario in corpus.SCENARIOS[:32]:
+            for arm, escalated in (("A", False), ("B", False), ("E", True)):
+                attempt = {
+                    **_attempt(scenario.id, arm),
+                    **arm_fields,
+                    "exposed": list(scenario.template.needed),
+                    "recall": True,
+                    "escalated": escalated,
+                    "escalation_signal": "empty-lookup" if escalated else None,
+                }
+                attempts.append(attempt)
+                judged.append(_decision(attempt))
+        meta = {"seed": "s", "comparisons": [["A", "B"], ["B", "E"], ["A", "E"], ["A", "Z"]]}
+        report = precision.build_report(attempts, judged, meta, None, "held-out")
+        self.assertEqual(report["split"]["part"], "held-out")
+        held = split.load()["held-out"]
+        self.assertTrue(all(run["successes"] <= run["conclusive"] for run in report["runs"]))
+        self.assertEqual(
+            sum(run["conclusive"] for run in report["runs"]),
+            3 * sum(scenario.template.id in held for scenario in corpus.SCENARIOS[:32]),
+        )
+        self.assertEqual(
+            [(p["baseline"], p["candidate"]) for p in report["paired"]], [("A", "B"), ("B", "E"), ("A", "E")]
+        )
+        arm = next(run for run in report["runs"] if run["arm"] == "E")["arm_signals"]
+        self.assertEqual(
+            (arm["escalation_rate"], arm["escalation_signals"], arm["working_set_recall"]),
+            (1.0, {"empty-lookup": arm["escalated"]}, 1.0),
+        )
+        item = precision.judge_item({**attempts[0], "exposed": ["dns"]})
+        self.assertEqual([a.id for a in item.assistants], ["dns"])
+        self.assertIn("get-record", [a.id for a in item.assistants[0].actions])
+        self.assertNotIn("arm_signals", precision._group([(_attempt("dns-create.en"), "success")], "s", "plain"))
+        self.assertIsNone(precision._arm_signals([{**attempts[0], "operations": 0}])["arm_signals"]["escalation_rate"])
 
 
 class GradeTests(unittest.TestCase):

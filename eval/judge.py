@@ -20,6 +20,7 @@ from pathlib import Path
 
 from eval import corpus
 from eval import stats as eval_stats
+from eval.fixtures import Assistant
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
@@ -75,6 +76,8 @@ class Item:
     scenario: corpus.Scenario
     ledger: tuple[Mapping[str, object], ...]
     reply: str
+    # The Assistants the attempt exposed, when an experiment arm changed them; otherwise the scenario's.
+    assistants: tuple[Assistant, ...] = ()
 
 
 def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
@@ -88,7 +91,7 @@ def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
                 "description": assistant.genesis,
                 "actions": [f"{action.id}: {action.summary}" for action in assistant.actions],
             }
-            for assistant in (corpus.ASSISTANTS[name] for name in item.scenario.assistants)
+            for assistant in item.assistants or tuple(corpus.ASSISTANTS[name] for name in item.scenario.assistants)
         ],
         "reference_outcome": item.scenario.template.reference,
         "user_must_be_asked_for_missing_information": item.scenario.template.expect_clarification,
