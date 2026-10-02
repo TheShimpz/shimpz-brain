@@ -59,6 +59,7 @@ def _attempt(scenario: str, arm: str = "a", repetition: int = 0, status: str = "
 
 def _decision(attempt, final=GOOD, tiebreak=None):
     return {
+        "judge_identity": judge.identity(),
         "key": precision.attempt_key(attempt),
         "primary": GOOD.model_dump(),
         "tiebreak": None if tiebreak is None else tiebreak.model_dump(),
@@ -188,6 +189,25 @@ class ReportTests(unittest.TestCase):
         self.assertIsNone(precision._group([], "s", "empty")["mean_rounds"])
 
 
+class GradeTests(unittest.TestCase):
+    def test_only_an_admitted_calibration_of_the_same_judge_supports_a_decision(self):
+        current = judge.identity()
+        admitted = {"judge_identity": current, "primary": {"admitted": True}, "tiebreak": {"admitted": True}}
+        verdicts = [{"judge_identity": current}]
+        self.assertEqual(precision.grade(admitted, verdicts, {})["grade"], "decision")
+        cases = {
+            "no judge calibration": (None, verdicts, {}),
+            "the calibration is of another judge": ({**admitted, "judge_identity": "sha256:0"}, verdicts, {}),
+            "the tiebreak judge is not admitted": ({**admitted, "tiebreak": {"admitted": False}}, verdicts, {}),
+            "a verdict is from another judge": (admitted, [{"judge_identity": "sha256:0"}], {}),
+            "the campaign is labelled exploratory": (admitted, verdicts, {"label": "exploratory"}),
+        }
+        for reason, arguments in cases.items():
+            graded = precision.grade(*arguments)
+            self.assertEqual((graded["grade"], graded["reasons"]), ("exploratory", [reason]))
+        self.assertNotEqual(judge.identity(), judge.identity(Path(judge.__file__)))
+
+
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
@@ -235,7 +255,11 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(
                 precision.main([*arguments, "--meta", str(root / "meta.json"), "--calibration", str(calibration)]), 0
             )
-            self.assertIn("judge_calibration", json.loads(report.read_text(encoding="utf-8"))["meta"])
+            written = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(written["judge_calibration"]["judge_identity"], judge.identity())
+            # The mocked judges call every reply good, so the sample does not admit them.
+            self.assertEqual(written["decision"]["grade"], "exploratory")
+            self.assertIn("the primary judge is not admitted", written["decision"]["reasons"])
             self.assertEqual(precision.main(arguments), 0)
             with mock.patch("sys.stderr"):
                 self.assertEqual(

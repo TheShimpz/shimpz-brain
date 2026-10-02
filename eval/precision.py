@@ -90,6 +90,7 @@ def judge_attempts(
             "primary": decision.primary.model_dump(),
             "tiebreak": None if decision.tiebreak is None else decision.tiebreak.model_dump(),
             "final": decision.final.model_dump(),
+            "judge_identity": judge.identity(),
         }
 
     completed = [attempt for attempt in attempts if attempt["status"] == "completed"]
@@ -99,7 +100,10 @@ def judge_attempts(
 
 def calibrate(primary: Judgment, tiebreak: Judgment) -> dict[str, object]:
     items = judge.calibration_items()
-    summary: dict[str, object] = {"adjudication": "author-adjudicated; awaits owner review"}
+    summary: dict[str, object] = {
+        "adjudication": "author-adjudicated; awaits owner review",
+        "judge_identity": judge.identity(),
+    }
     for name, verdict in (("primary", primary), ("tiebreak", tiebreak)):
         results = []
         for _item_id, item, expected in items:
@@ -238,10 +242,34 @@ def _paired(
     }
 
 
+def grade(
+    calibration: Mapping[str, object] | None, judged: Sequence[Mapping[str, object]], meta: Mapping[str, object]
+) -> dict[str, object]:
+    """A report supports a decision only with an admitted calibration of the very judge that produced every verdict."""
+    current = judge.identity()
+    reasons = []
+    if calibration is None:
+        reasons.append("no judge calibration")
+    else:
+        if calibration.get("judge_identity") != current:
+            reasons.append("the calibration is of another judge")
+        reasons.extend(
+            f"the {name} judge is not admitted"
+            for name in ("primary", "tiebreak")
+            if not (calibration.get(name) or {}).get("admitted")
+        )
+    if any(item.get("judge_identity") != current for item in judged):
+        reasons.append("a verdict is from another judge")
+    if meta.get("label") == "exploratory":
+        reasons.append("the campaign is labelled exploratory")
+    return {"grade": "exploratory" if reasons else "decision", "reasons": reasons, "judge_identity": current}
+
+
 def build_report(
     attempts: Sequence[Mapping[str, object]],
     judged: Sequence[Mapping[str, object]],
     meta: Mapping[str, object],
+    calibration: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Group attempts by campaign, provider, model, and arm; pair arms only within one campaign.
 
@@ -286,6 +314,8 @@ def build_report(
         "schema": REPORT_SCHEMA,
         "corpus": {"id": corpus.CORPUS_ID, "digest": corpus.digest(), "scenarios": len(corpus.SCENARIOS)},
         "meta": dict(meta),
+        "decision": grade(calibration, judged, meta),
+        "judge_calibration": None if calibration is None else dict(calibration),
         "runs": runs,
         "paired": paired,
         "pooled_identical_arms": pooled,
@@ -374,9 +404,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "report":
             meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
-            if args.calibration:
-                meta["judge_calibration"] = json.loads(args.calibration.read_text(encoding="utf-8"))
-            report = build_report(read_jsonl(args.transcript), read_jsonl(args.judged), meta)
+            calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
+            report = build_report(read_jsonl(args.transcript), read_jsonl(args.judged), meta, calibration)
             args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         budget = eval_cost.Budget(args.cap)

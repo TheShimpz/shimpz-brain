@@ -12,6 +12,7 @@ criterion with Wilson 95% intervals.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -32,6 +33,8 @@ JUDGE_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 # Every judge request is bounded: this output limit, low effort, and no SDK retries, so one judgment is exactly one
 # provider request whose worst case the caller can reserve.
 MAX_OUTPUT_TOKENS = 4_000
+# Bumped by hand with any judge change; the identity below also fingerprints the prompt, schema, models, and sample.
+JUDGE_VERSION = "v3"
 TIMEOUT_SECONDS = 60.0
 
 SYSTEM = """You grade one final reply of a chat assistant that runs software Actions for a user.
@@ -96,6 +99,19 @@ def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
         "final_reply": item.reply,
     }
     return [SystemMessage(SYSTEM), HumanMessage(json.dumps(body, ensure_ascii=False, indent=1))]
+
+
+def identity(calibration: Path = CALIBRATION) -> str:
+    """The fingerprint a calibration and every verdict must share for a report to support a decision."""
+    body = {
+        "version": JUDGE_VERSION,
+        "system": SYSTEM,
+        "schema": Verdict.model_json_schema(),
+        "models": JUDGE_MODELS,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+        "calibration": hashlib.sha256(calibration.read_bytes()).hexdigest(),
+    }
+    return "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
 def judge_model(provider: str, api_key: str) -> BaseChatModel:
