@@ -297,6 +297,8 @@ META_KEYS = frozenset(
 ARM_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,15}\Z")
 SAFE_TEXT_RE = re.compile(r"[A-Za-z0-9 ._:;/()+,=*#-]{0,160}\Z")
 FINGERPRINT_RE = re.compile(r"(sha256:[0-9a-f]{64}|[0-9a-f]{40})\Z")
+# A provider key prefix at a word start; "task-create" is not one.
+CREDENTIAL_RE = re.compile(r"(?<![A-Za-z0-9])sk-")
 MAX_META_DEPTH = 5
 
 
@@ -319,7 +321,7 @@ def checked_meta(value: object, depth: int = 0, parent: str = "") -> object:
     if isinstance(value, str):
         unbroken = max((len(part) for part in value.split()), default=0)
         if (
-            "sk-" in value
+            CREDENTIAL_RE.search(value)
             or SAFE_TEXT_RE.fullmatch(value) is None
             or (unbroken > 40 and not FINGERPRINT_RE.fullmatch(value))
         ):

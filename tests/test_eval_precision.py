@@ -212,6 +212,7 @@ class MetaTests(unittest.TestCase):
     def test_metadata_is_a_closed_vocabulary_of_numbers_and_safe_text(self):
         meta = {
             "seed": "pilot-2026-10-02",
+            "scenario_patterns": "task-create.en",
             "campaigns": [{"efforts": {"low": "low", "high": "high"}, "commits": {"brain": "a" * 40}}],
             "corpus": {"digest": "sha256:" + "0" * 64, "scenarios": 120},
             "budget": {"spent_usd": 1.5, "stopped_by_cap": False, "failed": None},
