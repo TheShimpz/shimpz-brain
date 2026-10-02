@@ -1,0 +1,26 @@
+{
+ "corpus": "precision-v2",
+ "corpus_digest": "sha256:acc8669d68634ff7c91108f41a602e1f5cc1cb03fa0af575c75c7eb1e6d26399",
+ "digest": "sha256:17b3ba98c4427e733d8e3c71d557f6277d98e87a74e0b3e79f569d1aeed9b558",
+ "frozen": "2026-10-02, before any engineering-arm work",
+ "held-out": [
+  "dns-bulk",
+  "dns-clarify",
+  "dns-update",
+  "event-create",
+  "message-direct",
+  "out-of-scope",
+  "status-migrate",
+  "task-complete"
+ ],
+ "schema": "shimpz.precision-eval.split/v1",
+ "tuning": [
+  "dns-create",
+  "dns-delete",
+  "dns-question",
+  "meeting-message",
+  "message-clarify",
+  "task-bulk-complete",
+  "task-create"
+ ]
+}
