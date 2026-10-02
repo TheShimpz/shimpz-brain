@@ -75,7 +75,17 @@ def _fqdn(name: object, zone: str) -> str:
 class World:
     """One scenario's simulated Assistants and their state; every Action goes through ``invoke``."""
 
-    def __init__(self) -> None:
+    def __init__(self, variant: str = "a") -> None:
+        """``variant`` "b" serves the arm-B contracts of ``eval.contracts`` over the same state (ADR-0094)."""
+        if variant not in {"a", "b"}:
+            raise ValueError("unknown contract variant")
+        if variant == "b":
+            from eval.contracts import ASSISTANTS_B
+
+            self.assistants = ASSISTANTS_B
+        else:
+            self.assistants = ASSISTANTS
+        self.variant = variant
         self.records = {
             item[0]: {"zone": item[1], "type": item[2], "name": item[3], "content": item[4]} for item in RECORDS
         }
@@ -107,13 +117,14 @@ class World:
             entry["failed"] = exc.code
             raise
         entry["result"] = copy.deepcopy(result)
-        if effect is not None:
+        # An arm-B create that found the record already there changed nothing.
+        if effect is not None and result.get("created") is not False:
             entry["effect"] = effect
         return result
 
     def _effect(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> str | None:
         """The snapshot key a successful write changes, read before it runs; None for a lookup."""
-        assistant = ASSISTANTS.get(assistant_id)
+        assistant = self.assistants.get(assistant_id)
         action = None if assistant is None else next((item for item in assistant.actions if item.id == action_id), None)
         if action is None or not action.writes:
             return None
@@ -134,7 +145,7 @@ class World:
         }.get(action_id)
 
     def _dispatch(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
-        assistant = ASSISTANTS.get(assistant_id)
+        assistant = self.assistants.get(assistant_id)
         action = None if assistant is None else next((item for item in assistant.actions if item.id == action_id), None)
         if action is None:
             raise ActionFailedError("undeclared-action")
@@ -168,16 +179,24 @@ class World:
                 if record["zone"] == zone_id
                 and (name is None or record["name"] == name)
                 and arguments.get("type") in {None, record["type"]}
+                and arguments.get("content") in {None, record["content"]}
             ]
         }
 
     def _dns_create_record(self, arguments: Mapping[str, object]) -> dict[str, object]:
         zone_id = self._zone(arguments)
         name = _fqdn(arguments["name"], ZONES[zone_id])
-        if any(
-            item["zone"] == zone_id and item["name"] == name and item["type"] == arguments["type"]
-            for item in self.records.values()
-        ):
+        existing = next(
+            (
+                record_id
+                for record_id, item in sorted(self.records.items())
+                if item["zone"] == zone_id and item["name"] == name and item["type"] == arguments["type"]
+            ),
+            None,
+        )
+        if existing is not None and self.variant == "b":
+            return {"created": False, "record": self._record_view(existing)}
+        if existing is not None:
             raise ActionFailedError("record-exists")
         record_id = self._id("rc")
         self.records[record_id] = {
@@ -195,6 +214,9 @@ class World:
             raise ActionFailedError("record-not-found")
         return str(record_id)
 
+    def _dns_get_record(self, arguments: Mapping[str, object]) -> dict[str, object]:
+        return {"record": self._record_view(self._existing(arguments))}
+
     def _dns_update_record(self, arguments: Mapping[str, object]) -> dict[str, object]:
         record_id = self._existing(arguments)
         self.records[record_id]["content"] = str(arguments["content"])
@@ -208,6 +230,7 @@ class World:
     def _tasks_list_tasks(self, arguments: Mapping[str, object]) -> dict[str, object]:
         status = arguments.get("status", "open")
         tag = arguments.get("tag")
+        words = str(arguments.get("query", "")).casefold().split()
         return {
             "tasks": [
                 {
@@ -219,8 +242,15 @@ class World:
                 for task_id, task in sorted(self.tasks.items())
                 if status == "all" or (status == "done") == task["done"]
                 if tag is None or str(tag).lower() in task["tags"]
+                if all(word in task["title"].casefold() for word in words)
             ]
         }
+
+    def _tasks_get_task(self, arguments: Mapping[str, object]) -> dict[str, object]:
+        task = self.tasks.get(str(arguments.get("task_id")))
+        if task is None:
+            raise ActionFailedError("task-not-found")
+        return {"task": {"id": arguments["task_id"], **task, "status": "done" if task["done"] else "open"}}
 
     def _tasks_create_task(self, arguments: Mapping[str, object]) -> dict[str, object]:
         task_id = self._id("tk")

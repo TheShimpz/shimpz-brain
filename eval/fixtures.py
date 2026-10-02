@@ -29,6 +29,10 @@ class Action:
     summary: str
     input_schema: Mapping[str, object]
     writes: bool
+    # Experiment-only metadata of the arm-B contracts (eval.contracts): optional lookup filters whose values need
+    # provenance, and declared value kinds, such as a hostname, that the arm-C checks enforce.
+    filters: tuple[str, ...] = ()
+    kinds: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
