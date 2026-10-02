@@ -27,8 +27,8 @@ class BrainEgressHandlerTests(unittest.TestCase):
         *,
         allowed_hosts: frozenset[str] = frozenset({"api.openai.com"}),
         client_host: str = "10.0.0.2",
-        resolved: tuple[int, tuple] | None | object = mock.DEFAULT,
-        upstream: mock.Mock | None = None,
+        resolved: tuple[tuple[int, tuple], ...] | None | object = mock.DEFAULT,
+        upstream: mock.Mock | list[object] | None = None,
         tunnel: mock.Mock | None = None,
     ) -> tuple[bytes, mock.Mock]:
         client, proxy = socket.socketpair()
@@ -44,7 +44,9 @@ class BrainEgressHandlerTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(app.audit, "log", audit_log))
             if resolved is not mock.DEFAULT:
                 stack.enter_context(mock.patch.object(app, "_resolve_public", return_value=resolved))
-            if upstream is not None:
+            if isinstance(upstream, list):
+                stack.enter_context(mock.patch.object(app.socket, "socket", side_effect=upstream))
+            elif upstream is not None:
                 stack.enter_context(mock.patch.object(app.socket, "socket", return_value=upstream))
             if tunnel is not None:
                 stack.enter_context(mock.patch.object(app.Handler, "_tunnel", tunnel))
@@ -83,10 +85,11 @@ class BrainEgressHandlerTests(unittest.TestCase):
         upstream.connect.side_effect = OSError("synthetic connect failure")
         response, audit_log = self._exchange(
             request,
-            resolved=(socket.AF_INET, ("1.1.1.1", 443)),
+            resolved=((socket.AF_INET, ("1.1.1.1", 443)),),
             upstream=upstream,
         )
         self.assertTrue(response.startswith(b"HTTP/1.1 502"))
+        upstream.close.assert_called_once_with()
         self.assertEqual(audit_log.call_args.kwargs["result"], "error")
         self.assertNotIn("1.1.1.1", audit_log.call_args.args[1])
 
@@ -96,15 +99,99 @@ class BrainEgressHandlerTests(unittest.TestCase):
         tunnel = mock.Mock()
         response, audit_log = self._exchange(
             request,
-            resolved=(socket.AF_INET6, ("2606:4700::1111", 443, 0, 0)),
+            resolved=((socket.AF_INET6, ("2606:4700::1111", 443, 0, 0)),),
             upstream=upstream,
             tunnel=tunnel,
         )
 
         self.assertTrue(response.startswith(b"HTTP/1.1 200"))
         upstream.connect.assert_called_once_with(("2606:4700::1111", 443, 0, 0))
-        audit_log.assert_called_once_with("connect", "api.openai.com:443", result="ok")
+        audit_log.assert_called_once_with("connect", "api.openai.com:443", result="ok", address="2606:4700::1111")
         tunnel.assert_called_once()
+
+    def test_handler_falls_through_to_the_next_verified_address(self) -> None:
+        refused, accepted = mock.Mock(), mock.Mock()
+        refused.connect.side_effect = ConnectionRefusedError("refused")
+        tunnel = mock.Mock()
+        resolved = ((socket.AF_INET, ("1.1.1.1", 443)), (socket.AF_INET, ("1.0.0.1", 443)))
+        response, audit_log = self._exchange(
+            b"CONNECT api.openai.com:443 HTTP/1.1\r\n\r\n",
+            resolved=resolved,
+            upstream=[refused, accepted],
+            tunnel=tunnel,
+        )
+
+        self.assertTrue(response.startswith(b"HTTP/1.1 200"))
+        refused.connect.assert_called_once_with(("1.1.1.1", 443))
+        refused.close.assert_called_once_with()
+        accepted.connect.assert_called_once_with(("1.0.0.1", 443))
+        audit_log.assert_called_once_with("connect", "api.openai.com:443", result="ok", address="1.0.0.1")
+        self.assertIs(tunnel.call_args.args[1], accepted)
+
+    def test_handler_reports_one_error_when_every_verified_address_refuses(self) -> None:
+        upstreams = [mock.Mock(), mock.Mock()]
+        for upstream in upstreams:
+            upstream.connect.side_effect = ConnectionRefusedError("synthetic refusal")
+        resolved = (
+            (socket.AF_INET6, ("2606:4700::1111", 443, 0, 0)),
+            (socket.AF_INET, ("1.1.1.1", 443)),
+            (socket.AF_INET, ("1.0.0.1", 443)),
+        )
+        response, audit_log = self._exchange(
+            b"CONNECT api.openai.com:443 HTTP/1.1\r\n\r\n",
+            resolved=resolved,
+            upstream=[OSError("address family unavailable"), *upstreams],
+        )
+
+        self.assertTrue(response.startswith(b"HTTP/1.1 502"))
+        audit_log.assert_called_once_with("connect", "api.openai.com:443", result="error", reason="synthetic refusal")
+        for upstream in upstreams:
+            upstream.close.assert_called_once_with()
+
+    def test_handler_refuses_a_mixed_answer_before_any_connection(self) -> None:
+        answers = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.1.1.1", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.5", 443)),
+        ]
+        constructor = mock.Mock()
+        with mock.patch.object(app.socket, "getaddrinfo", return_value=answers):
+            response, audit_log = self._exchange(b"CONNECT api.openai.com:443 HTTP/1.1\r\n\r\n", upstream=[constructor])
+
+        self.assertTrue(response.startswith(b"HTTP/1.1 403"))
+        self.assertEqual(audit_log.call_args.kwargs["reason"], "internal or unresolvable destination")
+        self.assertEqual(constructor.method_calls, [])
+
+    def test_connection_attempts_share_one_total_deadline(self) -> None:
+        slow, unused = mock.Mock(), mock.Mock()
+        slow.connect.side_effect = TimeoutError("timed out")
+        clock = iter([100.0, 100.0, 100.0 + app.CONNECT_TIMEOUT])
+        resolved = ((socket.AF_INET, ("1.1.1.1", 443)), (socket.AF_INET, ("1.0.0.1", 443)))
+        with (
+            mock.patch.object(app.time, "monotonic", side_effect=lambda: next(clock)),
+            mock.patch.object(app.socket, "socket", side_effect=[slow, unused]) as constructor,
+            self.assertRaisesRegex(TimeoutError, "timed out"),
+        ):
+            app._connect_first(resolved)
+
+        slow.settimeout.assert_called_once_with(app.CONNECT_TIMEOUT)
+        constructor.assert_called_once_with(socket.AF_INET, socket.SOCK_STREAM)
+        unused.connect.assert_not_called()
+
+    def test_a_refused_first_address_falls_through_to_a_live_second_address(self) -> None:
+        listener = socket.create_server(("127.0.0.1", 0))
+        self.addCleanup(listener.close)
+        closed = socket.create_server(("127.0.0.1", 0))
+        refused_port = closed.getsockname()[1]
+        closed.close()
+        live = listener.getsockname()
+
+        upstream, address = app._connect_first(((socket.AF_INET, ("127.0.0.1", refused_port)), (socket.AF_INET, live)))
+        self.addCleanup(upstream.close)
+        accepted, _peer = listener.accept()
+        accepted.close()
+
+        self.assertEqual(upstream.getpeername(), live)
+        self.assertEqual(address, "127.0.0.1")
 
     def test_loopback_probe_is_a_distinct_non_warning_denial(self) -> None:
         response, audit_log = self._exchange(
@@ -166,6 +253,18 @@ class BrainEgressHandlerTests(unittest.TestCase):
             self.assertIsNone(app._resolve_public("api.openai.com", 443))
         with mock.patch.object(app.socket, "getaddrinfo", return_value=[]):
             self.assertIsNone(app._resolve_public("api.openai.com", 443))
+        with mock.patch.object(
+            app.socket,
+            "getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.1.1.1", 443)),
+                (socket.AF_INET6, socket.SOCK_STREAM, 0, "", ("2606:4700::1111", 443, 0, 0)),
+            ],
+        ):
+            self.assertEqual(
+                app._resolve_public("api.openai.com", 443),
+                ((socket.AF_INET, ("1.1.1.1", 443)), (socket.AF_INET6, ("2606:4700::1111", 443, 0, 0))),
+            )
 
     def test_tunnel_forwards_and_closes_both_sides(self) -> None:
         left = mock.Mock()

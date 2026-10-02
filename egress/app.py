@@ -67,13 +67,13 @@ def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
     return canonical in allowed_hosts
 
 
-def _resolve_public(host: str, port: int) -> tuple[int, tuple] | None:
-    """Resolve host:port to a verified-PUBLIC address, or None if it resolves to an internal IP.
+def _resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] | None:
+    """Resolve host:port to its verified-PUBLIC addresses, or None if any resolves to an internal IP.
 
     Defense in depth for the authorized Brain caller. The proxy is multi-homed across its private
     Brain network and outbound network. A CONNECT to an internal name or literal non-global address
     is refused, and mixed public/private answers fail closed. We connect to
-    the exact verified address (never a re-resolve), closing resolve→connect TOCTOU. Network separation,
+    the exact verified addresses (never a re-resolve), closing resolve→connect TOCTOU. Network separation,
     not this destination guard, is what prevents other domains from reaching the Brain proxy.
     """
     try:
@@ -89,7 +89,34 @@ def _resolve_public(host: str, port: int) -> tuple[int, tuple] | None:
         if not addr.is_global:
             return None  # any internal resolution → refuse the whole CONNECT (no partial trust)
         public.append((family, sockaddr))
-    return public[0] if public else None
+    return tuple(public) if public else None
+
+
+def _connect_first(addresses: tuple[tuple[int, tuple], ...]) -> tuple[socket.socket, str]:
+    """Connect to the first reachable verified address, in resolver order, under one total deadline.
+
+    Every candidate was already validated public, so a refused or unreachable endpoint falls through to
+    the next admitted one without widening trust. The deadline is shared, never multiplied per address.
+    Raises the last connection error when no address connects before the deadline.
+    """
+    deadline = time.monotonic() + CONNECT_TIMEOUT
+    failure: OSError = TimeoutError("upstream connect deadline exceeded")
+    for family, sockaddr in addresses:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        upstream: socket.socket | None = None
+        try:
+            upstream = socket.socket(family, socket.SOCK_STREAM)
+            upstream.settimeout(remaining)
+            upstream.connect(sockaddr)  # the EXACT verified-public address, not a re-resolve
+        except OSError as exc:
+            if upstream is not None:
+                upstream.close()
+            failure = exc
+            continue
+        return upstream, sockaddr[0]
+    raise failure
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -130,16 +157,13 @@ class Handler(socketserver.BaseRequestHandler):
                 **src,
             )
             return
-        family, sockaddr = resolved
         try:
-            upstream = socket.socket(family, socket.SOCK_STREAM)
-            upstream.settimeout(CONNECT_TIMEOUT)
-            upstream.connect(sockaddr)  # the EXACT verified-public address, not a re-resolve
+            upstream, address = _connect_first(resolved)
         except OSError as exc:
             self._reply(cli, 502)
             audit.log("connect", f"{host}:{port}", result="error", reason=str(exc))
             return
-        audit.log("connect", f"{host}:{port}", result="ok")
+        audit.log("connect", f"{host}:{port}", result="ok", address=address)
         self._reply(cli, 200)
         self._tunnel(cli, upstream)
 
