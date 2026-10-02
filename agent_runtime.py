@@ -307,7 +307,9 @@ def provider_model(
     if config.provider == "openai":
         from langchain_openai import ChatOpenAI
 
-        openai = {**common, "use_responses_api": True}
+        # The owner keeps no conversation on OpenAI's side: every Responses call is unstored, and reasoning is carried
+        # between tool calls as encrypted content the adapter replays.
+        openai = {**common, "use_responses_api": True, "store": False, "include": ["reasoning.encrypted_content"]}
         if decision:
             openai["reasoning_effort"] = "low"
         elif config.effort is not None:
