@@ -4,9 +4,11 @@ Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.journeys`` from 
 without a provider. Add ``--key-file`` (and optionally ``--provider``/``--model``/``--budget``) to drive each scenario's
 requests through the real ``AgentRuntime`` against deterministic simulated Assistants: once without skills and once
 learning a structure-only skill from every completed run, exactly as Team does, whether or not the final zone state
-is right. The budget in US dollars (default 0.10) is a soft cap: no request starts once it is reached, but the
-request running when it is crossed finishes. Output contains only scenario ids, per-request outcomes, repeated
-writes, Action rounds, model calls, tokens, estimated cost, and seconds; never prompts, replies, or Action input.
+is right. The budget in US dollars (default 0.10) is a cap enforced before dispatch: each request first reserves a
+conservative bound (one large call, or three times the dearest request so far), and none starts when the reservation
+would cross the cap; a request already running finishes and an overrun of its reservation is counted. Output contains
+only scenario ids, per-request outcomes, repeated writes, Action rounds, model calls, tokens, estimated cost, cost per
+attempted and per successful request, and seconds; never prompts, replies, or Action input.
 
 Cost is the cache-aware estimate of ``eval.cost``, not billing; usage a provider did not report is labelled unknown.
 """
@@ -36,6 +38,8 @@ MAX_ROUNDS = 8
 # "with-skills" learns every executed Action as Team does today; "with-clean-skills" drops the ones that failed.
 MODES = ("without-skills", "with-skills", "with-clean-skills")
 TURN_EFFORT = "low"
+# The smallest reservation one request makes before it starts: one call of this many input and output tokens.
+REQUEST_RESERVE_TOKENS = (32_000, 4_000)
 FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 ZONE_ID = "0123456789abcdef0123456789abcdef"
 # Blind rules: every name in the zone already exists and is updated only by id; names must be absolute.
@@ -422,7 +426,9 @@ def evaluate(runtime, provider, budget: float, only: str | None = None, seed: st
 
     A fixed order would hand every later mode the provider cache the earlier ones warmed.
     """
-    spent = 0.0
+    guard = eval_cost.Budget(budget)
+    floor = eval_cost.call_bound(provider.model, *REQUEST_RESERVE_TOKENS)
+    dearest = 0.0
     report: dict[str, object] = {"seed": seed}
     for scenario in SCENARIOS:
         if only is not None and scenario.id != only:
@@ -432,21 +438,28 @@ def evaluate(runtime, provider, budget: float, only: str | None = None, seed: st
         for mode in order:
             skills: list[dict[str, object]] = []
             runs = []
+            costs: list[eval_cost.Cost] = []
             for index, request in enumerate(scenario.requests):
-                if spent >= budget:
+                try:
+                    reservation = guard.reserve(max(floor, 3 * dearest))
+                except eval_cost.BudgetExhaustedError:
                     report["stopped"] = "budget"
+                    report["budget"] = guard.summary()
                     return report
                 outcome = run_request(
                     runtime, provider, scenario, request, f"journey:{scenario.id}:{mode}:{index}", skills
                 )
-                spent += outcome.usd
+                costs.append(eval_cost.Cost(outcome.usd, outcome.usage_known))
+                guard.settle(reservation, costs[-1])
+                dearest = max(dearest, outcome.usd)
                 # Team learns from every completed turn, right or wrong; only the score knows which was right.
                 if mode != "without-skills" and outcome.ended != "round-limit":
                     kept = [step for step in outcome.steps if mode == "with-skills" or not step[3]]
                     skills = remember(skills, learned_skill(scenario.assistants, [list(step[:3]) for step in kept]))
                 runs.append({key: value for key, value in dataclasses.asdict(outcome).items() if key != "steps"})
             report[f"{scenario.id}/{mode}"] = runs
-    report["usd_spent"] = round(spent, 6)
+            report[f"{scenario.id}/{mode}/cost"] = eval_cost.per_task(costs, sum(run["succeeded"] for run in runs))
+    report["budget"] = guard.summary()
     return report
 
 

@@ -168,6 +168,22 @@ class JourneyEvalTests(unittest.TestCase):
         self.assertEqual((stopped["stopped"], stopped["seed"]), ("budget", "journeys"))
         self.assertEqual(journeys.evaluate(_runtime(), PROVIDER, 0.0, "bulk-records", "s")["stopped"], "budget")
 
+    def test_each_request_reserves_before_dispatch_and_unknown_usage_keeps_its_reservation(self):
+        floor = journeys.eval_cost.call_bound("gpt-6-luna", *journeys.REQUEST_RESERVE_TOKENS)
+        runtime = _runtime(AIMessage(content="Done."))
+        report = journeys.evaluate(runtime, PROVIDER, 100 * floor, "dns-update", "s")
+        self.assertNotIn("stopped", report)
+        for mode in journeys.MODES:
+            summary = report[f"dns-update/{mode}/cost"]
+            # The fake model reports no usage, so every request's cost is unknown rather than zero.
+            self.assertEqual((summary["attempts"], summary["unknown_usage_attempts"]), (3, 3))
+            self.assertFalse(summary["usd_known"])
+        self.assertEqual(report["budget"]["unknown_settlements"], 9)
+        self.assertAlmostEqual(report["budget"]["spent_usd"], round(9 * floor, 6))
+        stopped = journeys.evaluate(_runtime(AIMessage(content="Done.")), PROVIDER, 2.5 * floor, "dns-update", "s")
+        self.assertEqual(stopped["stopped"], "budget")
+        self.assertEqual(stopped["budget"]["unknown_settlements"], 2)
+
     def test_mode_order_is_random_per_scenario_and_recorded(self):
         orders = {
             tuple(journeys.evaluate(_runtime(), PROVIDER, 0.0, "dns-update", f"seed-{index}")["dns-update/order"])
