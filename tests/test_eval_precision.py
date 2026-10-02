@@ -246,22 +246,47 @@ class LargeApiReportTests(unittest.TestCase):
 
 
 class GradeTests(unittest.TestCase):
-    def test_only_an_admitted_calibration_of_the_same_judge_supports_a_decision(self):
+    def test_only_a_blind_owner_calibration_of_the_same_judge_supports_a_decision(self):
         current = judge.identity()
-        admitted = {"judge_identity": current, "primary": {"admitted": True}, "tiebreak": {"admitted": True}}
+        owner = {"adjudication": "owner", "blind": True, "judge_identity": current}
+        owner |= {"primary": {"admitted": True}, "tiebreak": {"admitted": True}}
         verdicts = [{"judge_identity": current}]
-        self.assertEqual(precision.grade(admitted, verdicts, {})["grade"], "decision")
+        self.assertEqual(precision.grade(owner, verdicts, {})["grade"], "decision")
         cases = {
-            "no judge calibration": (None, verdicts, {}),
-            "the calibration is of another judge": ({**admitted, "judge_identity": "sha256:0"}, verdicts, {}),
-            "the tiebreak judge is not admitted": ({**admitted, "tiebreak": {"admitted": False}}, verdicts, {}),
-            "a verdict is from another judge": (admitted, [{"judge_identity": "sha256:0"}], {}),
-            "the campaign is labelled exploratory": (admitted, verdicts, {"label": "exploratory"}),
+            "no-calibration": (None, verdicts, {}),
+            "no-blind-owner-labels": ({**owner, "adjudication": "author"}, verdicts, {}),
+            "calibration-of-another-judge": ({**owner, "judge_identity": "sha256:0"}, verdicts, {}),
+            "tiebreak-not-admitted": ({**owner, "tiebreak": {"admitted": False}}, verdicts, {}),
+            "verdict-of-another-judge": (owner, [{"judge_identity": "sha256:0"}], {}),
+            "labelled-exploratory": (owner, verdicts, {"label": "exploratory"}),
         }
         for reason, arguments in cases.items():
             graded = precision.grade(*arguments)
             self.assertEqual((graded["grade"], graded["reasons"]), ("exploratory", [reason]))
+        self.assertEqual(precision.grade({**owner, "blind": False}, verdicts, {})["reasons"], ["no-blind-owner-labels"])
         self.assertNotEqual(judge.identity(), judge.identity(Path(judge.__file__)))
+        regraded = precision.regrade(
+            {"decision": {"grade": "decision"}, "judge_calibration": {**owner, "adjudication": "author"}}
+        )
+        self.assertEqual(regraded["decision"]["reasons"], ["no-blind-owner-labels"])
+
+    def test_calibration_uses_owner_labels_only_when_collected_blind_against_the_frozen_judge(self):
+        labels = dict.fromkeys(judge.CRITERIA, True)
+        owner_items = [(item_id, item, labels) for item_id, item, _ in judge.heldout_items()]
+        collection = {"blind_to_judge_verdicts": True, "frozen_judge_identity": judge.identity()}
+        good = judge.Verdict(**labels, confident=True)
+        with (
+            mock.patch.object(judge, "heldout_items", return_value=owner_items),
+            mock.patch.object(judge, "heldout_collection", return_value=collection),
+        ):
+            summary = precision.calibrate(lambda _item: good, lambda _item: good)
+        self.assertEqual((summary["adjudication"], summary["blind"], summary["primary"]["items"]), ("owner", True, 30))
+        with (
+            mock.patch.object(judge, "heldout_items", return_value=owner_items),
+            mock.patch.object(judge, "heldout_collection", return_value={**collection, "frozen_judge_identity": "x"}),
+        ):
+            self.assertEqual(precision.calibrate(lambda _item: good, lambda _item: good)["adjudication"], "author")
+        self.assertEqual(judge.heldout_collection()["blind_to_judge_verdicts"], None)
 
 
 class MetaTests(unittest.TestCase):
@@ -343,8 +368,10 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(written["judge_calibration"]["judge_identity"], judge.identity())
             # The mocked judges call every reply good, so the sample does not admit them.
             self.assertEqual(written["decision"]["grade"], "exploratory")
-            self.assertIn("the primary judge is not admitted", written["decision"]["reasons"])
+            self.assertIn("no-blind-owner-labels", written["decision"]["reasons"])
             self.assertEqual(precision.main(arguments), 0)
+            self.assertEqual(precision.main(["regrade", "--out", str(report)]), 0)
+            self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["decision"]["grade"], "exploratory")
             inside = Path(precision.__file__).parent / "never.jsonl"
             with (
                 mock.patch.object(judge, "judge_model", side_effect=AssertionError("no inference")) as built,

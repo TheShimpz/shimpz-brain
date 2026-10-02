@@ -1509,5 +1509,10 @@
    "reply": ":success[已在 example.com 中创建 A 记录 shop.example.com，指向 203.0.113.10。]",
    "expected": null
   }
- ]
+ ],
+ "collection": {
+  "blind_to_judge_verdicts": null,
+  "frozen_judge_identity": null,
+  "procedure": "label every item without seeing any judge verdict, then record the judge identity frozen before labelling"
+ }
 }

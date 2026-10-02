@@ -110,10 +110,23 @@ def judge_attempts(
 
 
 def calibrate(primary: Judgment, tiebreak: Judgment) -> dict[str, object]:
-    items = judge.calibration_items()
+    """Agreement of both judges with owner labels when the held-out sample carries them, else with the author's.
+
+    Owner labels count only when the owner collected them blind to judge verdicts, against the very judge now frozen.
+    """
+    current = judge.identity()
+    held = judge.heldout_items()
+    collection = judge.heldout_collection()
+    owner = (
+        all(expected is not None for _id, _item, expected in held)
+        and collection.get("blind_to_judge_verdicts") is True
+        and collection.get("frozen_judge_identity") == current
+    )
+    items = held if owner else judge.calibration_items()
     summary: dict[str, object] = {
-        "adjudication": "author-adjudicated; awaits owner review",
-        "judge_identity": judge.identity(),
+        "adjudication": "owner" if owner else "author",
+        "blind": owner,
+        "judge_identity": current,
     }
     for name, verdict in (("primary", primary), ("tiebreak", tiebreak)):
         results = []
@@ -283,6 +296,7 @@ META_KEYS = frozenset(
             "a",
             "b",
             "adjudication",
+            "blind",
             "admitted",
             "agree",
             "all_criteria",
@@ -367,24 +381,34 @@ def checked_meta(value: object, depth: int = 0, parent: str = "") -> object:
 def grade(
     calibration: Mapping[str, object] | None, judged: Sequence[Mapping[str, object]], meta: Mapping[str, object]
 ) -> dict[str, object]:
-    """A report supports a decision only with an admitted calibration of the very judge that produced every verdict."""
+    """Decision grade needs an admitted, blind, owner-labelled calibration of the judge behind every verdict.
+
+    Anything less is exploratory, with closed reason codes.
+    """
     current = judge.identity()
     reasons = []
     if calibration is None:
-        reasons.append("no judge calibration")
+        reasons.append("no-calibration")
     else:
+        if calibration.get("adjudication") != "owner" or calibration.get("blind") is not True:
+            reasons.append("no-blind-owner-labels")
         if calibration.get("judge_identity") != current:
-            reasons.append("the calibration is of another judge")
+            reasons.append("calibration-of-another-judge")
         reasons.extend(
-            f"the {name} judge is not admitted"
+            f"{name}-not-admitted"
             for name in ("primary", "tiebreak")
             if not (calibration.get(name) or {}).get("admitted")
         )
     if any(item.get("judge_identity") != current for item in judged):
-        reasons.append("a verdict is from another judge")
+        reasons.append("verdict-of-another-judge")
     if meta.get("label") == "exploratory":
-        reasons.append("the campaign is labelled exploratory")
+        reasons.append("labelled-exploratory")
     return {"grade": "exploratory" if reasons else "decision", "reasons": reasons, "judge_identity": current}
+
+
+def regrade(report: Mapping[str, object]) -> dict[str, object]:
+    """Recompute a committed report's grade under the current rules from what it records."""
+    return {**report, "decision": grade(report.get("judge_calibration"), [], report.get("meta") or {})}
 
 
 def _part(scenario_id: str, sets: Mapping[str, dict[str, list[str]]]) -> str:
@@ -528,7 +552,7 @@ def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[Judg
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("validate", "calibrate", "judge", "report"))
+    parser.add_argument("command", choices=("validate", "calibrate", "judge", "report", "regrade"))
     parser.add_argument("--transcript", type=Path)
     parser.add_argument("--judged", type=Path)
     parser.add_argument("--calibration", type=Path)
@@ -542,6 +566,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "validate":
             print(json.dumps(validate(), sort_keys=True))
+            return 0
+        if args.command == "regrade":
+            regraded = regrade(json.loads(args.out.read_text(encoding="utf-8")))
+            args.out.write_text(json.dumps(regraded, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         if args.command == "report":
             meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
