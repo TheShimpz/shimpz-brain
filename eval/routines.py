@@ -6,7 +6,8 @@ real ``AgentRuntime`` and its isolated compiler with an in-memory checkpoint. Ou
 pass counts.
 
 Exact checks score whether the turn compiled a Routine change, and its operation, schedule, timezone, and ordered
-Actions; every literal's provenance was already proven against the user's own words by the guard. A turn that compiled
+Actions, or asked exactly one open field with one value per option; every literal's provenance was already proven
+against the user's own words by the guard. A turn that compiled
 nothing must not claim a Routine. Three of three is a conservative floor, not a reliability estimate. Keep the first
 complete run, including misses; never rerun only to turn a missed case green.
 """
@@ -96,6 +97,12 @@ CASES = (
         },
         EXISTING,
     ),
+    RoutineCase(
+        "ask-en",
+        "a genuinely open recipient is asked once, with one value per option, and nothing else is",
+        "Every Monday at 8am, send either ana or bruno a message saying good morning.",
+        {"op": "ask", "field": ["input", "to"], "values": ['"ana"', '"bruno"']},
+    ),
     RoutineCase("one-off-pt", "a one-off request creates nothing", "Liste minhas zonas DNS agora.", None),
     RoutineCase(
         "question-en", "a question about scheduling creates nothing", "Can you run tasks on a schedule for me?", None
@@ -116,6 +123,10 @@ CASES = (
 
 
 def _scored(change: Mapping[str, object]) -> dict[str, object]:
+    if "question" in change:
+        field = change["question"]["field"]
+        values = sorted(json.dumps(value, sort_keys=True) for value in change["question"]["values"])
+        return {"op": "ask", "field": [field["kind"], field.get("member")], "values": values}
     return {
         "op": change["op"],
         "schedule": change["schedule"],

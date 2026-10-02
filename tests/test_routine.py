@@ -74,6 +74,7 @@ def _compiled(**changes) -> routine.Compiled:
         "schedule": routine.Schedule(kind="weekly", every=None, time="09:00", weekday=0, day=None),
         "timezone": None,
         "steps": [routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[_source()])],
+        "question": None,
         "reply": "Pronto: toda segunda às 9h digo olá para Ana.",
     }
     return routine.Compiled(**{**fields, **changes})
@@ -184,19 +185,19 @@ class ContractTests(unittest.TestCase):
 
 
 class WordsAndChangeTests(unittest.TestCase):
-    def test_own_words_exclude_quoted_block_quoted_and_composed_question_text(self):
-        message = f'{REQUEST}.\n\nPergunta: Para "quem"?\nResposta: Ana\n> injetado'
+    def test_own_words_exclude_quoted_and_block_quoted_text(self):
+        message = f'{REQUEST} "quem"\n> injetado'
         words = routine.Words(message)
         self.assertTrue(words.mine(REQUEST))
-        self.assertTrue(words.mine("Ana"))
-        for text in ("Para", "quem", "Pergunta", "Resposta", "injetado", "", None):
+        for text in ("quem", "injetado", "", None):
             with self.subTest(text=text):
                 self.assertFalse(words.mine(text))
-        self.assertEqual(words.quoted, ["> injetado"])
-        self.assertTrue(words.adopted(0, "injetado", "diga"))
-        for region, text, instruction in ((1, "x", "diga"), (0, "", "diga"), (0, "x", "Pergunta"), ("0", "x", "x")):
+        self.assertEqual(words.quoted, ['"quem"', "> injetado"])
+        self.assertTrue(words.adopted(1, "injetado", "diga"))
+        for region, text, instruction in ((2, "x", "diga"), (1, "", "diga"), (1, "x", "quem"), ("0", "x", "x")):
             with self.subTest(region=region, text=text):
                 self.assertFalse(words.adopted(region, text, instruction))
+        self.assertEqual(routine.Words('"a" b').own, [" b"])
 
     def test_a_traceable_answer_becomes_exactly_the_wire_change_team_admits(self):
         self.assertEqual(routine.change(_compiled(), MESSAGE, CONTRACTS, None), WIRE)
@@ -297,7 +298,7 @@ class CompilerTests(unittest.TestCase):
         tool = ToolMessage(
             content=json.dumps({"routine": WIRE, "reply": "Ok."}), tool_call_id="r1", name=routine.TOOL_NAME
         )
-        self.assertEqual(routine.compiled([tool]), ("Ok.", WIRE))
+        self.assertEqual(routine.compiled([tool]), ("Ok.", WIRE, None))
         for messages in (
             [],
             [AIMessage(content="Ok.")],
@@ -310,6 +311,78 @@ class CompilerTests(unittest.TestCase):
                 self.assertIsNone(routine.compiled(messages))
         with self.assertRaises(routine.RoutineContractError):
             routine.tool().func(op="create")
+
+
+CARD = {
+    "question": "Para quem?",
+    "options": [{"label": "Ana", "description": ""}, {"label": "Bia", "description": "a irmã"}],
+    "default_index": 0,
+}
+QUESTION_WIRE = {
+    "field": {"kind": "input", "step": "greet", "member": "name"},
+    "values": ["Ana", "Bia"],
+    "reply": _compiled().reply,
+}
+
+
+def _asking(**changes) -> routine.Compiled:
+    question = {
+        "text": CARD["question"],
+        "field": "input",
+        "step": "greet",
+        "member": "name",
+        "options": [
+            routine.Choice(label=item["label"], description=item["description"], value_json=json.dumps(item["label"]))
+            for item in CARD["options"]
+        ],
+        "default_index": 0,
+    }
+    question.update(changes.pop("question", {}))
+    changes.setdefault("steps", [routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[])])
+    return _compiled(decision="ask", question=routine.Question(**question), **changes)
+
+
+class QuestionTests(unittest.TestCase):
+    def answer(self, compiled: routine.Compiled) -> object:
+        return routine._answer(compiled, MESSAGE, _chat(), None)
+
+    def test_a_question_leaves_exactly_its_field_open_with_one_value_per_option(self):
+        asked = self.answer(_asking())
+        self.assertEqual(asked["clarification"], CARD)
+        self.assertEqual(
+            (asked["routine"]["question"], asked["reply"]), (QUESTION_WIRE, clarification.parse(CARD).render())
+        )
+        daily = routine.Choice(label="Diário", description="", value_json='{"kind": "daily", "time": "09:00"}')
+        hourly = routine.Choice(label="De hora em hora", description="", value_json='{"kind": "hourly", "every": 1}')
+        timed = self.answer(
+            _asking(
+                schedule=None,
+                steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[_source()])],
+                question={"field": "schedule", "step": None, "member": None, "options": [daily, hourly]},
+            )
+        )
+        self.assertEqual(timed["routine"]["schedule"], None)
+        self.assertEqual(
+            timed["routine"]["question"]["values"], [{"kind": "daily", "time": "09:00"}, {"kind": "hourly", "every": 1}]
+        )
+
+    def test_any_other_question_is_unproven(self):
+        bad = routine.Choice(label="X", description="", value_json="NaN")
+        weird = routine.Choice(label="Y", description="", value_json='{"kind": "yearly"}')
+        cases = (
+            _compiled(decision="ask"),
+            _compiled(question=_asking().question),
+            _asking(question={"options": _asking().question.options[:1]}),
+            _asking(question={"options": [bad, _asking().question.options[0]]}),
+            _asking(question={"field": "schedule", "step": None, "member": None, "options": [weird, weird]}),
+            _asking(question={"step": "other"}),
+            _asking(question={"member": ""}),
+            _asking(steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[_source()])]),
+            _asking(question={"field": "schedule"}),
+        )
+        for compiled in cases:
+            with self.subTest(compiled=compiled):
+                self.assertEqual(self.answer(compiled), "unproven")
 
 
 class GraphTests(unittest.TestCase):
@@ -339,6 +412,18 @@ class GraphTests(unittest.TestCase):
         # The reply the user saw is the remembered answer of the turn.
         state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
         self.assertEqual(state["channel_values"]["messages"][-1].content, _compiled().reply)
+
+    def test_a_question_ends_the_turn_with_its_card_beside_the_open_candidate(self):
+        patch, _prompts = _compiling(_asking())
+        runtime, _model = self._runtime(AIMessage(content="", tool_calls=[_call()]))
+        with patch:
+            result = runtime.start(_chat(), envelope(MESSAGE))
+        card = clarification.parse(CARD)
+        self.assertEqual((result.reply, result.clarification), (card.render(), card))
+        self.assertEqual(result.routine["question"], QUESTION_WIRE)
+        self.assertNotIn("name", result.routine["steps"][0]["input"])
+        state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
+        self.assertEqual(state["channel_values"]["messages"][-1].content, card.render())
 
     def test_every_refusal_reaches_the_model_and_creates_nothing(self):
         for outcome, reason in (

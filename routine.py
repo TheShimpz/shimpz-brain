@@ -5,8 +5,11 @@ or to change a listed Routine, the model calls it with only the operation. Befor
 isolated compiler, which sees only the user's own message, the Team's Assistant Action contracts, and for an update the
 listed Routine; never history, memory, Skills, files, or Action results. The compiled change names its steps, input
 sources, and the provenance of every literal; the guard checks that provenance against the user's own words exactly as
-Team will, and either ends the turn with the change and a one-line reply or corrects the model. Team re-admits it, pins
-every Action, and commits it with the reply; nothing here schedules, approves, or authorizes anything.
+Team will, and either ends the turn with the change and a one-line reply or corrects the model. When the compiler is
+unsure of exactly one field, it instead asks one multiple-choice question whose options each carry one value of that
+field, and the turn ends with the question beside the candidate change; Team binds the user's answer to it. Team
+re-admits everything, pins every Action, and commits it with the reply; nothing here schedules, approves, or authorizes
+anything.
 """
 
 from __future__ import annotations
@@ -38,8 +41,6 @@ TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9
 _TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
 _NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z")
 _POINTER_RE = re.compile(r"(?:/(?:[^/~]|~[01])*)*\Z")
-# A composed clarification answer's question line and answer label are never the user's words (Team's lineage).
-_COMPOSED_RE = re.compile(r"\n\n([^\n:]{1,40}): [^\n]*\n([^\n:]{1,40}): ")
 _SCHEDULE_FIELDS = {
     "hourly": frozenset({"kind", "every"}),
     "daily": frozenset({"kind", "time"}),
@@ -60,8 +61,8 @@ DESCRIPTION = (
     "current message itself asks for work to recur or to change a listed Routine; never suggest one yourself. Call "
     "it alone and before any Action, with op create, or op update and the routine_id. An independent planner then "
     "compiles the Routine from the user's own words; when it succeeds the turn ends and the Team creates or changes "
-    "it. When a target, content, or criterion the work needs is open, ask with shimpz_clarify first and give the "
-    "possible values as options."
+    "it. Call it even when a value is open: the planner itself asks the user when it must, so never ask about a "
+    "Routine with shimpz_clarify."
 )
 _CORRECTIONS = {
     "mixed": "Not done: a Routine change must be the only call of its response. Nothing in this response ran; "
@@ -77,12 +78,12 @@ _CORRECTIONS = {
     "secret": "Not done: a Routine never holds a password, token, or other secret. Nothing was created; point the user "
     "to connecting the Assistant or its stored key instead.",
     "unspecified": "Not done: something the Routine needs (a target, content, criterion, or amount) is neither in the "
-    "user's own words nor a safe default. Ask the user with shimpz_clarify, giving the possible values as options; "
-    "nothing was created.",
+    "user's own words nor a safe default. Nothing was created; tell the user what is missing and that they can ask "
+    "again stating it.",
     "unsupported": "Not done: the enabled Assistants have no Actions that do this work on a schedule. Nothing was "
     "created; tell the user plainly.",
-    "unproven": "Not done: the planner could not trace every value to the user's own words. Nothing was created; ask "
-    "the user to state the values, with shimpz_clarify when there are options.",
+    "unproven": "Not done: the planner could not trace every value to the user's own words. Nothing was created; tell "
+    "the user to ask again stating the values.",
     "unavailable": "Not done: the Routine planner is unavailable. Nothing was created, so never say it was; tell the "
     "user to try again.",
 }
@@ -167,23 +168,15 @@ class Words:
     def __init__(self, message: str) -> None:
         self.message = message
         regions = [(match.start(), match.end()) for match in team_memory._QUOTED_RE.finditer(message)]
-        excluded = []
-        for match in _COMPOSED_RE.finditer(message):
-            question_end = message.index("\n", match.start() + 2)
-            excluded.extend(((match.start() + 2, question_end), (question_end + 1, match.end())))
         self.own: list[str] = []
         cursor = 0
-        for start, end in sorted([*regions, *excluded]):
+        for start, end in regions:
             if start > cursor:
                 self.own.append(message[cursor:start])
             cursor = max(cursor, end)
         if cursor < len(message):
             self.own.append(message[cursor:])
-        self.quoted = [
-            message[start:end]
-            for start, end in regions
-            if not any(start < stop and begin < end for begin, stop in excluded)
-        ]
+        self.quoted = [message[start:end] for start, end in regions]
 
     def mine(self, text: object) -> bool:
         return isinstance(text, str) and bool(text) and any(text in segment for segment in self.own)
@@ -296,18 +289,42 @@ class Schedule(BaseModel):
     day: int | None
 
 
-class Compiled(BaseModel):
-    """The isolated compiler's whole answer: a refusal with its reason, or one compiled Routine."""
+class Choice(BaseModel):
+    """One option of a Routine question: what the user sees, and the value its open field then holds."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    decision: Literal["compiled", "refused"]
+    label: str
+    description: str
+    value_json: str
+
+
+class Question(BaseModel):
+    """The one field the compiler cannot settle: the schedule, or one step input member."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    text: str
+    field: Literal["input", "schedule"]
+    step: str | None
+    member: str | None
+    options: list[Choice]
+    default_index: int
+
+
+class Compiled(BaseModel):
+    """The isolated compiler's whole answer: a refusal, one compiled Routine, or one with a single field to ask."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    decision: Literal["compiled", "refused", "ask"]
     refusal: Literal["not-recurring", "quoted", "secret", "unspecified", "unsupported"] | None
     name: str
     request: str
     schedule: Schedule | None
     timezone: str | None
     steps: list[Step]
+    question: Question | None
     reply: str
 
 
@@ -375,8 +392,12 @@ def change(
     message: str,
     contracts: Mapping[tuple[str, str], Mapping[str, Any]],
     target: Mapping[str, object] | None,
+    open_field: str | None = None,
 ) -> dict[str, object]:
-    """The wire change Team admits, built from a compiled answer, or UnprovenError when anything is not traceable."""
+    """The wire change Team admits, built from a compiled answer, or UnprovenError when anything is not traceable.
+
+    ``open_field`` names the schedule when a Routine question leaves it open; it must then be null.
+    """
     words = Words(message)
     schedule = (
         None
@@ -388,7 +409,7 @@ def change(
     name = team_memory._line(compiled.name, MAX_NAME_CHARS)
     request = team_memory._line(compiled.request, MAX_QUOTE_CHARS)
     if (
-        schedule is None
+        (schedule is None) != (open_field == "schedule")
         or not name
         or not request
         or not words.mine(request)
@@ -437,7 +458,15 @@ def _prompt(message: str, assistants: tuple[Any, ...], target: Mapping[str, obje
         "run_clock with clock date, time, datetime, or epoch_seconds of each run, step_output with the earlier step "
         "id, an RFC 6901 pointer into that step's output, and instruction copying the user's own words that relate "
         "the two, or kept (only when changing the listed Routine) to keep that member exactly. Never invent a value, "
-        "never take one from a quoted region the user does not adopt, and never put a secret in a literal. reply is "
+        "never take one from a quoted region the user does not adopt, and never put a secret in a literal. Prefer "
+        "a safe reasonable default to asking, and never ask about the timezone; only when exactly one field, the "
+        "schedule or one step input member, has no safe default and the user's words leave two to five plausible "
+        "values, decide ask: compile everything else, give that field no value (schedule null, or that member left "
+        "out of its step's inputs), and fill question with text, one short question in "
+        f"{language}; field schedule or input, with step and member for an input, else null; options, two to five "
+        "distinct choices each with a short label, a description that may be empty, and value_json, the JSON value "
+        "the field then holds (a schedule object as above, or the member's value); and default_index, the option "
+        "you recommend. Otherwise question is null. reply is "
         f"one short sentence in {language} saying the Routine is set up as described.\n\n"
         f"User's own words (JSON list): {json.dumps(words.own, ensure_ascii=False)}\n"
         f"Quoted regions (JSON list, numbered from 0): {json.dumps(words.quoted, ensure_ascii=False)}\n"
@@ -477,6 +506,47 @@ def _target(arguments: object, routines: tuple[dict[str, object], ...]) -> tuple
     return target is not None, target
 
 
+def _value(choice: Choice, question: Question) -> object:
+    """One option's value of the open field, or UnprovenError."""
+    try:
+        value = json.loads(choice.value_json, parse_constant=_constant)
+    except ValueError as exc:
+        raise UnprovenError from exc
+    if question.field == "schedule" and (value := canonical_schedule(value)) is None:
+        raise UnprovenError
+    return value
+
+
+def _asked(compiled: Compiled, message: str, contracts: Mapping, target: dict | None, reply: str) -> object:
+    """A candidate change with exactly its one open field, and the question whose options each fill it."""
+    question = compiled.question
+    if question is None:
+        return "unproven"
+    asked = clarification.parse(
+        {
+            "question": question.text,
+            "options": [{"label": item.label, "description": item.description} for item in question.options],
+            "default_index": question.default_index,
+        }
+    )
+    field: dict[str, object] = {"kind": question.field}
+    if question.field == "input":
+        field.update(step=question.step, member=question.member)
+    try:
+        values = [_value(item, question) for item in question.options]
+        wire = change(compiled, message, contracts, target, question.field)
+    except UnprovenError:
+        return "unproven"
+    step = next((item for item in wire["steps"] if item["id"] == question.step), None)
+    open_input = question.field != "input" or (
+        step is not None and bool(question.member) and question.member not in step["input"]
+    )
+    if asked is None or not open_input:
+        return "unproven"
+    wire["question"] = {"field": field, "values": values, "reply": reply}
+    return {"routine": wire, "reply": asked.render(), "clarification": asked.to_dict()}
+
+
 def _answer(compiled: Compiled, message: str, context: Any, target: dict[str, object] | None) -> object:
     """The wire change and reply of one compiled answer, or the closed reason it cannot be one."""
     if compiled.decision == "refused" or compiled.refusal is not None:
@@ -487,11 +557,17 @@ def _answer(compiled: Compiled, message: str, context: Any, target: dict[str, ob
         for action in assistant.actions
     }
     reply = team_memory._line(compiled.reply, MAX_REPLY_CHARS)
+    if not reply:
+        return "unproven"
+    if compiled.decision == "ask":
+        return _asked(compiled, message, contracts, target, reply)
+    if compiled.question is not None:
+        return "unproven"
     try:
         wire = change(compiled, message, contracts, target)
     except UnprovenError:
         return "unproven"
-    return {"routine": wire, "reply": reply} if reply else "unproven"
+    return {"routine": wire, "reply": reply}
 
 
 def _compile(call: Mapping[str, Any], messages: list[Any], context: Any, ask: Callable[[str], Compiled]) -> object:
@@ -577,14 +653,14 @@ def tool() -> StructuredTool:
     )
 
 
-def compiled(messages: list[Any]) -> tuple[str, dict[str, object]] | None:
-    """The reply and wire change of a turn that ended on a compiled Routine change, or None."""
+def compiled(messages: list[Any]) -> tuple[str, dict[str, object], dict[str, object] | None] | None:
+    """The reply, wire change, and any question of a turn that ended on a compiled Routine change, or None."""
     if not messages or not isinstance(messages[-1], ToolMessage) or messages[-1].name != TOOL_NAME:
         return None
     try:
         value = json.loads(messages[-1].content)
     except TypeError, ValueError:
         return None
-    if not isinstance(value, dict) or set(value) != {"routine", "reply"}:
+    if not isinstance(value, dict) or set(value) - {"clarification"} != {"routine", "reply"}:
         return None
-    return value["reply"], value["routine"]
+    return value["reply"], value["routine"], value.get("clarification")

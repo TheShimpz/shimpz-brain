@@ -829,16 +829,17 @@ class AgentRuntime:
         )
 
     def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
-        """End the turn on a compiled Routine change, remembering exactly the reply the user is shown."""
+        """End the turn on a compiled Routine change or question, remembering exactly the reply the user is shown."""
         finished = None if state.get("__interrupt__") else team_routine.compiled(list(state.get("messages", ())))
         if finished is None:
             return None
-        reply, change = finished
+        reply, change, asked = finished
         try:
             agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})
         except Exception as exc:
             raise RuntimeStateError("checkpoint update failed") from exc
-        return TurnResult(status="completed", reply=reply, routine=change)
+        question = None if asked is None else clarifier.parse(asked)
+        return TurnResult(status="completed", reply=reply, routine=change, clarification=question)
 
     def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
         """Attach a completed turn's independently confirmed memory changes."""

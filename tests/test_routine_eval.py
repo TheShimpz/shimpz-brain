@@ -56,6 +56,7 @@ def _compiling(schedule: dict[str, object], action: str = "list-zones"):
         schedule=routine.Schedule(kind=schedule["kind"], **fields),
         timezone=None,
         steps=[routine.Step(id="zones", assistant="dns", action=action, inputs=[])],
+        question=None,
         reply="Pronto.",
     )
     return mock.patch.object(
