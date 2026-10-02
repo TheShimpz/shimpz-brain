@@ -1,0 +1,21 @@
+{
+ "corpus": "large-api-v1",
+ "corpus_digest": "sha256:a8f5f0b0a5aba19fcd701cf8a2d5cd36e3d113fe8f38c7560fe09499061fa112",
+ "digest": "sha256:2aa96f56ce9d9418710f0e1d5f287b4922eecb5c69a45e7edd204d31e693ac1f",
+ "frozen": "2026-10-02, before any large-API arm work",
+ "held-out": [
+  "cf-block-ip",
+  "cf-bucket-clarify",
+  "cf-devmode-purge",
+  "cf-purge-url",
+  "cf-ssl-strict"
+ ],
+ "schema": "shimpz.precision-eval.split/v1",
+ "tuning": [
+  "cf-dns-txt",
+  "cf-r2-bucket",
+  "cf-traffic-question",
+  "cf-update-a",
+  "cf-worker-route"
+ ]
+}

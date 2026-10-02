@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from eval import corpus, split
+from eval import corpus, large_api, split
 
 
 class SplitTests(unittest.TestCase):
@@ -19,6 +19,10 @@ class SplitTests(unittest.TestCase):
         self.assertTrue(any(len(t.needed) > 1 for t in held))
         self.assertEqual(split.part("dns-bulk.ja", sets), "held-out")
         self.assertEqual(split.part("dns-question.en", sets), "tuning")
+
+    def test_the_large_api_split_is_frozen_by_the_same_rule(self):
+        sets = split.load(split.LARGE_API_SPLIT)
+        self.assertEqual(sorted(sets["held-out"] + sets["tuning"]), sorted(t.id for t in large_api.TEMPLATES))
 
     def test_an_edited_split_is_refused(self):
         data = json.loads(split.SPLIT.read_text(encoding="utf-8"))

@@ -409,8 +409,8 @@ SCENARIOS = tuple(
 SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
 
 
-def expected_state(template: Template) -> dict[str, object]:
-    state = dict(INITIAL)
+def expected_state(template: Template, initial: Mapping[str, object] = INITIAL) -> dict[str, object]:
+    state = dict(initial)
     for key, value in template.changes.items():
         if value is None:
             state.pop(key, None)
@@ -439,7 +439,7 @@ class Oracle:
         }
 
 
-def oracle(scenario: Scenario, world: World) -> Oracle:
+def oracle(scenario: Scenario, world: World, initial: Mapping[str, object] = INITIAL) -> Oracle:
     """Exact final state and every write effect, intermediate ones included.
 
     ``missing`` counts expected changes not made, ``wrong`` final values that differ otherwise, ``forbidden`` write
@@ -448,9 +448,9 @@ def oracle(scenario: Scenario, world: World) -> Oracle:
     values, such as a task title or a message body, are the judges'.
     """
     final = world.snapshot()
-    expected = expected_state(scenario.template)
+    expected = expected_state(scenario.template, initial)
     differing = {key for key in set(final) | set(expected) if final.get(key) != expected.get(key)}
-    missing = sum(final.get(key) == INITIAL.get(key) for key in differing)
+    missing = sum(final.get(key) == initial.get(key) for key in differing)
     writes = [entry for entry in world.ledger if "effect" in entry]
     effects = Counter(str(entry["effect"]) for entry in writes)
     allowed = {key: value if type(value) is int else 1 for key, value in scenario.template.changes.items()}
