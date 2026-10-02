@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import dataclasses
 import functools
 import hashlib
 import json
@@ -287,3 +288,60 @@ def _projection_class():
 def projection(attachments: tuple[Attachment, ...], turn_message_id: str | None, charge: int):
     """The middleware that projects attachments into every provider call of their turn."""
     return _projection_class()(attachments, turn_message_id, charge)
+
+
+def middleware(attachments: tuple[Attachment, ...], turn_message_id: str | None, charge: int) -> list[object]:
+    """The projection middleware for a turn that carries attachments, and nothing for any other turn."""
+    return [projection(attachments, turn_message_id, charge)] if attachments else []
+
+
+def read(message: object) -> bool:
+    """Whether a user message started a turn that read attachments; the next new turn forgets that exchange."""
+    return str(getattr(message, "id", "")).startswith(ATTACHED_TURN_PREFIX)
+
+
+def exposed(assistants: tuple[Any, ...], attachments: Sequence[Attachment]) -> tuple[Any, ...]:
+    """The Actions a turn offers: all of them, or only authorizing ones while attachment content is in the turn."""
+    if not reads_content(attachments):
+        return assistants
+    return tuple(
+        dataclasses.replace(assistant, actions=tuple(action for action in assistant.actions if action.authorization))
+        for assistant in assistants
+    )
+
+
+def provider_counter(model: Any, provider: str) -> Callable[[list[dict[str, object]], float], int]:
+    """Count one attachment's content blocks with the provider's own counting endpoint, bounded by ``timeout``.
+
+    The blocks go through the same adapter payload conversion the real call uses, so the count matches what is sent.
+    """
+
+    def count(content: list[dict[str, object]], timeout: float) -> int:
+        import anthropic
+        import httpx
+        import openai
+        from langchain_core.messages import HumanMessage
+
+        try:
+            payload = model._get_request_payload([HumanMessage(content=content)])
+            if provider == "anthropic":
+                response = model._client.messages.count_tokens(
+                    model=payload["model"], messages=payload["messages"], timeout=timeout
+                )
+            else:
+                response = model.root_client.responses.input_tokens.count(
+                    model=payload["model"], input=payload["input"], timeout=timeout
+                )
+            return int(response.input_tokens)
+        except (
+            anthropic.AnthropicError,
+            openai.OpenAIError,
+            httpx.HTTPError,
+            AttributeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise CountUnavailableError("the provider did not count the attachment") from exc
+
+    return count

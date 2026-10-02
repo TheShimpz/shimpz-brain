@@ -39,7 +39,9 @@ import turn_pins
 import turn_prompt
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
-from pydantic import BaseModel, SecretStr
+from pydantic import SecretStr
+from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
+from structured import structured_output
 
 import routine as team_routine
 
@@ -75,22 +77,6 @@ DECISION_TIMEOUT_SECONDS = 10.0
 DECISION_MAX_RETRIES = 1
 # The Team's configured reasoning effort applies only to ordinary chat turns (ADR-0074).
 CHAT_EFFORTS = frozenset({"low", "medium", "high"})
-
-
-class RuntimeContractError(ValueError):
-    """Trusted orchestration input or persisted output violated the closed contract."""
-
-
-class ProviderRequestError(RuntimeError):
-    """A provider call failed without exposing provider response or credential material."""
-
-
-class ProviderResponseError(ProviderRequestError):
-    """A provider response violated a closed runtime contract without exposing its content."""
-
-
-class RuntimeStateError(RuntimeError):
-    """A checkpoint operation failed without exposing persisted conversation data."""
 
 
 def normalize_team_name(value: str) -> str:
@@ -406,56 +392,6 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
     )
 
 
-def _read_attachments(message: object) -> bool:
-    """Whether a user message started a turn that read attachments; the next new turn forgets that exchange."""
-    return str(getattr(message, "id", "")).startswith(turn_attachments.ATTACHED_TURN_PREFIX)
-
-
-def _attachment_counter(model: object, provider: str) -> Callable[[list[dict[str, object]], float], int]:
-    """Count one attachment's content blocks with the provider's own counting endpoint, bounded by ``timeout``.
-
-    The blocks go through the same adapter payload conversion the real call uses, so the count matches what is sent.
-    """
-
-    def count(blocks: list[dict[str, object]], timeout: float) -> int:
-        import anthropic
-        import openai
-
-        try:
-            payload = model._get_request_payload([HumanMessage(content=blocks)])
-            if provider == "anthropic":
-                response = model._client.messages.count_tokens(
-                    model=payload["model"], messages=payload["messages"], timeout=timeout
-                )
-            else:
-                response = model.root_client.responses.input_tokens.count(
-                    model=payload["model"], input=payload["input"], timeout=timeout
-                )
-            return int(response.input_tokens)
-        except (
-            anthropic.AnthropicError,
-            openai.OpenAIError,
-            httpx.HTTPError,
-            AttributeError,
-            KeyError,
-            TypeError,
-            ValueError,
-        ) as exc:
-            raise turn_attachments.CountUnavailableError("the provider did not count the attachment") from exc
-
-    return count
-
-
-def exposed_assistants(context: TurnContext) -> tuple[AssistantDefinition, ...]:
-    """The Actions a turn offers: all of them, or only authorizing ones while attachment content is in the turn."""
-    if not turn_attachments.reads_content(context.attachments):
-        return context.assistants
-    return tuple(
-        replace(assistant, actions=tuple(action for action in assistant.actions if action.authorization))
-        for assistant in context.assistants
-    )
-
-
 def _tool_name(assistant_id: str, action_id: str) -> str:
     """Map a local Assistant/Action pair to one stable provider-safe tool name."""
     assistant_slug = assistant_id.replace(".", "_")[:18]
@@ -485,79 +421,6 @@ def _assistant_scope(context: TurnContext) -> str:
     ]
     encoded = json.dumps(contract, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-def structured_output(model: BaseChatModel, provider: str, schema: type[BaseModel]):
-    """Bind provider-native JSON-schema output that also returns the raw message for closed validation."""
-    options: dict[str, object] = {"method": "json_schema", "include_raw": True}
-    if provider == "openai":
-        options["strict"] = True
-    elif provider != "anthropic":
-        raise RuntimeContractError("unsupported model provider")
-    return model.with_structured_output(schema, **options)
-
-
-def _closed_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise RuntimeContractError("duplicate structured response field")
-        result[key] = value
-    return result
-
-
-def _raw_text(content: object) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    return "".join(
-        block["text"]
-        for block in content
-        if isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str)
-    )
-
-
-def _text_value[Schema: BaseModel](text: str, schema: type[Schema], label: str, max_chars: int) -> Schema:
-    """Re-read the raw JSON text itself: bounded, free of duplicate keys, and schema-valid."""
-    if len(text) > max_chars:
-        raise RuntimeContractError(f"invalid {label} response")
-    try:
-        return schema.model_validate(json.loads(text, object_pairs_hook=_closed_json_object))
-    except (json.JSONDecodeError, UnicodeError, ValueError) as exc:
-        raise RuntimeContractError(f"invalid {label} response") from exc
-
-
-def structured_value[Schema: BaseModel](result: object, schema: type[Schema], label: str, max_chars: int) -> Schema:
-    """Return one schema-valid value, refusing a refusal, a tool call, or a parse failure as a response failure.
-
-    When the provider returned JSON text, that text is re-read and must agree with the adapter's parsed value, so a
-    duplicate key or an oversized reply cannot hide behind a lenient parser. Native schema output narrows the shape;
-    callers still apply their own exact-identifier and semantic checks.
-    """
-    if not isinstance(result, Mapping) or set(result) != {"raw", "parsed", "parsing_error"}:
-        raise RuntimeContractError(f"invalid {label} response")
-    raw = result["raw"]
-    if not isinstance(raw, AIMessage) or raw.tool_calls or raw.invalid_tool_calls:
-        raise RuntimeContractError(f"invalid {label} response")
-    if isinstance(raw.content, list) and any(
-        isinstance(block, Mapping) and block.get("type") == "refusal" for block in raw.content
-    ):
-        raise RuntimeContractError(f"{label} response was refused")
-    if result["parsing_error"] is not None:
-        raise RuntimeContractError(f"invalid {label} response")
-    parsed = result["parsed"]
-    if isinstance(parsed, Mapping):
-        try:
-            parsed = schema.model_validate(parsed)
-        except ValueError as exc:
-            raise RuntimeContractError(f"invalid {label} response") from exc
-    if not isinstance(parsed, schema):
-        raise RuntimeContractError(f"invalid {label} response")
-    text = _raw_text(raw.content).strip()
-    if text and _text_value(text, schema, label, max_chars) != parsed:
-        raise RuntimeContractError(f"inconsistent {label} response")
-    return parsed
 
 
 def _pending_result(pending: object) -> TurnResult:
@@ -647,13 +510,6 @@ def _has_pending_interrupt(pending_writes: object) -> bool:
         if write[1] == "__interrupt__":
             has_pending_interrupt = True
     return has_pending_interrupt
-
-
-def _attachment_projection(context: TurnContext) -> list[object]:
-    """Add the message's attachments to each provider call only, never to graph state (ADR-0093)."""
-    if not context.attachments:
-        return []
-    return [turn_attachments.projection(context.attachments, context.turn_message_id, context.attachment_charge)]
 
 
 def _prompt_caching(provider: ProviderConfig) -> list[object]:
@@ -757,7 +613,7 @@ class AgentRuntime:
         from langchain.agents import create_agent
 
         model = self._model_factory(context.provider)
-        exposed = exposed_assistants(context)
+        exposed = turn_attachments.exposed(context.assistants, context.attachments)
         tools = [
             action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)
             for assistant in exposed
@@ -778,7 +634,7 @@ class AgentRuntime:
             checkpointer=self._checkpointer,
             middleware=[
                 *_prompt_caching(context.provider),
-                *_attachment_projection(context),
+                *turn_attachments.middleware(context.attachments, context.turn_message_id, context.attachment_charge),
                 clarifier.guard(allowed=clarification_allowed),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
                 *(
@@ -843,7 +699,7 @@ class AgentRuntime:
 
     @staticmethod
     def _fixed_tokens(context: TurnContext) -> int:
-        exposed = exposed_assistants(context)
+        exposed = turn_attachments.exposed(context.assistants, context.attachments)
         tools = [
             {"name": _tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
             for assistant in exposed
@@ -875,7 +731,7 @@ class AgentRuntime:
         fixed = self._fixed_tokens(context)
         try:
             drop = context_budget.history_to_drop(
-                history, fixed, context_budget.message_tokens(turn), _read_attachments
+                history, fixed, context_budget.message_tokens(turn), turn_attachments.read
             )
             bridge = _conversation_bridge(conversation) if len(drop) == len(history) and conversation else ()
             if bridge:
@@ -900,7 +756,7 @@ class AgentRuntime:
         """Count the attachments once per logical turn with the provider, bounded, and admit their token charge."""
         if not context.attachments:
             return 0
-        counter = _attachment_counter(self._model_factory(context.provider), context.provider.provider)
+        counter = turn_attachments.provider_counter(self._model_factory(context.provider), context.provider.provider)
         try:
             return turn_attachments.admit_charges(turn_attachments.charges(context.attachments, counter))
         except turn_attachments.AttachmentContractError as exc:

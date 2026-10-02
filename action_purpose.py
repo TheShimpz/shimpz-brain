@@ -193,13 +193,8 @@ def capped(model: BaseChatModel) -> BaseChatModel:
 
 def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRequest) -> str | None:
     """One stateless structured call; a sentence that breaks the plain-text rule yields None."""
-    from agent_runtime import (
-        ProviderRequestError,
-        ProviderResponseError,
-        RuntimeContractError,
-        structured_output,
-        structured_value,
-    )
+    from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
+    from structured import structured_output, structured_value
 
     try:
         result = structured_output(capped(model()), provider, PurposeOutput).invoke(_prompt(request))

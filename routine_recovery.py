@@ -74,13 +74,8 @@ def capped(model: BaseChatModel) -> BaseChatModel:
 
 def decide(model: Callable[[], BaseChatModel], provider: str, request: RecoveryRequest) -> str:
     """One stateless structured call; any refusal or malformed answer is a provider response failure."""
-    from agent_runtime import (
-        ProviderRequestError,
-        ProviderResponseError,
-        RuntimeContractError,
-        structured_output,
-        structured_value,
-    )
+    from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
+    from structured import structured_output, structured_value
 
     try:
         result = structured_output(capped(model()), provider, RecoveryOutput).invoke(_prompt(request))

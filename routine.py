@@ -479,7 +479,7 @@ def compiler(
     model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
 ) -> Callable[[str], Compiled]:
     """One structured call on the Team's model, read through the closed structured-response validator."""
-    from agent_runtime import structured_value
+    from structured import structured_value
 
     def ask(prompt: str) -> Compiled:
         try:
