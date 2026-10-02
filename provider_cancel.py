@@ -48,6 +48,7 @@ class CancelScope:
         self._lock = threading.Lock()
         self._cancelled = False
         self._sockets: set[socket.socket] = set()
+        self._children: set[CancelScope] = set()
 
     @property
     def cancelled(self) -> bool:
@@ -68,6 +69,21 @@ class CancelScope:
             self._cancelled = True
             for sock in self._sockets:
                 _shutdown(sock)
+            children = tuple(self._children)
+            self._children.clear()
+        for child in children:
+            child.cancel()
+
+    def _adopt(self, child: CancelScope) -> None:
+        with self._lock:
+            if not self._cancelled:
+                self._children.add(child)
+                return
+        child.cancel()
+
+    def _release(self, child: CancelScope) -> None:
+        with self._lock:
+            self._children.discard(child)
 
     def check(self) -> None:
         if self.cancelled:
@@ -92,6 +108,25 @@ class CancelScope:
 
 
 _SCOPE: contextvars.ContextVar[CancelScope | None] = contextvars.ContextVar("provider_cancel_scope", default=None)
+
+
+@contextmanager
+def nested() -> Iterator[CancelScope]:
+    """A scope for provider I/O bounded more tightly than its turn, such as counting before the first call.
+
+    The current turn's cancellation reaches it, and leaving the block cancels it, so no request it started outlives the
+    block: a blocked read is woken and every later connect or request fails before it starts.
+    """
+    parent = _SCOPE.get()
+    scope = CancelScope()
+    if parent is not None:
+        parent._adopt(scope)
+    try:
+        yield scope
+    finally:
+        scope.cancel()
+        if parent is not None:
+            parent._release(scope)
 
 
 def _guard(stream: httpcore.NetworkStream) -> AbstractContextManager[None]:

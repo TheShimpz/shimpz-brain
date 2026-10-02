@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import threading
 import time
 import unittest
@@ -19,9 +20,11 @@ from unittest import mock
 import agent_runtime
 import attachments as turn_attachments
 import httpx
+import provider_cancel
 import runtime_api
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
+from test_provider_cancel import NO_PROXY_ENV, _run, _Server
 from test_runtime_api import TOKEN, body
 
 PNG = base64.b64decode(
@@ -337,21 +340,60 @@ class ReservationTests(unittest.TestCase):
         )
         self.assertEqual(len(provider.counts()), 1)
 
-    def test_counting_stops_at_one_overall_deadline(self) -> None:
-        attachments = turn_attachments.admit([_attachment("text", f"{index:032x}") for index in range(3)])
+    def _hanging_count(self) -> tuple[_Server, list[float], object]:
+        """A count that blocks on a real provider socket until a cancellation shuts it down."""
+        patcher = mock.patch.dict(os.environ, NO_PROXY_ENV)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        server = _Server(respond=False)
+        self.addCleanup(server.close)
+        client = provider_cancel.client()
+        self.addCleanup(client.close)
         calls: list[float] = []
 
-        def slow(_blocks: list, timeout: float) -> int:
+        def hanging(_blocks: list, timeout: float) -> int:
             calls.append(timeout)
-            threading.Event().wait(1.0)
+            # The request ignores the remaining budget on purpose: only the counting scope can end it in time.
+            client.get(server.url(), timeout=30.0)
             return 10
 
+        return server, calls, hanging
+
+    def _assert_no_counting_worker(self) -> None:
+        self.assertEqual([thread for thread in threading.enumerate() if thread.name.startswith("attachment-count")], [])
+
+    def test_counting_stops_at_one_overall_deadline_and_terminates_the_request(self) -> None:
+        attachments = turn_attachments.admit([_attachment("text", f"{index:032x}") for index in range(3)])
+        _server, calls, hanging = self._hanging_count()
         with mock.patch.object(turn_attachments, "COUNT_SECONDS", 0.3):
             started = time.monotonic()
-            charged = turn_attachments.charges(attachments, slow)
-        self.assertLess(time.monotonic() - started, 0.9)
+            charged = turn_attachments.charges(attachments, hanging)
+        self.assertLess(time.monotonic() - started, 2.0)
         self.assertEqual(len(calls), 1)
         self.assertEqual(charged, tuple(turn_attachments.estimated_charge(item) for item in attachments))
+        self._assert_no_counting_worker()
+
+    def test_stopping_the_turn_reaches_a_count_blocked_on_the_provider(self) -> None:
+        attachments = turn_attachments.admit([_attachment("text")])
+        server, _calls, hanging = self._hanging_count()
+        turn = provider_cancel.CancelScope()
+        started = time.monotonic()
+        future = _run(turn, lambda: turn_attachments.charges(attachments, hanging))
+        self.assertTrue(server.received.wait(5))
+        turn.cancel()
+        with self.assertRaises(provider_cancel.ProviderCallCancelled):
+            future.result(timeout=5)
+        self.assertLess(time.monotonic() - started, turn_attachments.COUNT_SECONDS)
+        self._assert_no_counting_worker()
+
+    def test_a_stopped_turn_never_starts_counting(self) -> None:
+        attachments = turn_attachments.admit([_attachment("text")])
+        server, _calls, hanging = self._hanging_count()
+        turn = provider_cancel.CancelScope()
+        turn.cancel()
+        with self.assertRaises(provider_cancel.ProviderCallCancelled):
+            _run(turn, lambda: turn_attachments.charges(attachments, hanging)).result(timeout=5)
+        self.assertEqual(server.accepted, 0)
 
     def test_an_uncounted_image_refuses_the_turn_before_any_model_call(self) -> None:
         provider = _FlakyProvider("openai", failures=0, count_status=500)

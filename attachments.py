@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import binascii
 import concurrent.futures
+import contextvars
 import dataclasses
 import functools
 import hashlib
@@ -22,6 +23,8 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+import provider_cancel
 
 MAX_ATTACHMENTS = 8
 MAX_IMAGES = 4
@@ -232,25 +235,27 @@ def charges(
 ) -> tuple[int, ...]:
     """Each attachment's token charge, counted by the provider within one overall deadline or estimated otherwise.
 
-    Each count runs on a worker this call abandons at the deadline, so a slow provider never extends the turn past
-    ``COUNT_SECONDS``; the abandoned request ends at its own timeout, which is never longer than the time that was left.
+    Counting runs on a worker inside a scope nested in the turn's (ADR-0079): Stop or a Team disconnect wakes its
+    provider socket and ends the turn, and at the deadline the turn stops waiting, estimates, and on leaving cancels
+    the scope, so a slow count's I/O is terminated and its worker has finished before this returns.
     """
     deadline = time.monotonic() + COUNT_SECONDS
     counted: list[int] = []
-    worker = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="attachment-count")
-    try:
+    with (
+        concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="attachment-count") as worker,
+        provider_cancel.nested() as scope,
+    ):
         for attachment in attachments:
             remaining = deadline - time.monotonic()
             value = None
             if count is not None and remaining > 0:
-                future = worker.submit(count, blocks(attachment), remaining)
+                work = functools.partial(count, blocks(attachment), remaining)
+                future = worker.submit(contextvars.copy_context().run, scope.run, work)
                 try:
                     value = future.result(timeout=remaining)
                 except TimeoutError, CountUnavailableError:
                     value = None
             counted.append(value if type(value) is int and value >= 0 else estimated_charge(attachment))
-    finally:
-        worker.shutdown(wait=False, cancel_futures=True)
     return tuple(counted)
 
 

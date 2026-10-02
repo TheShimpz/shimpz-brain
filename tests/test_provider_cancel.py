@@ -228,6 +228,45 @@ class CancellableTransportTests(unittest.TestCase):
         self.assertFalse(proxied._trust_env)
 
 
+class NestedScopeTests(unittest.TestCase):
+    def test_the_turn_reaches_a_nested_scope_and_leaving_it_cancels_only_the_nested_work(self):
+        turn = provider_cancel.CancelScope()
+
+        def work() -> tuple[bool, bool]:
+            with provider_cancel.nested() as counting:
+                self.assertFalse(counting.cancelled)
+                turn.cancel()
+                reached = counting.cancelled
+            return reached, counting.cancelled
+
+        self.assertEqual(turn.run(work), (True, True))
+        self.assertEqual(turn._children, set())
+
+        other = provider_cancel.CancelScope()
+        with provider_cancel.nested() as standalone:
+            pass
+        self.assertTrue(standalone.cancelled)
+
+        def leave() -> provider_cancel.CancelScope:
+            with provider_cancel.nested() as counting:
+                return counting
+
+        self.assertTrue(other.run(leave).cancelled)
+        self.assertFalse(other.cancelled)
+        self.assertEqual(other._children, set())
+
+    def test_a_nested_scope_opened_after_stop_is_already_cancelled(self):
+        turn = provider_cancel.CancelScope()
+        turn.cancel()
+
+        def work() -> bool:
+            with provider_cancel.nested() as counting:
+                return counting.cancelled
+
+        self.assertTrue(turn.run(work))
+        self.assertEqual(turn._children, set())
+
+
 class _SocketStream(httpcore.NetworkStream):
     """A network stream over one end of a socket pair, blocking like a real provider socket."""
 
