@@ -253,18 +253,26 @@ class BrainEgressHandlerTests(unittest.TestCase):
                 else:
                     self.assertEqual(upstream.method_calls, [])
 
-    def test_a_saturated_resolver_fails_fast_until_a_stuck_lookup_returns(self) -> None:
+    def test_a_waiter_past_the_deadline_is_denied_without_resolving(self) -> None:
         self._isolate_resolver()
         with mock.patch.object(app.socket, "getaddrinfo", side_effect=self._stuck_lookup) as lookup:
             self.assertIsNone(app._resolve_public("api.openai.com", 443, time.monotonic() + 0.05))
             started = time.monotonic()
-            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
-            self.assertLess(time.monotonic() - started, 1.0)
-            lookup.assert_called_once()
-            self.release.set()
-            self.assertTrue(self.slots.acquire(timeout=5))
-            self.slots.release()
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, started + 0.2))
+            self.assertGreaterEqual(time.monotonic() - started, 0.1)
+        lookup.assert_called_once()
+
+    def test_a_waiter_gets_the_permit_once_a_lookup_finishes_within_the_deadline(self) -> None:
+        self._isolate_resolver()
+        with mock.patch.object(app.socket, "getaddrinfo", side_effect=self._stuck_lookup):
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, time.monotonic() + 0.05))
+        finish = threading.Timer(0.1, self.release.set)
+        self.addCleanup(finish.cancel)
+        with mock.patch.object(app.socket, "getaddrinfo", return_value=list(self.ANSWER)) as answered:
+            finish.start()
             self.assertEqual(app._resolve_public("api.openai.com", 443, _later()), (self.ANSWER[0][0::4],))
+        self.assertTrue(self.release.is_set())
+        answered.assert_called_once()
 
     def test_a_resolver_thread_that_cannot_start_returns_its_permit(self) -> None:
         self._isolate_resolver()

@@ -52,7 +52,8 @@ if (
 # DNS resolution counts against the CONNECT deadline. Each lookup runs on its own daemon thread, and a lookup that
 # outlives its deadline keeps that thread until getaddrinfo returns. This fixed cap, independent of handler
 # concurrency, bounds those threads: handlers + resolvers + the main thread stay well inside the smallest
-# pids_limit either canonical Compose graph gives this proxy. A saturated cap fails at once instead of queueing.
+# pids_limit either canonical Compose graph gives this proxy. A burst beyond the cap waits for a permit, but
+# only within the same CONNECT deadline.
 MAX_RESOLUTIONS = 8
 _RESOLVER_SLOTS = threading.BoundedSemaphore(MAX_RESOLUTIONS)
 _STATUS = {
@@ -76,13 +77,13 @@ def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
 def _resolve(host: str, port: int, deadline: float) -> list:
     """Resolve on one bounded daemon thread, waiting no longer than the remaining CONNECT deadline.
 
-    The permit is released exactly once: by the lookup thread when getaddrinfo returns, or here when the
-    thread never started. Raises OSError when the cap is saturated, the thread cannot start, the lookup
-    fails, or the deadline passes first.
+    Waiting for a permit spends the same deadline. The permit is released exactly once: by the lookup
+    thread when getaddrinfo returns, or here when the thread never started. Raises OSError when no permit
+    frees up in time, the thread cannot start, the lookup fails, or the deadline passes first.
     """
     slots = _RESOLVER_SLOTS
-    if not slots.acquire(blocking=False):
-        raise OSError("resolver capacity exhausted")
+    if not slots.acquire(timeout=max(0.0, deadline - time.monotonic())):
+        raise OSError("resolver capacity stayed exhausted until the CONNECT deadline")
     answers: list[list] = []
     done = threading.Event()
 
