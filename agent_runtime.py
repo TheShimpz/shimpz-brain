@@ -494,7 +494,22 @@ def _result(
     pending = state.get("__interrupt__")
     if pending:
         return _pending_result(pending)
+    reply_message = _turn_reply(state, after_message_id=after_message_id, message_offset=message_offset)
+    if context_budget.truncated(reply_message):
+        raise ProviderResponseError("model provider response was cut short")
+    reply = context_budget.final_reply(reply_message)
+    if reply:
+        return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
+    raise RuntimeContractError("graph completed without an Assistant reply")
 
+
+def _turn_reply(
+    state: Mapping[str, Any],
+    *,
+    after_message_id: str | None = None,
+    message_offset: int | None = None,
+) -> AIMessage | None:
+    """Return the newest Assistant message of the current turn."""
     messages = state.get("messages")
     if not isinstance(messages, Sequence):
         raise RuntimeContractError("graph completed without messages")
@@ -514,16 +529,10 @@ def _result(
             raise RuntimeContractError("graph result boundary is invalid")
         current_messages = messages[message_offset:]
 
-    reply_message = next(
+    return next(
         (message for message in reversed(current_messages) if isinstance(message, AIMessage)),
         None,
     )
-    if context_budget.truncated(reply_message):
-        raise ProviderResponseError("model provider response was cut short")
-    reply = context_budget.final_reply(reply_message)
-    if reply:
-        return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
-    raise RuntimeContractError("graph completed without an Assistant reply")
 
 
 def _has_pending_interrupt(pending_writes: object) -> bool:
@@ -686,6 +695,21 @@ class AgentRuntime:
         except Exception as exc:
             raise RuntimeStateError("checkpoint update failed") from exc
         return TurnResult(status="completed", reply=reply, clarification=asked)
+
+    def _settle(self, agent, context: TurnContext, state: Mapping[str, Any], **boundary: Any) -> TurnResult:
+        """Return the turn's result, remembering exactly the reply the user is shown when the cap shortened it."""
+        result = _result(state, **boundary)
+        if result.status != "completed":
+            return result
+        message = _turn_reply(state, **boundary)
+        if context_budget.final_reply(message) != result.reply:
+            try:
+                agent.update_state(
+                    self._config(context), {"messages": [message.model_copy(update={"content": result.reply})]}
+                )
+            except Exception as exc:
+                raise RuntimeStateError("checkpoint update failed") from exc
+        return result
 
     def _prepare_scope(self, context: TurnContext, *, resume: bool) -> tuple[TurnContext, tuple[object, ...]]:
         """Retain history only while the exact Assistant contract remains selected, and return what remains.
@@ -941,14 +965,16 @@ class AgentRuntime:
                 turn = HumanMessage(content=message, id=turn_id)
                 bridge = self._fit_history(agent, context, history, turn, window)
                 state = agent.invoke({"messages": [*bridge, turn]}, config=self._config(context))
-                asked = self._finish_clarification(agent, context, state)
-        except RuntimeContractError, RuntimeStateError, ImportError:
+                result = self._finish_clarification(agent, context, state) or self._settle(
+                    agent, context, state, after_message_id=turn_id
+                )
+        except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
             raise
         except clarifier.UnanswerableToolCallError as exc:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        return self._attach(asked or _result(state, after_message_id=turn_id), state, context)
+        return self._attach(result, state, context)
 
     def resume(self, context: TurnContext, results: Mapping[str, object]) -> TurnResult:
         if not results or not all(isinstance(key, str) and key for key in results):
@@ -962,14 +988,13 @@ class AgentRuntime:
                 message_offset = len(history)
                 self._prune_history(context.thread_id)
                 self._ensure_resume_window(context, history, results)
-                state = self._agent(context, clarification_allowed=False).invoke(
-                    Command(resume=dict(results)),
-                    config=self._config(context),
-                )
-        except RuntimeContractError, RuntimeStateError, ImportError:
+                agent = self._agent(context, clarification_allowed=False)
+                state = agent.invoke(Command(resume=dict(results)), config=self._config(context))
+                result = self._settle(agent, context, state, message_offset=message_offset)
+        except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
             raise
         except clarifier.UnanswerableToolCallError as exc:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
             raise ProviderRequestError("model provider request failed") from exc
-        return self._attach(_result(state, message_offset=message_offset), state, context)
+        return self._attach(result, state, context)

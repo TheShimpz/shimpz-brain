@@ -509,6 +509,43 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(completed.status, "completed")
         self.assertEqual(completed.reply, "x" * agent_runtime.MAX_REPLY_CHARS)
 
+    def test_the_next_turn_remembers_only_the_capped_reply_the_user_received(self):
+        delivered = "x" * agent_runtime.MAX_REPLY_CHARS
+        tool = agent_runtime._tool_name("hello-pulse", "hello")
+        call = {"name": tool, "args": {"name": "Ada"}, "id": "provider-call-1", "type": "tool_call"}
+        model = RecordingToolAwareFakeModel(
+            responses=[
+                AIMessage(content=delivered + "\nFINAL WARNING: never shown."),
+                AIMessage(content="", tool_calls=[call]),
+                AIMessage(content=delivered + "\nRESUMED WARNING: never shown."),
+                AIMessage(content="Short."),
+            ]
+        )
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        turn = context()
+
+        self.assertEqual(runtime.start(turn, "Give me a long answer").reply, delivered)
+        suspended = runtime.start(turn, "Greet Ada")
+        self.assertEqual(runtime.resume(turn, {suspended.actions[0].interrupt_id: {"ok": True}}).reply, delivered)
+        self.assertEqual(runtime.start(turn, "And now?").reply, "Short.")
+
+        prompt = RecordingToolAwareFakeModel.seen_messages[-1]
+        replies = [message.content for message in prompt if isinstance(message, AIMessage) and not message.tool_calls]
+        self.assertEqual(replies, [delivered, delivered])
+        self.assertNotIn("WARNING", json.dumps([message.model_dump(mode="json") for message in prompt]))
+        stored = runtime._checkpointer.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
+        self.assertNotIn("WARNING", json.dumps([message.model_dump(mode="json") for message in stored]))
+
+    def test_a_failed_capped_reply_update_is_a_state_error(self):
+        model = ToolAwareFakeModel(responses=[AIMessage(content="x" * (agent_runtime.MAX_REPLY_CHARS + 1))])
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        agent = mock.Mock()
+        agent.update_state.side_effect = RuntimeError("private checkpoint detail")
+        state = {"messages": [AIMessage(content="y" * (agent_runtime.MAX_REPLY_CHARS + 1), id="a1")]}
+
+        with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "^checkpoint update failed$"):
+            runtime._settle(agent, context(), state, message_offset=0)
+
     def test_duplicate_local_action_ids_are_isolated_and_emit_the_selected_assistant(self):
         selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
         model = ToolAwareFakeModel(
