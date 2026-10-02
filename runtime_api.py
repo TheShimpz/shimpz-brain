@@ -24,6 +24,7 @@ import interface_language
 import memory as team_memory
 import model_usage
 import provider_cancel
+import routine_recovery
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
@@ -270,6 +271,45 @@ class ActionLabelsInput(ClosedInput):
         )
 
 
+class RoutineInput(ClosedInput):
+    name: str = Field(min_length=1, max_length=80)
+    request: str = Field(min_length=1, max_length=500)
+
+
+class RoutineStepInput(ClosedInput):
+    assistant: str = Field(min_length=1, max_length=128)
+    action: str = Field(min_length=1, max_length=128)
+
+
+class RoutineRecoveryInput(ClosedInput):
+    """A held run's failed step, Team's proof that it had no effect, and its sanitized diagnostics as data."""
+
+    provider: ProviderInput
+    locale: interface_language.Locale | None
+    routine: RoutineInput
+    step: RoutineStepInput
+    proof: Literal["not_occurred", "no_effect"]
+    diagnostics: list[dict[str, Any]] = Field(max_length=routine_recovery.MAX_DIAGNOSTICS)
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+    def runtime_request(self) -> routine_recovery.RecoveryRequest:
+        return routine_recovery.RecoveryRequest(
+            self.routine.name,
+            self.routine.request,
+            self.step.assistant,
+            self.step.action,
+            self.proof,
+            tuple(self.diagnostics),
+            self.locale,
+        )
+
+
 class CapabilityIntegrationInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=128)
@@ -408,6 +448,10 @@ class RuntimeLike:
         objective: str,
         candidates: tuple[capability_plan.CapabilityCandidate, ...],
     ) -> capability_plan.CapabilityPlan: ...
+
+    def routine_recovery(
+        self, provider: agent_runtime.ProviderConfig, request: routine_recovery.RecoveryRequest
+    ) -> str: ...
 
     def intent_route(
         self,
@@ -690,6 +734,17 @@ async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError)
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
 
 
+def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth) -> None:
+    """The one model decision of a held Routine run's automatic recovery, with no tools or history (ADR-0092)."""
+
+    @app.post("/v1/routine-recovery", dependencies=[Depends(require_auth)])
+    def routine_recovery_decision(body: RoutineRecoveryInput) -> dict[str, object]:
+        decision, usage = model_usage.measure(
+            lambda: current_runtime().routine_recovery(body.runtime_provider(), body.runtime_request())
+        )
+        return {"decision": decision, "usage": usage}
+
+
 def _register_intent_route(
     app: FastAPI,
     current_runtime: Callable[[], RuntimeLike],
@@ -836,6 +891,7 @@ def create_app(
         )
 
     _register_intent_route(app, current_runtime, require_auth)
+    _register_routine_recovery(app, current_runtime, require_auth)
 
     return app
 

@@ -33,6 +33,7 @@ import intent_fast_path
 import intent_route as intent_router
 import memory as team_memory
 import provider_cancel
+import routine_recovery
 import turn_pins
 import turn_prompt
 from langchain_core.language_models import BaseChatModel
@@ -869,6 +870,10 @@ class AgentRuntime:
             raise RuntimeStateError("checkpoint read failed") from exc
         request = action_purpose.pending_request(checkpoint, pending)
         return action_purpose.create(functools.partial(self._decision_model, provider), provider.provider, request)
+
+    def routine_recovery(self, provider: ProviderConfig, request: routine_recovery.RecoveryRequest) -> str:
+        """The one decision of a held Routine run's automatic recovery: retry, ask, or pause (ADR-0092)."""
+        return routine_recovery.decide(functools.partial(self._decision_model, provider), provider.provider, request)
 
     def capability_plan(
         self,

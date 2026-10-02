@@ -115,6 +115,12 @@ class FakeRuntime:
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
 
+    def routine_recovery(self, provider, request):
+        self.calls.append(("routine_recovery", provider, request))
+        if self.error:
+            raise self.error
+        return "retry"
+
     def action_purpose(self, provider, pending):
         self.calls.append(("action_purpose", provider, pending))
         if self.error:
