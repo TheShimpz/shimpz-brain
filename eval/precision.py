@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import dataclasses
 import json
 import math
 import re
@@ -27,10 +28,14 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import corpus, judge, private, split
+from eval import corpus, judge, large_api, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
+from eval.large_api_arms import ASSISTANTS_TASKS
+
+SCENARIOS = {**corpus.SCENARIOS_BY_ID, **large_api.SCENARIOS_BY_ID}
+CONTRACTS = {"a": corpus.ASSISTANTS, "b": ASSISTANTS_B, "large": large_api.ASSISTANTS, "large-tasks": ASSISTANTS_TASKS}
 
 REPORT_SCHEMA = "shimpz.precision-eval.report/v1"
 STATUSES = ("completed", "turn-failed", "brain-error", "budget-stopped")
@@ -48,10 +53,16 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 def judge_item(attempt: Mapping[str, object]) -> judge.Item:
-    """The judge input; an experiment arm's exposed Assistants and contract variant replace the scenario's."""
-    scenario = corpus.SCENARIOS_BY_ID[str(attempt["scenario"])]
-    contracts = ASSISTANTS_B if attempt.get("contracts") == "b" else corpus.ASSISTANTS
-    exposed = tuple(contracts[name] for name in attempt.get("exposed") or scenario.assistants)
+    """The judge input; an experiment arm's exposed Assistants, Actions, and contract set replace the scenario's."""
+    scenario = SCENARIOS[str(attempt["scenario"])]
+    contracts = CONTRACTS[str(attempt.get("contracts", "a"))]
+    only = set(attempt.get("exposed_actions") or ())
+    exposed = tuple(
+        dataclasses.replace(contracts[name], actions=tuple(a for a in contracts[name].actions if a.id in only))
+        if only and name == large_api.ASSISTANT_ID
+        else contracts[name]
+        for name in attempt.get("exposed") or scenario.assistants
+    )
     return judge.Item(scenario, tuple(attempt["ledger"]), str(attempt["reply"]), exposed)
 
 
@@ -134,7 +145,7 @@ def outcome(attempt: Mapping[str, object], decision: Mapping[str, object] | None
 
 
 def _template(attempt: Mapping[str, object]) -> str:
-    return corpus.SCENARIOS_BY_ID[str(attempt["scenario"])].template.id
+    return SCENARIOS[str(attempt["scenario"])].template.id
 
 
 def _rate(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: str) -> dict[str, object]:
@@ -156,7 +167,7 @@ def _pass_k(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: s
         for scenario, results in by_scenario.items():
             estimate = eval_stats.pass_hat_k(sum(results), len(results), k)
             if estimate is not None:
-                clusters[corpus.SCENARIOS_BY_ID[scenario].template.id].append(estimate)
+                clusters[SCENARIOS[scenario].template.id].append(estimate)
         summary[f"pass^{k}"] = eval_stats.cluster_bootstrap(clusters, f"{seed}:{name}:pass{k}")
     return summary
 
@@ -185,7 +196,7 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
     for stratum in STRATA:
         values: dict[str, list[tuple[Mapping[str, object], str]]] = defaultdict(list)
         for attempt, result in conclusive:
-            values[str(corpus.SCENARIOS_BY_ID[str(attempt["scenario"])].strata[stratum])].append((attempt, result))
+            values[str(SCENARIOS[str(attempt["scenario"])].strata[stratum])].append((attempt, result))
         strata[stratum] = {
             value: _rate(items, seed, f"{name}:{stratum}:{value}") for value, items in sorted(values.items())
         }
@@ -260,7 +271,7 @@ def _paired(
         if {results.get(baseline), results.get(candidate)} & {None, "inconclusive"}:
             incomplete += 1
             continue
-        complete[corpus.SCENARIOS_BY_ID[scenario].template.id].append(
+        complete[SCENARIOS[scenario].template.id].append(
             (float(results[baseline] == "success"), float(results[candidate] == "success"))
         )
     return {
@@ -383,6 +394,11 @@ def grade(
     return {"grade": "exploratory" if reasons else "decision", "reasons": reasons, "judge_identity": current}
 
 
+def _part(scenario_id: str, sets: Mapping[str, dict[str, list[str]]]) -> str:
+    stratum = "large-api" if scenario_id in large_api.SCENARIOS_BY_ID else "precision"
+    return split.part(scenario_id, sets[stratum])
+
+
 def build_report(
     attempts: Sequence[Mapping[str, object]],
     judged: Sequence[Mapping[str, object]],
@@ -395,9 +411,9 @@ def build_report(
     Every attempt key (campaign, provider, model, arm, repetition, scenario) must be unique, so two campaigns are
     never merged into one pair. Each arm is paired against the ``baseline_arm`` the metadata names, or the first arm.
     """
-    sets = None if part is None else split.load()
+    sets = None if part is None else {"precision": split.load(), "large-api": split.load(split.LARGE_API_SPLIT)}
     if part is not None:
-        attempts = [attempt for attempt in attempts if split.part(str(attempt["scenario"]), sets) == part]
+        attempts = [attempt for attempt in attempts if _part(str(attempt["scenario"]), sets) == part]
     keys = [attempt_key(attempt) for attempt in attempts]
     if len(keys) != len(set(keys)):
         raise ValueError("duplicate attempt or pairing key")
@@ -435,7 +451,16 @@ def build_report(
         "schema": REPORT_SCHEMA,
         "corpus": {"id": corpus.CORPUS_ID, "digest": corpus.digest(), "scenarios": len(corpus.SCENARIOS)},
         "meta": checked_meta(dict(meta)),
-        "split": None if part is None else {"part": part, "templates": sets[part], "digest": split.digest(sets)},
+        "split": None
+        if part is None
+        else {
+            "part": part,
+            "templates": sorted(t for sets_of in sets.values() for t in sets_of[part]),
+            "digests": [
+                split.digest(sets["precision"]),
+                split.digest(sets["large-api"], large_api.CORPUS_ID, large_api.digest()),
+            ],
+        },
         "decision": grade(calibration, judged, meta),
         "judge_calibration": None if calibration is None else checked_meta(dict(calibration)),
         "runs": runs,
@@ -453,15 +478,19 @@ def build_report(
 
 
 def validate() -> dict[str, object]:
+    """Both strata are sound, and Brain admits every scenario under every contract set its arms use."""
     import agent_runtime
 
     corpus.validate()
+    large_api.validate()
     provider = agent_runtime.ProviderConfig("openai", judge.JUDGE_MODELS["openai"], "offline-validation-key", "low")
-    for scenario in corpus.SCENARIOS:
+    checks = [(scenario, set_name) for scenario in corpus.SCENARIOS for set_name in ("a", "b")]
+    checks += [(scenario, set_name) for scenario in large_api.SCENARIOS for set_name in ("large", "large-tasks")]
+    for scenario, set_name in checks:
         agent_runtime.TurnContext(
             "precision:validate",
             "Precision Team",
-            brain_assistants(scenario),
+            brain_assistants(scenario, set_name),
             provider,
             memories=(),
             skills=(),
@@ -469,14 +498,13 @@ def validate() -> dict[str, object]:
         )
     return {
         "status": "corpus-valid",
-        "corpus": corpus.CORPUS_ID,
-        "digest": corpus.digest(),
-        "scenarios": len(corpus.SCENARIOS),
+        "corpora": {corpus.CORPUS_ID: corpus.digest(), large_api.CORPUS_ID: large_api.digest()},
+        "scenarios": len(SCENARIOS),
         "calibration_items": len(judge.calibration_items()),
     }
 
 
-def brain_assistants(scenario: corpus.Scenario) -> tuple:
+def brain_assistants(scenario: corpus.Scenario, contracts: str = "a") -> tuple:
     import agent_runtime
 
     return tuple(
@@ -485,7 +513,7 @@ def brain_assistants(scenario: corpus.Scenario) -> tuple:
             assistant.genesis,
             tuple(agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema) for a in assistant.actions),
         )
-        for assistant in (corpus.ASSISTANTS[name] for name in scenario.assistants)
+        for assistant in (CONTRACTS[contracts][name] for name in scenario.assistants)
     )
 
 

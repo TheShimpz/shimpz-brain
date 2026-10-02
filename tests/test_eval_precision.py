@@ -229,6 +229,34 @@ class ArmReportTests(unittest.TestCase):
         self.assertIsNone(precision._arm_signals([{**attempts[0], "operations": 0}])["arm_signals"]["escalation_rate"])
 
 
+class LargeApiReportTests(unittest.TestCase):
+    def test_large_api_attempts_use_their_stratum_contracts_and_split(self):
+        attempt = {
+            **_attempt("cf-ssl-strict.en", "L3"),
+            "contracts": "large",
+            "exposed": ["edge"],
+            "exposed_actions": ["zones-list", "ssl-settings-update"],
+            "recall": True,
+            "refusals": 0,
+            "escalated": False,
+            "escalation_signal": None,
+            "escalation_blocked": False,
+        }
+        item = precision.judge_item(attempt)
+        self.assertEqual([a.id for a in item.assistants[0].actions], ["zones-list", "ssl-settings-update"])
+        tasks = precision.judge_item({**attempt, "contracts": "large-tasks", "exposed_actions": None})
+        self.assertEqual(len(tasks.assistants[0].actions), 21)
+        report = precision.build_report(
+            [attempt, _attempt("cf-dns-txt.en", "L3"), _attempt("dns-update.en", "A")],
+            [],
+            {"seed": "s"},
+            None,
+            "held-out",
+        )
+        self.assertEqual(sum(run["attempts"]["completed"] for run in report["runs"]), 2)
+        self.assertEqual(len(report["split"]["digests"]), 2)
+
+
 class GradeTests(unittest.TestCase):
     def test_only_an_admitted_calibration_of_the_same_judge_supports_a_decision(self):
         current = judge.identity()
@@ -279,7 +307,7 @@ class MetaTests(unittest.TestCase):
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
-        self.assertEqual((result["scenarios"], result["calibration_items"]), (120, 32))
+        self.assertEqual((result["scenarios"], result["calibration_items"]), (200, 32))
         scenario = corpus.SCENARIOS_BY_ID["status-migrate.en"]
         self.assertEqual(len(precision.brain_assistants(scenario)), len(scenario.assistants))
 
