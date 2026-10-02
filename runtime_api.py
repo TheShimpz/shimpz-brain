@@ -18,6 +18,7 @@ from typing import Annotated, Any, Literal, Self
 import action_labels
 import action_purpose
 import agent_runtime
+import attachments as turn_attachments
 import capability_plan
 import intent_route
 import interface_language
@@ -110,6 +111,9 @@ class ActionInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     summary: str = Field(min_length=1, max_length=2_000)
     input_schema: dict[str, Any]
+    # Whether the Action declares an authorization capability, and which input properties take a file (ADR-0093).
+    authorization: StrictBool
+    input_files: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(max_length=1)
 
 
 class AssistantInput(ClosedInput):
@@ -131,6 +135,8 @@ class TurnContextInput(ClosedInput):
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
+    # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
+    attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -152,6 +158,8 @@ class TurnContextInput(ClosedInput):
                             id=action.id,
                             summary=action.summary,
                             input_schema=action.input_schema,
+                            authorization=action.authorization,
+                            input_files=tuple(action.input_files),
                         )
                         for action in assistant.actions
                     ),
@@ -168,7 +176,15 @@ class TurnContextInput(ClosedInput):
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
             knowledge_writable=self.knowledge_writable,
+            attachments=_attachments(self.attachments),
         )
+
+
+def _attachments(value: list[dict[str, Any]]) -> tuple[turn_attachments.Attachment, ...]:
+    try:
+        return turn_attachments.admit(value)
+    except turn_attachments.AttachmentContractError as exc:
+        raise agent_runtime.RuntimeContractError("invalid attachments") from exc
 
 
 def _memories(value: list[dict[str, Any]] | None) -> tuple[team_memory.Memory, ...] | None:

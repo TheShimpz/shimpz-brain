@@ -41,6 +41,8 @@ def body(**updates):
                             "properties": {"name": {"type": "string"}},
                             "additionalProperties": False,
                         },
+                        "authorization": False,
+                        "input_files": [],
                     }
                 ],
             },
@@ -56,6 +58,8 @@ def body(**updates):
                             "properties": {"name": {"type": "string"}},
                             "additionalProperties": False,
                         },
+                        "authorization": False,
+                        "input_files": [],
                     }
                 ],
             },
@@ -65,6 +69,7 @@ def body(**updates):
         "skills": [],
         "routines": [],
         "knowledge_writable": True,
+        "attachments": [],
         "message": "Hello",
         "conversation": [],
         "locale": "pt",

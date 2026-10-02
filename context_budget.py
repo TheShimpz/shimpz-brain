@@ -11,7 +11,7 @@ Token counts are a pessimistic byte heuristic, not a tokenizer: a preflight esti
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
@@ -92,18 +92,24 @@ def ensure_window(fixed_tokens: int, conversation_tokens: int) -> None:
         raise ContextWindowError("conversation context exceeds the model window")
 
 
-def history_to_drop(history: Sequence[BaseMessage], fixed_tokens: int, current_tokens: int) -> tuple[BaseMessage, ...]:
+def history_to_drop(
+    history: Sequence[BaseMessage],
+    fixed_tokens: int,
+    current_tokens: int,
+    forgotten: Callable[[BaseMessage], bool] = lambda _message: False,
+) -> tuple[BaseMessage, ...]:
     """Return what a new turn must forget: every unfinished exchange, and completed ones beyond the newest run kept.
 
     An unfinished exchange is a failed turn (a lone user message or an unanswered Action round); resending it would
-    replay a request the user already saw fail.
+    replay a request the user already saw fail. An exchange whose user message is ``forgotten``, such as one that read
+    attachments, is forgotten whole however recent it is (ADR-0093).
     """
     ensure_window(fixed_tokens, current_tokens)
     groups = exchanges(history)
     kept: set[int] = set()
     used = 0
     for index in reversed(range(len(groups))):
-        if not completed(groups[index]):
+        if not completed(groups[index]) or forgotten(groups[index][0]):
             continue
         size = sum(message_tokens(message) for message in groups[index])
         if (

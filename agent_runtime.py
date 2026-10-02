@@ -25,6 +25,7 @@ import action_labels
 import action_purpose
 import action_schema
 import action_tool
+import attachments as turn_attachments
 import capability_plan as capability_planner
 import clarification as clarifier
 import context_budget
@@ -125,10 +126,22 @@ class ActionDefinition:
     id: str
     summary: str
     input_schema: Mapping[str, Any]
+    # Whether the Action declares an authorization capability; only such Actions are offered while attachment content
+    # is in the turn (ADR-0093).
+    authorization: bool = False
+    # The input properties that take one attached file's id (ADR-0093).
+    input_files: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if ACTION_ID_RE.fullmatch(self.id) is None:
             raise RuntimeContractError("invalid Action id")
+        properties = self.input_schema.get("properties")
+        if (
+            type(self.authorization) is not bool
+            or len(self.input_files) > 1
+            or not all(isinstance(properties, Mapping) and name in properties for name in self.input_files)
+        ):
+            raise RuntimeContractError("invalid Action file or authorization declaration")
         if not self.summary.strip() or len(self.summary) > 2_000:
             raise RuntimeContractError("invalid Action summary")
         if self.input_schema.get("type") != "object":
@@ -207,30 +220,23 @@ class TurnContext:
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
     turn_message_id: str | None = None
+    # The message's prepared files (ADR-0093): request-local content that Team resends for every resume, and the token
+    # charge each provider call of the turn carries for them, counted once at the start.
+    attachments: tuple[turn_attachments.Attachment, ...] = ()
+    attachment_charge: int = 0
 
     def __post_init__(self) -> None:
         if type(self.turn_date) is not datetime.date:
             raise RuntimeContractError("invalid turn date")
         if not turn_pins.valid_turn(self.locale, self.turn_message_id, started=False):
             raise RuntimeContractError("invalid turn language or message")
-        if self.memories is not None:
-            try:
-                team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in self.memories])
-            except (AttributeError, TypeError, team_memory.MemoryContractError) as exc:
-                raise RuntimeContractError("invalid memory") from exc
-            object.__setattr__(self, "memories", tuple(self.memories))
-        if self.skills is not None:
-            try:
-                object.__setattr__(self, "skills", team_memory.canonical_skills(self.skills))
-            except team_memory.MemoryContractError as exc:
-                raise RuntimeContractError("invalid skills") from exc
-        if self.routines is not None:
-            try:
-                object.__setattr__(self, "routines", team_routine.canonical_routines(self.routines))
-            except team_routine.RoutineContractError as exc:
-                raise RuntimeContractError("invalid routines") from exc
-        if type(self.knowledge_writable) is not bool:
-            raise RuntimeContractError("invalid knowledge scope")
+        _admit_knowledge(self)
+        if (
+            not all(isinstance(item, turn_attachments.Attachment) for item in self.attachments)
+            or type(self.attachment_charge) is not int
+            or self.attachment_charge < 0
+        ):
+            raise RuntimeContractError("invalid attachments")
         if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
@@ -240,6 +246,28 @@ class TurnContext:
         if len(assistant_ids) != len(set(assistant_ids)):
             raise RuntimeContractError("duplicate Assistant id")
         object.__setattr__(self, "assistants", tuple(sorted(self.assistants, key=lambda item: item.id)))
+
+
+def _admit_knowledge(context: TurnContext) -> None:
+    """Canonicalize the turn's memories, skills, and Routines in place, refusing any that is invalid."""
+    if context.memories is not None:
+        try:
+            team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in context.memories])
+        except (AttributeError, TypeError, team_memory.MemoryContractError) as exc:
+            raise RuntimeContractError("invalid memory") from exc
+        object.__setattr__(context, "memories", tuple(context.memories))
+    if context.skills is not None:
+        try:
+            object.__setattr__(context, "skills", team_memory.canonical_skills(context.skills))
+        except team_memory.MemoryContractError as exc:
+            raise RuntimeContractError("invalid skills") from exc
+    if context.routines is not None:
+        try:
+            object.__setattr__(context, "routines", team_routine.canonical_routines(context.routines))
+        except team_routine.RoutineContractError as exc:
+            raise RuntimeContractError("invalid routines") from exc
+    if type(context.knowledge_writable) is not bool:
+        raise RuntimeContractError("invalid knowledge scope")
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,8 +377,83 @@ class ProviderModelFactory:
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
     """Whether this turn offers the memory and the Routine tool; a Routine run's knowledge is read-only."""
-    writable = context.knowledge_writable
+    # A turn that carries attachments learns nothing and changes no Routine (ADR-0093).
+    writable = context.knowledge_writable and not context.attachments
     return writable and context.memories is not None, writable and context.routines is not None
+
+
+def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnContext:
+    """A resumed turn's context with exactly the pins its start recorded."""
+    try:
+        turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
+        locale, turn_message_id = turn_pins.restore_turn(metadata)
+        commitment, charge = turn_pins.restore_attachments(metadata)
+    except turn_pins.PinError as exc:
+        raise RuntimeStateError("checkpoint state is invalid") from exc
+    if commitment != turn_attachments.commitment(context.attachments):
+        # Team rehydrates the exact files the turn started with; anything else ends the turn explicitly (ADR-0093).
+        raise RuntimeContractError("attachments changed during the pending turn")
+    return replace(
+        context,
+        turn_date=turn_date,
+        memories=rules,
+        skills=skills,
+        routines=routines,
+        knowledge_writable=writable,
+        locale=locale,
+        turn_message_id=turn_message_id,
+        attachment_charge=charge,
+    )
+
+
+def _read_attachments(message: object) -> bool:
+    """Whether a user message started a turn that read attachments; the next new turn forgets that exchange."""
+    return str(getattr(message, "id", "")).startswith(turn_attachments.ATTACHED_TURN_PREFIX)
+
+
+def _attachment_counter(model: object, provider: str) -> Callable[[list[dict[str, object]], float], int]:
+    """Count one attachment's content blocks with the provider's own counting endpoint, bounded by ``timeout``.
+
+    The blocks go through the same adapter payload conversion the real call uses, so the count matches what is sent.
+    """
+
+    def count(blocks: list[dict[str, object]], timeout: float) -> int:
+        import anthropic
+        import openai
+
+        try:
+            payload = model._get_request_payload([HumanMessage(content=blocks)])
+            if provider == "anthropic":
+                response = model._client.messages.count_tokens(
+                    model=payload["model"], messages=payload["messages"], timeout=timeout
+                )
+            else:
+                response = model.root_client.responses.input_tokens.count(
+                    model=payload["model"], input=payload["input"], timeout=timeout
+                )
+            return int(response.input_tokens)
+        except (
+            anthropic.AnthropicError,
+            openai.OpenAIError,
+            httpx.HTTPError,
+            AttributeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise turn_attachments.CountUnavailableError("the provider did not count the attachment") from exc
+
+    return count
+
+
+def exposed_assistants(context: TurnContext) -> tuple[AssistantDefinition, ...]:
+    """The Actions a turn offers: all of them, or only authorizing ones while attachment content is in the turn."""
+    if not turn_attachments.reads_content(context.attachments):
+        return context.assistants
+    return tuple(
+        replace(assistant, actions=tuple(action for action in assistant.actions if action.authorization))
+        for assistant in context.assistants
+    )
 
 
 def _tool_name(assistant_id: str, action_id: str) -> str:
@@ -372,6 +475,8 @@ def _assistant_scope(context: TurnContext) -> str:
                     "id": action.id,
                     "summary": action.summary,
                     "input_schema": action.input_schema,
+                    "authorization": action.authorization,
+                    "input_files": list(action.input_files),
                 }
                 for action in sorted(assistant.actions, key=lambda item: item.id)
             ],
@@ -544,6 +649,13 @@ def _has_pending_interrupt(pending_writes: object) -> bool:
     return has_pending_interrupt
 
 
+def _attachment_projection(context: TurnContext) -> list[object]:
+    """Add the message's attachments to each provider call only, never to graph state (ADR-0093)."""
+    if not context.attachments:
+        return []
+    return [turn_attachments.projection(context.attachments, context.turn_message_id, context.attachment_charge)]
+
+
 def _prompt_caching(provider: ProviderConfig) -> list[object]:
     """Mark Anthropic's stable system prompt, tools, and conversation prefix for its five-minute prompt cache.
 
@@ -634,6 +746,9 @@ class AgentRuntime:
                     context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
                 ),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
+                **turn_pins.record_attachments(
+                    turn_attachments.commitment(context.attachments), context.attachment_charge
+                ),
             },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
@@ -642,9 +757,10 @@ class AgentRuntime:
         from langchain.agents import create_agent
 
         model = self._model_factory(context.provider)
+        exposed = exposed_assistants(context)
         tools = [
             action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)
-            for assistant in context.assistants
+            for assistant in exposed
             for action in assistant.actions
         ]
         tools.append(clarifier.tool())
@@ -658,10 +774,11 @@ class AgentRuntime:
         return create_agent(
             model=model,
             tools=tools,
-            system_prompt=turn_prompt.system_prompt(context),
+            system_prompt=turn_prompt.system_prompt(replace(context, assistants=exposed)),
             checkpointer=self._checkpointer,
             middleware=[
                 *_prompt_caching(context.provider),
+                *_attachment_projection(context),
                 clarifier.guard(allowed=clarification_allowed),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
                 *(
@@ -722,29 +839,14 @@ class AgentRuntime:
         messages = channel_values.get("messages", ())
         if not isinstance(messages, Sequence):
             raise RuntimeStateError("checkpoint state is invalid")
-        if resume:
-            try:
-                turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
-                locale, turn_message_id = turn_pins.restore_turn(metadata)
-            except turn_pins.PinError as exc:
-                raise RuntimeStateError("checkpoint state is invalid") from exc
-            context = replace(
-                context,
-                turn_date=turn_date,
-                memories=rules,
-                skills=skills,
-                routines=routines,
-                knowledge_writable=writable,
-                locale=locale,
-                turn_message_id=turn_message_id,
-            )
-        return context, tuple(messages)
+        return (_restored(context, metadata) if resume else context), tuple(messages)
 
     @staticmethod
     def _fixed_tokens(context: TurnContext) -> int:
+        exposed = exposed_assistants(context)
         tools = [
             {"name": _tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
-            for assistant in context.assistants
+            for assistant in exposed
             for action in assistant.actions
         ]
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
@@ -752,7 +854,9 @@ class AgentRuntime:
         for included, module in ((memory_tool, team_memory), (routine_tool, team_routine)):
             if included:
                 tools.append({"name": module.TOOL_NAME, "summary": module.DESCRIPTION, "schema": module.SCHEMA})
-        return context_budget.fixed_tokens(turn_prompt.system_prompt(context), tools)
+        prompt = turn_prompt.system_prompt(replace(context, assistants=exposed))
+        # Every provider call of an attachment turn carries the attachments, so their charge is fixed context too.
+        return context_budget.fixed_tokens(prompt, tools) + context.attachment_charge
 
     def _fit_history(
         self,
@@ -770,7 +874,9 @@ class AgentRuntime:
         """
         fixed = self._fixed_tokens(context)
         try:
-            drop = context_budget.history_to_drop(history, fixed, context_budget.message_tokens(turn))
+            drop = context_budget.history_to_drop(
+                history, fixed, context_budget.message_tokens(turn), _read_attachments
+            )
             bridge = _conversation_bridge(conversation) if len(drop) == len(history) and conversation else ()
             if bridge:
                 context_budget.ensure_window(
@@ -789,6 +895,16 @@ class AgentRuntime:
                 raise RuntimeStateError("checkpoint trimming failed") from exc
             self._prune_history(context.thread_id)
         return bridge
+
+    def _attachment_charge(self, context: TurnContext) -> int:
+        """Count the attachments once per logical turn with the provider, bounded, and admit their token charge."""
+        if not context.attachments:
+            return 0
+        counter = _attachment_counter(self._model_factory(context.provider), context.provider.provider)
+        try:
+            return turn_attachments.admit_charges(turn_attachments.charges(context.attachments, counter))
+        except turn_attachments.AttachmentContractError as exc:
+            raise RuntimeContractError(str(exc)) from exc
 
     def _ensure_resume_window(self, context: TurnContext, history: tuple[object, ...], results: Mapping) -> None:
         """Refuse a resumed call whose Action results would overflow the smallest model window."""
@@ -943,13 +1059,15 @@ class AgentRuntime:
             window = intent_router.admit_conversation(conversation)
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError("invalid conversation window") from exc
-        turn_id = f"shimpz-turn-{secrets.token_hex(16)}"
+        prefix = turn_attachments.ATTACHED_TURN_PREFIX if context.attachments else "shimpz-turn-"
+        turn_id = f"{prefix}{secrets.token_hex(16)}"
         context = replace(context, turn_message_id=turn_id)
         lock = self._thread_lock(context.thread_id)
         try:
             with lock:
                 context, history = self._prepare_scope(context, resume=False)
                 self._prune_history(context.thread_id)
+                context = replace(context, attachment_charge=self._attachment_charge(context))
                 agent = self._agent(context, clarification_allowed=True)
                 turn = HumanMessage(content=message, id=turn_id)
                 bridge = self._fit_history(agent, context, history, turn, window)
@@ -957,6 +1075,8 @@ class AgentRuntime:
                 asked = self._finish_clarification(agent, context, state) or self._finish_routine(agent, context, state)
         except RuntimeContractError, RuntimeStateError, ImportError:
             raise
+        except turn_attachments.AttachmentContractError as exc:
+            raise RuntimeContractError(str(exc)) from exc
         except clarifier.UnanswerableToolCallError as exc:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
@@ -981,6 +1101,8 @@ class AgentRuntime:
                 )
         except RuntimeContractError, RuntimeStateError, ImportError:
             raise
+        except turn_attachments.AttachmentContractError as exc:
+            raise RuntimeContractError(str(exc)) from exc
         except clarifier.UnanswerableToolCallError as exc:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
