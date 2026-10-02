@@ -263,6 +263,25 @@ class ArmReportTests(unittest.TestCase):
         self.assertEqual((only["working_set_recall"], only["selection_fallback_rate"]), (None, None))
 
 
+class CrossModelReportTests(unittest.TestCase):
+    def test_a_reference_arm_on_another_model_pairs_over_the_repetitions_both_ran(self):
+        sonnet = {"provider": "anthropic", "model": "claude-sonnet-5-5"}
+        attempts = [
+            _attempt(scenario.id, "A", repetition) for scenario in corpus.SCENARIOS[:16] for repetition in range(3)
+        ]
+        attempts += [{**_attempt(scenario.id, "S", 0, passed=False), **sonnet} for scenario in corpus.SCENARIOS[:16]]
+        judged = [_decision(attempt) for attempt in attempts]
+        report = precision.build_report(attempts, judged, {"seed": "s", "identical_arms": True})
+        (pair,) = report["paired"]
+        self.assertEqual((pair["baseline"], pair["candidate"], pair["repetitions"]), ("A", "S", [0]))
+        self.assertEqual((pair["complete_pairs"], pair["incomplete_pairs"]), (16, 0))
+        self.assertEqual((pair["baseline_model"], pair["candidate_model"]), ("gpt-6-luna", "claude-sonnet-5-5"))
+        self.assertEqual(pair["difference"]["mean"], -1.0)
+        self.assertEqual(report["pooled_identical_arms"], [])
+        with self.assertRaisesRegex(ValueError, "two models"):
+            precision.build_report([*attempts, {**_attempt("dns-create.en", "S", 1)}], [], {})
+
+
 class LargeApiReportTests(unittest.TestCase):
     def test_large_api_attempts_use_their_stratum_contracts_and_split(self):
         attempt = {

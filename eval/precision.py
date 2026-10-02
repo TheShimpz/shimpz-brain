@@ -286,14 +286,22 @@ def _paired(
 ) -> dict[str, object]:
     """Candidate minus baseline success over complete (scenario, repetition) pairs of one campaign.
 
-    An incomplete pair is inconclusive; the caller has already refused a repeated pairing key.
+    Pairs come only from the repetitions both arms ran: a reference arm that ran fewer repetitions is compared over
+    those. Within them, a missing or inconclusive side makes the pair incomplete; the caller has already refused a
+    repeated pairing key.
     """
+    ran: dict[str, set[int]] = defaultdict(set)
     pairs: dict[tuple[str, int], dict[str, str]] = defaultdict(dict)
     for attempt, result in rows:
-        pairs[str(attempt["scenario"]), int(attempt["repetition"])][str(attempt["arm"])] = result
+        if attempt["arm"] in {baseline, candidate}:
+            ran[str(attempt["arm"])].add(int(attempt["repetition"]))
+            pairs[str(attempt["scenario"]), int(attempt["repetition"])][str(attempt["arm"])] = result
+    common = ran[baseline] & ran[candidate]
     complete: dict[str, list[tuple[float, float]]] = defaultdict(list)
     incomplete = 0
-    for (scenario, _repetition), results in sorted(pairs.items()):
+    for (scenario, repetition), results in sorted(pairs.items()):
+        if repetition not in common:
+            continue
         if {results.get(baseline), results.get(candidate)} & {None, "inconclusive"}:
             incomplete += 1
             continue
@@ -303,6 +311,7 @@ def _paired(
     return {
         "baseline": baseline,
         "candidate": candidate,
+        "repetitions": sorted(common),
         "complete_pairs": sum(len(items) for items in complete.values()),
         "incomplete_pairs": incomplete,
         "difference": eval_stats.paired_difference(complete, f"{seed}:paired:{candidate}"),
@@ -323,6 +332,7 @@ NUMBER_FIELDS = frozenset(
         "max_output_tokens",
         "max_reservation_usd",
         "rate",
+        "reference_repetitions",
         "refused",
         "repetitions",
         "requests",
@@ -542,10 +552,11 @@ def build_report(
     calibration: Mapping[str, object] | None = None,
     part: str | None = None,
 ) -> dict[str, object]:
-    """Group attempts by campaign, provider, model, and arm; pair arms only within one campaign.
+    """Group attempts by campaign, provider, model, and arm; pair arms only within one campaign, across models too.
 
     Every attempt key (campaign, provider, model, arm, repetition, scenario) must be unique, so two campaigns are
-    never merged into one pair. Each arm is paired against the ``baseline_arm`` the metadata names, or the first arm.
+    never merged into one pair, and an arm runs under one model per campaign. Each arm is paired against the
+    ``baseline_arm`` the metadata names, or the first arm, unless the metadata lists ``comparisons``.
     """
     sets = None if part is None else {"precision": split.load(), "large-api": split.load(split.LARGE_API_SPLIT)}
     if part is not None:
@@ -561,27 +572,43 @@ def build_report(
         key = (str(attempt["campaign"]), str(attempt["provider"]), str(attempt["model"]), str(attempt["arm"]))
         groups[key].append((attempt, result))
     runs = []
-    by_campaign: dict[tuple[str, str, str], dict[str, list]] = defaultdict(dict)
+    by_campaign: dict[str, dict[str, list]] = defaultdict(dict)
+    models: dict[str, dict[str, tuple[str, str]]] = defaultdict(dict)
     for (campaign, provider, model, arm), rows in sorted(groups.items()):
         effort = {str(attempt["effort"]) for attempt, _ in rows}
         name = f"{campaign}:{provider}:{model}:{arm}"
         checked_identity(campaign, provider, model, arm, sorted(effort))
         identity = {"campaign": campaign, "provider": provider, "model": model, "arm": arm, "effort": sorted(effort)}
         runs.append({**identity, **_group(rows, seed, name)})
-        by_campaign[campaign, provider, model][arm] = rows
+        if arm in by_campaign[campaign]:
+            raise ValueError("an arm runs under two models in one campaign")
+        by_campaign[campaign][arm] = rows
+        models[campaign][arm] = (provider, model)
     paired = []
     pooled = []
-    for (campaign, provider, model), arms in sorted(by_campaign.items()):
+    for campaign, arms in sorted(by_campaign.items()):
         if len(arms) < 2:
             continue
         rows = [row for items in arms.values() for row in items]
         baseline = meta.get("baseline_arm") if meta.get("baseline_arm") in arms else sorted(arms)[0]
-        identity = {"campaign": campaign, "provider": provider, "model": model}
         comparisons = [
             (base, candidate) for base, candidate in meta.get("comparisons", ()) if {base, candidate} <= set(arms)
         ] or [(baseline, candidate) for candidate in sorted(arms) if candidate != baseline]
-        paired.extend({**identity, **_paired(rows, base, candidate, seed)} for base, candidate in comparisons)
-        if meta.get("identical_arms"):
+        # Arms of one campaign pair across models too (A against its Sonnet reference S); each side names its model.
+        paired.extend(
+            {
+                "campaign": campaign,
+                "baseline_provider": models[campaign][base][0],
+                "baseline_model": models[campaign][base][1],
+                "candidate_provider": models[campaign][candidate][0],
+                "candidate_model": models[campaign][candidate][1],
+                **_paired(rows, base, candidate, seed),
+            }
+            for base, candidate in comparisons
+        )
+        if meta.get("identical_arms") and len(set(models[campaign].values())) == 1:
+            provider, model = next(iter(models[campaign].values()))
+            identity = {"campaign": campaign, "provider": provider, "model": model}
             pooled.append({**identity, **_pass_k(rows, seed, f"{campaign}:{provider}:{model}:pooled")})
     tiebreaks = [item for item in judged if item["tiebreak"] is not None]
     return {
