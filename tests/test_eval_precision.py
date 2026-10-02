@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import model_usage
-from eval import corpus, judge, precision, private, split
+from eval import arms, corpus, judge, precision, private, split
 from eval import cost as eval_cost
 
 GOOD = judge.Verdict(
@@ -215,6 +215,42 @@ class ArmReportTests(unittest.TestCase):
         self.assertIn("get-record", [a.id for a in item.assistants[0].actions])
         self.assertNotIn("arm_signals", precision._group([(_attempt("dns-create.en"), "success")], "s", "plain"))
         self.assertIsNone(precision._arm_signals([{**attempts[0], "operations": 0}])["arm_signals"]["escalation_rate"])
+
+    def test_a_stopped_record_first_keeps_every_signal_and_its_denominator(self):
+        ran = {
+            **_attempt("dns-create.en", "E"),
+            "contracts": "b",
+            "dispatched": True,
+            "exposed": ["dns", "mail"],
+            "exposed_actions": None,
+            "recall": False,
+            "selection_fallback": False,
+            "refusals": 2,
+            "escalated": True,
+            "escalation_signal": "empty-lookup",
+            "escalation_blocked": True,
+            "models_used": ["luna", "sonnet"],
+            "jev_usd": 0.0,
+            "jev_seconds": 0.0,
+            "route": None,
+            "route_confidence": None,
+        }
+        stopped = {
+            **_attempt("dns-update.en", "E", status="budget-stopped"),
+            **arms.undispatched(),
+            "contracts": "b",
+            "operations": 0,
+        }
+        self.assertEqual(set(stopped), set(ran))
+        report = precision.build_report([stopped, ran], [], {"seed": "s"})
+        signals = report["runs"][0]["arm_signals"]
+        self.assertEqual(
+            (signals["exposure_attempts"], signals["dispatched_attempts"], signals["working_set_recall"]), (1, 1, 0.0)
+        )
+        self.assertEqual((signals["mean_exposed_assistants"], signals["refusals"]), (2.0, 2))
+        self.assertEqual((signals["escalation_rate"], signals["escalation_blocked"]), (1.0, 1))
+        only = precision._arm_signals([stopped])["arm_signals"]
+        self.assertEqual((only["working_set_recall"], only["mean_exposed_assistants"]), (None, None))
 
 
 class LargeApiReportTests(unittest.TestCase):

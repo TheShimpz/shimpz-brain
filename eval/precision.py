@@ -240,25 +240,37 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
 
 
 def _arm_signals(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """What an engineering arm recorded: working-set recall and size, refusals, and escalations."""
-    if not attempts or "exposed" not in attempts[0]:
+    """What an engineering arm recorded, each rate over an explicit denominator.
+
+    Exposure signals (recall, exposed Assistants) count attempts whose exposure was computed; escalation counts
+    dispatched attempts. A stopped attempt never computed its exposure, so it is in neither denominator.
+    """
+    engineering = [attempt for attempt in attempts if "exposed" in attempt]
+    if not engineering:
         return {}
-    dispatched = [attempt for attempt in attempts if int(attempt["operations"]) > 0]
+    exposed = [attempt for attempt in engineering if attempt["recall"] is not None]
+    dispatched = [attempt for attempt in engineering if int(attempt["operations"]) > 0]
     signals: dict[str, int] = defaultdict(int)
     for attempt in dispatched:
         if attempt["escalated"]:
             signals[str(attempt["escalation_signal"])] += 1
     return {
         "arm_signals": {
-            "working_set_recall": sum(bool(a["recall"]) for a in attempts) / len(attempts),
-            "mean_exposed_assistants": sum(len(a["exposed"]) for a in attempts) / len(attempts),
-            "refusals": sum(int(a["refusals"]) for a in attempts),
+            "exposure_attempts": len(exposed),
+            "dispatched_attempts": len(dispatched),
+            "working_set_recall": _share(sum(bool(a["recall"]) for a in exposed), len(exposed)),
+            "mean_exposed_assistants": _share(sum(len(a["exposed"]) for a in exposed), len(exposed)),
+            "refusals": sum(int(a["refusals"]) for a in engineering),
             "escalated": sum(signals.values()),
-            "escalation_rate": sum(signals.values()) / len(dispatched) if dispatched else None,
+            "escalation_rate": _share(sum(signals.values()), len(dispatched)),
             "escalation_signals": dict(sorted(signals.items())),
-            "escalation_blocked": sum(bool(a["escalation_blocked"]) for a in attempts),
+            "escalation_blocked": sum(bool(a["escalation_blocked"]) for a in engineering),
         }
     }
+
+
+def _share(count: float, denominator: int) -> float | None:
+    return count / denominator if denominator else None
 
 
 def _paired(

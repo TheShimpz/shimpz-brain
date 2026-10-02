@@ -89,6 +89,29 @@ ARMS = {
 }
 
 
+def undispatched() -> dict[str, object]:
+    """The arm fields of an attempt that never dispatched, so a stopped record has the shape of a run one.
+
+    Exposure signals are None (never computed), counts are zero, and nothing escalated.
+    """
+    return {
+        "dispatched": False,
+        "exposed": None,
+        "exposed_actions": None,
+        "recall": None,
+        "selection_fallback": None,
+        "refusals": 0,
+        "escalated": False,
+        "escalation_signal": None,
+        "escalation_blocked": False,
+        "models_used": [],
+        "jev_usd": 0.0,
+        "jev_seconds": 0.0,
+        "route": None,
+        "route_confidence": None,
+    }
+
+
 def relevance(message: str, locale: str, scope: Sequence[str]) -> dict[str, int]:
     """Each Assistant's matched declared terms, plus a domain or address cue for DNS and a date or time for Calendar."""
     text = message.casefold()
