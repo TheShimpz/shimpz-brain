@@ -29,6 +29,7 @@ import socketserver
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import audit
 import policy
@@ -49,6 +50,11 @@ if (
     or not 1 <= LISTEN_BACKLOG <= 16
 ):
     raise ValueError("egress proxy concurrency/backlog must stay inside the shipping resource envelope")
+# DNS resolution counts against the CONNECT deadline. A lookup that outlives its deadline keeps its worker until
+# getaddrinfo returns, so this fixed pool bounds stuck lookups; a saturated pool fails at once instead of queueing.
+MAX_RESOLUTIONS = MAX_CONCURRENCY
+_RESOLVER = ThreadPoolExecutor(max_workers=MAX_RESOLUTIONS, thread_name_prefix="resolver")
+_RESOLVER_SLOTS = threading.BoundedSemaphore(MAX_RESOLUTIONS)
 _STATUS = {
     200: "Connection established",
     400: "Bad Request",
@@ -67,7 +73,25 @@ def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
     return canonical in allowed_hosts
 
 
-def _resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] | None:
+def _lookup(host: str, port: int) -> list:
+    try:
+        return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    finally:
+        _RESOLVER_SLOTS.release()
+
+
+def _resolve(host: str, port: int, deadline: float) -> list:
+    """Resolve on the bounded resolver, waiting no longer than the remaining CONNECT deadline.
+
+    Raises OSError when the resolver is saturated, the lookup fails, or the deadline passes first.
+    """
+    if not _RESOLVER_SLOTS.acquire(blocking=False):
+        raise OSError("resolver capacity exhausted")
+    lookup = _RESOLVER.submit(_lookup, host, port)
+    return lookup.result(timeout=max(0.0, deadline - time.monotonic()))
+
+
+def _resolve_public(host: str, port: int, deadline: float) -> tuple[tuple[int, tuple], ...] | None:
     """Resolve host:port to its verified-PUBLIC addresses, or None if any resolves to an internal IP.
 
     Defense in depth for the authorized Brain caller. The proxy is multi-homed across its private
@@ -77,7 +101,7 @@ def _resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] | Non
     not this destination guard, is what prevents other domains from reaching the Brain proxy.
     """
     try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        infos = _resolve(host, port, deadline)
     except OSError:
         return None
     public: list[tuple[int, tuple]] = []
@@ -92,14 +116,13 @@ def _resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] | Non
     return tuple(public) if public else None
 
 
-def _connect_first(addresses: tuple[tuple[int, tuple], ...]) -> tuple[socket.socket, str]:
+def _connect_first(addresses: tuple[tuple[int, tuple], ...], deadline: float) -> tuple[socket.socket, str]:
     """Connect to the first reachable verified address, in resolver order, under one total deadline.
 
     Every candidate was already validated public, so a refused or unreachable endpoint falls through to
-    the next admitted one without widening trust. The deadline is shared, never multiplied per address.
-    Raises the last connection error when no address connects before the deadline.
+    the next admitted one without widening trust. The deadline is the one resolution already spent from,
+    shared and never multiplied per address. Raises the last connection error when no address connects in time.
     """
-    deadline = time.monotonic() + CONNECT_TIMEOUT
     failure: OSError = TimeoutError("upstream connect deadline exceeded")
     for family, sockaddr in addresses:
         remaining = deadline - time.monotonic()
@@ -143,7 +166,8 @@ class Handler(socketserver.BaseRequestHandler):
             src = {"source": "loopback-probe"} if probe else {}
             audit.log("connect", f"{host}:{port}", result="denied", level="info" if probe else "warn", code=403, **src)
             return
-        resolved = _resolve_public(host, port)
+        deadline = time.monotonic() + CONNECT_TIMEOUT
+        resolved = _resolve_public(host, port, deadline)
         if resolved is None:  # internal (RFC1918/loopback/…) or unresolvable → refuse the pivot
             self._reply(cli, 403)
             src = {"source": "loopback-probe"} if probe else {}
@@ -158,7 +182,7 @@ class Handler(socketserver.BaseRequestHandler):
             )
             return
         try:
-            upstream, address = _connect_first(resolved)
+            upstream, address = _connect_first(resolved, deadline)
         except OSError as exc:
             self._reply(cli, 502)
             audit.log("connect", f"{host}:{port}", result="error", reason=str(exc))

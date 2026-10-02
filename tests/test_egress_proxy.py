@@ -9,7 +9,9 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, redirect_stderr, suppress
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +20,10 @@ from unittest import mock
 EGRESS = Path(__file__).resolve().parents[1] / "egress"
 sys.path.insert(0, str(EGRESS))
 app = importlib.import_module("app")
+
+
+def _later() -> float:
+    return time.monotonic() + app.CONNECT_TIMEOUT
 
 
 class BrainEgressHandlerTests(unittest.TestCase):
@@ -164,14 +170,14 @@ class BrainEgressHandlerTests(unittest.TestCase):
     def test_connection_attempts_share_one_total_deadline(self) -> None:
         slow, unused = mock.Mock(), mock.Mock()
         slow.connect.side_effect = TimeoutError("timed out")
-        clock = iter([100.0, 100.0, 100.0 + app.CONNECT_TIMEOUT])
+        clock = iter([100.0, 100.0 + app.CONNECT_TIMEOUT])
         resolved = ((socket.AF_INET, ("1.1.1.1", 443)), (socket.AF_INET, ("1.0.0.1", 443)))
         with (
             mock.patch.object(app.time, "monotonic", side_effect=lambda: next(clock)),
             mock.patch.object(app.socket, "socket", side_effect=[slow, unused]) as constructor,
             self.assertRaisesRegex(TimeoutError, "timed out"),
         ):
-            app._connect_first(resolved)
+            app._connect_first(resolved, 100.0 + app.CONNECT_TIMEOUT)
 
         slow.settimeout.assert_called_once_with(app.CONNECT_TIMEOUT)
         constructor.assert_called_once_with(socket.AF_INET, socket.SOCK_STREAM)
@@ -185,13 +191,82 @@ class BrainEgressHandlerTests(unittest.TestCase):
         closed.close()
         live = listener.getsockname()
 
-        upstream, address = app._connect_first(((socket.AF_INET, ("127.0.0.1", refused_port)), (socket.AF_INET, live)))
+        upstream, address = app._connect_first(
+            ((socket.AF_INET, ("127.0.0.1", refused_port)), (socket.AF_INET, live)), _later()
+        )
         self.addCleanup(upstream.close)
         accepted, _peer = listener.accept()
         accepted.close()
 
         self.assertEqual(upstream.getpeername(), live)
         self.assertEqual(address, "127.0.0.1")
+
+    ANSWER = ((socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.1.1.1", 443)),)
+
+    def _isolate_resolver(self) -> None:
+        """Give the test a private one-slot resolver so a stuck lookup never reaches the shared pool."""
+        self.resolver = ThreadPoolExecutor(max_workers=1)
+        self.release = threading.Event()
+        self.addCleanup(self.resolver.shutdown, wait=True)
+        self.addCleanup(self.release.set)
+        for name, value in (("_RESOLVER", self.resolver), ("_RESOLVER_SLOTS", threading.BoundedSemaphore(1))):
+            patcher = mock.patch.object(app, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _stuck_lookup(self, *_args, **_kwargs) -> list:
+        self.release.wait(5)
+        return list(self.ANSWER)
+
+    def test_slow_resolution_beyond_the_deadline_gets_the_existing_denial(self) -> None:
+        self._isolate_resolver()
+        never = mock.Mock()
+        with (
+            mock.patch.object(app, "CONNECT_TIMEOUT", 0.05),
+            mock.patch.object(app.socket, "getaddrinfo", side_effect=self._stuck_lookup),
+        ):
+            response, audit_log = self._exchange(b"CONNECT api.openai.com:443 HTTP/1.1\r\n\r\n", upstream=[never])
+
+        self.assertTrue(response.startswith(b"HTTP/1.1 403"))
+        self.assertEqual(audit_log.call_args.kwargs["reason"], "internal or unresolvable destination")
+        self.assertEqual(never.method_calls, [])
+
+    def test_resolution_and_connect_share_one_budget(self) -> None:
+        self._isolate_resolver()
+        for spent, expected in ((6.0, b"HTTP/1.1 200"), (app.CONNECT_TIMEOUT, b"HTTP/1.1 502")):
+            with self.subTest(spent=spent):
+                now = [100.0]
+
+                def slow_lookup(*_args, spent=spent, now=now, **_kwargs) -> list:
+                    now[0] += spent
+                    return list(self.ANSWER)
+
+                upstream = mock.Mock()
+                with (
+                    mock.patch.object(app.time, "monotonic", side_effect=lambda now=now: now[0]),
+                    mock.patch.object(app.socket, "getaddrinfo", side_effect=slow_lookup),
+                ):
+                    response, _audit_log = self._exchange(
+                        b"CONNECT api.openai.com:443 HTTP/1.1\r\n\r\n", upstream=[upstream], tunnel=mock.Mock()
+                    )
+
+                self.assertTrue(response.startswith(expected))
+                if spent < app.CONNECT_TIMEOUT:
+                    upstream.settimeout.assert_called_once_with(app.CONNECT_TIMEOUT - spent)
+                else:
+                    self.assertEqual(upstream.method_calls, [])
+
+    def test_a_saturated_resolver_fails_fast_until_a_stuck_lookup_returns(self) -> None:
+        self._isolate_resolver()
+        with mock.patch.object(app.socket, "getaddrinfo", side_effect=self._stuck_lookup) as lookup:
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, time.monotonic() + 0.05))
+            started = time.monotonic()
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
+            self.assertLess(time.monotonic() - started, 1.0)
+            lookup.assert_called_once()
+            self.release.set()
+            self.resolver.submit(lambda: None).result()
+            self.assertEqual(app._resolve_public("api.openai.com", 443, _later()), (self.ANSWER[0][0::4],))
 
     def test_loopback_probe_is_a_distinct_non_warning_denial(self) -> None:
         response, audit_log = self._exchange(
@@ -235,13 +310,13 @@ class BrainEgressHandlerTests(unittest.TestCase):
 
     def test_resolution_rejects_errors_invalid_mixed_and_empty_answers(self) -> None:
         with mock.patch.object(app.socket, "getaddrinfo", side_effect=OSError):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443))
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
         with mock.patch.object(
             app.socket,
             "getaddrinfo",
             return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("not-an-ip", 443))],
         ):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443))
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
         with mock.patch.object(
             app.socket,
             "getaddrinfo",
@@ -250,9 +325,9 @@ class BrainEgressHandlerTests(unittest.TestCase):
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 443)),
             ],
         ):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443))
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
         with mock.patch.object(app.socket, "getaddrinfo", return_value=[]):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443))
+            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
         with mock.patch.object(
             app.socket,
             "getaddrinfo",
@@ -262,7 +337,7 @@ class BrainEgressHandlerTests(unittest.TestCase):
             ],
         ):
             self.assertEqual(
-                app._resolve_public("api.openai.com", 443),
+                app._resolve_public("api.openai.com", 443, _later()),
                 ((socket.AF_INET, ("1.1.1.1", 443)), (socket.AF_INET6, ("2606:4700::1111", 443, 0, 0))),
             )
 
