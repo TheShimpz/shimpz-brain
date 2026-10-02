@@ -20,6 +20,8 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import math
+import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -242,6 +244,92 @@ def _paired(
     }
 
 
+# The closed vocabulary of campaign metadata and calibration summaries a report may carry (ADR-0094).
+META_KEYS = frozenset(
+    {
+        *(
+            "a",
+            "b",
+            "adjudication",
+            "admitted",
+            "agree",
+            "all_criteria",
+            "anthropic",
+            "arms",
+            "asks_for_missing_information",
+        ),
+        *(
+            "baseline_arm",
+            "brain",
+            "budget",
+            "budget_plan_usd",
+            "campaign",
+            "campaigns",
+            "canary",
+            "cap_usd",
+            "commits",
+        ),
+        *("corpus", "date", "digest", "effort", "efforts", "failed", "final_judging", "id", "identical_arms", "items"),
+        *(
+            "judge_budget",
+            "judge_identity",
+            "judge_spend",
+            "judge_version",
+            "judges",
+            "kind",
+            "label",
+            "language_matches",
+        ),
+        *("max_output_tokens", "max_reservation_usd", "model", "openai_paired", "path", "primary", "provider", "rate"),
+        *("refused", "repetitions", "reply_correct", "requests", "reservations_exceeded", "scenario_patterns"),
+        *("scenarios", "sdk_retries", "seconds", "seed", "spent_usd", "stopped_by_cap", "team", "tiebreak", "total"),
+        *(
+            "total_estimated_spend_usd",
+            "umbrella",
+            "unknown_settlements",
+            "unreported",
+            "unsupported_claim",
+            "wilson95",
+        ),
+        *("workers", "superseded_usd", "calibration_usd"),
+    }
+)
+ARM_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,15}\Z")
+SAFE_TEXT_RE = re.compile(r"[A-Za-z0-9 ._:;/()+,=*#-]{0,160}\Z")
+FINGERPRINT_RE = re.compile(r"(sha256:[0-9a-f]{64}|[0-9a-f]{40})\Z")
+MAX_META_DEPTH = 5
+
+
+def checked_meta(value: object, depth: int = 0, parent: str = "") -> object:
+    """Return metadata only when it fits the closed vocabulary: known keys, numbers, and short safe text.
+
+    Free text such as a reply, and anything shaped like a credential (``sk-`` or a long unbroken token other than a
+    digest or commit), is refused rather than copied into a committed report.
+    """
+    if depth > MAX_META_DEPTH:
+        raise ValueError("report metadata nests too deeply")
+    if isinstance(value, dict):
+        for key in value:
+            known = key in META_KEYS or (parent == "efforts" and ARM_RE.fullmatch(str(key)))
+            if not isinstance(key, str) or not known:
+                raise ValueError("report metadata has an unknown field")
+        return {key: checked_meta(item, depth + 1, key) for key, item in value.items()}
+    if isinstance(value, list):
+        return [checked_meta(item, depth + 1, parent) for item in value]
+    if isinstance(value, str):
+        unbroken = max((len(part) for part in value.split()), default=0)
+        if (
+            "sk-" in value
+            or SAFE_TEXT_RE.fullmatch(value) is None
+            or (unbroken > 40 and not FINGERPRINT_RE.fullmatch(value))
+        ):
+            raise ValueError("report metadata has unsafe text")
+        return value
+    if value is None or isinstance(value, bool | int) or (isinstance(value, float) and math.isfinite(value)):
+        return value
+    raise ValueError("report metadata has an unsupported value")
+
+
 def grade(
     calibration: Mapping[str, object] | None, judged: Sequence[Mapping[str, object]], meta: Mapping[str, object]
 ) -> dict[str, object]:
@@ -313,9 +401,9 @@ def build_report(
     return {
         "schema": REPORT_SCHEMA,
         "corpus": {"id": corpus.CORPUS_ID, "digest": corpus.digest(), "scenarios": len(corpus.SCENARIOS)},
-        "meta": dict(meta),
+        "meta": checked_meta(dict(meta)),
         "decision": grade(calibration, judged, meta),
-        "judge_calibration": None if calibration is None else dict(calibration),
+        "judge_calibration": None if calibration is None else checked_meta(dict(calibration)),
         "runs": runs,
         "paired": paired,
         "pooled_identical_arms": pooled,

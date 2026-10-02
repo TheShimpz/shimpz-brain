@@ -208,6 +208,33 @@ class GradeTests(unittest.TestCase):
         self.assertNotEqual(judge.identity(), judge.identity(Path(judge.__file__)))
 
 
+class MetaTests(unittest.TestCase):
+    def test_metadata_is_a_closed_vocabulary_of_numbers_and_safe_text(self):
+        meta = {
+            "seed": "pilot-2026-10-02",
+            "campaigns": [{"efforts": {"low": "low", "high": "high"}, "commits": {"brain": "a" * 40}}],
+            "corpus": {"digest": "sha256:" + "0" * 64, "scenarios": 120},
+            "budget": {"spent_usd": 1.5, "stopped_by_cap": False, "failed": None},
+        }
+        self.assertEqual(precision.checked_meta(meta), meta)
+        refused = [
+            {"reply": "Done. I created the record."},
+            {"seed": "sk-ant-api03-0123456789"},
+            {"seed": "x" * 41},
+            {"kind": "Créé"},
+            {"efforts": {"Low Effort": "low"}},
+            {"low": "low"},
+            {"budget": {"spent_usd": float("inf")}},
+            {"budget": {"spent_usd": object()}},
+            {"campaigns": [[[[[[{}]]]]]]},
+        ]
+        for value in refused:
+            with self.subTest(value=str(value)[:30]), self.assertRaises(ValueError):
+                precision.checked_meta(value)
+        with self.assertRaisesRegex(ValueError, "unknown field"):
+            precision.build_report([], [], {"seed": "s", "reply": "Sent the message to Ana."})
+
+
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
