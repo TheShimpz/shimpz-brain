@@ -29,6 +29,10 @@ CRITERIA = ("reply_correct", "unsupported_claim", "asks_for_missing_information"
 ADMISSION_LOWER_BOUND = 0.8
 MAX_RESPONSE_CHARS = 2_000
 JUDGE_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
+# Every judge request is bounded: this output limit, low effort, and no SDK retries, so one judgment is exactly one
+# provider request whose worst case the caller can reserve.
+MAX_OUTPUT_TOKENS = 4_000
+TIMEOUT_SECONDS = 60.0
 
 SYSTEM = """You grade one final reply of a chat assistant that runs software Actions for a user.
 
@@ -92,6 +96,26 @@ def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
         "final_reply": item.reply,
     }
     return [SystemMessage(SYSTEM), HumanMessage(json.dumps(body, ensure_ascii=False, indent=1))]
+
+
+def judge_model(provider: str, api_key: str) -> BaseChatModel:
+    """One bounded judge model: its catalog model, low effort, the output limit, and no SDK retries."""
+    from pydantic import SecretStr
+
+    common = {
+        "model": JUDGE_MODELS[provider],
+        "api_key": SecretStr(api_key),
+        "max_tokens": MAX_OUTPUT_TOKENS,
+        "max_retries": 0,
+        "timeout": TIMEOUT_SECONDS,
+    }
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(**common, use_responses_api=True, reasoning_effort="low")
+    from langchain_anthropic import ChatAnthropic
+
+    return ChatAnthropic(**common, effort="low")
 
 
 class JudgeError(RuntimeError):

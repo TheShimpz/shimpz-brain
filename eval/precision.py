@@ -33,7 +33,7 @@ from eval import stats as eval_stats
 REPORT_SCHEMA = "shimpz.precision-eval.report/v1"
 STATUSES = ("completed", "turn-failed", "brain-error", "budget-stopped")
 STRATA = ("language", "scope", "behavior", "multi_assistant", "min_rounds")
-JUDGE_OUTPUT_TOKENS = 2_000
+REQUEST_ALLOWANCE_TOKENS = 4_096
 WORKERS = 8
 
 
@@ -66,8 +66,10 @@ def metered(
     import model_usage
 
     def run(item: judge.Item) -> judge.Verdict:
-        prompt_bytes = sum(len(str(message.content).encode()) for message in judge.prompt(item))
-        reservation = budget.reserve(eval_cost.call_bound(model, prompt_bytes // 2 + 500, JUDGE_OUTPUT_TOKENS))
+        messages = judge.prompt(item)
+        # A token covers at least one byte; the allowance covers provider formatting and the structured-output schema.
+        tokens = sum(len(str(message.content).encode()) for message in messages) + REQUEST_ALLOWANCE_TOKENS
+        reservation = budget.reserve(eval_cost.call_bound(model, tokens, judge.MAX_OUTPUT_TOKENS))
         try:
             result, counts = model_usage.measure(lambda: verdict(item))
         except BaseException:
@@ -319,16 +321,14 @@ def brain_assistants(scenario: corpus.Scenario) -> tuple:
 def _judges(
     args: argparse.Namespace, budget: eval_cost.Budget, spend: list[eval_cost.Cost]
 ) -> tuple[Judgment, Judgment]:
-    import agent_runtime
     from eval.intent_route import _key
 
     judgments = []
     for provider, key_file in (("openai", args.key_file), ("anthropic", args.tiebreak_key_file)):
-        config = agent_runtime.ProviderConfig(provider, judge.JUDGE_MODELS[provider], _key(key_file), "low")
-        model = agent_runtime.provider_model(config)
+        model = judge.judge_model(provider, _key(key_file))
         judgments.append(
             metered(
-                config.model,
+                judge.JUDGE_MODELS[provider],
                 lambda item, model=model, provider=provider: judge.judge(model, provider, item),
                 budget,
                 spend,

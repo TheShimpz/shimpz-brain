@@ -87,6 +87,14 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class JudgeModelTests(unittest.TestCase):
+    def test_judge_models_are_bounded_without_sdk_retries(self):
+        for provider in ("openai", "anthropic"):
+            model = judge.judge_model(provider, "sk-test-0123456789abcdef")
+            self.assertEqual((model.max_tokens, model.max_retries), (judge.MAX_OUTPUT_TOKENS, 0))
+            self.assertEqual(getattr(model, "model", None) or model.model_name, judge.JUDGE_MODELS[provider])
+
+
 class CalibrationTests(unittest.TestCase):
     def test_the_adjudicated_sample_covers_every_criterion_both_ways(self):
         items = judge.calibration_items()

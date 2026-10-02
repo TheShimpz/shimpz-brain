@@ -195,7 +195,7 @@ class CommandTests(unittest.TestCase):
             (root / "meta.json").write_text(json.dumps({"seed": "s"}), encoding="utf-8")
             keys = ["--key-file", str(root / "key"), "--tiebreak-key-file", str(root / "key"), "--cap", "1"]
             with (
-                mock.patch("agent_runtime.provider_model", return_value=structured),
+                mock.patch.object(judge, "judge_model", return_value=structured),
                 mock.patch.object(judge, "judge", return_value=GOOD) as judged,
                 mock.patch.object(model_usage, "measure", lambda work: (work(), USAGE)),
                 mock.patch("builtins.print"),
