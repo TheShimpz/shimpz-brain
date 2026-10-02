@@ -8,6 +8,7 @@ graph state.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import hashlib
 import json
 import os
@@ -20,9 +21,12 @@ from unittest import mock
 import agent_runtime
 import attachments as turn_attachments
 import httpx
+import openai
 import provider_cancel
 import runtime_api
+import turn_pins
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_provider_cancel import NO_PROXY_ENV, _run, _Server
 from test_runtime_api import TOKEN, body
@@ -545,6 +549,73 @@ class AdmissionTests(unittest.TestCase):
             turn_attachments.commitment(first),
             turn_attachments.commitment(turn_attachments.admit([_attachment("text")])),
         )
+
+
+class RefusalEdgeTests(unittest.TestCase):
+    def test_declarations_and_turn_contexts_outside_the_contract_are_refused(self) -> None:
+        for authorization, input_files in ((True, ("missing",)), ("yes", ()), (True, ("document", "document"))):
+            with self.subTest(input_files=input_files), self.assertRaises(agent_runtime.RuntimeContractError):
+                agent_runtime.ActionDefinition("store", "Store it.", FILE_SCHEMA, authorization, input_files)
+        context = _context("openai", "gpt-6.1-sol", _attachment("text"))
+        for change in ({"attachments": ("text",)}, {"attachment_charge": -1}, {"attachment_charge": True}):
+            with self.subTest(change=change), self.assertRaises(agent_runtime.RuntimeContractError):
+                dataclasses.replace(context, **change)
+
+    def test_the_production_factory_builds_a_model_without_hidden_retries(self) -> None:
+        factory = agent_runtime.ProviderModelFactory()
+        self.addCleanup(factory.close)
+        config = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef", "low")
+        self.assertEqual(factory.single_attempt(config).max_retries, 0)
+
+    def test_an_image_whose_base64_is_not_canonical_is_refused(self) -> None:
+        image = _attachment("image")
+        image["content"]["base64"] = "!" * 8
+        with self.assertRaises(turn_attachments.AttachmentContractError):
+            turn_attachments.admit([image])
+
+    def test_projection_leaves_other_calls_alone_and_refuses_a_missing_turn_message(self) -> None:
+        attachments = turn_attachments.admit([_attachment("text")])
+        messages = [HumanMessage(content="Earlier", id="earlier"), AIMessage(content="Done", id="reply")]
+        self.assertEqual(turn_attachments.project(messages, None, attachments), messages)
+        self.assertEqual(turn_attachments.project(messages, "turn", ()), messages)
+        with self.assertRaises(turn_attachments.AttachmentContractError):
+            turn_attachments.project(messages, "turn", attachments)
+        with self.assertRaises(turn_attachments.AttachmentContractError):
+            turn_attachments.project(
+                [HumanMessage(content=[{"type": "text", "text": "x"}], id="turn")], "turn", attachments
+            )
+
+    def test_a_connection_failure_is_retryable(self) -> None:
+        request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+        self.assertTrue(turn_attachments.retryable(openai.APIConnectionError(request=request)))
+        self.assertFalse(turn_attachments.retryable(ValueError("not a provider failure")))
+
+    def test_a_turn_past_its_token_ceiling_is_refused_at_start_and_at_resume(self) -> None:
+        provider = _ActionProvider("openai")
+        runtime = provider.runtime(InMemorySaver())
+        context = _context("openai", "gpt-6.1-sol", _attachment("text"))
+        with (
+            mock.patch.object(turn_attachments, "MAX_TURN_TOKENS", 1),
+            self.assertRaises(agent_runtime.RuntimeContractError),
+        ):
+            runtime.start(dataclasses.replace(context, thread_id="ceiling-start"), '{"files":[],"message":"Store"}')
+        self.assertEqual(provider.turns(), [])
+
+        paused = runtime.start(context, '{"files":[],"message":"Store the report"}')
+        (request,) = paused.actions
+        with (
+            mock.patch.object(turn_attachments, "MAX_TURN_TOKENS", 1),
+            self.assertRaises(agent_runtime.RuntimeContractError),
+        ):
+            runtime.resume(context, {request.interrupt_id: {"stored": True}})
+        self.assertEqual(len(provider.turns()), 1)
+
+    def test_corrupt_recorded_attachment_pins_are_refused(self) -> None:
+        valid = turn_pins.record_attachments("0" * 64, 300)
+        self.assertEqual(turn_pins.restore_attachments(valid), ("0" * 64, 300))
+        for value in (None, "{", '{"commitment":"x","charge":1}', json.dumps({"commitment": "0" * 64, "charge": -1})):
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_attachments({turn_pins.ATTACHMENTS_METADATA: value})
 
 
 class TurnEndpointTests(unittest.TestCase):

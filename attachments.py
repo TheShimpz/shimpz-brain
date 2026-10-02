@@ -333,7 +333,8 @@ def _projection_class():
             messages = list(request.messages)
             reserved = dispatched(messages, self.turn_message_id)
             projected = request.override(messages=project(messages, self.turn_message_id, self.attachments))
-            for attempt in range(1, MAX_ATTEMPTS + 1):
+            attempt = 1
+            while True:
                 # The charge is reserved before the attempt is dispatched, so a failed attempt still spends budget.
                 admit_call(self.charge, reserved + attempt - 1)
                 try:
@@ -342,7 +343,7 @@ def _projection_class():
                     if attempt == MAX_ATTEMPTS or not retryable(exc):
                         raise
                 time.sleep(RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
-            raise AssertionError("unreachable")
+                attempt += 1
 
     return AttachmentProjection
 
