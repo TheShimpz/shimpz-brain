@@ -25,7 +25,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from eval.contracts import DATE, HOSTNAME, SEARCH_TERMS, TIME
+from eval.corpus import LOCALES
 from eval.fixtures import Action
+from eval.large_api_arms import GROUP_TERMS
 
 WORKING_SET_LIMIT = 4
 ESCALATION = ("anthropic", "claude-sonnet-5-5")
@@ -34,15 +36,33 @@ DOMAIN_RE = re.compile(r"\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io)\b", r
 DATE_RE = re.compile(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b")
 TIME_RE = re.compile(r"\b[0-9]{1,2}:[0-9]{2}\b")
 HOSTNAME_RE = re.compile(r"[a-z0-9_*@.-]+\Z")
-_LIST_KEYS = ("records", "tasks", "contacts", "results", "events", "zones")
+_LIST_KEYS = ("records", "tasks", "contacts", "results", "events", "zones", "result")
+# The large-API edge Assistant's terms are its resource groups' terms, in every locale.
+TERMS = {
+    **SEARCH_TERMS,
+    "edge": dict.fromkeys(LOCALES, tuple(term for terms in GROUP_TERMS.values() for term in terms)),
+}
 
 
 @dataclass(frozen=True, slots=True)
 class Arm:
+    """One arm: its contract set, Team-side checks, Assistant working set, large-API exposure, and model routing.
+
+    ``contracts`` is ``a`` or ``b`` (precision corpus), ``large`` or ``large-tasks`` (large-API stratum).
+    ``exposure`` is ``scope`` (every Assistant in scope), ``namespaces`` (provider tool search over resource-group
+    namespaces), ``groups`` (deterministic group ranking), or ``jev-groups`` (Jev group selection, falling back to
+    ``fallback`` when no group is confident). ``routing`` ``jev`` decides Luna or the escalation model before the
+    turn; ``model`` ``sonnet`` runs the whole arm on the escalation model as a reference.
+    """
+
     contracts: str
     checks: bool = False
     working_set: bool = False
     cascade: bool = False
+    exposure: str = "scope"
+    routing: str = "none"
+    model: str = "luna"
+    fallback: str = "scope"
 
 
 ARMS = {
@@ -51,13 +71,28 @@ ARMS = {
     "C": Arm("b", checks=True),
     "D": Arm("b", checks=True, working_set=True),
     "E": Arm("b", checks=True, working_set=True, cascade=True),
+    "EJ": Arm("b", checks=True, working_set=True, routing="jev"),
+    "S": Arm("a", model="sonnet"),
+    "L1": Arm("large"),
+    "L2": Arm("large", exposure="namespaces"),
+    "L3": Arm("large", exposure="groups"),
+    "L4": Arm("large-tasks"),
+    "L5-namespaces": Arm("large", checks=True, cascade=True, exposure="namespaces"),
+    "L5-groups": Arm("large", checks=True, cascade=True, exposure="groups"),
+    "L5-tasks": Arm("large-tasks", checks=True, cascade=True),
+    "L6-scope": Arm("large", exposure="jev-groups", fallback="scope"),
+    "L6-namespaces": Arm("large", exposure="jev-groups", fallback="namespaces"),
+    "LJ-namespaces": Arm("large", checks=True, exposure="namespaces", routing="jev"),
+    "LJ-groups": Arm("large", checks=True, exposure="groups", routing="jev"),
+    "LJ-tasks": Arm("large-tasks", checks=True, routing="jev"),
+    "LS": Arm("large", model="sonnet"),
 }
 
 
 def relevance(message: str, locale: str, scope: Sequence[str]) -> dict[str, int]:
     """Each Assistant's matched declared terms, plus a domain or address cue for DNS and a date or time for Calendar."""
     text = message.casefold()
-    scores = {name: sum(term.casefold() in text for term in SEARCH_TERMS[name][locale]) for name in scope}
+    scores = {name: sum(term.casefold() in text for term in TERMS[name][locale]) for name in scope}
     if "dns" in scores and (DOMAIN_RE.search(message) or IPV4_RE.search(message)):
         scores["dns"] += 1
     if "calendar" in scores and (DATE_RE.search(message) or TIME_RE.search(message)):
