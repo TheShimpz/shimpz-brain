@@ -20,13 +20,12 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
-import os
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import corpus, judge
+from eval import corpus, judge, private
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 
@@ -43,13 +42,6 @@ def attempt_key(attempt: Mapping[str, object]) -> str:
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def write_private(path: Path, text: str) -> None:
-    """Write a file only its owner can read: transcripts and verdicts stay off the repository."""
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(text)
 
 
 def judge_item(attempt: Mapping[str, object]) -> judge.Item:
@@ -372,7 +364,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             judged = judge_attempts(read_jsonl(args.transcript), primary, tiebreak)
             text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
-        write_private(args.out, text)
+        private.write_private(args.out, text)
         print(json.dumps({"command": args.command, "judge_budget": budget.summary()}, sort_keys=True))
     except OSError, ValueError, KeyError, TypeError:
         print("precision evaluation failed", file=sys.stderr)

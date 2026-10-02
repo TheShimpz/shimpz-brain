@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import model_usage
-from eval import corpus, judge, precision
+from eval import corpus, judge, precision, private
 from eval import cost as eval_cost
 
 GOOD = judge.Verdict(
@@ -70,7 +70,7 @@ class JudgingTests(unittest.TestCase):
     def test_private_files_and_transcripts_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory, "t.jsonl")
-            precision.write_private(path, json.dumps({"a": 1}) + "\n\n")
+            private.write_private(path, json.dumps({"a": 1}) + "\n\n")
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             self.assertEqual(precision.read_jsonl(path), [{"a": 1}])
         attempt = _attempt("dns-create.en")
@@ -149,8 +149,8 @@ class ReportTests(unittest.TestCase):
         attempts.append(_attempt(corpus.SCENARIOS[31].id, "b", 0, status="turn-failed"))
         report = precision.build_report(attempts, judged, {"seed": "s", "identical_arms": True})
         text = json.dumps(report)
-        for private in ("Done.", "list-zones", '"ledger"', '"reply"', '"input"'):
-            self.assertNotIn(private, text)
+        for leaked in ("Done.", "list-zones", '"ledger"', '"reply"', '"input"'):
+            self.assertNotIn(leaked, text)
         self.assertEqual(report["schema"], precision.REPORT_SCHEMA)
         self.assertEqual(report["corpus"]["digest"], corpus.digest())
         run = report["runs"][0]
