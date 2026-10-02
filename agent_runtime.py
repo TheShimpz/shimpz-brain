@@ -257,8 +257,8 @@ class TurnResult:
     clarification: clarifier.Clarification | None = None
     # The memory changes this completed logical turn proposed; the Team saves them when its reply commits.
     memory: tuple[team_memory.Change, ...] = ()
-    # The one Routine change it proposed and an independent check confirmed; the Team asks a human to confirm it.
-    routine: team_routine.Change | None = None
+    # The one Routine change its isolated compiler produced (ADR-0092); Team admits and commits it with the reply.
+    routine: dict[str, object] | None = None
 
 
 class Checkpointer(Protocol):
@@ -664,7 +664,7 @@ class AgentRuntime:
                 clarifier.guard(allowed=clarification_allowed),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
                 *(
-                    [team_routine.guard(context.routines, self._routine_check(context), allowed=clarification_allowed)]
+                    [team_routine.guard(context, self._routine_compiler(context), allowed=clarification_allowed)]
                     if routine_tool
                     else []
                 ),
@@ -823,18 +823,27 @@ class AgentRuntime:
             lambda: self._model_factory(context.provider), context.provider.provider, structured_output
         )
 
-    def _routine_check(self, context: TurnContext):
-        return team_routine.checker(
+    def _routine_compiler(self, context: TurnContext):
+        return team_routine.compiler(
             lambda: self._model_factory(context.provider), context.provider.provider, structured_output
         )
 
+    def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
+        """End the turn on a compiled Routine change, remembering exactly the reply the user is shown."""
+        finished = None if state.get("__interrupt__") else team_routine.compiled(list(state.get("messages", ())))
+        if finished is None:
+            return None
+        reply, change = finished
+        try:
+            agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})
+        except Exception as exc:
+            raise RuntimeStateError("checkpoint update failed") from exc
+        return TurnResult(status="completed", reply=reply, routine=change)
+
     def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
-        """Attach a completed turn's independently confirmed memory and Routine changes."""
+        """Attach a completed turn's independently confirmed memory changes."""
         known = team_memory.describe(context.memories, context.skills)
-        result = team_memory.attach(result, state, self._memory_check(context), known)
-        if not _knowledge_tools(context)[1]:
-            return result
-        return team_routine.attach(result, state, context.routines)
+        return team_memory.attach(result, state, self._memory_check(context), known)
 
     def action_labels(
         self,
@@ -939,7 +948,7 @@ class AgentRuntime:
                 turn = HumanMessage(content=message, id=turn_id)
                 bridge = self._fit_history(agent, context, history, turn, window)
                 state = agent.invoke({"messages": [*bridge, turn]}, config=self._config(context))
-                asked = self._finish_clarification(agent, context, state)
+                asked = self._finish_clarification(agent, context, state) or self._finish_routine(agent, context, state)
         except RuntimeContractError, RuntimeStateError, ImportError:
             raise
         except clarifier.UnanswerableToolCallError as exc:

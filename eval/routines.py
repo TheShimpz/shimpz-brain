@@ -1,14 +1,14 @@
-"""Evaluate Team Routine proposals (ADR-0086) against a fixed behavioral corpus.
+"""Evaluate direct Routine creation (ADR-0092) against a fixed behavioral corpus.
 
 Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.routines`` from Brain to validate the corpus without a
 provider. Add ``--key-file`` (and optionally ``--provider``/``--model``) for three real attempts per case through the
-real ``AgentRuntime`` with an in-memory checkpoint. Output contains only case identifiers and pass counts.
+real ``AgentRuntime`` and its isolated compiler with an in-memory checkpoint. Output contains only case identifiers and
+pass counts.
 
-Exact checks score whether the turn proposed a Routine change, and its operation, schedule, timezone, and Routine id;
-the quote must be the user's own words from the message. The reply checks are labeled proxies: a proposed Routine's
-reply must not claim it is already scheduled, and a turn that proposed nothing must not claim a proposal. Three of
-three is a conservative floor, not a reliability estimate. Keep the first complete run, including misses; never rerun
-only to turn a missed case green.
+Exact checks score whether the turn compiled a Routine change, and its operation, schedule, timezone, and ordered
+Actions; every literal's provenance was already proven against the user's own words by the guard. A turn that compiled
+nothing must not claim a Routine. Three of three is a conservative floor, not a reliability estimate. Keep the first
+complete run, including misses; never rerun only to turn a missed case green.
 """
 
 from __future__ import annotations
@@ -33,18 +33,16 @@ ROUTINE_ID = "a" * 32
 EXISTING = (
     {
         "routine_id": ROUTINE_ID,
-        "quote": "Todo dia às 8h, me mande um resumo das zonas DNS",
+        "name": "Zonas DNS diárias",
+        "quote": "Todo dia às 8h, liste minhas zonas DNS",
         "schedule": {"kind": "daily", "time": "08:00"},
         "timezone": "America/Sao_Paulo",
+        "revision": 1,
+        "steps": [{"id": "zones", "assistant": "dns", "action": "list-zones", "inputs": []}],
     },
 )
-# Proxies: a reply that claims a proposal the turn did not make, or that says the work is already scheduled before any
-# confirmation.
-_PROPOSAL_CLAIMS = ("i've proposed", "i proposed", "i have proposed", "propus", "criei uma proposta", "proposta criada")
-# "Nothing is scheduled yet" is the honest reply, not a claim.
-_SCHEDULED_CLAIMS = re.compile(
-    r"já está agendad|já agendei|(?<!nothing )\bis scheduled|\bi scheduled|i've scheduled|has been scheduled"
-)
+# Proxy: a reply that claims a Routine the turn did not create.
+_CREATED_CLAIMS = re.compile(r"rotina (?:criada|configurada)|criei a rotina|routine (?:is )?(?:created|set up)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,64 +50,78 @@ class RoutineCase:
     id: str
     contract: str
     message: str
-    # None expects no Routine change; otherwise the exact change fields other than the quote.
+    # None expects no Routine change; otherwise the exact op, schedule, timezone, and ordered Actions.
     expected: Mapping[str, object] | None
     routines: tuple[dict[str, object], ...] = ()
 
 
-def _propose(schedule: dict[str, object], timezone: str | None = None) -> dict[str, object]:
-    return {"op": "propose", "schedule": schedule, "timezone": timezone, "routine_id": None}
+def _create(schedule: dict[str, object], actions: list[list[str]], timezone: str | None = None) -> dict[str, object]:
+    return {"op": "create", "schedule": schedule, "timezone": timezone, "actions": actions}
 
 
 CASES = (
     RoutineCase(
         "daily-pt",
-        "an explicit daily request is proposed with its time",
+        "an explicit daily request is created with its time",
         "Todo dia às 9h, liste minhas zonas DNS.",
-        _propose({"kind": "daily", "time": "09:00"}),
+        _create({"kind": "daily", "time": "09:00"}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
         "weekly-en",
-        "an explicit weekly request is proposed with its weekday and time",
+        "an explicit weekly request is created with its weekday, time, and the user's literal values",
         "Every Monday at 8am, send a message to ana saying good morning.",
-        _propose({"kind": "weekly", "weekday": 0, "time": "08:00"}),
+        _create({"kind": "weekly", "weekday": 0, "time": "08:00"}, [["messages", "send-message"]]),
     ),
     RoutineCase(
         "hourly-pt",
-        "an explicit hourly request is proposed with its period",
+        "an explicit hourly request is created with its period",
         "A cada 6 horas, verifique minhas zonas DNS.",
-        _propose({"kind": "hourly", "every": 6}),
+        _create({"kind": "hourly", "every": 6}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
         "monthly-timezone-en",
         "a named timezone is kept with the schedule",
         "On the 1st of every month at 10:00 Lisbon time, list my DNS zones.",
-        _propose({"kind": "monthly", "day": 1, "time": "10:00"}, "Europe/Lisbon"),
+        _create({"kind": "monthly", "day": 1, "time": "10:00"}, [["dns", "list-zones"]], "Europe/Lisbon"),
     ),
     RoutineCase(
-        "cancel-pt",
-        "cancelling an existing Routine names its id",
-        "Pode parar o resumo diário das zonas DNS, não preciso mais dele.",
-        {"op": "cancel", "schedule": None, "timezone": None, "routine_id": ROUTINE_ID},
+        "update-pt",
+        "changing a listed Routine's time updates it",
+        "Mude a listagem diária das zonas DNS para as 7h.",
+        {
+            "op": "update",
+            "schedule": {"kind": "daily", "time": "07:00"},
+            "timezone": None,
+            "actions": [["dns", "list-zones"]],
+        },
         EXISTING,
     ),
-    RoutineCase("one-off-pt", "a one-off request proposes nothing", "Liste minhas zonas DNS agora.", None),
+    RoutineCase("one-off-pt", "a one-off request creates nothing", "Liste minhas zonas DNS agora.", None),
     RoutineCase(
-        "question-en", "a question about scheduling proposes nothing", "Can you run tasks on a schedule for me?", None
+        "question-en", "a question about scheduling creates nothing", "Can you run tasks on a schedule for me?", None
     ),
     RoutineCase(
         "quoted-pt",
-        "recurring words quoted from someone else propose nothing",
+        "recurring words quoted from someone else create nothing",
         'Minha colega escreveu "todo dia às 9 mande o relatório". O que você acha dessa frase?',
         None,
     ),
     RoutineCase(
         "secret-en",
-        "a recurring request that carries a secret proposes nothing",
+        "a recurring request that carries a secret creates nothing",
         "Every day at 9, log in with the password hunter2-Blue and list my DNS zones.",
         None,
     ),
 )
+
+
+def _scored(change: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "op": change["op"],
+        "schedule": change["schedule"],
+        "timezone": change["timezone"],
+        "actions": [[step["assistant"], step["action"]] for step in change["steps"]],
+    }
 
 
 def run_case(
@@ -130,18 +142,9 @@ def run_case(
         )
     if result.status != "completed":
         return False
-    change = result.routine
-    reply = result.reply.casefold()
     if case.expected is None:
-        return change is None and not any(claim in reply for claim in _PROPOSAL_CLAIMS)
-    if change is None:
-        return False
-    proposed = change.to_dict()
-    if {name: proposed[name] for name in case.expected} != dict(case.expected):
-        return False
-    if change.quote.casefold() not in case.message.casefold():
-        return False
-    return change.op == "cancel" or not _SCHEDULED_CLAIMS.search(reply)
+        return result.routine is None and not _CREATED_CLAIMS.search(result.reply.casefold())
+    return result.routine is not None and _scored(result.routine) == dict(case.expected)
 
 
 def validate_corpus() -> None:

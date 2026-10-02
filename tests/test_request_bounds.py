@@ -132,9 +132,15 @@ def _largest_uncounted() -> dict[str, object]:
         "routines": [
             {
                 "routine_id": f"{index:032x}",
+                "name": WIDE * team_routine.MAX_NAME_CHARS,
                 "quote": WIDE * team_routine.MAX_QUOTE_CHARS,
                 "schedule": {"kind": "monthly", "day": 28, "time": "23:59"},
                 "timezone": "/".join(letter * 32 for letter in "ABC"),
+                "revision": 2**31 - 1,
+                "steps": [
+                    {"id": f"s{step}" + "x" * 30, "assistant": "a" * 64, "action": "b" * 64, "inputs": ["c" * 64] * 64}
+                    for step in range(team_routine.MAX_STEPS)
+                ],
             }
             for index in range(team_routine.MAX_ROUTINES)
         ],

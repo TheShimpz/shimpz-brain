@@ -596,7 +596,7 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
         "reply": result.reply,
         "clarification": None if result.clarification is None else result.clarification.to_dict(),
         "memory": [change.to_dict() for change in result.memory],
-        "routine": None if result.routine is None else result.routine.to_dict(),
+        "routine": result.routine,
         "actions": [
             {
                 "interrupt_id": request.interrupt_id,
