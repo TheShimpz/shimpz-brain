@@ -210,12 +210,16 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
     }
 
 
-def _paired(rows: Sequence[tuple[Mapping[str, object], str]], arms: Sequence[str], seed: str) -> dict[str, object]:
-    """B minus A success over complete (scenario, repetition) pairs; an incomplete pair is inconclusive."""
+def _paired(
+    rows: Sequence[tuple[Mapping[str, object], str]], baseline: str, candidate: str, seed: str
+) -> dict[str, object]:
+    """Candidate minus baseline success over complete (scenario, repetition) pairs of one campaign.
+
+    An incomplete pair is inconclusive; the caller has already refused a repeated pairing key.
+    """
     pairs: dict[tuple[str, int], dict[str, str]] = defaultdict(dict)
     for attempt, result in rows:
         pairs[str(attempt["scenario"]), int(attempt["repetition"])][str(attempt["arm"])] = result
-    baseline, candidate = arms
     complete: dict[str, list[tuple[float, float]]] = defaultdict(list)
     incomplete = 0
     for (scenario, _repetition), results in sorted(pairs.items()):
@@ -230,7 +234,7 @@ def _paired(rows: Sequence[tuple[Mapping[str, object], str]], arms: Sequence[str
         "candidate": candidate,
         "complete_pairs": sum(len(items) for items in complete.values()),
         "incomplete_pairs": incomplete,
-        "difference": eval_stats.paired_difference(complete, f"{seed}:paired"),
+        "difference": eval_stats.paired_difference(complete, f"{seed}:paired:{candidate}"),
     }
 
 
@@ -239,31 +243,44 @@ def build_report(
     judged: Sequence[Mapping[str, object]],
     meta: Mapping[str, object],
 ) -> dict[str, object]:
+    """Group attempts by campaign, provider, model, and arm; pair arms only within one campaign.
+
+    Every attempt key (campaign, provider, model, arm, repetition, scenario) must be unique, so two campaigns are
+    never merged into one pair. Each arm is paired against the ``baseline_arm`` the metadata names, or the first arm.
+    """
+    keys = [attempt_key(attempt) for attempt in attempts]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate attempt or pairing key")
     decisions = {str(item["key"]): item for item in judged}
     seed = str(meta.get("seed", "precision"))
-    groups: dict[tuple[str, str, str], list[tuple[Mapping[str, object], str]]] = defaultdict(list)
+    groups: dict[tuple[str, str, str, str], list[tuple[Mapping[str, object], str]]] = defaultdict(list)
     for attempt in attempts:
         result = outcome(attempt, decisions.get(attempt_key(attempt)))
-        groups[str(attempt["provider"]), str(attempt["model"]), str(attempt["arm"])].append((attempt, result))
+        key = (str(attempt["campaign"]), str(attempt["provider"]), str(attempt["model"]), str(attempt["arm"]))
+        groups[key].append((attempt, result))
     runs = []
-    by_model: dict[tuple[str, str], dict[str, list]] = defaultdict(dict)
-    for (provider, model, arm), rows in sorted(groups.items()):
+    by_campaign: dict[tuple[str, str, str], dict[str, list]] = defaultdict(dict)
+    for (campaign, provider, model, arm), rows in sorted(groups.items()):
         effort = {str(attempt["effort"]) for attempt, _ in rows}
-        name = f"{provider}:{model}:{arm}"
-        runs.append(
-            {"provider": provider, "model": model, "arm": arm, "effort": sorted(effort), **_group(rows, seed, name)}
-        )
-        by_model[provider, model][arm] = rows
+        name = f"{campaign}:{provider}:{model}:{arm}"
+        identity = {"campaign": campaign, "provider": provider, "model": model, "arm": arm, "effort": sorted(effort)}
+        runs.append({**identity, **_group(rows, seed, name)})
+        by_campaign[campaign, provider, model][arm] = rows
     paired = []
     pooled = []
-    for (provider, model), arms in sorted(by_model.items()):
-        if len(arms) == 2:
-            rows = [row for items in arms.values() for row in items]
-            paired.append({"provider": provider, "model": model, **_paired(rows, sorted(arms), seed)})
-            if meta.get("identical_arms"):
-                pooled.append(
-                    {"provider": provider, "model": model, **_pass_k(rows, seed, f"{provider}:{model}:pooled")}
-                )
+    for (campaign, provider, model), arms in sorted(by_campaign.items()):
+        if len(arms) < 2:
+            continue
+        rows = [row for items in arms.values() for row in items]
+        baseline = meta.get("baseline_arm") if meta.get("baseline_arm") in arms else sorted(arms)[0]
+        identity = {"campaign": campaign, "provider": provider, "model": model}
+        paired.extend(
+            {**identity, **_paired(rows, baseline, candidate, seed)}
+            for candidate in sorted(arms)
+            if candidate != baseline
+        )
+        if meta.get("identical_arms"):
+            pooled.append({**identity, **_pass_k(rows, seed, f"{campaign}:{provider}:{model}:pooled")})
     tiebreaks = [item for item in judged if item["tiebreak"] is not None]
     return {
         "schema": REPORT_SCHEMA,

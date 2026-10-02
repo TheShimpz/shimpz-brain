@@ -173,6 +173,16 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(report["judges"]["tiebreaks"], 6)
         self.assertEqual(report["judges"]["tiebreak_changed_reply_correct"], 6)
         self.assertEqual(precision.build_report(attempts, judged, {})["pooled_identical_arms"], [])
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            precision.build_report([*attempts, attempts[0]], judged, {})
+        # A second campaign of the same scenarios is reported apart, never merged into the first one's pairs.
+        other = [{**attempt, "campaign": "d"} for attempt in attempts[:4]]
+        merged = precision.build_report([*attempts, *other], judged, {"seed": "s"})
+        self.assertEqual([item["campaign"] for item in merged["paired"]], ["c", "d"])
+        self.assertEqual(merged["paired"][0]["complete_pairs"], 72)
+        sweep = [{**attempt, "arm": "high"} for attempt in attempts if attempt["arm"] == "b"]
+        swept = precision.build_report([*attempts, *sweep], judged, {"seed": "s", "baseline_arm": "b"})
+        self.assertEqual([(i["baseline"], i["candidate"]) for i in swept["paired"]], [("b", "a"), ("b", "high")])
         single = precision.build_report(attempts[:1], [], {})
         self.assertEqual((single["paired"], single["runs"][0]["mean_rounds"]), ([], 2.0))
         self.assertIsNone(precision._group([], "s", "empty")["mean_rounds"])
