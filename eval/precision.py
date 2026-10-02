@@ -529,9 +529,14 @@ def regrade(report: Mapping[str, object]) -> dict[str, object]:
     A report promotes only on the provenance it records for its verdicts: the judge identity behind each one. A report
     without that provenance stays exploratory, so regrading never forgets that its verdicts came from another judge.
     """
-    identities = (report.get("judges") or {}).get("verdict_identities")
-    recorded = isinstance(identities, list) and all(
-        isinstance(item, str) and FINGERPRINT_RE.fullmatch(item) for item in identities
+    judges = report.get("judges") or {}
+    identities = judges.get("verdict_identities")
+    # An empty list is provenance only for a report that records exactly zero judged attempts.
+    nothing_judged = type(judges.get("judged_attempts")) is int and judges["judged_attempts"] == 0
+    recorded = (
+        isinstance(identities, list)
+        and (bool(identities) or nothing_judged)
+        and all(isinstance(item, str) and FINGERPRINT_RE.fullmatch(item) for item in identities)
     )
     judged = [{"judge_identity": item} for item in identities] if recorded else []
     decision = grade(report.get("judge_calibration"), judged, report.get("meta") or {})
