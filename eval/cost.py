@@ -133,8 +133,11 @@ class Reservation:
 class Budget:
     """A hard cap enforced before dispatch: reserve a conservative bound, then settle what the work reported.
 
-    A settled cost that is unknown keeps the whole reservation, or the known part when it is larger. Work already in
-    flight cannot be interrupted, so a cost above its reservation is counted rather than hidden.
+    A reservation the cap cannot hold even after all in-flight work settles is refused: the budget is exhausted. One
+    that fits only once in-flight reservations settle may wait for them (``wait=True``) instead, so concurrent work
+    contends for the cap without stopping a campaign that still has money. A settled cost that is unknown keeps the
+    whole reservation, or the known part when it is larger. Work already in flight cannot be interrupted, so a cost
+    above its reservation is counted rather than hidden.
     """
 
     def __init__(self, cap: float) -> None:
@@ -144,33 +147,41 @@ class Budget:
         self.spent = 0.0
         self.unknown = 0
         self.exceeded = 0
+        self.waits = 0
         self._reserved = 0.0
-        self._lock = threading.Lock()
+        self._changed = threading.Condition(threading.Lock())
 
-    def reserve(self, amount: float) -> Reservation:
+    def reserve(self, amount: float, *, wait: bool = False) -> Reservation:
         if not amount >= 0:
             raise ValueError("invalid reservation")
-        with self._lock:
-            if self.spent + self._reserved + amount > self.cap:
-                raise BudgetExhaustedError("budget cap reached")
+        with self._changed:
+            waited = False
+            while self.spent + self._reserved + amount > self.cap:
+                if not wait or self.spent + amount > self.cap:
+                    raise BudgetExhaustedError("budget cap reached")
+                waited = True
+                self._changed.wait()
+            self.waits += waited
             self._reserved += amount
         return Reservation(amount)
 
     def settle(self, reservation: Reservation, spent: Cost) -> None:
-        with self._lock:
+        with self._changed:
             self._reserved -= reservation.amount
             charged = spent.usd if spent.known else max(spent.usd, reservation.amount)
             self.spent += charged
             self.unknown += not spent.known
             self.exceeded += spent.usd > reservation.amount
+            self._changed.notify_all()
 
     def summary(self) -> dict[str, object]:
-        with self._lock:
+        with self._changed:
             return {
                 "cap_usd": self.cap,
                 "spent_usd": round(self.spent, 6),
                 "unknown_settlements": self.unknown,
                 "reservations_exceeded": self.exceeded,
+                "contention_waits": self.waits,
             }
 
 

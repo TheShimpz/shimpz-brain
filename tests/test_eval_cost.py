@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -85,7 +86,13 @@ class BudgetTests(unittest.TestCase):
         budget.settle(second, cost.Cost(0.1))
         self.assertEqual(
             budget.summary(),
-            {"cap_usd": 1.0, "spent_usd": 0.3, "unknown_settlements": 0, "reservations_exceeded": 0},
+            {
+                "cap_usd": 1.0,
+                "spent_usd": 0.3,
+                "unknown_settlements": 0,
+                "reservations_exceeded": 0,
+                "contention_waits": 0,
+            },
         )
 
     def test_unknown_cost_keeps_the_reservation_and_overruns_are_counted(self):
@@ -96,6 +103,26 @@ class BudgetTests(unittest.TestCase):
         summary = budget.summary()
         self.assertAlmostEqual(summary["spent_usd"], 0.75)
         self.assertEqual((summary["unknown_settlements"], summary["reservations_exceeded"]), (2, 2))
+
+    def test_contention_waits_for_in_flight_work_while_exhaustion_refuses(self):
+        budget = cost.Budget(1.2)
+        held = [budget.reserve(0.5, wait=True), budget.reserve(0.5, wait=True)]
+        done = []
+
+        def late() -> None:
+            done.append(budget.reserve(0.5, wait=True))
+
+        workers = [threading.Thread(target=late) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for reservation in held:
+            budget.settle(reservation, cost.Cost(0.05))
+        for worker in workers:
+            worker.join(timeout=5)
+        self.assertEqual(len(done), 2)
+        self.assertGreaterEqual(budget.summary()["contention_waits"], 1)
+        with self.assertRaises(cost.BudgetExhaustedError):
+            budget.reserve(1.2, wait=True)
 
     def test_invalid_caps_and_reservations_are_refused(self):
         for cap in (-1.0, float("nan")):
