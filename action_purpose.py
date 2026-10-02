@@ -197,9 +197,8 @@ def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRe
         ProviderRequestError,
         ProviderResponseError,
         RuntimeContractError,
-        structured_output,
-        structured_value,
     )
+    from structured_response import structured_output, structured_value
 
     try:
         result = structured_output(capped(model()), provider, PurposeOutput).invoke(_prompt(request))

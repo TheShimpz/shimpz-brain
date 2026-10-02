@@ -84,7 +84,7 @@ class ActionLabelsOutput(BaseModel):
 
 
 def _parse_action_labels(result: object, action_ids: tuple[str, ...]) -> tuple[ActionLabel, ...]:
-    from agent_runtime import structured_value
+    from structured_response import structured_value
 
     parsed = structured_value(result, ActionLabelsOutput, "Action label", MAX_ACTION_LABEL_RESPONSE_CHARS)
     labels = _action_label_items([item.model_dump() for item in parsed.labels], frozenset(action_ids))
@@ -100,8 +100,8 @@ def create(
         ProviderRequestError,
         ProviderResponseError,
         RuntimeContractError,
-        structured_output,
     )
+    from structured_response import structured_output
 
     if not interface_language.valid(locale):
         raise RuntimeContractError("invalid interface language")

@@ -50,7 +50,7 @@ class StaticBrainImageContractTests(unittest.TestCase):
             "action_labels.py action_purpose.py action_schema.py agent_runtime.py capability_plan.py clarification.py "
             "context_budget.py action_tool.py intent_fast_path.py "
             "intent_route.py interface_language.py memory.py model_usage.py provider_cancel.py routine.py "
-            "runtime_api.py turn_pins.py turn_prompt.py \\\n"
+            "runtime_api.py structured_response.py turn_pins.py turn_prompt.py \\\n"
             "    model_catalog.json /app/",
             dockerfile,
         )

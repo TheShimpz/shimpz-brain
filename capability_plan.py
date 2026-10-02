@@ -186,7 +186,8 @@ def create(
     candidates: tuple[CapabilityCandidate, ...],
 ) -> CapabilityPlan:
     """Produce one provider-native structured plan without tools, conversation state, or lifecycle authority."""
-    from agent_runtime import RuntimeContractError, structured_output, structured_value
+    from agent_runtime import RuntimeContractError
+    from structured_response import structured_output, structured_value
 
     task, admitted = _inputs(objective, candidates)
     try:
