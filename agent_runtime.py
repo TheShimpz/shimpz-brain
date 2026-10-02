@@ -294,6 +294,7 @@ def provider_model(
     *,
     http_client: httpx.Client | None = None,
     decision: bool = False,
+    retries: int | None = None,
 ) -> BaseChatModel:
     """Create one direct provider client; the API key is never put in graph state."""
     secret = SecretStr(config.api_key)
@@ -301,7 +302,7 @@ def provider_model(
         "model": config.model,
         "api_key": secret,
         "timeout": DECISION_TIMEOUT_SECONDS if decision else 60.0,
-        "max_retries": DECISION_MAX_RETRIES if decision else 2,
+        "max_retries": retries if retries is not None else DECISION_MAX_RETRIES if decision else 2,
     }
     if config.provider == "openai":
         from langchain_openai import ChatOpenAI
@@ -352,6 +353,10 @@ class ProviderModelFactory:
 
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
         return provider_model(config, http_client=self._http_client)
+
+    def single_attempt(self, config: ProviderConfig) -> BaseChatModel:
+        """A chat model without hidden SDK retries, for a turn whose retries reserve attachment budget (ADR-0093)."""
+        return provider_model(config, http_client=self._http_client, retries=0)
 
     def decision(self, config: ProviderConfig) -> BaseChatModel:
         """Build a short model with at most one retry for one structured routing decision."""
@@ -612,7 +617,13 @@ class AgentRuntime:
     def _agent(self, context: TurnContext, *, clarification_allowed: bool):
         from langchain.agents import create_agent
 
-        model = self._model_factory(context.provider)
+        # An attachment turn retries explicitly, reserving its charge per attempt, so its model makes no hidden retry.
+        single = getattr(self._model_factory, "single_attempt", None)
+        model = (
+            single(context.provider)
+            if context.attachments and callable(single)
+            else self._model_factory(context.provider)
+        )
         exposed = turn_attachments.exposed(context.assistants, context.attachments)
         tools = [
             action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)

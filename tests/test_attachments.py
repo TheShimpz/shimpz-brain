@@ -10,8 +10,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
+import time
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import agent_runtime
 import attachments as turn_attachments
@@ -82,6 +85,19 @@ def _context(provider: str, model: str, *items: dict[str, object]) -> agent_runt
     )
 
 
+class _Factory:
+    """The production factory's two chat-model shapes over one mock transport."""
+
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+
+    def __call__(self, config: agent_runtime.ProviderConfig):
+        return agent_runtime.provider_model(config, http_client=self.client)
+
+    def single_attempt(self, config: agent_runtime.ProviderConfig):
+        return agent_runtime.provider_model(config, http_client=self.client, retries=0)
+
+
 class _Provider:
     """One provider behind a mock transport, recording each request body by path."""
 
@@ -134,9 +150,8 @@ class _Provider:
         )
 
     def runtime(self, saver: InMemorySaver) -> agent_runtime.AgentRuntime:
-        client = httpx.Client(transport=httpx.MockTransport(self))
         return agent_runtime.AgentRuntime(
-            saver, model_factory=lambda config: agent_runtime.provider_model(config, http_client=client)
+            saver, model_factory=_Factory(httpx.Client(transport=httpx.MockTransport(self)))
         )
 
     def turns(self) -> list[dict]:
@@ -251,6 +266,118 @@ class ResumeTests(unittest.TestCase):
         self.assertIn("Quarterly total: 1000", json.dumps(second["input"]))
         self.assertEqual(len(provider.counts()), 1)
         self.assertNotIn("Quarterly total", _checkpoint_text(saver))
+
+
+class _FlakyProvider(_Provider):
+    """A provider whose first ``failures`` turn calls answer 500, and whose counting endpoint can fail too."""
+
+    def __init__(self, provider: str, failures: int, *, count_status: int = 200) -> None:
+        super().__init__(provider)
+        self.failures = failures
+        self.count_status = count_status
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(("count_tokens", "input_tokens")) and self.count_status != 200:
+            self.requests.append((request.url.path, json.loads(request.content)))
+            return httpx.Response(self.count_status, json={"error": {"message": "down", "type": "server_error"}})
+        if request.url.path in {"/v1/messages", "/v1/responses"} and self.failures:
+            self.failures -= 1
+            self.requests.append((request.url.path, json.loads(request.content)))
+            return httpx.Response(500, json={"error": {"message": "overloaded", "type": "server_error"}})
+        return super().__call__(request)
+
+
+class ReservationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        sleep = mock.patch.object(turn_attachments.time, "sleep")
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
+    def test_a_retried_attempt_is_reserved_and_recorded_on_the_persisted_reply(self) -> None:
+        provider = _FlakyProvider("openai", failures=1)
+        saver = InMemorySaver()
+        result = provider.runtime(saver).start(
+            _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+        )
+        self.assertEqual(result.reply, "Read it.")
+        # Exactly two dispatches: no hidden SDK retry multiplied them.
+        self.assertEqual(len(provider.turns()), 2)
+        state = saver.get_tuple({"configurable": {"thread_id": "attachments-thread"}})
+        messages = state.checkpoint["channel_values"]["messages"]
+        self.assertEqual(messages[-1].response_metadata[turn_attachments.ATTEMPTS_METADATA], 2)
+        self.assertEqual(turn_attachments.dispatched(messages, messages[0].id), 2)
+
+    def test_attempts_stop_at_their_limit_and_at_the_turn_budget(self) -> None:
+        provider = _FlakyProvider("openai", failures=10)
+        with self.assertRaises(agent_runtime.ProviderRequestError):
+            provider.runtime(InMemorySaver()).start(
+                _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+            )
+        self.assertEqual(len(provider.turns()), turn_attachments.MAX_ATTEMPTS)
+
+        reserved: list[int] = []
+        middleware = turn_attachments.projection(turn_attachments.admit([_attachment("text")]), "turn", 16_000)
+        failing = mock.Mock(side_effect=openai_server_error())
+        request = SimpleNamespace(messages=[_human("turn"), _ai(2), _ai(1)], override=lambda **kwargs: kwargs)
+        with (
+            mock.patch.object(
+                turn_attachments, "admit_call", side_effect=lambda charge, so_far: _admit(charge, so_far, reserved)
+            ),
+            self.assertRaises(turn_attachments.AttachmentContractError),
+        ):
+            middleware.wrap_model_call(request, failing)
+        # Three earlier attempts are already reserved, so only the fourth may dispatch before the 64,000 budget ends.
+        self.assertEqual(reserved, [3, 4])
+        self.assertEqual(failing.call_count, 1)
+
+    def test_counting_makes_one_attempt_and_falls_back_when_the_provider_fails(self) -> None:
+        provider = _FlakyProvider("openai", failures=0, count_status=500)
+        provider.runtime(InMemorySaver()).start(
+            _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+        )
+        self.assertEqual(len(provider.counts()), 1)
+
+    def test_counting_stops_at_one_overall_deadline(self) -> None:
+        attachments = turn_attachments.admit([_attachment("text", f"{index:032x}") for index in range(3)])
+        calls: list[float] = []
+
+        def slow(_blocks: list, timeout: float) -> int:
+            calls.append(timeout)
+            threading.Event().wait(1.0)
+            return 10
+
+        with mock.patch.object(turn_attachments, "COUNT_SECONDS", 0.3):
+            started = time.monotonic()
+            charged = turn_attachments.charges(attachments, slow)
+        self.assertLess(time.monotonic() - started, 0.9)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(charged, tuple(turn_attachments.estimated_charge(item) for item in attachments))
+
+
+def _admit(charge: int, so_far: int, reserved: list[int]) -> None:
+    reserved.append(so_far)
+    if charge * (so_far + 1) > turn_attachments.MAX_TURN_TOKENS:
+        raise turn_attachments.AttachmentContractError("attachments exceed the turn's token ceiling")
+
+
+def openai_server_error() -> Exception:
+    import openai
+
+    return openai.InternalServerError(
+        "overloaded", response=httpx.Response(500, request=httpx.Request("POST", "https://api.openai.com")), body=None
+    )
+
+
+def _human(message_id: str):
+    from langchain_core.messages import HumanMessage
+
+    return HumanMessage(content="m", id=message_id)
+
+
+def _ai(attempts: int):
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(content="r", response_metadata={turn_attachments.ATTEMPTS_METADATA: attempts})
 
 
 class ExposureTests(unittest.TestCase):

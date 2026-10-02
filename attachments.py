@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import concurrent.futures
 import dataclasses
 import functools
 import hashlib
@@ -39,6 +40,11 @@ MAX_TURN_TOKENS = 64_000
 # both providers' published charge for a 1.2 MP image.
 IMAGE_TOKEN_CEILING = 2_000
 COUNT_SECONDS = 8.0
+# An attachment turn's model makes no hidden SDK retries: this middleware retries explicitly, reserving the
+# attachment charge before every attempt and recording each reply's attempts in the persisted reply (ADR-0093).
+MAX_ATTEMPTS = 3
+ATTEMPTS_METADATA = "shimpz_attachment_attempts"
+RETRY_BACKOFF_SECONDS = 0.5
 ATTACHED_TURN_PREFIX = "shimpz-attached-"
 OPAQUE_REASONS = frozenset({"unsupported", "too_large", "encrypted", "no_text", "animated", "unreadable"})
 IMAGE_TYPES = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
@@ -223,18 +229,27 @@ def charges(
     attachments: Sequence[Attachment],
     count: Callable[[list[dict[str, object]], float], int] | None,
 ) -> tuple[int, ...]:
-    """Each attachment's token charge, counted by the provider within one bounded budget or estimated otherwise."""
+    """Each attachment's token charge, counted by the provider within one overall deadline or estimated otherwise.
+
+    Each count runs on a worker this call abandons at the deadline, so a slow provider never extends the turn past
+    ``COUNT_SECONDS``; the abandoned request ends at its own timeout, which is never longer than the time that was left.
+    """
     deadline = time.monotonic() + COUNT_SECONDS
     counted: list[int] = []
-    for attachment in attachments:
-        remaining = deadline - time.monotonic()
-        value = None
-        if count is not None and remaining > 0:
-            try:
-                value = count(blocks(attachment), remaining)
-            except CountUnavailableError:
-                value = None
-        counted.append(value if type(value) is int and value >= 0 else estimated_charge(attachment))
+    worker = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="attachment-count")
+    try:
+        for attachment in attachments:
+            remaining = deadline - time.monotonic()
+            value = None
+            if count is not None and remaining > 0:
+                future = worker.submit(count, blocks(attachment), remaining)
+                try:
+                    value = future.result(timeout=remaining)
+                except TimeoutError, CountUnavailableError:
+                    value = None
+            counted.append(value if type(value) is int and value >= 0 else estimated_charge(attachment))
+    finally:
+        worker.shutdown(wait=False, cancel_futures=True)
     return tuple(counted)
 
 
@@ -251,16 +266,47 @@ def admit_call(charge: int, calls_so_far: int) -> None:
         raise AttachmentContractError("attachments exceed the turn's token ceiling")
 
 
-def calls_so_far(messages: Sequence[Any], turn_message_id: str | None) -> int:
-    """How many provider calls this logical turn already made: one model reply follows each call."""
+def dispatched(messages: Sequence[Any], turn_message_id: str | None) -> int:
+    """How many provider attempts this logical turn already reserved, as its persisted replies record them.
+
+    A failed attempt that a later attempt replaced is recorded on that reply; a failure that ends the turn ends its
+    budget with it.
+    """
     started = False
-    calls = 0
+    attempts = 0
     for message in messages:
         if getattr(message, "id", None) == turn_message_id:
             started = True
         elif started and getattr(message, "type", None) == "ai":
-            calls += 1
-    return calls
+            recorded = (getattr(message, "response_metadata", None) or {}).get(ATTEMPTS_METADATA, 1)
+            attempts += recorded if type(recorded) is int and recorded >= 1 else 1
+    return attempts
+
+
+def retryable(exc: BaseException) -> bool:
+    """The provider failures the SDKs would retry: connection failures, 408, 409, 429, and server errors."""
+    import anthropic
+    import openai
+
+    if isinstance(exc, openai.APIConnectionError | anthropic.APIConnectionError):
+        return True
+    status = getattr(exc, "status_code", None)
+    return isinstance(exc, openai.APIStatusError | anthropic.APIStatusError) and (
+        status in {408, 409, 429} or (isinstance(status, int) and status >= 500)
+    )
+
+
+def _recorded(response: Any, attempts: int) -> Any:
+    """The response with its attempt count stored on its reply, which the checkpoint persists."""
+    replies = [
+        message.model_copy(
+            update={"response_metadata": {**(message.response_metadata or {}), ATTEMPTS_METADATA: attempts}}
+        )
+        if getattr(message, "type", None) == "ai"
+        else message
+        for message in response.result
+    ]
+    return dataclasses.replace(response, result=replies)
 
 
 @functools.cache
@@ -279,8 +325,18 @@ def _projection_class():
 
         def wrap_model_call(self, request, handler):
             messages = list(request.messages)
-            admit_call(self.charge, calls_so_far(messages, self.turn_message_id))
-            return handler(request.override(messages=project(messages, self.turn_message_id, self.attachments)))
+            reserved = dispatched(messages, self.turn_message_id)
+            projected = request.override(messages=project(messages, self.turn_message_id, self.attachments))
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                # The charge is reserved before the attempt is dispatched, so a failed attempt still spends budget.
+                admit_call(self.charge, reserved + attempt - 1)
+                try:
+                    return _recorded(handler(projected), attempt)
+                except Exception as exc:
+                    if attempt == MAX_ATTEMPTS or not retryable(exc):
+                        raise
+                time.sleep(RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+            raise AssertionError("unreachable")
 
     return AttachmentProjection
 
@@ -324,12 +380,13 @@ def provider_counter(model: Any, provider: str) -> Callable[[list[dict[str, obje
 
         try:
             payload = model._get_request_payload([HumanMessage(content=content)])
+            # One attempt only: SDK retries would each restart the timeout and outlive the counting deadline.
             if provider == "anthropic":
-                response = model._client.messages.count_tokens(
+                response = model._client.with_options(max_retries=0).messages.count_tokens(
                     model=payload["model"], messages=payload["messages"], timeout=timeout
                 )
             else:
-                response = model.root_client.responses.input_tokens.count(
+                response = model.root_client.with_options(max_retries=0).responses.input_tokens.count(
                     model=payload["model"], input=payload["input"], timeout=timeout
                 )
             return int(response.input_tokens)
