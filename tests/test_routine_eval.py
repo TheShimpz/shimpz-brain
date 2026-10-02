@@ -45,7 +45,7 @@ def _created() -> AIMessage:
 
 
 def _compiling(schedule: dict[str, object], action: str = "list-zones"):
-    fields = dict.fromkeys(("every", "time", "weekday", "day")) | {
+    fields = dict.fromkeys(("every", "time", "weekday", "day", "gap", "cap")) | {
         key: value for key, value in schedule.items() if key != "kind"
     }
     answer = routine.Compiled(

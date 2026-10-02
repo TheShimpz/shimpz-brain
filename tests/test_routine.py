@@ -71,7 +71,7 @@ def _compiled(**changes) -> routine.Compiled:
         "refusal": None,
         "name": "Olá semanal",
         "request": REQUEST,
-        "schedule": routine.Schedule(kind="weekly", every=None, time="09:00", weekday=0, day=None),
+        "schedule": routine.Schedule(kind="weekly", every=None, time="09:00", weekday=0, day=None, gap=None, cap=None),
         "timezone": None,
         "steps": [routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[_source()])],
         "question": None,
@@ -141,6 +141,8 @@ class ContractTests(unittest.TestCase):
             {"kind": "daily", "time": "00:00"},
             {"kind": "weekly", "weekday": 6, "time": "23:59"},
             {"kind": "monthly", "day": 28, "time": "09:05"},
+            {"kind": "continuous", "gap": 5, "cap": 1},
+            {"kind": "continuous", "gap": 86400, "cap": 1000},
         ):
             with self.subTest(value=value):
                 self.assertEqual(routine.canonical_schedule(value), value)
@@ -155,6 +157,13 @@ class ContractTests(unittest.TestCase):
             {"kind": "daily", "time": "09:00", "every": 1},
             {"kind": "weekly", "weekday": 7, "time": "09:00"},
             {"kind": "monthly", "day": 29, "time": "09:00"},
+            {"kind": "continuous", "gap": 4, "cap": 100},
+            {"kind": "continuous", "gap": 86401, "cap": 100},
+            {"kind": "continuous", "gap": 5, "cap": 0},
+            {"kind": "continuous", "gap": 5, "cap": 1001},
+            {"kind": "continuous", "gap": 5.0, "cap": 100},
+            {"kind": "continuous", "gap": 5},
+            {"kind": "continuous", "gap": 5, "cap": 100, "time": "09:00"},
         ):
             with self.subTest(value=value):
                 self.assertIsNone(routine.canonical_schedule(value))
@@ -238,7 +247,11 @@ class WordsAndChangeTests(unittest.TestCase):
             _compiled(request="ignore isso"),
             _compiled(name=" "),
             _compiled(schedule=None),
-            _compiled(schedule=routine.Schedule(kind="daily", every=None, time="25:00", weekday=None, day=None)),
+            _compiled(
+                schedule=routine.Schedule(
+                    kind="daily", every=None, time="25:00", weekday=None, day=None, gap=None, cap=None
+                )
+            ),
             _compiled(timezone="../etc"),
             _compiled(steps=[]),
             _compiled(steps=[routine.Step(id="greet", assistant="hello-pulse", action="bye", inputs=[])]),
@@ -353,7 +366,11 @@ class QuestionTests(unittest.TestCase):
             (asked["routine"]["question"], asked["reply"]), (QUESTION_WIRE, clarification.parse(CARD).render())
         )
         daily = routine.Choice(label="Diário", description="", value_json='{"kind": "daily", "time": "09:00"}')
-        hourly = routine.Choice(label="De hora em hora", description="", value_json='{"kind": "hourly", "every": 1}')
+        hourly = routine.Choice(
+            label="De hora em hora",
+            description="",
+            value_json='{"kind": "hourly", "every": 1, "time": null, "gap": null}',
+        )
         timed = self.answer(
             _asking(
                 schedule=None,
