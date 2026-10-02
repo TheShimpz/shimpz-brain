@@ -418,10 +418,20 @@ def checked_meta(value: object, depth: int = 0, parent: str = "") -> object:
 
 
 def _field(key: str, value: object, depth: int) -> object:
+    """Dispatch on the field's declared type first: only a container field may hold a mapping or a nested list."""
     if value is None:
         return None
-    if isinstance(value, dict | list):
+    if key in CONTAINER_FIELDS and isinstance(value, dict | list):
         return checked_meta(value, depth, key)
+    if key in TOKEN_FIELDS and isinstance(value, list):
+        # A token field may list tokens (scenario patterns), never containers.
+        return [_scalar(key, item) for item in value]
+    return _scalar(key, value)
+
+
+def _scalar(key: str, value: object) -> object:
+    if isinstance(value, dict | list):
+        raise ValueError("report metadata has an unsafe value")
     if key in NUMBER_FIELDS:
         valid = _number(value)
     elif key in BOOLEAN_FIELDS:
@@ -439,12 +449,16 @@ def _field(key: str, value: object, depth: int) -> object:
 
 
 def checked_identity(campaign: str, provider: str, model: str, arm: str, efforts: Sequence[str]) -> None:
-    """A run's exported identity: a campaign token, a catalog provider and model, an arm label, and known efforts."""
+    """A run's exported identity: a campaign token, a catalog provider and model, an arm label, and known efforts.
+
+    No identity part may be shaped like a provider key, whatever its pattern otherwise admits.
+    """
     if (
         CAMPAIGN_RE.fullmatch(campaign) is None
         or provider not in ENUM_FIELDS["provider"]
         or ARM_RE.fullmatch(arm) is None
         or not set(efforts) <= ENUM_FIELDS["effort"]
+        or any(CREDENTIAL_RE.search(item) for item in (campaign, model, arm))
     ):
         raise ValueError("a run has an invalid identity")
     if eval_cost.price(model).provider != provider:

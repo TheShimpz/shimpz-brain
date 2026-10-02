@@ -312,7 +312,7 @@ class MetaTests(unittest.TestCase):
     def test_metadata_is_a_closed_vocabulary_of_numbers_and_safe_text(self):
         meta = {
             "seed": "pilot-2026-10-02",
-            "scenario_patterns": "task-create.en",
+            "scenario_patterns": ["task-create.en", "dns-*"],
             "campaigns": [{"efforts": {"low": "low", "high": "high"}, "commits": {"brain": "a" * 40}}],
             "corpus": {"digest": "sha256:" + "0" * 64, "scenarios": 120},
             "budget": {"spent_usd": 1.5, "stopped_by_cap": False, "failed": None},
@@ -343,6 +343,14 @@ class MetaTests(unittest.TestCase):
             {"spent_usd": -1},
             {"admitted": "yes"},
             {"budget": {"spent_usd": True}},
+            {"blind": {"spent_usd": 1}},
+            {"spent_usd": {"spent_usd": 1}},
+            {"provider": {"provider": "openai"}},
+            {"provider": ["openai"]},
+            {"blind": [True]},
+            {"scenario_patterns": [["dns-*"]]},
+            {"scenario_patterns": [{"seed": "s"}]},
+            {"efforts": {"A": {"effort": "low"}}},
         ):
             if unsafe == {"seed": "Done"}:
                 self.assertEqual(precision.checked_meta(unsafe), unsafe)
@@ -357,6 +365,8 @@ class MetaTests(unittest.TestCase):
             ("c", "azure", "gpt-6-luna", "a", ["low"]),
             ("c", "openai", "gpt-6-luna", "two words", ["low"]),
             ("c", "openai", "gpt-6-luna", "a", ["extreme"]),
+            ("sk-proj-short-secret", "openai", "gpt-6-luna", "a", ["low"]),
+            ("c", "openai", "gpt-6-luna", "sk-abc", ["low"]),
         ):
             with self.subTest(identity=identity), self.assertRaisesRegex(ValueError, "identity"):
                 precision.checked_identity(*identity)
