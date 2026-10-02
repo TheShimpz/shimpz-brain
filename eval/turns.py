@@ -5,7 +5,8 @@ without a provider. Add ``--key-file`` (and optionally ``--provider``/``--model`
 case through the real ``AgentRuntime`` with an in-memory checkpoint; ``--plan`` prints the logical model invocations
 such a run makes when every case follows its expected rounds (SDK retries can add provider HTTP attempts). Turns use
 the Team's default reasoning effort; plans and labels keep the provider default, as in production (ADR-0074).
-Output contains only case identifiers and pass counts, never prompts, replies, or Action input.
+Output contains only case identifiers, pass counts, and estimated cost (``eval.cost``: cache-aware, per attempted
+and per successful attempt, unknown when a call reported no usage), never prompts, replies, or Action input.
 
 Exact checks score Action identity, Action arguments, round boundaries, and terminal status. Reply markers and
 the language check are labeled proxies: they catch an obviously wrong reply, not semantic quality. Three of three
@@ -27,6 +28,8 @@ from pathlib import Path
 
 import agent_runtime
 import capability_plan
+import model_usage
+from eval import cost as eval_cost
 from eval.intent_route import _key
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -358,27 +361,41 @@ def logical_model_invocations() -> int:
     return per_attempt * ATTEMPTS
 
 
-def _score(cases, attempt: Callable[[object, int], bool]) -> list[dict[str, object]]:
+def _attempt_once(attempt: Callable[[object, int], bool], case: object, index: int) -> bool:
+    # A refused or malformed provider response is a miss for this attempt, not an evaluation failure.
+    with contextlib.suppress(agent_runtime.RuntimeContractError, agent_runtime.ProviderRequestError):
+        return bool(attempt(case, index))
+    return False
+
+
+def _score(cases, attempt: Callable[[object, int], bool], model: str) -> list[dict[str, object]]:
+    """Pass counts with each case's estimated cost per attempted and per successful attempt (``eval.cost``)."""
     results = []
     for case in cases:
         passed = 0
+        costs = []
         for index in range(ATTEMPTS):
-            # A refused or malformed provider response is a miss for this attempt, not an evaluation failure.
-            with contextlib.suppress(agent_runtime.RuntimeContractError, agent_runtime.ProviderRequestError):
-                passed += attempt(case, index)
-        results.append({"id": case.id, "passed": passed, "required": ATTEMPTS})
+            succeeded, counts = model_usage.measure(lambda case=case, index=index: _attempt_once(attempt, case, index))
+            passed += succeeded
+            costs.append(eval_cost.cost(eval_cost.Usage.of(counts), model))
+        results.append(
+            {"id": case.id, "passed": passed, "required": ATTEMPTS, "cost": eval_cost.per_task(costs, passed)}
+        )
     return results
 
 
 def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig) -> dict[str, object]:
     turn_provider = dataclasses.replace(provider, effort=TURN_EFFORT)
+    model = provider.model
     sections = {
-        "turns": _score(TURN_CASES, lambda case, index: run_turn(runtime, turn_provider, case, index)),
-        "plans": _score(PLAN_CASES, lambda case, _index: run_plan(runtime, provider, case)),
-        "labels": _score(LABEL_CASES, lambda case, _index: run_labels(runtime, provider, case)),
+        "turns": _score(TURN_CASES, lambda case, index: run_turn(runtime, turn_provider, case, index), model),
+        "plans": _score(PLAN_CASES, lambda case, _index: run_plan(runtime, provider, case), model),
+        "labels": _score(LABEL_CASES, lambda case, _index: run_labels(runtime, provider, case), model),
     }
     cases = [item for section in sections.values() for item in section]
     return {
+        "usd": round(sum(item["cost"]["usd"] for item in cases), 6),
+        "usd_known": all(item["cost"]["usd_known"] for item in cases),
         "provider": provider.provider,
         "model": provider.model,
         "attempts_per_case": ATTEMPTS,

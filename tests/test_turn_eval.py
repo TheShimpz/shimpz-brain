@@ -14,6 +14,7 @@ from unittest import mock
 import action_labels
 import agent_runtime
 import capability_plan
+import model_usage
 from eval import turns
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -176,10 +177,29 @@ class TurnEvalTests(unittest.TestCase):
                 raise outcome
             return outcome
 
-        self.assertEqual(
-            turns._score((turns.PLAN_CASES[0],), attempt),
-            [{"id": "plan-dns-en", "passed": 1, "required": turns.ATTEMPTS}],
-        )
+        [scored] = turns._score((turns.PLAN_CASES[0],), attempt, "gpt-6-luna")
+        self.assertEqual((scored["id"], scored["passed"], scored["required"]), ("plan-dns-en", 1, turns.ATTEMPTS))
+        self.assertEqual((scored["cost"]["attempts"], scored["cost"]["usd"], scored["cost"]["usd_known"]), (3, 0, True))
+
+    def test_each_attempt_is_priced_and_unreported_usage_is_unknown(self):
+        usage = {**dict.fromkeys(model_usage.FIELDS, 0), "model_calls": 1, "input_tokens": 1000, "output_tokens": 10}
+        reports = iter([usage, usage | {"unreported_calls": 1}, usage])
+        with mock.patch.object(turns.model_usage, "measure", lambda work: (work(), next(reports))):
+            [scored] = turns._score((turns.PLAN_CASES[0],), lambda _case, index: index != 1, "gpt-6-luna")
+        self.assertEqual(scored["passed"], 2)
+        self.assertAlmostEqual(scored["cost"]["usd"], 3 * (1000 * 0.1e-6 + 10 * 0.5e-6), places=6)
+        self.assertEqual((scored["cost"]["usd_known"], scored["cost"]["unknown_usage_attempts"]), (False, 1))
+        runtime = mock.Mock()
+        runtime.start.return_value = agent_runtime.TurnResult("completed", reply="ok")
+        runtime.capability_plan.return_value = capability_plan.CapabilityPlan("sufficient")
+        runtime.action_labels.return_value = ()
+        with (
+            mock.patch.object(turns, "TURN_CASES", (turns.TURN_CASES[0],)),
+            mock.patch.object(turns, "PLAN_CASES", ()),
+            mock.patch.object(turns, "LABEL_CASES", ()),
+        ):
+            report = turns.evaluate(runtime, PROVIDER)
+        self.assertEqual((report["usd"], report["usd_known"]), (0, True))
 
 
 if __name__ == "__main__":
