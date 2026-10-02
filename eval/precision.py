@@ -166,7 +166,9 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
     # Every attempt's oracle counts its writes, a failed turn's included: a write before the failure still happened.
     oracle = [attempt["oracle"] for attempt in attempts]
     active = [float(attempt["seconds_active"]) for attempt, _ in conclusive]
-    costs = [eval_cost.Cost(float(attempt["usd"]), bool(attempt["usage_known"])) for attempt, _ in conclusive]
+    # Every dispatched attempt was paid for, whether or not it can be scored.
+    dispatched = [attempt for attempt in attempts if int(attempt["operations"]) > 0]
+    costs = [eval_cost.Cost(float(attempt["usd"]), bool(attempt["usage_known"])) for attempt in dispatched]
     successes = sum(result == "success" for _, result in conclusive)
     strata: dict[str, dict[str, object]] = {}
     for stratum in STRATA:
@@ -193,7 +195,12 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
         "clarifications": sum(bool(attempt["clarification"]) for attempt in attempts),
         "mean_rounds": sum(int(attempt["rounds"]) for attempt in attempts) / len(attempts) if attempts else None,
         "usage": _usage(attempts),
-        "cost": eval_cost.per_task(costs, successes),
+        "cost": {
+            **eval_cost.per_task(costs, successes),
+            "inconclusive_usd": round(
+                sum(float(attempt["usd"]) for attempt, result in rows if result == "inconclusive"), 6
+            ),
+        },
         "latency_seconds": {
             "active_p50": eval_stats.percentile(active, 0.5),
             "active_p95": eval_stats.percentile(active, 0.95),
