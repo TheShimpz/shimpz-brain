@@ -11,7 +11,6 @@ import tempfile
 import threading
 import time
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, redirect_stderr, suppress
 from pathlib import Path
 from types import SimpleNamespace
@@ -205,14 +204,12 @@ class BrainEgressHandlerTests(unittest.TestCase):
 
     def _isolate_resolver(self) -> None:
         """Give the test a private one-slot resolver so a stuck lookup never reaches the shared pool."""
-        self.resolver = ThreadPoolExecutor(max_workers=1)
+        self.slots = threading.BoundedSemaphore(1)
         self.release = threading.Event()
-        self.addCleanup(self.resolver.shutdown, wait=True)
         self.addCleanup(self.release.set)
-        for name, value in (("_RESOLVER", self.resolver), ("_RESOLVER_SLOTS", threading.BoundedSemaphore(1))):
-            patcher = mock.patch.object(app, name, value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(app, "_RESOLVER_SLOTS", self.slots)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _stuck_lookup(self, *_args, **_kwargs) -> list:
         self.release.wait(5)
@@ -265,7 +262,20 @@ class BrainEgressHandlerTests(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 1.0)
             lookup.assert_called_once()
             self.release.set()
-            self.resolver.submit(lambda: None).result()
+            self.assertTrue(self.slots.acquire(timeout=5))
+            self.slots.release()
+            self.assertEqual(app._resolve_public("api.openai.com", 443, _later()), (self.ANSWER[0][0::4],))
+
+    def test_a_resolver_thread_that_cannot_start_returns_its_permit(self) -> None:
+        self._isolate_resolver()
+        with (
+            mock.patch.object(app.threading.Thread, "start", side_effect=RuntimeError("can't start new thread")),
+            mock.patch.object(app.socket, "getaddrinfo", return_value=list(self.ANSWER)) as lookup,
+        ):
+            for _attempt in range(2):
+                self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
+        lookup.assert_not_called()
+        with mock.patch.object(app.socket, "getaddrinfo", return_value=list(self.ANSWER)):
             self.assertEqual(app._resolve_public("api.openai.com", 443, _later()), (self.ANSWER[0][0::4],))
 
     def test_loopback_probe_is_a_distinct_non_warning_denial(self) -> None:

@@ -29,7 +29,6 @@ import socketserver
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import audit
 import policy
@@ -50,10 +49,11 @@ if (
     or not 1 <= LISTEN_BACKLOG <= 16
 ):
     raise ValueError("egress proxy concurrency/backlog must stay inside the shipping resource envelope")
-# DNS resolution counts against the CONNECT deadline. A lookup that outlives its deadline keeps its worker until
-# getaddrinfo returns, so this fixed pool bounds stuck lookups; a saturated pool fails at once instead of queueing.
-MAX_RESOLUTIONS = MAX_CONCURRENCY
-_RESOLVER = ThreadPoolExecutor(max_workers=MAX_RESOLUTIONS, thread_name_prefix="resolver")
+# DNS resolution counts against the CONNECT deadline. Each lookup runs on its own daemon thread, and a lookup that
+# outlives its deadline keeps that thread until getaddrinfo returns. This fixed cap, independent of handler
+# concurrency, bounds those threads: handlers + resolvers + the main thread stay well inside the smallest
+# pids_limit either canonical Compose graph gives this proxy. A saturated cap fails at once instead of queueing.
+MAX_RESOLUTIONS = 8
 _RESOLVER_SLOTS = threading.BoundedSemaphore(MAX_RESOLUTIONS)
 _STATUS = {
     200: "Connection established",
@@ -73,22 +73,35 @@ def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
     return canonical in allowed_hosts
 
 
-def _lookup(host: str, port: int) -> list:
-    try:
-        return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    finally:
-        _RESOLVER_SLOTS.release()
-
-
 def _resolve(host: str, port: int, deadline: float) -> list:
-    """Resolve on the bounded resolver, waiting no longer than the remaining CONNECT deadline.
+    """Resolve on one bounded daemon thread, waiting no longer than the remaining CONNECT deadline.
 
-    Raises OSError when the resolver is saturated, the lookup fails, or the deadline passes first.
+    The permit is released exactly once: by the lookup thread when getaddrinfo returns, or here when the
+    thread never started. Raises OSError when the cap is saturated, the thread cannot start, the lookup
+    fails, or the deadline passes first.
     """
-    if not _RESOLVER_SLOTS.acquire(blocking=False):
+    slots = _RESOLVER_SLOTS
+    if not slots.acquire(blocking=False):
         raise OSError("resolver capacity exhausted")
-    lookup = _RESOLVER.submit(_lookup, host, port)
-    return lookup.result(timeout=max(0.0, deadline - time.monotonic()))
+    answers: list[list] = []
+    done = threading.Event()
+
+    def lookup() -> None:
+        try:
+            with contextlib.suppress(OSError, ValueError):
+                answers.append(socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))
+        finally:
+            slots.release()
+            done.set()
+
+    try:
+        threading.Thread(target=lookup, name="resolver", daemon=True).start()
+    except RuntimeError:
+        slots.release()
+        raise OSError("resolver thread unavailable") from None
+    if not done.wait(max(0.0, deadline - time.monotonic())) or not answers:
+        raise OSError("resolution failed or exceeded the CONNECT deadline")
+    return answers[0]
 
 
 def _resolve_public(host: str, port: int, deadline: float) -> tuple[tuple[int, tuple], ...] | None:
