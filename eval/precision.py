@@ -438,7 +438,13 @@ def checked_meta(value: object, depth: int = 0, parent: str = "") -> object:
         raise ValueError("report metadata nests too deeply")
     if isinstance(value, dict):
         for key in value:
-            arm_key = parent == "efforts" and isinstance(key, str) and ARM_RE.fullmatch(key) is not None
+            # A dynamic key (an arm label under efforts) is exported as text too: it may never look like a key.
+            arm_key = (
+                parent == "efforts"
+                and isinstance(key, str)
+                and ARM_RE.fullmatch(key) is not None
+                and CREDENTIAL_RE.search(key) is None
+            )
             if not isinstance(key, str) or not (key in META_KEYS or arm_key):
                 raise ValueError("report metadata has an unknown field")
         return {key: _field(key if key in META_KEYS else "arm", item, depth + 1) for key, item in value.items()}

@@ -404,6 +404,8 @@ class MetaTests(unittest.TestCase):
             {"seed": "x" * 41},
             {"kind": "Créé"},
             {"efforts": {"Low Effort": "low"}},
+            {"efforts": {"sk-proj-short-secret": "low"}},
+            {"campaigns": [{"efforts": {"sk-abc": "low"}}]},
             {"low": "low"},
             {"budget": {"spent_usd": float("inf")}},
             {"budget": {"spent_usd": object()}},
