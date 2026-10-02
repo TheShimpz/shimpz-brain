@@ -116,6 +116,28 @@ class CalibrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid"):
                 judge.calibration_items(path)
 
+    def test_the_held_out_sample_is_disjoint_and_awaits_the_owner(self):
+        held = judge.heldout_items()
+        self.assertEqual(len(held), 30)
+        self.assertEqual({expected for _, _, expected in held}, {None})
+        calibration = {item.reply for _, item, _ in judge.calibration_items()}
+        self.assertFalse(calibration & {item.reply for _, item, _ in held})
+        self.assertEqual(len({item.scenario.template.id for _, item, _ in held}), len(corpus.TEMPLATES))
+        data = json.loads(judge.HELDOUT.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "heldout.json")
+            path.write_text(json.dumps({**data, "corpus": "precision-v1"}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "another corpus"):
+                judge.heldout_items(path)
+            labels = dict.fromkeys(judge.CRITERIA, True)
+            data["items"][0]["expected"] = labels
+            path.write_text(json.dumps(data), encoding="utf-8")
+            self.assertEqual(judge.heldout_items(path)[0][2], labels)
+            data["items"][0]["expected"] = {"reply_correct": "yes"}
+            path.write_text(json.dumps(data), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "invalid"):
+                judge.heldout_items(path)
+
     def test_agreement_has_wilson_intervals_and_admits_only_a_clearly_agreeing_judge(self):
         items = judge.calibration_items()
         perfect = [(judge.Verdict(**expected, confident=True), expected) for _, _, expected in items]

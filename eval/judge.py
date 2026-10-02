@@ -195,6 +195,26 @@ def calibration_items(path: Path = CALIBRATION) -> list[tuple[str, Item, dict[st
     return items
 
 
+HELDOUT = Path(__file__).with_name("judge_heldout.json")
+
+
+def heldout_items(path: Path = HELDOUT) -> list[tuple[str, Item, dict[str, bool] | None]]:
+    """The held-out sample: never used to revise a judge; ``expected`` is None until the owner adjudicates it."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("corpus") != corpus.CORPUS_ID:
+        raise ValueError("judge held-out sample belongs to another corpus")
+    items = []
+    for raw in data["items"]:
+        expected = raw["expected"]
+        labelled = isinstance(expected, dict) and set(expected) == set(CRITERIA)
+        if expected is not None and not (labelled and all(isinstance(value, bool) for value in expected.values())):
+            raise ValueError("invalid judge held-out item")
+        items.append(
+            (raw["id"], Item(corpus.SCENARIOS_BY_ID[raw["scenario"]], tuple(raw["ledger"]), raw["reply"]), expected)
+        )
+    return items
+
+
 def agreement(results: Iterable[tuple[Verdict | None, Mapping[str, bool]]]) -> dict[str, object]:
     """Agreement with the adjudicated labels per criterion and on all at once; a failed judgment disagrees."""
     results = list(results)

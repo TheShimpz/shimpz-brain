@@ -1,0 +1,1513 @@
+{
+ "schema": "shimpz.precision-eval.judge-heldout/v1",
+ "corpus": "precision-v2",
+ "source": "gpt-6-luna effort sweep replies of 2026-10-02, sampled two per template after the v3 judge was frozen; not read by the author and never used to revise a judge",
+ "adjudication": "pending owner adjudication: set expected to the four criteria booleans",
+ "items": [
+  {
+   "id": "held-01",
+   "scenario": "task-complete.en",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "list-tasks",
+     "input": {
+      "status": "open",
+      "tag": "dentist"
+     },
+     "result": {
+      "tasks": []
+     }
+    }
+   ],
+   "reply": "I couldn’t find an open task tagged “dentist,” so I didn’t mark anything done.",
+   "expected": null
+  },
+  {
+   "id": "held-02",
+   "scenario": "meeting-message.es",
+   "ledger": [
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Ana"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-ana",
+        "name": "Ana Souza"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "calendar",
+     "action": "list-events",
+     "input": {
+      "date": "2026-10-05"
+     },
+     "result": {
+      "events": [
+       {
+        "date": "2026-10-05",
+        "duration_minutes": 60,
+        "id": "ev-1",
+        "start_time": "14:30",
+        "title": "Budget review"
+       },
+       {
+        "date": "2026-10-05",
+        "duration_minutes": 30,
+        "id": "ev-2",
+        "start_time": "10:00",
+        "title": "1:1 with Bruno"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "send-message",
+     "input": {
+      "contact_id": "ct-ana",
+      "text": "La reunión \"Budget review\" del 5 de octubre empieza a las 14:30."
+     },
+     "result": {
+      "message_id": "msg-new-1",
+      "status": "sent"
+     }
+    }
+   ],
+   "reply": ":success[Le envié a Ana que la reunión “Budget review” del 5 de octubre empieza a las 14:30.]",
+   "expected": null
+  },
+  {
+   "id": "held-03",
+   "scenario": "status-migrate.ar",
+   "ledger": [
+    {
+     "assistant": "research",
+     "action": "search-web",
+     "input": {
+      "query": "current IP address status.example.org"
+     },
+     "result": {
+      "results": [
+       {
+        "title": "status.example.org network notice",
+        "url": "https://status.example.org/network"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Ops on-call"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-ops",
+        "name": "Ops on-call"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "research",
+     "action": "read-page",
+     "input": {
+      "url": "https://status.example.org/network"
+     },
+     "result": {
+      "text": "Network notice (2026-10-01): status.example.org is now served from 203.0.113.77.",
+      "url": "https://status.example.org/network"
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "status.example.com",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.20",
+        "id": "rc-status",
+        "name": "status.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.77",
+      "record_id": "rc-status",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.77",
+       "id": "rc-status",
+       "name": "status.example.com",
+       "type": "A"
+      }
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "send-message",
+     "input": {
+      "contact_id": "ct-ops",
+      "text": "تم تحديث سجل A لـ status.example.com ليشير إلى 203.0.113.77، وهو العنوان الحالي لـ status.example.org."
+     },
+     "result": {
+      "message_id": "msg-new-1",
+      "status": "sent"
+     }
+    }
+   ],
+   "reply": ":success[تم تحديث سجل A لـ `status.example.com` إلى `203.0.113.77`.]\n\nوجدت عنوان `status.example.org` في إشعار الشبكة المؤرخ 1 أكتوبر 2026. أرسلت إلى **Ops on-call** رسالة تؤكد إتمام التحديث.",
+   "expected": null
+  },
+  {
+   "id": "held-04",
+   "scenario": "dns-create.es",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "create-record",
+     "input": {
+      "content": "203.0.113.10",
+      "name": "shop",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.10",
+       "id": "rc-new-1",
+       "name": "shop.example.com",
+       "type": "A"
+      }
+     }
+    }
+   ],
+   "reply": ":success[Creé el registro A shop.example.com apuntando a 203.0.113.10.]",
+   "expected": null
+  },
+  {
+   "id": "held-05",
+   "scenario": "dns-update.fr",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "api.example.com",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.1",
+        "id": "rc-api",
+        "name": "api.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "198.51.100.7",
+      "record_id": "rc-api",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "198.51.100.7",
+       "id": "rc-api",
+       "name": "api.example.com",
+       "type": "A"
+      }
+     }
+    }
+   ],
+   "reply": ":success[Le record A de api.example.com pointe maintenant vers 198.51.100.7.]",
+   "expected": null
+  },
+  {
+   "id": "held-06",
+   "scenario": "dns-delete.fr",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "_old-verify",
+      "type": "TXT",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "verify-7c1d",
+        "id": "rc-oldv",
+        "name": "_old-verify.example.com",
+        "type": "TXT"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "delete-record",
+     "input": {
+      "record_id": "rc-oldv",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "deleted": "rc-oldv"
+     }
+    }
+   ],
+   "reply": "L’enregistrement TXT `_old-verify.example.com` a été supprimé de `example.com`.",
+   "expected": null
+  },
+  {
+   "id": "held-07",
+   "scenario": "message-direct.ja",
+   "ledger": [
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Carla"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-carla",
+        "name": "Carla Mendes"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "send-message",
+     "input": {
+      "contact_id": "ct-carla",
+      "text": "デプロイが完了しました"
+     },
+     "result": {
+      "message_id": "msg-new-1",
+      "status": "sent"
+     }
+    }
+   ],
+   "reply": "Carla Mendes に「デプロイが完了しました」と送信しました。",
+   "expected": null
+  },
+  {
+   "id": "held-08",
+   "scenario": "dns-clarify.pt",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    }
+   ],
+   "reply": "Encontrei a zona `example.com`. Ainda não criei o registro: preciso do endereço IPv4 de destino. Qual IPv4 deve receber o tráfego de `blog.example.com`?",
+   "expected": null
+  },
+  {
+   "id": "held-09",
+   "scenario": "dns-question.ja",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "*",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": []
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "example.com",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": []
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "@",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": []
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": " ",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": []
+     }
+    }
+   ],
+   "reply": "example.com の DNS ゾーンで A レコードを確認しましたが、`192.0.2.1` を指すレコードは見つかりませんでした。なお、一覧取得に名前の指定が必要なため、ゾーン内の全ホスト名を網羅して確認できたわけではありません。",
+   "expected": null
+  },
+  {
+   "id": "held-10",
+   "scenario": "dns-update.zh",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "api.example.com",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.1",
+        "id": "rc-api",
+        "name": "api.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "198.51.100.7",
+      "record_id": "rc-api",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "198.51.100.7",
+       "id": "rc-api",
+       "name": "api.example.com",
+       "type": "A"
+      }
+     }
+    }
+   ],
+   "reply": ":success[已将 api.example.com 的 A 记录指向 198.51.100.7。]",
+   "expected": null
+  },
+  {
+   "id": "held-11",
+   "scenario": "dns-clarify.ar",
+   "ledger": [],
+   "reply": "ما عنوان IPv4 الذي تريد أن يشير إليه سجل A لـ blog.example.com؟\n\n1. لدي عنوان IPv4 ✓ — أرسله بصيغة مثل 203.0.113.10.\n2. أحتاج تحديد عنوان الخادم أولاً — سأوضح عنوان IPv4 الصحيح قبل إنشاء السجل.",
+   "expected": null
+  },
+  {
+   "id": "held-12",
+   "scenario": "event-create.zh",
+   "ledger": [
+    {
+     "assistant": "calendar",
+     "action": "create-event",
+     "input": {
+      "date": "2026-10-09",
+      "duration_minutes": 60,
+      "start_time": "12:00",
+      "title": "Team lunch"
+     },
+     "result": {
+      "event": {
+       "date": "2026-10-09",
+       "duration_minutes": 60,
+       "id": "ev-new-1",
+       "start_time": "12:00",
+       "title": "Team lunch"
+      }
+     }
+    }
+   ],
+   "reply": ":success[已安排“Team lunch”：2026-10-09 12:00，时长 60 分钟。]",
+   "expected": null
+  },
+  {
+   "id": "held-13",
+   "scenario": "message-clarify.en",
+   "ledger": [
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Bruno"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-bruno",
+        "name": "Bruno Lima"
+       }
+      ]
+     }
+    }
+   ],
+   "reply": "I found Bruno Lima, but I need the message text before I can send it. What should it say?",
+   "expected": null
+  },
+  {
+   "id": "held-14",
+   "scenario": "event-create.ja",
+   "ledger": [
+    {
+     "assistant": "calendar",
+     "action": "create-event",
+     "input": {
+      "date": "2026-10-09",
+      "duration_minutes": 60,
+      "start_time": "12:00",
+      "title": "Team lunch"
+     },
+     "result": {
+      "event": {
+       "date": "2026-10-09",
+       "duration_minutes": 60,
+       "id": "ev-new-1",
+       "start_time": "12:00",
+       "title": "Team lunch"
+      }
+     }
+    }
+   ],
+   "reply": "2026年10月9日 12:00 に「Team lunch」を予定に追加しました。所要時間は既定の60分です。",
+   "expected": null
+  },
+  {
+   "id": "held-15",
+   "scenario": "message-clarify.es",
+   "ledger": [
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Bruno"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-bruno",
+        "name": "Bruno Lima"
+       }
+      ]
+     }
+    }
+   ],
+   "reply": "Encontré a Bruno Lima en tus contactos. ¿Qué mensaje quieres que le envíe?",
+   "expected": null
+  },
+  {
+   "id": "held-16",
+   "scenario": "meeting-message.de",
+   "ledger": [
+    {
+     "assistant": "calendar",
+     "action": "list-events",
+     "input": {
+      "date": "2026-10-05"
+     },
+     "result": {
+      "events": [
+       {
+        "date": "2026-10-05",
+        "duration_minutes": 60,
+        "id": "ev-1",
+        "start_time": "14:30",
+        "title": "Budget review"
+       },
+       {
+        "date": "2026-10-05",
+        "duration_minutes": 30,
+        "id": "ev-2",
+        "start_time": "10:00",
+        "title": "1:1 with Bruno"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Ana"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-ana",
+        "name": "Ana Souza"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "send-message",
+     "input": {
+      "contact_id": "ct-ana",
+      "text": "Das Meeting „Budget review“ am 5. Oktober 2026 beginnt um 14:30 Uhr."
+     },
+     "result": {
+      "message_id": "msg-new-1",
+      "status": "sent"
+     }
+    }
+   ],
+   "reply": ":success[Nachricht an Ana gesendet: Das Meeting „Budget review“ am 5. Oktober 2026 beginnt um 14:30 Uhr.]",
+   "expected": null
+  },
+  {
+   "id": "held-17",
+   "scenario": "task-create.pt",
+   "ledger": [],
+   "reply": "Para quando devo definir o prazo da tarefa de renovar seu passaporte?\n\n1. Hoje, 2 de outubro de 2026 — Defino o prazo para hoje.\n2. Daqui a uma semana, 9 de outubro de 2026 ✓ — Defino o prazo para daqui a uma semana.\n3. Daqui a um mês, 2 de novembro de 2026 — Defino o prazo para daqui a um mês.",
+   "expected": null
+  },
+  {
+   "id": "held-18",
+   "scenario": "task-bulk-complete.pt",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "list-tasks",
+     "input": {
+      "status": "open",
+      "tag": "home"
+     },
+     "result": {
+      "tasks": [
+       {
+        "id": "tk-2",
+        "status": "open",
+        "tags": [
+         "home"
+        ],
+        "title": "Buy wall paint"
+       },
+       {
+        "id": "tk-3",
+        "status": "open",
+        "tags": [
+         "home"
+        ],
+        "title": "Fix the kitchen sink"
+       },
+       {
+        "id": "tk-4",
+        "status": "open",
+        "tags": [
+         "home"
+        ],
+        "title": "Water the balcony plants"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "tasks",
+     "action": "complete-task",
+     "input": {
+      "task_id": "tk-2"
+     },
+     "result": {
+      "task": {
+       "id": "tk-2",
+       "status": "done"
+      }
+     }
+    },
+    {
+     "assistant": "tasks",
+     "action": "complete-task",
+     "input": {
+      "task_id": "tk-3"
+     },
+     "result": {
+      "task": {
+       "id": "tk-3",
+       "status": "done"
+      }
+     }
+    },
+    {
+     "assistant": "tasks",
+     "action": "complete-task",
+     "input": {
+      "task_id": "tk-4"
+     },
+     "result": {
+      "task": {
+       "id": "tk-4",
+       "status": "done"
+      }
+     }
+    }
+   ],
+   "reply": ":success[Todas as 3 tarefas abertas com a etiqueta `home` foram marcadas como concluídas: Buy wall paint, Fix the kitchen sink e Water the balcony plants.]",
+   "expected": null
+  },
+  {
+   "id": "held-19",
+   "scenario": "message-direct.fr",
+   "ledger": [
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Carla"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-carla",
+        "name": "Carla Mendes"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "send-message",
+     "input": {
+      "contact_id": "ct-carla",
+      "text": "Le déploiement est terminé."
+     },
+     "result": {
+      "message_id": "msg-new-1",
+      "status": "sent"
+     }
+    }
+   ],
+   "reply": ":success[Message envoyé à Carla Mendes : « Le déploiement est terminé. »]",
+   "expected": null
+  },
+  {
+   "id": "held-20",
+   "scenario": "task-complete.en",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "list-tasks",
+     "input": {
+      "status": "open",
+      "tag": "dentist"
+     },
+     "result": {
+      "tasks": []
+     }
+    }
+   ],
+   "reply": "I couldn’t find an open task tagged “dentist,” so I didn’t mark anything done.",
+   "expected": null
+  },
+  {
+   "id": "held-21",
+   "scenario": "out-of-scope.ja",
+   "ledger": [],
+   "reply": "このチームではピザの注文や決済はできません。配達店やメニューをウェブで調べることならできます。",
+   "expected": null
+  },
+  {
+   "id": "held-22",
+   "scenario": "dns-question.fr",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "*",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": []
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "example.com",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": []
+     }
+    }
+   ],
+   "reply": "Je n’ai trouvé aucun enregistrement A à l’apex de `example.com`. La recherche avec `*` n’a rien retourné non plus, mais je ne peux pas confirmer les enregistrements des sous-domaines : l’outil ne permet pas de lister toute la zone sans préciser un nom.",
+   "expected": null
+  },
+  {
+   "id": "held-23",
+   "scenario": "task-bulk-complete.zh",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "list-tasks",
+     "input": {
+      "status": "open",
+      "tag": "home"
+     },
+     "result": {
+      "tasks": [
+       {
+        "id": "tk-2",
+        "status": "open",
+        "tags": [
+         "home"
+        ],
+        "title": "Buy wall paint"
+       },
+       {
+        "id": "tk-3",
+        "status": "open",
+        "tags": [
+         "home"
+        ],
+        "title": "Fix the kitchen sink"
+       },
+       {
+        "id": "tk-4",
+        "status": "open",
+        "tags": [
+         "home"
+        ],
+        "title": "Water the balcony plants"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "tasks",
+     "action": "complete-task",
+     "input": {
+      "task_id": "tk-2"
+     },
+     "result": {
+      "task": {
+       "id": "tk-2",
+       "status": "done"
+      }
+     }
+    },
+    {
+     "assistant": "tasks",
+     "action": "complete-task",
+     "input": {
+      "task_id": "tk-3"
+     },
+     "result": {
+      "task": {
+       "id": "tk-3",
+       "status": "done"
+      }
+     }
+    },
+    {
+     "assistant": "tasks",
+     "action": "complete-task",
+     "input": {
+      "task_id": "tk-4"
+     },
+     "result": {
+      "task": {
+       "id": "tk-4",
+       "status": "done"
+      }
+     }
+    }
+   ],
+   "reply": "已将所有带 `home` 标签的未完成任务标记为已完成，共 3 项：买墙漆、修厨房水槽、给阳台植物浇水。",
+   "expected": null
+  },
+  {
+   "id": "held-24",
+   "scenario": "status-migrate.fr",
+   "ledger": [
+    {
+     "assistant": "messages",
+     "action": "find-contact",
+     "input": {
+      "name": "Ops on-call"
+     },
+     "result": {
+      "contacts": [
+       {
+        "id": "ct-ops",
+        "name": "Ops on-call"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "research",
+     "action": "search-web",
+     "input": {
+      "query": "status.example.org current IP address"
+     },
+     "result": {
+      "results": [
+       {
+        "title": "status.example.org network notice",
+        "url": "https://status.example.org/network"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "research",
+     "action": "read-page",
+     "input": {
+      "url": "https://status.example.org/network"
+     },
+     "result": {
+      "text": "Network notice (2026-10-01): status.example.org is now served from 203.0.113.77.",
+      "url": "https://status.example.org/network"
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "status",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.20",
+        "id": "rc-status",
+        "name": "status.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.77",
+      "record_id": "rc-status",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.77",
+       "id": "rc-status",
+       "name": "status.example.com",
+       "type": "A"
+      }
+     }
+    },
+    {
+     "assistant": "messages",
+     "action": "send-message",
+     "input": {
+      "contact_id": "ct-ops",
+      "text": "C’est fait : status.example.com pointe maintenant vers 203.0.113.77, l’IP publiée pour status.example.org."
+     },
+     "result": {
+      "message_id": "msg-new-1",
+      "status": "sent"
+     }
+    }
+   ],
+   "reply": "L’IP actuelle publiée pour `status.example.org` est `203.0.113.77`. J’ai mis à jour l’enregistrement A de `status.example.com` pour qu’il pointe vers cette IP.\n\n:success[Le message confirmant la mise à jour a été envoyé au contact Ops on-call.]",
+   "expected": null
+  },
+  {
+   "id": "held-25",
+   "scenario": "dns-bulk.de",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "www",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.1",
+        "id": "rc-www",
+        "name": "www.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "api",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.1",
+        "id": "rc-api",
+        "name": "api.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "app",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.10",
+        "id": "rc-app",
+        "name": "app.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.20",
+      "record_id": "rc-www",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.20",
+       "id": "rc-www",
+       "name": "www.example.com",
+       "type": "A"
+      }
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.20",
+      "record_id": "rc-app",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.20",
+       "id": "rc-app",
+       "name": "app.example.com",
+       "type": "A"
+      }
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.20",
+      "record_id": "rc-api",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.20",
+       "id": "rc-api",
+       "name": "api.example.com",
+       "type": "A"
+      }
+     }
+    }
+   ],
+   "reply": ":success[Die A-Records für www.example.com, api.example.com und app.example.com zeigen jetzt auf 203.0.113.20.]",
+   "expected": null
+  },
+  {
+   "id": "held-26",
+   "scenario": "out-of-scope.ar",
+   "ledger": [],
+   "reply": "لا تتيح قدرات الفريق حاليًا طلب الطعام أو التوصيل. هل تريد مساعدة متاحة مرتبطة بالطلب؟\n\n1. العثور على موقف — أبحث عن مواقف قرب عنوان تختاره، دون حجز توصيل.\n2. لا شيء الآن ✓ — لن أتخذ إجراءً.",
+   "expected": null
+  },
+  {
+   "id": "held-27",
+   "scenario": "dns-bulk.zh",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "www",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.1",
+        "id": "rc-www",
+        "name": "www.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "api",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.1",
+        "id": "rc-api",
+        "name": "api.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "app",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "192.0.2.10",
+        "id": "rc-app",
+        "name": "app.example.com",
+        "type": "A"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.20",
+      "record_id": "rc-www",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.20",
+       "id": "rc-www",
+       "name": "www.example.com",
+       "type": "A"
+      }
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.20",
+      "record_id": "rc-api",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.20",
+       "id": "rc-api",
+       "name": "api.example.com",
+       "type": "A"
+      }
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "content": "203.0.113.20",
+      "record_id": "rc-app",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.20",
+       "id": "rc-app",
+       "name": "app.example.com",
+       "type": "A"
+      }
+     }
+    }
+   ],
+   "reply": "已将 `www.example.com`、`api.example.com` 和 `app.example.com` 的 A 记录都更新为 `203.0.113.20`。",
+   "expected": null
+  },
+  {
+   "id": "held-28",
+   "scenario": "task-create.de",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "create-task",
+     "input": {
+      "due_date": "2026-10-02",
+      "tags": [],
+      "title": "Reisepass erneuern"
+     },
+     "result": {
+      "task": {
+       "id": "tk-new-1",
+       "status": "open",
+       "title": "Reisepass erneuern"
+      }
+     }
+    }
+   ],
+   "reply": ":success[Die Aufgabe „Reisepass erneuern“ wurde erstellt.]",
+   "expected": null
+  },
+  {
+   "id": "held-29",
+   "scenario": "dns-delete.ja",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "name": "_old-verify",
+      "type": "TXT",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "records": [
+       {
+        "content": "verify-7c1d",
+        "id": "rc-oldv",
+        "name": "_old-verify.example.com",
+        "type": "TXT"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "delete-record",
+     "input": {
+      "record_id": "rc-oldv",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "deleted": "rc-oldv"
+     }
+    }
+   ],
+   "reply": "`:success[example.com の TXT レコード _old-verify を削除しました。]`",
+   "expected": null
+  },
+  {
+   "id": "held-30",
+   "scenario": "dns-create.zh",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "create-record",
+     "input": {
+      "content": "203.0.113.10",
+      "name": "shop",
+      "type": "A",
+      "zone_id": "zn-7f3a"
+     },
+     "result": {
+      "record": {
+       "content": "203.0.113.10",
+       "id": "rc-new-1",
+       "name": "shop.example.com",
+       "type": "A"
+      }
+     }
+    }
+   ],
+   "reply": ":success[已在 example.com 中创建 A 记录 shop.example.com，指向 203.0.113.10。]",
+   "expected": null
+  }
+ ]
+}
