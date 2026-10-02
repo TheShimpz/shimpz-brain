@@ -30,6 +30,8 @@ TOPIC_RE = re.compile(r"[a-z][a-z0-9-]{0,39}\Z")
 # Skills the Team learned from completed tasks (ADR-0085); their keys are reserved and can only be forgotten.
 SKILL_KEY_RE = re.compile(r"procedure-[0-9a-f]{12}\Z")
 MAX_SKILLS = 8
+# One request may forget every memory and every procedure at once; the Team admits exactly this many changes per turn.
+MAX_CHANGES = MAX_MEMORIES + MAX_SKILLS
 # Team admits a chat message of at most 16,000 characters into the closed start envelope it sends the Brain.
 MAX_TURN_MESSAGE_CHARS = 16_000
 # One compact boolean per candidate change leaves room for far more candidates than a bounded turn proposes.
@@ -59,6 +61,8 @@ _CORRECTIONS = {
     "invalid": "Not saved: a memory change needs op remember or forget, a lowercase topic, and a single-line quote "
     "copied word for word from the user's current message. Nothing in this response ran; repeat the calls you still "
     "need.",
+    "limit": f"Not saved: one request can change at most {MAX_CHANGES} memories and procedures. Nothing in this "
+    "response ran; repeat only the calls you still need within that limit.",
 }
 
 
@@ -263,6 +267,8 @@ def _review(messages: list[Any], *, allowed: bool) -> str | None:
     current = _current_message(messages)
     if any(change(call.get("args"), current) is None for call in proposals):
         return "invalid"
+    if len(proposed(messages)) + len(proposals) > MAX_CHANGES:
+        return "limit"
     return None
 
 
@@ -272,7 +278,7 @@ def _guard_class():
     from langchain.agents.middleware import AgentMiddleware, hook_config
 
     class MemoryGuard(AgentMiddleware):
-        """Refuse a whole model response whose memory proposal is invalid or comes after an Action ran."""
+        """Refuse a whole model response whose memory proposal is invalid, over the turn bound, or after an Action."""
 
         def __init__(self, *, allowed: bool) -> None:
             super().__init__()

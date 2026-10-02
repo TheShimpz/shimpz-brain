@@ -236,6 +236,38 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(finished.reply, "Feito.")
         self.assertEqual([change.topic for change in finished.memory], ["language"])
 
+    def test_forgetting_every_memory_and_procedure_fits_the_bound_and_more_is_refused(self):
+        message = "Esqueça tudo o que você sabe sobre mim."
+        topics = [f"topic-{index:02d}" for index in range(memory.MAX_MEMORIES)]
+        topics += [f"procedure-{index:012x}" for index in range(memory.MAX_SKILLS)]
+
+        def forget(call_id: str, topic: str) -> dict:
+            args = {"op": "forget", "topic": topic, "quote": "Esqueça tudo"}
+            return {"name": memory.TOOL_NAME, "args": args, "id": call_id, "type": "tool_call"}
+
+        everything = [forget(f"f{index}", topic) for index, topic in enumerate(topics)]
+        runtime, _model = self._runtime(
+            AIMessage(content="", tool_calls=everything),
+            AIMessage(content="", tool_calls=[forget("extra", "language")]),
+            AIMessage(content="Esqueci tudo."),
+        )
+        memories = [memory.Memory(topic, "Be brief.") for topic in topics[: memory.MAX_MEMORIES]]
+        turn = _with_memory(memories)
+        result = runtime.start(turn, envelope(message))
+        self.assertEqual(memory.MAX_CHANGES, 40)
+        self.assertEqual(result.reply, "Esqueci tudo.")
+        self.assertEqual(result.memory, tuple(memory.Change("forget", topic, "") for topic in topics))
+        state = runtime._checkpointer.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
+        refusal = next(message for message in state if getattr(message, "tool_call_id", None) == "extra")
+        self.assertEqual(refusal.content, memory._CORRECTIONS["limit"])
+        oversized = [*everything, forget("extra", "language")]
+        self.assertEqual(
+            memory._review(
+                [HumanMessage(content=envelope(message)), AIMessage(content="", tool_calls=oversized)], allowed=True
+            ),
+            "limit",
+        )
+
     def test_without_memory_there_is_no_tool_no_policy_and_no_changes(self):
         runtime, model = self._runtime(AIMessage(content="Oi."))
         result = runtime.start(context(), "Oi")
