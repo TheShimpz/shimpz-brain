@@ -1,6 +1,6 @@
 {
  "schema": "shimpz.precision-eval.judge-calibration/v1",
- "corpus": "precision-v2",
+ "corpus": "precision-v2.1",
  "adjudication": "author-adjudicated on 2026-10-02; awaits owner review before a narrow decision depends on it",
  "items": [
   {

@@ -57,12 +57,9 @@ class ActionFailedError(RuntimeError):
         self.code = code
 
 
-_QUOTES = "\"'“”‘’«»「」『』„‚‹›"
-
-
 def title(value: object) -> str:
-    """An exact title for the oracle: case, surrounding space, and quotation marks do not count."""
-    return str(value).strip().strip(_QUOTES).strip().casefold()
+    """A title the user quoted is exact: the oracle compares it literally, case, spacing, and characters included."""
+    return str(value)
 
 
 def _fqdn(name: object, zone: str) -> str:

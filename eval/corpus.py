@@ -1,6 +1,6 @@
 """The frozen Precision Runtime corpus: whole-task templates, their scenarios and strata, and a final-state oracle.
 
-``precision-v2`` (ADR-0094) is 15 task templates in all 8 interface languages, 120 scenarios with stable ids
+``precision-v2.1`` (ADR-0094) is 15 task templates in all 8 interface languages, 120 scenarios with stable ids
 ``<template>.<locale>``. Each scenario carries its strata: language, Assistant scope (only the Assistants the task
 needs, 4, or 16, padded with irrelevant-domain Assistants, some with large schemas), behavior, the Assistants the
 task needs, and its minimal number of dependent Action rounds. Changing any message, fixture, oracle, or reference
@@ -24,7 +24,8 @@ from dataclasses import dataclass, field
 from eval.fixtures import ASSISTANTS, RELEVANT
 from eval.world import INITIAL, STATUS_IP, World
 
-CORPUS_ID = "precision-v2"
+# precision-v2 compared quoted event titles case-insensitively; v2.1 compares them literally.
+CORPUS_ID = "precision-v2.1"
 LOCALES = ("ar", "de", "en", "es", "fr", "ja", "pt", "zh")
 LANGUAGE_NAMES = {
     "ar": "Arabic",
@@ -299,7 +300,7 @@ TEMPLATES = (
         },
         "Exactly one event titled Team lunch exists on 2026-10-09 at 12:00, created without asking for the optional "
         "duration. The reply confirms it was scheduled.",
-        {"new-event:2026-10-09:12:00:team lunch": 1},
+        {"new-event:2026-10-09:12:00:Team lunch": 1},
     ),
     Template(
         "message-direct",

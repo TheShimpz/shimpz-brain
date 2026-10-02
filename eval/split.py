@@ -1,4 +1,4 @@
-"""The frozen tuning / held-out split of the precision-v2 templates for engineering experiments (ADR-0094).
+"""The frozen tuning / held-out split of the precision-v2.1 templates for engineering experiments (ADR-0094).
 
 Templates, not locales, are split, so every language of a held-out task stays unseen while arms are tuned. The rule is
 mechanical and was frozen, with ``split.json``, before any arm work: group templates by behavior and by whether they
@@ -53,6 +53,7 @@ def load(path: Path = SPLIT) -> dict[str, list[str]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     corpus_id, corpus_digest, templates = _corpus(path)
     sets = {"held-out": data["held-out"], "tuning": data["tuning"]}
+    # precision-v2.1 changed only the oracle's title comparison, so it keeps the precision-v2 split rule and sets.
     prefix = "precision-v2" if corpus_id == corpus.CORPUS_ID else corpus_id
     if (
         data.get("corpus") != corpus_id

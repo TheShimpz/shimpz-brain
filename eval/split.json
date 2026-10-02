@@ -1,7 +1,7 @@
 {
- "corpus": "precision-v2",
- "corpus_digest": "sha256:acc8669d68634ff7c91108f41a602e1f5cc1cb03fa0af575c75c7eb1e6d26399",
- "digest": "sha256:17b3ba98c4427e733d8e3c71d557f6277d98e87a74e0b3e79f569d1aeed9b558",
+ "corpus": "precision-v2.1",
+ "corpus_digest": "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab",
+ "digest": "sha256:dfffbd92f62c9ea5715b51b84c7cb1e02f6b1a2abb8db8fb4c2c8f49960a84df",
  "frozen": "2026-10-02, before any engineering-arm work",
  "held-out": [
   "dns-bulk",

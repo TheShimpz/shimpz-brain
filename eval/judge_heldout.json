@@ -1,6 +1,6 @@
 {
  "schema": "shimpz.precision-eval.judge-heldout/v1",
- "corpus": "precision-v2",
+ "corpus": "precision-v2.1",
  "source": "gpt-6-luna effort sweep replies of 2026-10-02, sampled two per template after the v3 judge was frozen; not read by the author and never used to revise a judge",
  "adjudication": "pending owner adjudication: set expected to the four criteria booleans",
  "items": [

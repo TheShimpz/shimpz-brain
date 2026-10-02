@@ -10,8 +10,8 @@ from unittest import mock
 from eval import corpus
 from eval import world as simulated
 
-# Frozen with precision-v2: a change to the corpus must change its id, not this fingerprint alone.
-DIGEST = "sha256:acc8669d68634ff7c91108f41a602e1f5cc1cb03fa0af575c75c7eb1e6d26399"
+# Frozen with precision-v2.1: a change to the corpus must change its id, not this fingerprint alone.
+DIGEST = "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab"
 
 
 def _scenario(scenario_id: str) -> corpus.Scenario:
@@ -21,7 +21,7 @@ def _scenario(scenario_id: str) -> corpus.Scenario:
 class CorpusTests(unittest.TestCase):
     def test_the_corpus_is_frozen_and_covers_every_stratum(self):
         corpus.validate()
-        self.assertEqual((corpus.CORPUS_ID, corpus.digest()), ("precision-v2", DIGEST))
+        self.assertEqual((corpus.CORPUS_ID, corpus.digest()), ("precision-v2.1", DIGEST))
         self.assertEqual(len(corpus.SCENARIOS), 120)
         self.assertEqual(Counter(s.locale for s in corpus.SCENARIOS), dict.fromkeys(corpus.LOCALES, 15))
         self.assertEqual(Counter(s.scope for s in corpus.SCENARIOS), dict.fromkeys(corpus.SCOPES, 40))
@@ -128,8 +128,8 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(world.invoke("research", "read-page", {"url": "https://x.example"})["text"], "Page not found.")
         state = world.snapshot()
         self.assertEqual((state["new-task"], state["task:tk-1"], state["sent:ct-ana"]), (2, True, 1))
-        self.assertEqual((state["new-event:2026-10-09:12:00:lunch"], state["new-event:2026-10-09:13:00:lunch"]), (1, 1))
-        self.assertEqual(simulated.title(" «Team Lunch» "), "team lunch")
+        self.assertEqual((state["new-event:2026-10-09:12:00:Lunch"], state["new-event:2026-10-09:13:00:Lunch"]), (1, 1))
+        self.assertEqual(simulated.title(" «Team Lunch» "), " «Team Lunch» ")
 
     def test_distractors_accept_writes_that_count_as_foreign_and_undeclared_actions_fail(self):
         world = simulated.World()
@@ -183,7 +183,13 @@ class OracleTests(unittest.TestCase):
 
     def test_an_event_needs_its_exact_requested_title(self):
         scenario = _scenario("event-create.fr")
-        for title, passed in (("« Team lunch »", True), ("Déjeuner d'équipe", False)):
+        for title, passed in (
+            ("Team lunch", True),
+            ("team lunch", False),
+            ("« Team lunch »", False),
+            ("Team lunch ", False),
+            ("Déjeuner d'équipe", False),
+        ):
             world = simulated.World()
             world.invoke("calendar", "create-event", {"title": title, "date": "2026-10-09", "start_time": "12:00"})
             self.assertEqual(corpus.oracle(scenario, world).passed, passed)
