@@ -1,159 +1,196 @@
-"""The spend ceiling of a disposable evaluation Brain: bound and reserve every provider request at dispatch (ADR-0094).
+"""The spend ceiling of a disposable evaluation process: bound and reserve every provider request on the wire.
 
-Experiment-only; the umbrella journey driver installs it into its own Brain process through
-``.tests/perf/precision_brain_budget.py``, never into a product process. Once installed, every OpenAI and Anthropic
-chat model is built with no SDK retries, and every request payload, right before it is sent, has each output-limit
-field (``max_output_tokens``, ``max_completion_tokens``, ``max_tokens``) clamped to the ceiling's output limit and
-its own limit field set when absent, whatever the model's construction or a call's overrides asked for. The worst
-case of that exact payload is then reserved: one input token per byte of the whole serialized payload (messages,
-tools, response format, and every other parameter) plus a formatting allowance, at the dearest input rate, and the
-output limit at the output rate. A request that would cross the cap is refused before it is sent.
+Experiment-only (ADR-0094); the umbrella journey driver installs it into its own Brain process through
+``.tests/perf/precision_brain_budget.py`` and the judge commands into theirs, never into a product process. It sits
+at the httpx transport boundary, where the SDKs have merged every override (``extra_body`` included) and expanded
+every schema, so it sees the exact bytes that would be sent:
 
-The ceiling holds under two stated assumptions: a provider bills at most one input token per payload byte plus the
-allowance, and it honors the output limit. A response that nonetheless costs more than its reservation is settled at
-its reported cost and counted as ``reservations_exceeded``. This module needs Brain's model stack.
+- only the chat endpoints (``/v1/responses`` and ``/v1/chat/completions`` on api.openai.com, ``/v1/messages`` on
+  api.anthropic.com) are admitted, non-streaming; any other request to a provider host is refused;
+- every output-limit field of the JSON body is clamped to the output limit, and the endpoint's own field is set when
+  absent; the body is re-encoded;
+- the worst case of that final body is reserved for the model the body names: one input token per byte plus an
+  allowance at the dearest input rate, and the output limit at the output rate; a request the cap cannot hold is
+  refused before it is sent, and one that only has to wait for in-flight work to settle waits;
+- the response's reported usage settles the reservation; a failed or unparsable response keeps all of it.
+
+Chat models are also built with no SDK retries; a retry would be one more request reserved on its own. The ceiling
+holds under two stated assumptions: a provider bills at most one input token per body byte plus the allowance, and it
+honors the output limit. A response costing more than its reservation is counted as ``reservations_exceeded``.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 from pathlib import Path
+from typing import NoReturn
 
-import model_usage
+import httpx
 from eval import cost as eval_cost
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 
 LIMIT_FIELDS = ("max_output_tokens", "max_completion_tokens", "max_tokens")
 REQUEST_ALLOWANCE_TOKENS = 4096
+PROVIDER_HOSTS = frozenset({"api.openai.com", "api.anthropic.com"})
+ENDPOINTS = {
+    ("api.openai.com", "/v1/responses"): "max_output_tokens",
+    ("api.openai.com", "/v1/chat/completions"): "max_completion_tokens",
+    ("api.anthropic.com", "/v1/messages"): "max_tokens",
+}
+
+
+class UnsupportedRequestError(RuntimeError):
+    """A provider request the ceiling cannot bound: another endpoint, streaming, or a body that is not JSON."""
+
+
+def usage_of(host: str, body: object) -> eval_cost.Usage | None:
+    """The usage a chat response reports, in Brain's terms (input includes cache reads and writes), or None."""
+    usage = body.get("usage") if isinstance(body, dict) else None
+    if not isinstance(usage, dict):
+        return None
+    if host == "api.anthropic.com":
+        read = int(usage.get("cache_read_input_tokens") or 0)
+        write = int(usage.get("cache_creation_input_tokens") or 0)
+        return eval_cost.Usage(
+            model_calls=1,
+            input_tokens=int(usage.get("input_tokens") or 0) + read + write,
+            output_tokens=int(usage.get("output_tokens") or 0),
+            cache_read_tokens=read,
+            cache_write_tokens=write,
+        )
+    details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
+    return eval_cost.Usage(
+        model_calls=1,
+        input_tokens=int(usage.get("input_tokens", usage.get("prompt_tokens")) or 0),
+        output_tokens=int(usage.get("output_tokens", usage.get("completion_tokens")) or 0),
+        cache_read_tokens=int(details.get("cached_tokens") or 0),
+    )
 
 
 class Ceiling:
-    """One process's ceiling: install it once; ``uninstall`` restores the adapters (tests only)."""
+    """One process's ceiling: install it once; ``uninstall`` restores the patched classes (tests only)."""
 
     def __init__(self, cap: float, max_output_tokens: int, state: Path | None = None) -> None:
         self.budget = eval_cost.Budget(cap)
         self.max_output = max_output_tokens
         self.state = state
-        self.counts = {"requests": 0, "refused": 0, "failed": 0, "unreported": 0, "unreserved": 0}
+        self.counts = {"requests": 0, "refused": 0, "failed": 0, "unreported": 0, "unsupported": 0}
         self.max_reservation = 0.0
         self._lock = threading.Lock()
-        self._pending = threading.local()
         self._saved: list[tuple[type, str, object]] = []
 
     def write_state(self) -> None:
+        """Write the state snapshot atomically: a unique temporary file replaced under the lock."""
         if self.state is None:
             return
         with self._lock:
             body = {**self.budget.summary(), **self.counts, "max_output_tokens": self.max_output}
             body["max_reservation_usd"] = round(self.max_reservation, 6)
-        temporary = self.state.with_name(self.state.name + ".tmp")
-        temporary.write_text(json.dumps(body), encoding="utf-8")
-        temporary.replace(self.state)
+            descriptor, temporary = tempfile.mkstemp(prefix=self.state.name, dir=self.state.parent)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(body, handle)
+            Path(temporary).replace(self.state)
 
-    def _limit_field(self, model: object, payload: dict) -> str:
-        if isinstance(model, ChatAnthropic):
-            return "max_tokens"
-        return "max_output_tokens" if "input" in payload else "max_completion_tokens"
+    def _count(self, name: str) -> None:
+        with self._lock:
+            self.counts[name] += 1
 
-    def bound(self, model: object, payload: dict) -> dict:
-        """Clamp every output limit of the outgoing payload, then reserve its worst case or refuse it."""
-        for field in LIMIT_FIELDS:
-            if payload.get(field) is not None:
-                payload[field] = min(int(payload[field]), self.max_output)
-        field = self._limit_field(model, payload)
-        payload[field] = min(int(payload.get(field) or self.max_output), self.max_output)
-        name = getattr(model, "model", None) or model.model_name
-        tokens = len(json.dumps(payload, default=str, ensure_ascii=False).encode()) + REQUEST_ALLOWANCE_TOKENS
-        amount = eval_cost.call_bound(name, tokens, self.max_output)
+    def refuse_unsupported(self) -> NoReturn:
+        self._count("unsupported")
+        self.write_state()
+        raise UnsupportedRequestError("the evaluation ceiling cannot bound this provider request")
+
+    def admit(self, request: httpx.Request) -> tuple[httpx.Request, eval_cost.Reservation, str]:
+        """Clamp the outgoing body, reserve its worst case for the model it names, and return the request to send."""
+        field = ENDPOINTS.get((request.url.host, request.url.path))
         try:
-            reservation = self.budget.reserve(amount)
+            body = json.loads(request.read()) if field else None
+        except ValueError:
+            body = None
+        if field is None or not isinstance(body, dict) or body.get("stream") or not isinstance(body.get("model"), str):
+            self.refuse_unsupported()
+        for name in LIMIT_FIELDS:
+            if body.get(name) is not None:
+                body[name] = min(int(body[name]), self.max_output)
+        body[field] = min(int(body.get(field) or self.max_output), self.max_output)
+        content = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
+        model = body["model"]
+        amount = eval_cost.call_bound(model, len(content) + REQUEST_ALLOWANCE_TOKENS, self.max_output)
+        try:
+            reservation = self.budget.reserve(amount, wait=True)
         except eval_cost.BudgetExhaustedError:
-            with self._lock:
-                self.counts["refused"] += 1
+            self._count("refused")
             self.write_state()
             raise
         with self._lock:
             self.counts["requests"] += 1
             self.max_reservation = max(self.max_reservation, amount)
-        self._pending.value = (reservation, name)
-        return payload
+        headers = [(key, value) for key, value in request.headers.multi_items() if key.lower() != "content-length"]
+        admitted = httpx.Request(
+            request.method, request.url, headers=headers, content=content, extensions=request.extensions
+        )
+        return admitted, reservation, model
 
-    def settle(self, result: object) -> None:
-        pending = getattr(self._pending, "value", None)
-        self._pending.value = None
-        if pending is None:
-            # Nothing was reserved: a failure before any payload sent nothing; a result means an unbounded request.
-            if result is not None:
-                with self._lock:
-                    self.counts["unreserved"] += 1
-                self.write_state()
-            return
-        reservation, name = pending
-        usage = _usage(result)
+    def settle(
+        self, reservation: eval_cost.Reservation, model: str, host: str, response: httpx.Response | None
+    ) -> None:
+        usage = None
+        if response is not None:
+            try:
+                usage = usage_of(host, json.loads(response.read()))
+            except ValueError:
+                usage = None
         if usage is None:
             self.budget.settle(reservation, eval_cost.Cost(0.0, known=False))
-            with self._lock:
-                self.counts["failed" if result is None else "unreported"] += 1
+            self._count("failed" if response is None or response.status_code >= 400 else "unreported")
         else:
-            self.budget.settle(reservation, eval_cost.cost(usage, name))
+            self.budget.settle(reservation, eval_cost.cost(usage, model))
         self.write_state()
 
     def install(self) -> None:
+        ceiling = self
+        original_send = httpx.Client.send
+
+        def send(client, request, /, **kwargs):
+            if request.url.host not in PROVIDER_HOSTS:
+                return original_send(client, request, **kwargs)
+            admitted, reservation, model = ceiling.admit(request)
+            try:
+                response = original_send(client, admitted, **kwargs)
+            except BaseException:
+                ceiling.settle(reservation, model, request.url.host, None)
+                raise
+            ceiling.settle(reservation, model, request.url.host, response)
+            return response
+
+        original_async_send = httpx.AsyncClient.send
+
+        async def async_send(client, request, /, **kwargs):
+            # Brain calls its models synchronously; an asynchronous provider request is refused, not left unmetered.
+            if request.url.host in PROVIDER_HOSTS:
+                ceiling.refuse_unsupported()
+            return await original_async_send(client, request, **kwargs)
+
+        self._saved += [(httpx.Client, "send", original_send), (httpx.AsyncClient, "send", original_async_send)]
+        httpx.Client.send = send
+        httpx.AsyncClient.send = async_send
         for cls in (ChatOpenAI, ChatAnthropic):
-            self._wrap(cls)
+            original_init = cls.__init__
+            self._saved.append((cls, "__init__", original_init))
+
+            def init(instance, /, *args, _init=original_init, **kwargs):
+                kwargs["max_retries"] = 0
+                kwargs["max_tokens"] = ceiling.max_output
+                _init(instance, *args, **kwargs)
+
+            cls.__init__ = init
         self.write_state()
 
     def uninstall(self) -> None:
         for cls, attribute, original in reversed(self._saved):
             setattr(cls, attribute, original)
         self._saved.clear()
-
-    def _wrap(self, cls: type) -> None:
-        ceiling = self
-        original_init, original_payload, original_generate = cls.__init__, cls._get_request_payload, cls._generate
-        self._saved += [
-            (cls, "__init__", original_init),
-            (cls, "_get_request_payload", original_payload),
-            (cls, "_generate", original_generate),
-        ]
-
-        def init(instance, /, *args, **kwargs):
-            kwargs["max_retries"] = 0
-            kwargs["max_tokens"] = ceiling.max_output
-            original_init(instance, *args, **kwargs)
-
-        def payload(instance, /, *args, **kwargs):
-            return ceiling.bound(instance, original_payload(instance, *args, **kwargs))
-
-        def generate(instance, /, *args, **kwargs):
-            try:
-                result = original_generate(instance, *args, **kwargs)
-            except eval_cost.BudgetExhaustedError:
-                raise
-            except BaseException:
-                ceiling.settle(None)
-                raise
-            ceiling.settle(result)
-            return result
-
-        cls.__init__, cls._get_request_payload, cls._generate = init, payload, generate
-
-
-def _usage(result: object) -> eval_cost.Usage | None:
-    reported = [
-        usage
-        for generation in getattr(result, "generations", [])
-        if isinstance(usage := getattr(getattr(generation, "message", None), "usage_metadata", None), dict)
-    ]
-    if not reported:
-        return None
-    details = reported[0].get("input_token_details") or {}
-    return eval_cost.Usage(
-        model_calls=1,
-        input_tokens=int(reported[0].get("input_tokens") or 0),
-        output_tokens=int(reported[0].get("output_tokens") or 0),
-        cache_read_tokens=int(details.get("cache_read") or 0),
-        cache_write_tokens=model_usage._cache_writes(details),
-    )

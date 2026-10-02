@@ -295,6 +295,7 @@ NUMBER_FIELDS = frozenset(
     {
         "agree",
         "calibration_usd",
+        "contention_waits",
         "cap_usd",
         "failed",
         "held_out_repetitions",
@@ -316,7 +317,7 @@ NUMBER_FIELDS = frozenset(
         "tuning_repetitions",
         "unknown_settlements",
         "unreported",
-        "unreserved",
+        "unsupported",
         "workers",
     }
 )
