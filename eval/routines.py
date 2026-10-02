@@ -86,6 +86,24 @@ CASES = (
         _create({"kind": "monthly", "day": 1, "time": "10:00"}, [["dns", "list-zones"]], "Europe/Lisbon"),
     ),
     RoutineCase(
+        "continuous-en",
+        "an explicit continuous request is created with its pause and daily cap",
+        "Keep listing my DNS zones continuously, waiting 10 seconds after each run, at most 500 times a day.",
+        _create({"kind": "continuous", "gap": 10, "cap": 500}, [["dns", "list-zones"]]),
+    ),
+    RoutineCase(
+        "continuous-cap-pt",
+        "a continuous request that names no cap asks for the daily cap, with the shortest pause",
+        "Liste minhas zonas DNS continuamente, repetindo sem parar.",
+        {
+            "op": "ask",
+            "field": ["schedule", None],
+            "values": sorted(
+                json.dumps({"kind": "continuous", "gap": 5, "cap": cap}, sort_keys=True) for cap in (100, 500, 1000)
+            ),
+        },
+    ),
+    RoutineCase(
         "update-pt",
         "changing a listed Routine's time updates it",
         "Mude a listagem diária das zonas DNS para as 7h.",

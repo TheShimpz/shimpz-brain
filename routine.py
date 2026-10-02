@@ -46,7 +46,13 @@ _SCHEDULE_FIELDS = {
     "daily": frozenset({"kind", "time"}),
     "weekly": frozenset({"kind", "weekday", "time"}),
     "monthly": frozenset({"kind", "day", "time"}),
+    "continuous": frozenset({"kind", "gap", "cap"}),
 }
+MIN_CONTINUOUS_GAP_SECONDS = 5
+MAX_CONTINUOUS_GAP_SECONDS = 86_400
+MAX_DAILY_RUNS = 1000
+# The caps a continuous Routine question offers when the user names none.
+CONTINUOUS_CAP_OPTIONS = (100, 500, 1000)
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -107,6 +113,11 @@ def canonical_schedule(value: object) -> dict[str, object] | None:
         return None
     if kind == "hourly":
         return dict(value) if _whole(value["every"], 1, 24) else None
+    if kind == "continuous":
+        valid = _whole(value["gap"], MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) and _whole(
+            value["cap"], 1, MAX_DAILY_RUNS
+        )
+        return dict(value) if valid else None
     valid = (
         isinstance(value["time"], str)
         and _TIME_RE.fullmatch(value["time"]) is not None
@@ -282,11 +293,13 @@ class Step(BaseModel):
 class Schedule(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    kind: Literal["hourly", "daily", "weekly", "monthly"]
+    kind: Literal["hourly", "daily", "weekly", "monthly", "continuous"]
     every: int | None
     time: str | None
     weekday: int | None
     day: int | None
+    gap: int | None
+    cap: int | None
 
 
 class Choice(BaseModel):
@@ -399,13 +412,7 @@ def change(
     ``open_field`` names the schedule when a Routine question leaves it open; it must then be null.
     """
     words = Words(message)
-    schedule = (
-        None
-        if compiled.schedule is None
-        else canonical_schedule(
-            {key: value for key, value in compiled.schedule.model_dump().items() if value is not None}
-        )
-    )
+    schedule = None if compiled.schedule is None else canonical_schedule(_present(compiled.schedule.model_dump()))
     name = team_memory._line(compiled.name, MAX_NAME_CHARS)
     request = team_memory._line(compiled.request, MAX_QUOTE_CHARS)
     if (
@@ -446,8 +453,15 @@ def _prompt(message: str, assistants: tuple[Any, ...], target: Mapping[str, obje
         "or amount the work needs is neither in the user's own words nor a safe default; unsupported when no listed "
         "Action does the work. Otherwise compile: name is a short title; request copies word for word one single "
         "line of the user's own words that states the recurring work and its timing; schedule is hourly every 1-24 "
-        "hours, daily at HH:MM, weekly on weekday 0-6 (0 is Monday) at HH:MM, or monthly on day 1-28 at HH:MM, "
-        "with the other fields null; timezone is an IANA zone only when the user names a place or zone, or when "
+        "hours, daily at HH:MM, weekly on weekday 0-6 (0 is Monday) at HH:MM, monthly on day 1-28 at HH:MM, or "
+        "continuous only when the user's own words ask for the work to repeat again and again without a fixed time, "
+        f"with gap the seconds between the end of one run and the start of the next ({MIN_CONTINUOUS_GAP_SECONDS} "
+        f"unless the user names a longer pause, {MIN_CONTINUOUS_GAP_SECONDS}-{MAX_CONTINUOUS_GAP_SECONDS}) and cap "
+        f"the most runs in any 24 hours (1-{MAX_DAILY_RUNS}) as the user states it; a continuous request that "
+        "names no cap is a schedule to ask, whose options are that continuous schedule with cap "
+        f"{', '.join(map(str, CONTINUOUS_CAP_OPTIONS[:-1]))}, or {CONTINUOUS_CAP_OPTIONS[-1]}, recommending the "
+        "first; every schedule has its other fields null; timezone is an IANA zone only when the user names a "
+        "place or zone, or when "
         "changing the listed Routine its own zone unless the user names another, else null; "
         "steps are at most 8 listed Actions in order, ids lowercase, filling required input members and only "
         "members the user asked for. A member is a literal (value_json holds its JSON value; each scalar of it has "
@@ -512,9 +526,14 @@ def _value(choice: Choice, question: Question) -> object:
         value = json.loads(choice.value_json, parse_constant=_constant)
     except ValueError as exc:
         raise UnprovenError from exc
-    if question.field == "schedule" and (value := canonical_schedule(value)) is None:
+    if question.field == "schedule" and (value := canonical_schedule(_present(value))) is None:
         raise UnprovenError
     return value
+
+
+def _present(value: object) -> object:
+    """A schedule object without the null members of the compiler's one structured Schedule shape."""
+    return {key: item for key, item in value.items() if item is not None} if isinstance(value, dict) else value
 
 
 def _asked(compiled: Compiled, message: str, contracts: Mapping, target: dict | None, reply: str) -> object:
