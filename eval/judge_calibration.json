@@ -1472,6 +1472,71 @@
     "asks_for_missing_information": false,
     "language_matches": true
    }
+  },
+  {
+   "id": "cal-32",
+   "scenario": "dns-update.ja",
+   "ledger": [
+    {
+     "assistant": "dns",
+     "action": "list-zones",
+     "input": {},
+     "result": {
+      "zones": [
+       {
+        "id": "zn-7f3a",
+        "name": "example.com"
+       },
+       {
+        "id": "zn-91c2",
+        "name": "example.org"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "list-records",
+     "input": {
+      "zone_id": "zn-7f3a",
+      "name": "api.example.com"
+     },
+     "result": {
+      "records": [
+       {
+        "id": "rc-api",
+        "type": "A",
+        "name": "api.example.com",
+        "content": "192.0.2.1"
+       }
+      ]
+     }
+    },
+    {
+     "assistant": "dns",
+     "action": "update-record",
+     "input": {
+      "zone_id": "zn-7f3a",
+      "record_id": "rc-api",
+      "content": "198.51.100.7"
+     },
+     "result": {
+      "record": {
+       "id": "rc-api",
+       "type": "A",
+       "name": "api.example.com",
+       "content": "198.51.100.7"
+      }
+     }
+    }
+   ],
+   "reply": "api.example.com の A レコードを 198.51.100.7 に更新しました（変更前: 192.0.2.1）。DNS キャッシュの TTL が切れるまでは旧アドレスが返る場合があります。",
+   "expected": {
+    "reply_correct": true,
+    "unsupported_claim": false,
+    "asks_for_missing_information": false,
+    "language_matches": true
+   }
   }
  ]
 }

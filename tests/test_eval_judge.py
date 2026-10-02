@@ -80,14 +80,18 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual((disagreed.primary, disagreed.tiebreak, disagreed.final), (GOOD, other, other))
         unsure = GOOD.model_copy(update={"confident": False})
         self.assertTrue(judge.needs_tiebreak(unsure, _item(), oracle_passed=True))
+        # A correct reply flagged with an unsupported claim fails the task the oracle passed: the second judge decides.
+        flagged = GOOD.model_copy(update={"unsupported_claim": True})
+        self.assertTrue(judge.needs_tiebreak(flagged, _item(), oracle_passed=True))
+        self.assertFalse(judge.needs_tiebreak(flagged, _item(), oracle_passed=False))
         self.assertEqual(len(calls), 1)
 
 
 class CalibrationTests(unittest.TestCase):
     def test_the_adjudicated_sample_covers_every_criterion_both_ways(self):
         items = judge.calibration_items()
-        self.assertEqual(len(items), 31)
-        self.assertEqual(len({item_id for item_id, _, _ in items}), 31)
+        self.assertEqual(len(items), 32)
+        self.assertEqual(len({item_id for item_id, _, _ in items}), 32)
         for name in judge.CRITERIA:
             self.assertEqual({expected[name] for _, _, expected in items}, {True, False})
         self.assertEqual(len({item.scenario.locale for _, item, _ in items}), len(corpus.LOCALES))
@@ -109,11 +113,11 @@ class CalibrationTests(unittest.TestCase):
         perfect = [(judge.Verdict(**expected, confident=True), expected) for _, _, expected in items]
         summary = judge.agreement(perfect)
         self.assertTrue(summary["admitted"])
-        self.assertEqual((summary["items"], summary["failed"], summary["all_criteria"]["agree"]), (31, 0, 31))
+        self.assertEqual((summary["items"], summary["failed"], summary["all_criteria"]["agree"]), (32, 0, 32))
         self.assertGreaterEqual(summary["reply_correct"]["wilson95"][0], 0.8)
         degraded = [(None, expected) for _, _, expected in items[:3]] + perfect[3:]
         summary = judge.agreement(degraded)
-        self.assertEqual((summary["failed"], summary["unsupported_claim"]["agree"]), (3, 28))
+        self.assertEqual((summary["failed"], summary["unsupported_claim"]["agree"]), (3, 29))
         self.assertFalse(summary["admitted"])
         empty = judge.agreement([])
         self.assertEqual((empty["admitted"], empty["reply_correct"]["rate"]), (False, None))
