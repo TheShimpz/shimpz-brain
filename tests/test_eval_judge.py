@@ -38,6 +38,9 @@ class JudgeTests(unittest.TestCase):
             body["action_record"], [{"assistant": "dns", "action": "list-zones", "input": {}, "result": {}}]
         )
         self.assertFalse(body["user_must_be_asked_for_missing_information"])
+        scenario = corpus.SCENARIOS_BY_ID["dns-create.ja"]
+        self.assertEqual([item["id"] for item in body["available_assistants"]], list(scenario.assistants))
+        self.assertIn("create-record: Create one record", " ".join(body["available_assistants"][0]["actions"]))
         text = (system.content + human.content).lower()
         for leaked in ("openai", "anthropic", "luna", "sonnet", "arm", "repetition", "baseline"):
             self.assertNotIn(leaked, text.replace("alarm", ""))
@@ -83,8 +86,8 @@ class JudgeTests(unittest.TestCase):
 class CalibrationTests(unittest.TestCase):
     def test_the_adjudicated_sample_covers_every_criterion_both_ways(self):
         items = judge.calibration_items()
-        self.assertEqual(len(items), 26)
-        self.assertEqual(len({item_id for item_id, _, _ in items}), 26)
+        self.assertEqual(len(items), 31)
+        self.assertEqual(len({item_id for item_id, _, _ in items}), 31)
         for name in judge.CRITERIA:
             self.assertEqual({expected[name] for _, _, expected in items}, {True, False})
         self.assertEqual(len({item.scenario.locale for _, item, _ in items}), len(corpus.LOCALES))
@@ -106,11 +109,11 @@ class CalibrationTests(unittest.TestCase):
         perfect = [(judge.Verdict(**expected, confident=True), expected) for _, _, expected in items]
         summary = judge.agreement(perfect)
         self.assertTrue(summary["admitted"])
-        self.assertEqual((summary["items"], summary["failed"], summary["all_criteria"]["agree"]), (26, 0, 26))
+        self.assertEqual((summary["items"], summary["failed"], summary["all_criteria"]["agree"]), (31, 0, 31))
         self.assertGreaterEqual(summary["reply_correct"]["wilson95"][0], 0.8)
         degraded = [(None, expected) for _, _, expected in items[:3]] + perfect[3:]
         summary = judge.agreement(degraded)
-        self.assertEqual((summary["failed"], summary["unsupported_claim"]["agree"]), (3, 23))
+        self.assertEqual((summary["failed"], summary["unsupported_claim"]["agree"]), (3, 28))
         self.assertFalse(summary["admitted"])
         empty = judge.agreement([])
         self.assertEqual((empty["admitted"], empty["reply_correct"]["rate"]), (False, None))

@@ -117,7 +117,7 @@ class JudgingTests(unittest.TestCase):
         by_reply = {item.reply: expected[item_id] for item_id, item, _ in judge.calibration_items()}
         summary = precision.calibrate(lambda item: judge.Verdict(**by_reply[item.reply], confident=True), tiebreak)
         self.assertTrue(summary["primary"]["admitted"])
-        self.assertEqual((summary["tiebreak"]["failed"], summary["tiebreak"]["admitted"]), (26, False))
+        self.assertEqual((summary["tiebreak"]["failed"], summary["tiebreak"]["admitted"]), (31, False))
 
 
 class ReportTests(unittest.TestCase):
@@ -171,7 +171,7 @@ class ReportTests(unittest.TestCase):
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
-        self.assertEqual((result["scenarios"], result["calibration_items"]), (120, 26))
+        self.assertEqual((result["scenarios"], result["calibration_items"]), (120, 31))
         scenario = corpus.SCENARIOS_BY_ID["status-migrate.en"]
         self.assertEqual(len(precision.brain_assistants(scenario)), len(scenario.assistants))
 

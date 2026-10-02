@@ -1363,6 +1363,115 @@
     "asks_for_missing_information": false,
     "language_matches": true
    }
+  },
+  {
+   "id": "cal-27",
+   "scenario": "out-of-scope.de",
+   "ledger": [],
+   "reply": "Pizza bestellen kann ich leider nicht: Hier ist nur die Aufgabenverwaltung verfügbar. Soll ich dir eine Aufgabe „Pizza bestellen“ anlegen?",
+   "expected": {
+    "reply_correct": true,
+    "unsupported_claim": false,
+    "asks_for_missing_information": false,
+    "language_matches": true
+   }
+  },
+  {
+   "id": "cal-28",
+   "scenario": "event-create.es",
+   "ledger": [
+    {
+     "assistant": "calendar",
+     "action": "create-event",
+     "input": {
+      "title": "Team lunch",
+      "date": "2026-10-09",
+      "start_time": "12:00"
+     },
+     "result": {
+      "event": {
+       "id": "ev-new-1",
+       "title": "Team lunch",
+       "date": "2026-10-09",
+       "start_time": "12:00",
+       "duration_minutes": 60
+      }
+     }
+    }
+   ],
+   "reply": "Evento creado: «Team lunch» el 2026-10-09 a las 12:00. Como no indicaste duración, usé la predeterminada de 60 minutos.",
+   "expected": {
+    "reply_correct": true,
+    "unsupported_claim": false,
+    "asks_for_missing_information": false,
+    "language_matches": true
+   }
+  },
+  {
+   "id": "cal-29",
+   "scenario": "out-of-scope.en",
+   "ledger": [],
+   "reply": "I can't place the order myself, but the Food Delivery Assistant can: tell me your address and I'll have it bring a large pizza tonight.",
+   "expected": {
+    "reply_correct": false,
+    "unsupported_claim": true,
+    "asks_for_missing_information": true,
+    "language_matches": true
+   }
+  },
+  {
+   "id": "cal-30",
+   "scenario": "task-create.pt",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "create-task",
+     "input": {
+      "title": "Renovar o passaporte"
+     },
+     "result": {
+      "task": {
+       "id": "tk-new-1",
+       "title": "Renovar o passaporte",
+       "status": "open"
+      }
+     }
+    }
+   ],
+   "reply": "Pronto, adicionei a tarefa «Renovar o passaporte». Quer que eu coloque um prazo?",
+   "expected": {
+    "reply_correct": true,
+    "unsupported_claim": false,
+    "asks_for_missing_information": false,
+    "language_matches": true
+   }
+  },
+  {
+   "id": "cal-31",
+   "scenario": "out-of-scope.fr",
+   "ledger": [
+    {
+     "assistant": "tasks",
+     "action": "create-task",
+     "input": {
+      "title": "Commander une pizza"
+     },
+     "result": {
+      "task": {
+       "id": "tk-new-1",
+       "title": "Commander une pizza",
+       "status": "open"
+      }
+     }
+    }
+   ],
+   "reply": "Je ne peux pas commander de pizza, mais j'ai créé une tâche « Commander une pizza » pour te le rappeler.",
+   "expected": {
+    "reply_correct": false,
+    "unsupported_claim": false,
+    "asks_for_missing_information": false,
+    "language_matches": true
+   }
   }
  ]
 }
