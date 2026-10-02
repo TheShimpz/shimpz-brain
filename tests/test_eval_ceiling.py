@@ -172,6 +172,50 @@ class CeilingTests(unittest.TestCase):
         self.assertIsNone(ceiling.usage_of("api.openai.com", ["no usage"]))
         ceiling.Ceiling(1.0, 10).write_state()
 
+    def test_malformed_usage_keeps_the_whole_reservation_and_always_settles(self):
+        malformed = (
+            {},
+            {"input_tokens": 10},
+            {"input_tokens": 10, "output_tokens": "5"},
+            {"input_tokens": True, "output_tokens": 5},
+            {"input_tokens": -1, "output_tokens": 5},
+            {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": 7},
+            {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": {"cached_tokens": 1.5}},
+        )
+        for usage in malformed:
+            with self.subTest(usage=usage):
+                self.assertIsNone(ceiling.usage_of("api.openai.com", {"usage": usage}))
+        self.assertIsNone(ceiling.usage_of("api.openai.com", {"usage": {"prompt_tokens": 3}}))
+        self.assertIsNone(ceiling.usage_of("api.anthropic.com", {"usage": {"input_tokens": 3}}))
+        self.assertIsNone(
+            ceiling.usage_of(
+                "api.anthropic.com", {"usage": {"input_tokens": 3, "output_tokens": 1, "cache_read_input_tokens": "2"}}
+            )
+        )
+        chat = {"prompt_tokens": 3, "completion_tokens": 1, "prompt_tokens_details": None}
+        self.assertEqual(ceiling.usage_of("api.openai.com", {"usage": chat}).input_tokens, 3)
+        anthropic = {"input_tokens": 3, "output_tokens": 1, "cache_read_input_tokens": None}
+        self.assertEqual(ceiling.usage_of("api.anthropic.com", {"usage": anthropic}).input_tokens, 3)
+        for usage in ({}, {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": 7}):
+            spent = self.ceiling.budget.spent
+            client = httpx.Client(transport=httpx.MockTransport(Recorder({**OPENAI_RESPONSE, "usage": usage})))
+            client.post("https://api.openai.com/v1/responses", json={"model": "gpt-6-luna"})
+            # The whole worst case stays spent: an empty usage is not a known zero.
+            self.assertGreaterEqual(self.ceiling.budget.spent - spent, eval_cost.call_bound("gpt-6-luna", 0, 32_000))
+        self.assertEqual(self.ceiling.counts["unreported"], 2)
+
+        class Broken(httpx.SyncByteStream):
+            def __iter__(self):
+                raise httpx.ReadError("reset")
+
+        request = httpx.Request("POST", "https://api.openai.com/v1/responses", json={"model": "gpt-6-luna"})
+        admitted, reservation, sent = self.ceiling.admit(request)
+        with self.assertRaises(httpx.ReadError):
+            self.ceiling.settle(reservation, sent, "api.openai.com", httpx.Response(200, stream=Broken()))
+        self.assertEqual(self.ceiling.budget.summary()["unknown_settlements"], 3)
+        self.assertEqual(self.ceiling.budget._reserved, 0.0)
+        self.assertEqual(json.loads(admitted.content)["max_output_tokens"], 32_000)
+
     def test_concurrent_state_writes_never_collide(self):
         workers = [threading.Thread(target=lambda: [self.ceiling.write_state() for _ in range(40)]) for _ in range(8)]
         for worker in workers:

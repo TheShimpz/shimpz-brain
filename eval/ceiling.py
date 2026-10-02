@@ -47,28 +47,54 @@ class UnsupportedRequestError(RuntimeError):
     """A provider request the ceiling cannot bound: another endpoint, streaming, or a body that is not JSON."""
 
 
+def _tokens(usage: dict, key: str, *, required: bool) -> int | None:
+    """A non-negative integer token count; an optional count may be absent or null (zero)."""
+    value = usage.get(key)
+    if value is None and not required:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _counts(usage: dict, required: tuple[str, ...], optional: tuple[str, ...]) -> list[int] | None:
+    counts = [_tokens(usage, key, required=True) for key in required]
+    counts += [_tokens(usage, key, required=False) for key in optional]
+    return None if None in counts else counts
+
+
 def usage_of(host: str, body: object) -> eval_cost.Usage | None:
-    """The usage a chat response reports, in Brain's terms (input includes cache reads and writes), or None."""
+    """The usage a chat response reports, in Brain's terms (input includes cache reads and writes), or None.
+
+    Every required count must be present as a non-negative integer, and every optional one absent, null, or such an
+    integer; anything else is unreported usage, so the request keeps its whole reservation.
+    """
     usage = body.get("usage") if isinstance(body, dict) else None
     if not isinstance(usage, dict):
         return None
     if host == "api.anthropic.com":
-        read = int(usage.get("cache_read_input_tokens") or 0)
-        write = int(usage.get("cache_creation_input_tokens") or 0)
+        counts = _counts(
+            usage, ("input_tokens", "output_tokens"), ("cache_read_input_tokens", "cache_creation_input_tokens")
+        )
+        if counts is None:
+            return None
+        fresh, output, read, write = counts
         return eval_cost.Usage(
             model_calls=1,
-            input_tokens=int(usage.get("input_tokens") or 0) + read + write,
-            output_tokens=int(usage.get("output_tokens") or 0),
+            input_tokens=fresh + read + write,
+            output_tokens=output,
             cache_read_tokens=read,
             cache_write_tokens=write,
         )
-    details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
-    return eval_cost.Usage(
-        model_calls=1,
-        input_tokens=int(usage.get("input_tokens", usage.get("prompt_tokens")) or 0),
-        output_tokens=int(usage.get("output_tokens", usage.get("completion_tokens")) or 0),
-        cache_read_tokens=int(details.get("cached_tokens") or 0),
-    )
+    responses = "input_tokens" in usage
+    names = ("input_tokens", "output_tokens") if responses else ("prompt_tokens", "completion_tokens")
+    details = usage.get("input_tokens_details" if responses else "prompt_tokens_details")
+    details = {} if details is None else details
+    counts = _counts(usage, names, ())
+    cached = _counts(details, (), ("cached_tokens",)) if isinstance(details, dict) else None
+    if counts is None or cached is None:
+        return None
+    return eval_cost.Usage(model_calls=1, input_tokens=counts[0], output_tokens=counts[1], cache_read_tokens=cached[0])
 
 
 class Ceiling:
@@ -138,18 +164,20 @@ class Ceiling:
     def settle(
         self, reservation: eval_cost.Reservation, model: str, host: str, response: httpx.Response | None
     ) -> None:
+        """Settle the reservation exactly once, whatever the response holds: unreadable usage keeps all of it."""
         usage = None
-        if response is not None:
-            try:
+        try:
+            if response is not None:
                 usage = usage_of(host, json.loads(response.read()))
-            except ValueError:
-                usage = None
-        if usage is None:
-            self.budget.settle(reservation, eval_cost.Cost(0.0, known=False))
-            self._count("failed" if response is None or response.status_code >= 400 else "unreported")
-        else:
-            self.budget.settle(reservation, eval_cost.cost(usage, model))
-        self.write_state()
+        except ValueError:
+            usage = None
+        finally:
+            if usage is None:
+                self.budget.settle(reservation, eval_cost.Cost(0.0, known=False))
+                self._count("failed" if response is None or response.status_code >= 400 else "unreported")
+            else:
+                self.budget.settle(reservation, eval_cost.cost(usage, model))
+            self.write_state()
 
     def install(self) -> None:
         ceiling = self
