@@ -268,6 +268,11 @@ def _arm_signals(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
             "escalation_rate": _share(sum(signals.values()), len(dispatched)),
             "escalation_signals": dict(sorted(signals.items())),
             "escalation_blocked": sum(bool(a["escalation_blocked"]) for a in engineering),
+            # Every Jev request is counted, its answer usable or not.
+            "jev_calls": sum(int(a["jev_calls"]) for a in engineering),
+            "jev_failures": sum(int(a["jev_failures"]) for a in engineering),
+            "jev_usd": round(sum(float(a["jev_usd"]) for a in engineering), 6),
+            "jev_usd_known": all(bool(a["jev_usd_known"]) for a in engineering),
         }
     }
 

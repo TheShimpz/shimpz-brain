@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import unittest
 
 import httpx
@@ -62,6 +63,37 @@ class JevTests(unittest.TestCase):
         with self.assertRaises(jev.JevError):
             jev.ask(self._transport({"route": {}}, model="jev-0")[0], "x", jev.ROUTE_QUESTION)
 
+    def test_every_request_is_metered_whether_or_not_its_answer_is_usable(self):
+        budget, meter = jev.Budget(1.0), jev.Meter()
+        good = {"route": {"type": "choice", "choice": "simple-read", "confidence": 0.9}}
+        budget.ask(self._transport(good)[0], "x", jev.ROUTE_QUESTION, meter)
+        # A malformed answer still reported its usage: the request is paid and charged at its known cost.
+        with self.assertRaises(jev.JevError) as malformed:
+            budget.ask(self._transport({"other": {}})[0], "x", jev.ROUTE_QUESTION, meter)
+        self.assertEqual(malformed.exception.input_tokens, 700)
+        self.assertEqual((meter.calls, meter.known), (2, True))
+        self.assertAlmostEqual(meter.usd, 2 * 700 * 0.042e-6)
+        self.assertAlmostEqual(budget.budget.spent, meter.usd)
+
+        def slow_failure(_body):
+            time.sleep(0.01)
+            raise OSError("down")
+
+        with self.assertRaises(jev.JevError) as failed:
+            budget.ask(slow_failure, "x", jev.ROUTE_QUESTION, meter)
+        self.assertIsNone(failed.exception.usd)
+        self.assertGreaterEqual(failed.exception.seconds, 0.01)
+        self.assertEqual((meter.calls, meter.known), (3, False))
+        self.assertGreaterEqual(meter.seconds, 0.01)
+        self.assertEqual(budget.budget.summary()["unknown_settlements"], 1)
+        for payload in ([], {"usage": {"input_tokens": True}}, {"usage": {"input_tokens": -1}}, {"usage": []}):
+            with self.subTest(payload=payload), self.assertRaises(jev.JevError) as unusable:
+                jev.ask(lambda _body, payload=payload: payload, "x", jev.ROUTE_QUESTION)
+            self.assertIsNone(unusable.exception.input_tokens)
+        meter.failures += 1
+        self.assertEqual(set(meter.fields()), {"jev_usd", "jev_usd_known", "jev_seconds", "jev_calls", "jev_failures"})
+        self.assertEqual(meter.fields()["jev_failures"], 1)
+
     def test_the_http_transport_posts_with_the_key_and_refuses_errors(self):
         seen = []
 
@@ -77,6 +109,12 @@ class JevTests(unittest.TestCase):
         self.assertEqual(seen[0].headers["authorization"], "Bearer jev-key-0123")
         with self.assertRaises(OSError):
             send({"state": {"current_message": "fail"}})
+
+        def unreachable(_request):
+            raise httpx.ConnectTimeout("timed out")
+
+        with self.assertRaises(OSError):
+            jev.http_transport("jev-key-0123", httpx.Client(transport=httpx.MockTransport(unreachable)))({})
         self.assertTrue(callable(jev.http_transport("jev-key-0123")))
 
 

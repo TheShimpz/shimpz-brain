@@ -180,7 +180,7 @@ class ReportTests(unittest.TestCase):
 class ArmReportTests(unittest.TestCase):
     def test_arm_attempts_report_signals_comparisons_and_one_split_part(self):
         attempts, judged = [], []
-        arm_fields = {"contracts": "b", "refusals": 1, "escalation_blocked": False, "selection_fallback": False}
+        arm_fields = {**arms.undispatched(), "contracts": "b", "refusals": 1, "selection_fallback": False}
         for scenario in corpus.SCENARIOS[:32]:
             for arm, escalated in (("A", False), ("B", False), ("E", True)):
                 attempt = {
@@ -230,8 +230,11 @@ class ArmReportTests(unittest.TestCase):
             "escalation_signal": "empty-lookup",
             "escalation_blocked": True,
             "models_used": ["luna", "sonnet"],
-            "jev_usd": 0.0,
-            "jev_seconds": 0.0,
+            "jev_usd": 0.0002,
+            "jev_usd_known": False,
+            "jev_seconds": 0.3,
+            "jev_calls": 2,
+            "jev_failures": 1,
             "route": None,
             "route_confidence": None,
         }
@@ -249,6 +252,10 @@ class ArmReportTests(unittest.TestCase):
         )
         self.assertEqual((signals["mean_exposed_assistants"], signals["refusals"]), (2.0, 2))
         self.assertEqual((signals["escalation_rate"], signals["escalation_blocked"]), (1.0, 1))
+        self.assertEqual(
+            (signals["jev_calls"], signals["jev_failures"], signals["jev_usd"], signals["jev_usd_known"]),
+            (2, 1, 0.0002, False),
+        )
         fell_back = precision._arm_signals([stopped, ran, {**ran, "selection_fallback": True}])["arm_signals"]
         self.assertEqual((fell_back["selection_fallbacks"], fell_back["selection_fallback_rate"]), (1, 0.5))
         self.assertEqual((signals["selection_fallbacks"], signals["selection_fallback_rate"]), (0, 0.0))
@@ -260,6 +267,7 @@ class LargeApiReportTests(unittest.TestCase):
     def test_large_api_attempts_use_their_stratum_contracts_and_split(self):
         attempt = {
             **_attempt("cf-ssl-strict.en", "L3"),
+            **arms.undispatched(),
             "contracts": "large",
             "exposed": ["edge"],
             "exposed_actions": ["zones-list", "ssl-settings-update"],

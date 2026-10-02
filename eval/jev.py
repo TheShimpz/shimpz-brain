@@ -20,6 +20,8 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from eval import cost as eval_cost
+
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-1.13.0"
 USD_PER_INPUT_TOKEN = 0.042 / 1_000_000
@@ -51,7 +53,20 @@ ROUTES = {
 
 
 class JevError(RuntimeError):
-    """The Jev request or its response failed; the arm falls back as declared."""
+    """The Jev request or its response failed; the arm falls back as declared.
+
+    It still carries what the request cost: the input tokens a response reported (None when no usage came back, so
+    the cost is unknown) and the seconds it took.
+    """
+
+    def __init__(self, message: str, *, input_tokens: int | None = None, seconds: float = 0.0) -> None:
+        super().__init__(message)
+        self.input_tokens = input_tokens
+        self.seconds = seconds
+
+    @property
+    def usd(self) -> float | None:
+        return None if self.input_tokens is None else self.input_tokens * USD_PER_INPUT_TOKEN
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,17 +83,88 @@ class Decision:
 Transport = Callable[[dict[str, object]], dict[str, object]]
 
 
+def request_body(message: str, questions: Mapping[str, object]) -> dict[str, object]:
+    return {"model": MODEL, "state": {"current_message": message}, "questions": dict(questions)}
+
+
+def _input_tokens(payload: object) -> int | None:
+    usage = payload.get("usage") if isinstance(payload, Mapping) else None
+    tokens = usage.get("input_tokens") if isinstance(usage, Mapping) else None
+    return tokens if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0 else None
+
+
 def ask(transport: Transport, message: str, questions: Mapping[str, object]) -> Decision:
+    """One Jev request; a failure raises JevError with the request's reported tokens (if any) and its latency."""
     started = time.monotonic()
     try:
-        payload = transport({"model": MODEL, "state": {"current_message": message}, "questions": dict(questions)})
-        answers = payload["answers"]
-        tokens = int(payload["usage"]["input_tokens"])
-    except (KeyError, TypeError, ValueError, OSError) as exc:
-        raise JevError("jev request failed") from exc
-    if payload.get("model") != MODEL or not isinstance(answers, Mapping) or set(answers) != set(questions):
-        raise JevError("unexpected jev response")
-    return Decision(answers, tokens, time.monotonic() - started)
+        payload = transport(request_body(message, questions))
+    except (TypeError, ValueError, OSError) as exc:
+        raise JevError("jev request failed", seconds=time.monotonic() - started) from exc
+    seconds = time.monotonic() - started
+    tokens = _input_tokens(payload)
+    answers = payload.get("answers") if tokens is not None else None
+    if (
+        tokens is None
+        or payload.get("model") != MODEL
+        or not isinstance(answers, Mapping)
+        or set(answers) != set(questions)
+    ):
+        raise JevError("unexpected jev response", input_tokens=tokens, seconds=seconds)
+    return Decision(answers, tokens, seconds)
+
+
+@dataclass
+class Meter:
+    """One attempt's Jev requests: every request's cost and latency, whether or not its answer was usable."""
+
+    calls: int = 0
+    failures: int = 0
+    usd: float = 0.0
+    known: bool = True
+    seconds: float = 0.0
+
+    def charge(self, usd: float | None, seconds: float) -> None:
+        self.calls += 1
+        self.seconds += seconds
+        if usd is None:
+            self.known = False
+        else:
+            self.usd += usd
+
+    def fields(self) -> dict[str, object]:
+        return {
+            "jev_usd": self.usd,
+            "jev_usd_known": self.known,
+            "jev_seconds": self.seconds,
+            "jev_calls": self.calls,
+            "jev_failures": self.failures,
+        }
+
+
+class Budget:
+    """Jev's ceiling, and every request charged to the attempt's meter whether or not it failed.
+
+    A request reserves its body's bytes as input tokens (Jev bills no output), waiting for in-flight requests rather
+    than refusing while they settle; one whose response reported no usage keeps its whole reservation, and its cost
+    is unknown.
+    """
+
+    def __init__(self, cap: float) -> None:
+        self.budget = eval_cost.Budget(cap)
+
+    def ask(self, transport: Transport, message: str, questions: Mapping[str, object], meter: Meter) -> Decision:
+        body = json.dumps(request_body(message, questions)).encode()
+        reservation = self.budget.reserve(len(body) * USD_PER_INPUT_TOKEN, wait=True)
+        try:
+            decision = ask(transport, message, questions)
+        except JevError as error:
+            spent = error.usd
+            self.budget.settle(reservation, eval_cost.Cost(spent or 0.0, known=spent is not None))
+            meter.charge(spent, error.seconds)
+            raise
+        self.budget.settle(reservation, eval_cost.Cost(decision.usd))
+        meter.charge(decision.usd, decision.seconds)
+        return decision
 
 
 def _probability(value: object) -> float:
@@ -137,7 +223,10 @@ def http_transport(api_key: str, client: object | None = None, timeout: float = 
     session = client if client is not None else httpx.Client(timeout=timeout)
 
     def send(body: dict[str, object]) -> dict[str, object]:
-        response = session.post(ENDPOINT, json=body, headers={"Authorization": f"Bearer {api_key}"})
+        try:
+            response = session.post(ENDPOINT, json=body, headers={"Authorization": f"Bearer {api_key}"})
+        except httpx.HTTPError as exc:
+            raise OSError("jev transport failed") from exc
         if response.status_code != 200:
             raise OSError(f"jev status {response.status_code}")
         return json.loads(response.content)

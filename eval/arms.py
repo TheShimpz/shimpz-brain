@@ -106,7 +106,10 @@ def undispatched() -> dict[str, object]:
         "escalation_blocked": False,
         "models_used": [],
         "jev_usd": 0.0,
+        "jev_usd_known": True,
         "jev_seconds": 0.0,
+        "jev_calls": 0,
+        "jev_failures": 0,
         "route": None,
         "route_confidence": None,
     }
