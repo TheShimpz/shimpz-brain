@@ -4,6 +4,14 @@
   "id": "precision-v1",
   "scenarios": 120
  },
+ "decision": {
+  "grade": "exploratory",
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "reasons": [
+   "no-calibration",
+   "no-verdict-provenance"
+  ]
+ },
  "judges": {
   "final_unsupported_claims": 92,
   "judged_attempts": 1499,

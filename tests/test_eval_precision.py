@@ -266,9 +266,28 @@ class GradeTests(unittest.TestCase):
         self.assertEqual(precision.grade({**owner, "blind": False}, verdicts, {})["reasons"], ["no-blind-owner-labels"])
         self.assertNotEqual(judge.identity(), judge.identity(Path(judge.__file__)))
         regraded = precision.regrade(
-            {"decision": {"grade": "decision"}, "judge_calibration": {**owner, "adjudication": "author"}}
+            {
+                "decision": {"grade": "decision"},
+                "judge_calibration": {**owner, "adjudication": "author"},
+                "judges": {"verdict_identities": [judge.identity()]},
+            }
         )
         self.assertEqual(regraded["decision"]["reasons"], ["no-blind-owner-labels"])
+        promoted = precision.regrade({"judge_calibration": owner, "judges": {"verdict_identities": [judge.identity()]}})
+        self.assertEqual(promoted["decision"]["grade"], "decision")
+        for report, reason in (
+            (
+                {"judge_calibration": owner, "judges": {"verdict_identities": [f"sha256:{'0' * 64}"]}},
+                "verdict-of-another-judge",
+            ),
+            ({"judge_calibration": owner, "judges": {}}, "no-verdict-provenance"),
+            ({"judge_calibration": owner}, "no-verdict-provenance"),
+            ({"judge_calibration": owner, "judges": {"verdict_identities": "x"}}, "no-verdict-provenance"),
+            ({"judge_calibration": owner, "judges": {"verdict_identities": [7]}}, "no-verdict-provenance"),
+            ({"judge_calibration": owner, "judges": {"verdict_identities": ["sha256:0"]}}, "no-verdict-provenance"),
+        ):
+            regraded = precision.regrade(report)["decision"]
+            self.assertEqual((regraded["grade"], regraded["reasons"]), ("exploratory", [reason]))
 
     def test_calibration_uses_owner_labels_only_when_collected_blind_against_the_frozen_judge(self):
         labels = dict.fromkeys(judge.CRITERIA, True)

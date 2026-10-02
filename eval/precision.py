@@ -480,8 +480,20 @@ def grade(
 
 
 def regrade(report: Mapping[str, object]) -> dict[str, object]:
-    """Recompute a committed report's grade under the current rules from what it records."""
-    return {**report, "decision": grade(report.get("judge_calibration"), [], report.get("meta") or {})}
+    """Recompute a committed report's grade under the current rules from what it records.
+
+    A report promotes only on the provenance it records for its verdicts: the judge identity behind each one. A report
+    without that provenance stays exploratory, so regrading never forgets that its verdicts came from another judge.
+    """
+    identities = (report.get("judges") or {}).get("verdict_identities")
+    recorded = isinstance(identities, list) and all(
+        isinstance(item, str) and FINGERPRINT_RE.fullmatch(item) for item in identities
+    )
+    judged = [{"judge_identity": item} for item in identities] if recorded else []
+    decision = grade(report.get("judge_calibration"), judged, report.get("meta") or {})
+    if not recorded:
+        decision = {**decision, "grade": "exploratory", "reasons": [*decision["reasons"], "no-verdict-provenance"]}
+    return {**report, "decision": decision}
 
 
 def _part(scenario_id: str, sets: Mapping[str, dict[str, list[str]]]) -> str:
@@ -564,6 +576,7 @@ def build_report(
                 item["tiebreak"]["reply_correct"] != item["primary"]["reply_correct"] for item in tiebreaks
             ),
             "final_unsupported_claims": sum(item["final"]["unsupported_claim"] for item in judged),
+            "verdict_identities": sorted({str(item.get("judge_identity")) for item in judged}),
         },
     }
 

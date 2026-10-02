@@ -9,7 +9,8 @@
   "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
   "reasons": [
    "no-blind-owner-labels",
-   "calibration-of-another-judge"
+   "calibration-of-another-judge",
+   "no-verdict-provenance"
   ]
  },
  "judge_calibration": {
