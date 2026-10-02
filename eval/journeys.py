@@ -8,7 +8,7 @@ is right. The budget in US dollars (default 0.10) is a soft cap: no request star
 request running when it is crossed finishes. Output contains only scenario ids, per-request outcomes, repeated
 writes, Action rounds, model calls, tokens, estimated cost, and seconds; never prompts, replies, or Action input.
 
-Cost uses the catalog's list prices with cache reads at a tenth of the input price; it is an estimate, not billing.
+Cost is the cache-aware estimate of ``eval.cost``, not billing; usage a provider did not report is labelled unknown.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from pathlib import Path
 import agent_runtime
 import memory
 import model_usage
+from eval import cost as eval_cost
 from eval.intent_route import _key
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -321,22 +322,18 @@ class Outcome:
     failed_calls: int
     rounds: int
     model_calls: int
+    failed_model_calls: int
+    unreported_model_calls: int
     input_tokens: int
     cache_read_tokens: int
+    cache_write_tokens: int
     output_tokens: int
     usd: float
+    # False when a call failed or reported no usage: the counts and the cost are then only a lower bound.
+    usage_known: bool
     seconds: float
     # (assistant, action, input names, whether its result was an error)
     steps: tuple[tuple[str, str, tuple[str, ...], bool], ...]
-
-
-def _price(model: str) -> tuple[float, float]:
-    catalog = json.loads(Path(agent_runtime.__file__).with_name("model_catalog.json").read_text(encoding="utf-8"))
-    for provider in catalog["providers"]:
-        for entry in provider["models"]:
-            if entry["id"] == model:
-                return entry["input_usd_per_million_cents"] / 100, entry["output_usd_per_million_cents"] / 100
-    raise ValueError("unknown model")
 
 
 def _ended(result: agent_runtime.TurnResult) -> str:
@@ -380,21 +377,24 @@ def run_request(
             result = runtime.resume(context, results)
         return result
 
-    result, usage = model_usage.measure(work)
-    input_price, output_price = _price(provider.model)
-    fresh = usage["input_tokens"] - usage["cache_read_tokens"]
-    usd = fresh * input_price + usage["cache_read_tokens"] * input_price / 10 + usage["output_tokens"] * output_price
+    result, counts = model_usage.measure(work)
+    usage = eval_cost.Usage.of(counts)
+    spent = eval_cost.cost(usage, provider.model)
     return Outcome(
         succeeded=result.status == "completed" and request.succeeded(calls),
         ended=_ended(result),
         repeated_writes=repeated_writes(calls),
         failed_calls=sum(step[3] for step in steps),
         rounds=rounds,
-        model_calls=usage["model_calls"],
-        input_tokens=usage["input_tokens"],
-        cache_read_tokens=usage["cache_read_tokens"],
-        output_tokens=usage["output_tokens"],
-        usd=usd / 1_000_000,
+        model_calls=usage.model_calls,
+        failed_model_calls=usage.failed_calls,
+        unreported_model_calls=usage.unreported_calls,
+        input_tokens=usage.input_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_write_tokens=usage.cache_write_tokens,
+        output_tokens=usage.output_tokens,
+        usd=spent.usd,
+        usage_known=spent.known,
         seconds=time.monotonic() - started,
         steps=tuple(steps),
     )

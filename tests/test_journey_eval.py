@@ -9,10 +9,12 @@ from __future__ import annotations
 import unittest
 from collections.abc import Sequence
 from typing import Any
+from unittest import mock
 
 import agent_runtime
 import clarification
 import memory
+import model_usage
 from eval import journeys
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -164,9 +166,23 @@ class JourneyEvalTests(unittest.TestCase):
     def test_evaluation_stops_before_spending_past_its_budget(self):
         self.assertEqual(journeys.evaluate(_runtime(), PROVIDER, 0.0), {"stopped": "budget"})
         self.assertEqual(journeys.evaluate(_runtime(), PROVIDER, 0.0, "bulk-records"), {"stopped": "budget"})
-        self.assertEqual(journeys._price("gpt-6-luna"), (0.1, 0.5))
-        with self.assertRaises(ValueError):
-            journeys._price("unknown-model")
+
+    def test_an_outcome_prices_cache_categories_and_labels_unreported_usage_unknown(self):
+        scenario = _scenario("dns-update")
+        usage = {**dict.fromkeys(model_usage.FIELDS, 0), "model_calls": 4, "input_tokens": 1000, "output_tokens": 10}
+        usage |= {"cache_read_tokens": 400, "cache_write_tokens": 100}
+        with mock.patch.object(model_usage, "measure", lambda work: (work(), usage)):
+            outcome = journeys.run_request(
+                _update(journeys._record_id("www.exemplo.com")), PROVIDER, scenario, scenario.requests[0], "j:5", []
+            )
+        # Luna: 500 fresh + 400 cache reads at a tenth + 100 unreported writes as input, 10 output.
+        self.assertAlmostEqual(outcome.usd, (500 + 40 + 100) * 0.1e-6 + 10 * 0.5e-6)
+        self.assertEqual((outcome.cache_write_tokens, outcome.usage_known), (100, True))
+        with mock.patch.object(model_usage, "measure", lambda work: (work(), usage | {"unreported_calls": 1})):
+            outcome = journeys.run_request(
+                _update(journeys._record_id("www.exemplo.com")), PROVIDER, scenario, scenario.requests[0], "j:6", []
+            )
+        self.assertEqual((outcome.unreported_model_calls, outcome.usage_known), (1, False))
 
 
 if __name__ == "__main__":
