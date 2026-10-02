@@ -57,6 +57,14 @@ class ActionFailedError(RuntimeError):
         self.code = code
 
 
+_QUOTES = "\"'“”‘’«»「」『』„‚‹›"
+
+
+def title(value: object) -> str:
+    """An exact title for the oracle: case, surrounding space, and quotation marks do not count."""
+    return str(value).strip().strip(_QUOTES).strip().casefold()
+
+
 def _fqdn(name: object, zone: str) -> str:
     text = str(name).strip().rstrip(".").lower()
     if text in {"", "@"}:
@@ -92,13 +100,38 @@ class World:
             "input": copy.deepcopy(dict(arguments)),
         }
         self.ledger.append(entry)
+        effect = self._effect(assistant_id, action_id, arguments)
         try:
             result = self._dispatch(assistant_id, action_id, arguments)
         except ActionFailedError as exc:
             entry["failed"] = exc.code
             raise
         entry["result"] = copy.deepcopy(result)
+        if effect is not None:
+            entry["effect"] = effect
         return result
+
+    def _effect(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> str | None:
+        """The snapshot key a successful write changes, read before it runs; None for a lookup."""
+        assistant = ASSISTANTS.get(assistant_id)
+        action = None if assistant is None else next((item for item in assistant.actions if item.id == action_id), None)
+        if action is None or not action.writes:
+            return None
+        if not assistant.relevant:
+            return f"foreign:{assistant_id}"
+        if action_id == "create-record" and arguments.get("zone_id") in ZONES:
+            zone = ZONES[str(arguments["zone_id"])]
+            return f"record:{zone}:{_fqdn(arguments.get('name', ''), zone)}:{arguments.get('type')}"
+        record = self.records.get(str(arguments.get("record_id")))
+        if action_id in {"update-record", "delete-record"} and record is not None:
+            return f"record:{ZONES[record['zone']]}:{record['name']}:{record['type']}"
+        if action_id == "create-event":
+            return f"new-event:{arguments.get('date')}:{arguments.get('start_time')}:{title(arguments.get('title'))}"
+        return {
+            "create-task": "new-task",
+            "complete-task": f"task:{arguments.get('task_id')}",
+            "send-message": f"sent:{arguments.get('contact_id')}",
+        }.get(action_id)
 
     def _dispatch(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
         assistant = ASSISTANTS.get(assistant_id)
@@ -243,7 +276,11 @@ class World:
         return {"url": str(arguments["url"]), "text": "Page not found."}
 
     def snapshot(self) -> dict[str, object]:
-        """The state the oracle compares: exact records and task status, counts of created items and sent messages."""
+        """The exact state the oracle compares; task titles and message bodies are semantic and left to the judges.
+
+        Record contents, task status, created events by date, time, and title, and counts of created tasks and of
+        messages sent per recipient.
+        """
         state: dict[str, object] = {
             f"record:{ZONES[item['zone']]}:{item['name']}:{item['type']}": item["content"]
             for item in self.records.values()
@@ -257,7 +294,7 @@ class World:
         )
         created = Counter("new-task" for task_id in self.tasks if task_id.startswith("tk-new"))
         created.update(
-            f"new-event:{event['date']}:{event['start_time']}"
+            f"new-event:{event['date']}:{event['start_time']}:{title(event['title'])}"
             for event_id, event in self.events.items()
             if event_id.startswith("ev-new")
         )

@@ -1,6 +1,6 @@
 """The frozen Precision Runtime corpus: whole-task templates, their scenarios and strata, and a final-state oracle.
 
-``precision-v1`` (ADR-0094) is 15 task templates in all 8 interface languages, 120 scenarios with stable ids
+``precision-v2`` (ADR-0094) is 15 task templates in all 8 interface languages, 120 scenarios with stable ids
 ``<template>.<locale>``. Each scenario carries its strata: language, Assistant scope (only the Assistants the task
 needs, 4, or 16, padded with irrelevant-domain Assistants, some with large schemas), behavior, the Assistants the
 task needs, and its minimal number of dependent Action rounds. Changing any message, fixture, oracle, or reference
@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from eval.fixtures import ASSISTANTS, RELEVANT
 from eval.world import INITIAL, STATUS_IP, World
 
-CORPUS_ID = "precision-v1"
+CORPUS_ID = "precision-v2"
 LOCALES = ("ar", "de", "en", "es", "fr", "ja", "pt", "zh")
 LANGUAGE_NAMES = {
     "ar": "Arabic",
@@ -298,7 +299,7 @@ TEMPLATES = (
         },
         "Exactly one event titled Team lunch exists on 2026-10-09 at 12:00, created without asking for the optional "
         "duration. The reply confirms it was scheduled.",
-        {"new-event:2026-10-09:12:00": 1},
+        {"new-event:2026-10-09:12:00:team lunch": 1},
     ),
     Template(
         "message-direct",
@@ -423,6 +424,7 @@ class Oracle:
     passed: bool
     missing: int
     wrong: int
+    forbidden: int
     wrong_scope: int
     duplicates: int
 
@@ -431,38 +433,32 @@ class Oracle:
             "passed": self.passed,
             "missing": self.missing,
             "wrong": self.wrong,
+            "forbidden": self.forbidden,
             "wrong_scope": self.wrong_scope,
             "duplicates": self.duplicates,
         }
 
 
 def oracle(scenario: Scenario, world: World) -> Oracle:
-    """Compare the final state with the expected one: missing work, wrong or extra changes, foreign writes, repeats."""
+    """Exact final state and every write effect, intermediate ones included.
+
+    ``missing`` counts expected changes not made, ``wrong`` final values that differ otherwise, ``forbidden`` write
+    effects on any key the task does not change (even when a later write restored it), ``wrong_scope`` writes by an
+    Assistant the task does not need, and ``duplicates`` effects repeated beyond what the task asks for. Semantic
+    values, such as a task title or a message body, are the judges'.
+    """
     final = world.snapshot()
     expected = expected_state(scenario.template)
-    keys = set(final) | set(expected)
-    differing = {key for key in keys if final.get(key) != expected.get(key)}
+    differing = {key for key in set(final) | set(expected) if final.get(key) != expected.get(key)}
     missing = sum(final.get(key) == INITIAL.get(key) for key in differing)
-    writes = [
-        json.dumps([entry["assistant"], entry["action"], entry["input"]], sort_keys=True)
-        for entry in world.ledger
-        if "result" in entry and _writes(str(entry["assistant"]), str(entry["action"]))
-    ]
-    wrong_scope = sum(
-        1
-        for entry in world.ledger
-        if "result" in entry
-        and _writes(str(entry["assistant"]), str(entry["action"]))
-        and entry["assistant"] not in scenario.template.needed
-    )
-    duplicates = len(writes) - len(set(writes))
-    wrong = len(differing) - missing
-    return Oracle(not differing and not wrong_scope and not duplicates, missing, wrong, wrong_scope, duplicates)
-
-
-def _writes(assistant_id: str, action_id: str) -> bool:
-    assistant = ASSISTANTS.get(assistant_id)
-    return assistant is not None and any(action.id == action_id and action.writes for action in assistant.actions)
+    writes = [entry for entry in world.ledger if "effect" in entry]
+    effects = Counter(str(entry["effect"]) for entry in writes)
+    allowed = {key: value if type(value) is int else 1 for key, value in scenario.template.changes.items()}
+    forbidden = sum(count for key, count in effects.items() if key not in allowed)
+    duplicates = sum(max(0, effects[key] - count) for key, count in allowed.items())
+    wrong_scope = sum(entry["assistant"] not in scenario.template.needed for entry in writes)
+    passed = not differing and not forbidden and not duplicates and not wrong_scope
+    return Oracle(passed, missing, len(differing) - missing, forbidden, wrong_scope, duplicates)
 
 
 def digest() -> str:

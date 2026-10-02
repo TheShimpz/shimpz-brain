@@ -193,7 +193,10 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
         **_pass_k(rows, seed, name),
         "oracle": {
             "passed_completed": sum(a["oracle"]["passed"] for a in attempts if a["status"] == "completed"),
-            **{name: sum(item[name] for item in oracle) for name in ("missing", "wrong", "wrong_scope", "duplicates")},
+            **{
+                name: sum(item[name] for item in oracle)
+                for name in ("missing", "wrong", "forbidden", "wrong_scope", "duplicates")
+            },
         },
         "clarifications": sum(bool(attempt["clarification"]) for attempt in attempts),
         "mean_rounds": sum(int(attempt["rounds"]) for attempt in attempts) / len(attempts) if attempts else None,

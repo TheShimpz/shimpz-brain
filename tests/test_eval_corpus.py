@@ -10,8 +10,8 @@ from unittest import mock
 from eval import corpus
 from eval import world as simulated
 
-# Frozen with precision-v1: a change to the corpus must change its id, not this fingerprint alone.
-DIGEST = "sha256:b79bb5928dabd15698eea826ef254e435a7d14dbe7f075146101750671fc5eac"
+# Frozen with precision-v2: a change to the corpus must change its id, not this fingerprint alone.
+DIGEST = "sha256:acc8669d68634ff7c91108f41a602e1f5cc1cb03fa0af575c75c7eb1e6d26399"
 
 
 def _scenario(scenario_id: str) -> corpus.Scenario:
@@ -21,7 +21,7 @@ def _scenario(scenario_id: str) -> corpus.Scenario:
 class CorpusTests(unittest.TestCase):
     def test_the_corpus_is_frozen_and_covers_every_stratum(self):
         corpus.validate()
-        self.assertEqual((corpus.CORPUS_ID, corpus.digest()), ("precision-v1", DIGEST))
+        self.assertEqual((corpus.CORPUS_ID, corpus.digest()), ("precision-v2", DIGEST))
         self.assertEqual(len(corpus.SCENARIOS), 120)
         self.assertEqual(Counter(s.locale for s in corpus.SCENARIOS), dict.fromkeys(corpus.LOCALES, 15))
         self.assertEqual(Counter(s.scope for s in corpus.SCENARIOS), dict.fromkeys(corpus.SCOPES, 40))
@@ -128,7 +128,8 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(world.invoke("research", "read-page", {"url": "https://x.example"})["text"], "Page not found.")
         state = world.snapshot()
         self.assertEqual((state["new-task"], state["task:tk-1"], state["sent:ct-ana"]), (2, True, 1))
-        self.assertEqual((state["new-event:2026-10-09:12:00"], state["new-event:2026-10-09:13:00"]), (1, 1))
+        self.assertEqual((state["new-event:2026-10-09:12:00:lunch"], state["new-event:2026-10-09:13:00:lunch"]), (1, 1))
+        self.assertEqual(simulated.title(" «Team Lunch» "), "team lunch")
 
     def test_distractors_accept_writes_that_count_as_foreign_and_undeclared_actions_fail(self):
         world = simulated.World()
@@ -148,7 +149,7 @@ class OracleTests(unittest.TestCase):
             world.invoke("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": record, "content": "203.0.113.20"})
         self.assertEqual(
             corpus.oracle(scenario, world).to_dict(),
-            {"passed": True, "missing": 0, "wrong": 0, "wrong_scope": 0, "duplicates": 0},
+            {"passed": True, "missing": 0, "wrong": 0, "forbidden": 0, "wrong_scope": 0, "duplicates": 0},
         )
 
     def test_missing_wrong_foreign_and_repeated_writes_fail(self):
@@ -162,8 +163,37 @@ class OracleTests(unittest.TestCase):
         world.invoke("tasks", "create-task", {"title": "noted"})
         result = corpus.oracle(scenario, world)
         self.assertFalse(result.passed)
-        # app was never changed; api got the wrong address; cdn and the task are unexpected changes.
-        self.assertEqual((result.missing, result.wrong, result.wrong_scope, result.duplicates), (1, 3, 1, 1))
+        # app was never changed; api got the wrong address; cdn and the task are unexpected changes and effects.
+        self.assertEqual(
+            (result.missing, result.wrong, result.forbidden, result.wrong_scope, result.duplicates), (1, 3, 2, 1, 1)
+        )
+
+    def test_a_restored_intermediate_write_and_a_repeated_effect_with_new_values_fail(self):
+        world = simulated.World()
+        world.invoke("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-app", "content": "192.0.2.1"})
+        world.invoke("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-app", "content": "192.0.2.10"})
+        restored = corpus.oracle(_scenario("dns-question.en"), world)
+        # The final state equals the initial one, but the read-only task wrote twice.
+        self.assertEqual((restored.passed, restored.missing, restored.wrong, restored.forbidden), (False, 0, 0, 2))
+        world = simulated.World()
+        world.invoke("messages", "send-message", {"contact_id": "ct-carla", "text": "The deploy is finished."})
+        world.invoke("messages", "send-message", {"contact_id": "ct-carla", "text": "Deploy finished!"})
+        twice = corpus.oracle(_scenario("message-direct.en"), world)
+        self.assertEqual((twice.passed, twice.duplicates), (False, 1))
+
+    def test_an_event_needs_its_exact_requested_title(self):
+        scenario = _scenario("event-create.fr")
+        for title, passed in (("« Team lunch »", True), ("Déjeuner d'équipe", False)):
+            world = simulated.World()
+            world.invoke("calendar", "create-event", {"title": title, "date": "2026-10-09", "start_time": "12:00"})
+            self.assertEqual(corpus.oracle(scenario, world).passed, passed)
+        failed = simulated.World()
+        with self.assertRaises(simulated.ActionFailedError):
+            failed.invoke("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-none", "content": "x"})
+        self.assertNotIn("effect", failed.ledger[0])
+        created = simulated.World()
+        created.invoke("dns", "create-record", {"zone_id": "zn-7f3a", "type": "A", "name": "shop", "content": "1"})
+        self.assertEqual(created.ledger[0]["effect"], "record:example.com:shop.example.com:A")
 
     def test_read_only_clarification_and_refusal_pass_only_when_nothing_changed(self):
         world = simulated.World()

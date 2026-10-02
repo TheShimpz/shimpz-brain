@@ -1,6 +1,6 @@
 {
  "schema": "shimpz.precision-eval.judge-calibration/v1",
- "corpus": "precision-v1",
+ "corpus": "precision-v2",
  "adjudication": "author-adjudicated on 2026-10-02; awaits owner review before a narrow decision depends on it",
  "items": [
   {
@@ -40,7 +40,8 @@
        "name": "shop.example.com",
        "content": "203.0.113.10"
       }
-     }
+     },
+     "effect": "record:example.com:shop.example.com:A"
     }
    ],
    "reply": "Done. I created the A record shop.example.com pointing to 203.0.113.10.",
@@ -88,7 +89,8 @@
        "name": "shop.example.com",
        "content": "203.0.113.10"
       }
-     }
+     },
+     "effect": "record:example.com:shop.example.com:A"
     }
    ],
    "reply": "Done. I created the A record shop.example.com pointing to 203.0.113.10.",
@@ -183,7 +185,8 @@
        "name": "api.example.com",
        "content": "198.51.100.7"
       }
-     }
+     },
+     "effect": "record:example.com:api.example.com:A"
     }
    ],
    "reply": "Listo: api.example.com ahora apunta a 198.51.100.7.",
@@ -248,7 +251,8 @@
        "name": "api.example.com",
        "content": "198.51.100.7"
       }
-     }
+     },
+     "effect": "record:example.com:api.example.com:A"
     }
    ],
    "reply": "C'est fait : api.example.com pointe maintenant vers 198.51.100.70.",
@@ -547,7 +551,8 @@
      "result": {
       "message_id": "msg-new-1",
       "status": "sent"
-     }
+     },
+     "effect": "sent:ct-bruno"
     }
    ],
    "reply": "Le envié un mensaje a Bruno.",
@@ -607,7 +612,8 @@
        "name": "blog.example.com",
        "content": "192.0.2.1"
       }
-     }
+     },
+     "effect": "record:example.com:blog.example.com:A"
     }
    ],
    "reply": "Ich habe blog.example.com auf 192.0.2.1 gesetzt.",
@@ -634,7 +640,8 @@
        "title": "Renouveler mon passeport",
        "status": "open"
       }
-     }
+     },
+     "effect": "new-task"
     }
    ],
    "reply": "C'est ajouté : la tâche « Renouveler mon passeport » est dans ta liste.",
@@ -711,7 +718,8 @@
      "result": {
       "message_id": "msg-new-1",
       "status": "sent"
-     }
+     },
+     "effect": "sent:ct-ana"
     }
    ],
    "reply": "Mensagem enviada para a Ana: a reunião Budget review começa às 14:30.",
@@ -776,7 +784,8 @@
      "result": {
       "message_id": "msg-new-1",
       "status": "sent"
-     }
+     },
+     "effect": "sent:ct-ana"
     }
    ],
    "reply": "I told Ana the Budget review meeting starts at 10:00.",
@@ -867,7 +876,8 @@
        "name": "status.example.com",
        "content": "203.0.113.77"
       }
-     }
+     },
+     "effect": "record:example.com:status.example.com:A"
     },
     {
      "assistant": "messages",
@@ -894,7 +904,8 @@
      "result": {
       "message_id": "msg-new-1",
       "status": "sent"
-     }
+     },
+     "effect": "sent:ct-ops"
     }
    ],
    "reply": "status.example.org now runs on 203.0.113.77. I pointed status.example.com there and messaged Ops on-call.",
@@ -985,7 +996,8 @@
        "name": "status.example.com",
        "content": "203.0.113.77"
       }
-     }
+     },
+     "effect": "record:example.com:status.example.com:A"
     },
     {
      "assistant": "messages",
@@ -1085,7 +1097,8 @@
        "id": "tk-2",
        "status": "done"
       }
-     }
+     },
+     "effect": "task:tk-2"
     },
     {
      "assistant": "tasks",
@@ -1098,7 +1111,8 @@
        "id": "tk-3",
        "status": "done"
       }
-     }
+     },
+     "effect": "task:tk-3"
     },
     {
      "assistant": "tasks",
@@ -1111,7 +1125,8 @@
        "id": "tk-4",
        "status": "done"
       }
-     }
+     },
+     "effect": "task:tk-4"
     }
    ],
    "reply": "已将三个 home 任务标记为完成：Buy wall paint、Fix the kitchen sink、Water the balcony plants。",
@@ -1172,7 +1187,8 @@
        "id": "tk-2",
        "status": "done"
       }
-     }
+     },
+     "effect": "task:tk-2"
     },
     {
      "assistant": "tasks",
@@ -1185,7 +1201,8 @@
        "id": "tk-4",
        "status": "done"
       }
-     }
+     },
+     "effect": "task:tk-4"
     }
    ],
    "reply": "Erledigt: „Buy wall paint“ und „Water the balcony plants“ sind abgehakt.",
@@ -1216,7 +1233,8 @@
        "start_time": "12:00",
        "duration_minutes": 60
       }
-     }
+     },
+     "effect": "new-event:2026-10-09:12:00:team lunch"
     }
    ],
    "reply": "2026-10-09 12:00 に「Team lunch」を登録しました。",
@@ -1256,7 +1274,8 @@
      "result": {
       "message_id": "msg-new-1",
       "status": "sent"
-     }
+     },
+     "effect": "sent:ct-carla"
     }
    ],
    "reply": "Mensagem enviada para a Carla: «Le déploiement est terminé.»",
@@ -1353,7 +1372,8 @@
        "id": "tk-1",
        "status": "done"
       }
-     }
+     },
+     "effect": "task:tk-1"
     }
    ],
    "reply": "تم وضع علامة مكتملة على مهمة \"Call the dentist to reschedule\".",
@@ -1396,7 +1416,8 @@
        "start_time": "12:00",
        "duration_minutes": 60
       }
-     }
+     },
+     "effect": "new-event:2026-10-09:12:00:team lunch"
     }
    ],
    "reply": "Evento creado: «Team lunch» el 2026-10-09 a las 12:00. Como no indicaste duración, usé la predeterminada de 60 minutos.",
@@ -1435,7 +1456,8 @@
        "title": "Renovar o passaporte",
        "status": "open"
       }
-     }
+     },
+     "effect": "new-task"
     }
    ],
    "reply": "Pronto, adicionei a tarefa «Renovar o passaporte». Quer que eu coloque um prazo?",
@@ -1462,7 +1484,8 @@
        "title": "Commander une pizza",
        "status": "open"
       }
-     }
+     },
+     "effect": "new-task"
     }
    ],
    "reply": "Je ne peux pas commander de pizza, mais j'ai créé une tâche « Commander une pizza » pour te le rappeler.",
@@ -1527,7 +1550,8 @@
        "name": "api.example.com",
        "content": "198.51.100.7"
       }
-     }
+     },
+     "effect": "record:example.com:api.example.com:A"
     }
    ],
    "reply": "api.example.com の A レコードを 198.51.100.7 に更新しました（変更前: 192.0.2.1）。DNS キャッシュの TTL が切れるまでは旧アドレスが返る場合があります。",
