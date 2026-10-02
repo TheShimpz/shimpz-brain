@@ -36,9 +36,6 @@ MAX_FIELD_BYTES = 1536 * 1024
 MAX_FILE_TOKENS = 8_000
 MAX_CALL_TOKENS = 16_000
 MAX_TURN_TOKENS = 64_000
-# A conservative charge when the provider cannot count: three UTF-8 bytes per text token and a flat image ceiling above
-# both providers' published charge for a 1.2 MP image.
-IMAGE_TOKEN_CEILING = 2_000
 COUNT_SECONDS = 8.0
 # An attachment turn's model makes no hidden SDK retries: this middleware retries explicitly, reserving the
 # attachment charge before every attempt and recording each reply's attempts in the persisted reply (ADR-0093).
@@ -219,10 +216,14 @@ def project(messages: Sequence[Any], turn_message_id: str | None, attachments: S
 
 
 def estimated_charge(attachment: Attachment) -> int:
-    """A conservative token charge when the provider cannot count."""
+    """A sound token charge when the provider cannot count: one token per UTF-8 byte of what the call carries.
+
+    Every pinned model tokenizes bytes into tokens of at least one byte, so it never emits more tokens than bytes. An
+    image has no such bound that holds across the pinned models, so an uncounted image refuses the turn instead.
+    """
     if attachment.content["type"] == "image":
-        return IMAGE_TOKEN_CEILING
-    return -(-len(_canonical(blocks(attachment)).encode()) // 3)
+        raise AttachmentContractError("an attached image could not be measured")
+    return len(_canonical(blocks(attachment)).encode())
 
 
 def charges(

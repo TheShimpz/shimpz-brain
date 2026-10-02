@@ -353,6 +353,14 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(charged, tuple(turn_attachments.estimated_charge(item) for item in attachments))
 
+    def test_an_uncounted_image_refuses_the_turn_before_any_model_call(self) -> None:
+        provider = _FlakyProvider("openai", failures=0, count_status=500)
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            provider.runtime(InMemorySaver()).start(
+                _context("openai", "gpt-6.1-sol", _attachment("image")), '{"files":[],"message":"Look"}'
+            )
+        self.assertEqual(provider.turns(), [])
+
 
 def _admit(charge: int, so_far: int, reserved: list[int]) -> None:
     reserved.append(so_far)
@@ -429,7 +437,18 @@ class ChargeTests(unittest.TestCase):
         self.assertEqual(estimated, (turn_attachments.estimated_charge(attachment),))
         self.assertEqual(turn_attachments.charges((attachment,), lambda _blocks, _timeout: 42), (42,))
         image = turn_attachments.admit([_attachment("image")])[0]
-        self.assertEqual(turn_attachments.charges((image,), None), (turn_attachments.IMAGE_TOKEN_CEILING,))
+        with self.assertRaises(turn_attachments.AttachmentContractError):
+            turn_attachments.charges((image,), None)
+
+    def test_the_text_fallback_never_undercounts_a_byte_level_tokenizer(self) -> None:
+        # 16,000 characters across scripts: a byte-level BPE such as o200k_base emits at most one token per byte.
+        mixed = ("Relatório 東京 ⚙ 𝔘 " * 1_000)[:16_000]
+        item = _attachment("text")
+        item["content"]["text"] = mixed
+        attachment = turn_attachments.admit([item])[0]
+        projected_bytes = len(json.dumps(turn_attachments.blocks(attachment), ensure_ascii=False).encode())
+        self.assertGreaterEqual(turn_attachments.estimated_charge(attachment), len(mixed.encode()))
+        self.assertLessEqual(turn_attachments.estimated_charge(attachment), projected_bytes + 64)
 
     def test_call_and_turn_ceilings(self) -> None:
         with self.assertRaises(turn_attachments.AttachmentContractError):
