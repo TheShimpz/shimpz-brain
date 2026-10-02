@@ -22,6 +22,7 @@ import concurrent.futures
 import dataclasses
 import json
 import math
+import os
 import re
 import sys
 from collections import defaultdict
@@ -550,6 +551,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         from eval.ceiling import Ceiling
 
+        # The output is admitted, and held open, before any paid inference.
+        descriptor = private.open_private(args.out)
+
         # Installed before any judge model exists: no SDK retries, clamped output, a reserved worst case per request.
         ceiling = Ceiling(args.cap, judge.MAX_OUTPUT_TOKENS)
         ceiling.install()
@@ -563,9 +567,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 judged = judge_attempts(read_jsonl(args.transcript), primary, tiebreak)
                 text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
+        except BaseException:
+            os.close(descriptor)
+            raise
         finally:
             ceiling.uninstall()
-        private.write_private(args.out, text)
+        private.write_descriptor(descriptor, text)
         print(json.dumps({"command": args.command, "judge_budget": budget.summary()}, sort_keys=True))
     except OSError, ValueError, KeyError, TypeError:
         print("precision evaluation failed", file=sys.stderr)

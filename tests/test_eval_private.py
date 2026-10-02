@@ -53,6 +53,11 @@ class PrivateFileTests(unittest.TestCase):
             with self.subTest(path=path.name), self.assertRaises(private.PrivateFileError):
                 private.write_private(path, "secret")
         self.assertEqual(target.read_text(encoding="utf-8"), "keep")
+        shared = self.root / "shared"
+        shared.mkdir(mode=0o775)
+        shared.chmod(0o775)
+        with self.assertRaisesRegex(private.PrivateFileError, "writable by no one else"):
+            private.write_private(shared / "transcript.jsonl", "secret")
         foreign = os.stat_result((stat.S_IFREG | 0o600, 0, 0, 1, os.getuid() + 1, 0, 0, 0, 0, 0))
         with mock.patch.object(private.os, "fstat", return_value=foreign), self.assertRaises(private.PrivateFileError):
             private.write_private(self.root / "foreign", "secret")

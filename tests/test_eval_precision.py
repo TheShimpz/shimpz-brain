@@ -345,6 +345,15 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(written["decision"]["grade"], "exploratory")
             self.assertIn("the primary judge is not admitted", written["decision"]["reasons"])
             self.assertEqual(precision.main(arguments), 0)
+            inside = Path(precision.__file__).parent / "never.jsonl"
+            with (
+                mock.patch.object(judge, "judge_model", side_effect=AssertionError("no inference")) as built,
+                mock.patch("sys.stderr"),
+            ):
+                self.assertEqual(
+                    precision.main(["judge", "--transcript", str(root / "t.jsonl"), "--out", str(inside), *keys]), 2
+                )
+            self.assertEqual((built.call_count, inside.exists()), (0, False))
             with mock.patch("sys.stderr"):
                 self.assertEqual(
                     precision.main(["judge", "--transcript", str(root / "missing"), "--out", str(out), *keys]), 2
