@@ -533,6 +533,21 @@ PLAN_STEPS = 10
 PLAN_CHARS = 2000
 
 
+def outline(schema: Mapping[str, object]) -> dict[str, list[str]]:
+    """An Action's inputs as the planner needs them: required and optional names, each with its short description."""
+    properties = schema.get("properties") if isinstance(schema.get("properties"), Mapping) else {}
+    required = set(schema.get("required", ()))
+
+    def shown(name: str) -> str:
+        described = properties[name].get("description") if isinstance(properties[name], Mapping) else None
+        return f"{name}: {described[:80]}" if isinstance(described, str) else name
+
+    return {
+        "required": [shown(name) for name in properties if name in required],
+        "optional": [shown(name) for name in properties if name not in required],
+    }
+
+
 def plan_input(message: str, today: datetime.date, assistants: Sequence[Mapping[str, object]]) -> str:
     """The planner's input: the request, the date, and each in-scope Assistant's Actions with their inputs."""
     return json.dumps(

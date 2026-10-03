@@ -196,6 +196,9 @@ class WorkingSetTests(unittest.TestCase):
 
 class PlanTests(unittest.TestCase):
     def test_a_plan_is_bounded_quoted_data(self):
+        shown = classes.outline({"properties": {"a": {"description": "x" * 99}, "b": {}, "c": True}, "required": ["a"]})
+        self.assertEqual(shown, {"required": ["a: " + "x" * 80], "optional": ["b", "c"]})
+        self.assertEqual(classes.outline({}), {"required": [], "optional": []})
         text = json.loads(classes.plan_input("m", TODAY, [{"id": "a"}]))
         self.assertEqual(text["assistants"], [{"id": "a"}])
         steps = [{"action": f"a.b{index}", "purpose": "p", "inputs": []} for index in range(12)]
