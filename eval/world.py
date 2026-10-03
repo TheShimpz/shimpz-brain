@@ -10,9 +10,9 @@ This module uses only the standard library so that the umbrella journey driver c
 from __future__ import annotations
 
 import copy
-import re
 from collections import Counter
 from collections.abc import Mapping
+from urllib.parse import urlsplit
 
 from eval.fixtures import ASSISTANTS
 
@@ -48,8 +48,22 @@ CONTACTS = (
 )
 STATUS_PAGE = "https://status.example.org/network"
 STATUS_IP = "203.0.113.77"
-# A search finds the status page when its query names the service host itself, not a longer host containing it.
-_STATUS_HOST_RE = re.compile(r"(?<![a-z0-9.-])status\.example\.org(?![a-z0-9-])")
+STATUS_HOST = "status.example.org"
+_WORD_PUNCTUATION = ".,;:!?()\"'"
+
+
+def _query_hosts(query: str) -> set[str]:
+    """The hosts a search query names: each word read as a URL or a bare host, by its exact parsed hostname."""
+    hosts: set[str] = set()
+    for word in query.split():
+        word = word.strip(_WORD_PUNCTUATION)
+        try:
+            host = urlsplit(word if "://" in word else f"//{word}").hostname
+        except ValueError:
+            continue
+        if host:
+            hosts.add(host)
+    return hosts
 
 
 # The failure codes this world's Actions raise before any effect, as an Assistant would declare them (ADR-0094 Luna-99
@@ -301,7 +315,8 @@ class World:
         return {"message_id": self._id("msg"), "status": "sent"}
 
     def _research_search_web(self, arguments: Mapping[str, object]) -> dict[str, object]:
-        found = _STATUS_HOST_RE.search(str(arguments["query"]).lower()) is not None
+        # Only the service's own host finds its page; a longer host that merely contains that name finds nothing.
+        found = STATUS_HOST in _query_hosts(str(arguments["query"]))
         return {"results": [{"title": "status.example.org network notice", "url": STATUS_PAGE}] if found else []}
 
     def _research_read_page(self, arguments: Mapping[str, object]) -> dict[str, object]:

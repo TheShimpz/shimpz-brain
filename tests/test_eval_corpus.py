@@ -123,6 +123,22 @@ class WorldTests(unittest.TestCase):
             world.invoke("messages", "send-message", {"contact_id": "ana", "text": "x"})
         self.assertEqual(world.invoke("research", "search-web", {"query": "IP"})["results"], [])
         found = world.invoke("research", "search-web", {"query": "Status.example.org IP"})["results"]
+        for query in (
+            "https://status.example.org/network",
+            "What is the current IP of status.example.org?",
+            "STATUS.EXAMPLE.ORG:443 address",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(world.invoke("research", "search-web", {"query": query})["results"], found)
+        # A host that only contains the service's name, or text that names no host, never finds the official page.
+        for query in (
+            "https://status.example.org.evil.test/network",
+            "status.example.org.evil.test current IP",
+            "https://evilstatus.example.org/network",
+            "status-example-org [status.example.org /network",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(world.invoke("research", "search-web", {"query": query})["results"], [])
         page = world.invoke("research", "read-page", {"url": found[0]["url"] + "/"})
         self.assertIn(simulated.STATUS_IP, page["text"])
         self.assertEqual(world.invoke("research", "read-page", {"url": "https://x.example"})["text"], "Page not found.")
