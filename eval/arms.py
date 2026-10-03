@@ -15,6 +15,10 @@ Cumulative arms over Luna at effort low:
 Reference arms run A's configuration on another model (S and LS on claude-sonnet-5-5, SOL on gpt-6.1-sol, SOL56 on
 the evaluation-only gpt-5.6-sol), only on held-out scenarios.
 
+Every arm but N and the arms built on it binds Action tools as they were measured: without ``strict``, which the
+OpenAI Responses API treats as strict. Production Brain now binds them non-strict (N), so each arm names its binding
+in its Brain profile (``Arm.brain``) instead of running the production Brain.
+
 Luna-99 arms add one search-and-recovery mechanism of ``eval.recovery`` each, over A's baseline contracts in every
 stratum: N binds Action tools to OpenAI non-strict, so an optional property may be omitted; NN presents optional
 properties as required but nullable and drops the nulls; R re-reads an empty read without its optional arguments; H
@@ -82,7 +86,8 @@ class Arm:
     routing: str = "none"
     model: str = "luna"
     fallback: str = "scope"
-    # Luna-99 mechanisms (eval.recovery): ``optional`` is strict (the provider default), loose, or nullable.
+    # Luna-99 mechanisms (eval.recovery): ``optional`` is strict (the provider default for a tool sent without
+    # ``strict``), loose, or nullable (on the strict binding).
     optional: str = "strict"
     relax: bool = False
     rewrite: bool = False
@@ -104,11 +109,15 @@ class Arm:
 
     @property
     def brain(self) -> str:
-        """The disposable Brain profile the arm's turns run on: its tool exposure, tool strictness, and prompt."""
+        """The disposable Brain profile the arm's turns run on: its tool exposure, tool strictness, and prompt.
+
+        ``namespaces`` (on the strict binding), or the explicit Action-tool binding, ``strict`` or ``loose``, with
+        ``-protocol`` when the arm appends the working protocol. Never the production Brain, whose binding is N's.
+        """
         if self.exposure == "namespaces":
             return "namespaces"
-        flags = [name for name, on in (("loose", self.optional == "loose"), ("protocol", self.protocol)) if on]
-        return "-".join(flags) or "default"
+        binding = "loose" if self.optional == "loose" else "strict"
+        return f"{binding}-protocol" if self.protocol else binding
 
 
 ARMS = {

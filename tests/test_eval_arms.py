@@ -183,11 +183,14 @@ if __name__ == "__main__":
 
 class LunaArmTests(unittest.TestCase):
     def test_luna_99_arms_run_on_their_brain_profile_and_the_stratum_baseline_contracts(self):
+        self.assertEqual(arms.ARMS["A"].brain, "strict")
         self.assertEqual(arms.ARMS["N"].brain, "loose")
-        self.assertEqual(arms.ARMS["P"].brain, "protocol")
+        self.assertEqual(arms.ARMS["P"].brain, "strict-protocol")
         self.assertEqual(arms.ARMS["NRXPK"].brain, "loose-protocol")
-        self.assertEqual(arms.ARMS["NN"].brain, "default")
+        self.assertEqual(arms.ARMS["NN"].brain, "strict")
         self.assertEqual(arms.ARMS["L2"].brain, "namespaces")
+        # No arm runs on the production Brain: each names its Action-tool binding.
+        self.assertNotIn("default", {arm.brain for arm in arms.ARMS.values()})
         self.assertEqual(arms.contracts_for(arms.ARMS["N"], "large-api"), "large")
         self.assertEqual(arms.contracts_for(arms.ARMS["A"], "precision"), "a")
         self.assertEqual(arms.contracts_for(arms.ARMS["C"], "precision"), "b")
