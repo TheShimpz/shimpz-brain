@@ -22,6 +22,12 @@ asks a helper model for other read arguments; X returns a no-effect Action failu
 the working protocol to the system prompt; K lets a critic send a finished turn back once. NRX, NRXP, NRXPK, and NRXPH
 combine them.
 
+Language-retrieval arms (``eval.language``), each over N in every stratum, act only on read Actions a corpus documents
+in its ``SEARCH`` mapping (``fresh-v3``): NE expands a search into English; NLW expands it into the languages a warm
+registry observed; NLC into the languages a cold registry learns during the attempt; NH appends the warm registry's
+languages to the Action description; NV ranks a relaxed read by embedding similarity when a search finds nothing; NR is
+N with R.
+
 Nothing here is production runtime: the driver applies it in its own Team process. This module uses only the
 standard library.
 """
@@ -34,7 +40,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from eval import corpus, fresh, fresh2, large_api, split
+from eval import corpus, fresh, fresh2, fresh3, large_api, split
 from eval.contracts import DATE, HOSTNAME, SEARCH_TERMS, TIME
 from eval.corpus import LOCALES
 from eval.fixtures import Action
@@ -83,6 +89,18 @@ class Arm:
     recover: bool = False
     protocol: bool = False
     critic: bool = False
+    # Language-retrieval mechanisms (eval.language): expansion targets ``none``, ``english`` (assumed), ``warm`` or
+    # ``cold`` (registry); the registry hint; and embedding recovery.
+    language: str = "none"
+    hint: bool = False
+    embed: bool = False
+
+    @property
+    def registry(self) -> str | None:
+        """The registry the arm starts from: ``warm`` (built before the campaign), ``cold`` (empty), or None."""
+        if self.language == "cold":
+            return "cold"
+        return "warm" if self.language == "warm" or self.hint else None
 
     @property
     def brain(self) -> str:
@@ -127,6 +145,12 @@ ARMS = {
     "NRXP": Arm("a", optional="loose", relax=True, recover=True, protocol=True),
     "NRXPK": Arm("a", optional="loose", relax=True, recover=True, protocol=True, critic=True),
     "NRXPH": Arm("a", optional="loose", relax=True, recover=True, protocol=True, rewrite=True),
+    "NE": Arm("a", optional="loose", language="english"),
+    "NLW": Arm("a", optional="loose", language="warm"),
+    "NLC": Arm("a", optional="loose", language="cold"),
+    "NH": Arm("a", optional="loose", hint=True),
+    "NV": Arm("a", optional="loose", embed=True),
+    "NR": Arm("a", optional="loose", relax=True),
 }
 MODELS = {
     "luna": ("openai", "gpt-6-luna"),
@@ -141,9 +165,10 @@ STRATA = {
     "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT),
     "fresh": (fresh.SCENARIOS, None),
     "fresh2": (fresh2.SCENARIOS, None),
+    "fresh3": (fresh3.SCENARIOS, None),
 }
 # The contract set arm A's ``a`` stands for in each stratum.
-BASE_CONTRACTS = {"precision": "a", "large-api": "large", "fresh": "fresh", "fresh2": "fresh2"}
+BASE_CONTRACTS = {"precision": "a", "large-api": "large", "fresh": "fresh", "fresh2": "fresh2", "fresh3": "fresh3"}
 # What fixes an engineering campaign's schedule and its turns; a completion must match its campaign on every one.
 SCHEDULE_FIELDS = (
     "campaign",
@@ -245,6 +270,7 @@ def undispatched() -> dict[str, object]:
         "helper_seconds": 0.0,
         "replays_refused": 0,
         "first_pass": None,
+        "language": None,
     }
 
 

@@ -31,14 +31,14 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import arms, corpus, fresh, fresh2, judge, large_api, large_api_contract, private, split
+from eval import arms, corpus, fresh, fresh2, fresh3, judge, large_api, large_api_contract, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
 from eval.large_api_arms import ASSISTANTS_TASKS
 
 # The blind held-out corpora, by stratum: every scenario of each is held out.
-BLIND = {"fresh": fresh, "fresh2": fresh2}
+BLIND = {"fresh": fresh, "fresh2": fresh2, "fresh3": fresh3}
 SCENARIOS = {
     **corpus.SCENARIOS_BY_ID,
     **large_api.SCENARIOS_BY_ID,
@@ -335,6 +335,48 @@ def _recovery_signals(engineering: Sequence[Mapping[str, object]]) -> dict[str, 
         "helper_unusable": sum(int(a.get("helper_unusable", 0)) for a in engineering),
         "helper_usd": round(sum(float(a.get("helper_usd", 0.0)) for a in engineering), 6),
         "helper_usd_known": all(bool(a.get("helper_usd_known", True)) for a in engineering),
+        "language": _language_signals(engineering),
+    }
+
+
+# The language arms' per-attempt counts (eval.language), summed over the attempts that recorded them.
+LANGUAGE_COUNTS = (
+    "eligible",
+    "observed",
+    "planned_collection",
+    "planned_assistant",
+    "planned_none",
+    "planned_assumed",
+    "probes",
+    "helper_calls",
+    "helper_limited",
+    "unplanned",
+    "variant_reads",
+    "expanded",
+    "candidates",
+    "rank_eligible",
+    "ranked_calls",
+    "ranked_candidates",
+    "service_failures",
+)
+# The counts that mean a mechanism did work (a helper call, a Team read, or a ranking) and those that mean it returned
+# something (candidates), kept apart so work without a recovery stays visible.
+LANGUAGE_WORK = ("helper_calls", "variant_reads", "probes", "ranked_calls")
+LANGUAGE_RECOVERY = ("candidates", "ranked_candidates")
+
+
+def _language_signals(engineering: Sequence[Mapping[str, object]]) -> dict[str, object] | None:
+    """The language arms' summed counts and service time, with how many attempts had work and how many candidates."""
+    recorded = [a["language"] for a in engineering if a.get("language")]
+    if not recorded:
+        return None
+    return {
+        "attempts": len(recorded),
+        "attempts_with_eligible_search": sum(bool(item["eligible"]) for item in recorded),
+        "attempts_with_work": sum(any(item[name] for name in LANGUAGE_WORK) for item in recorded),
+        "attempts_with_candidates": sum(any(item[name] for name in LANGUAGE_RECOVERY) for item in recorded),
+        **{name: sum(int(item[name]) for item in recorded) for name in LANGUAGE_COUNTS},
+        "service_seconds": round(sum(float(item["service_seconds"]) for item in recorded), 3),
     }
 
 
@@ -388,6 +430,7 @@ NUMBER_FIELDS = frozenset(
         "calibration_usd",
         "contention_waits",
         "cap_usd",
+        "detect_threshold",
         "failed",
         "held_out_repetitions",
         "helper_max_output_tokens",
@@ -395,6 +438,7 @@ NUMBER_FIELDS = frozenset(
         "max_output_tokens",
         "max_reservation_usd",
         "missing",
+        "rank_threshold",
         "rate",
         "reference_repetitions",
         "refused",
@@ -406,12 +450,15 @@ NUMBER_FIELDS = frozenset(
         "seconds",
         "spent_usd",
         "superseded_usd",
+        "threads",
         "total",
         "total_estimated_spend_usd",
         "tuning_repetitions",
         "unknown_settlements",
         "unreported",
         "unsupported",
+        "warm_collections",
+        "warmup_reads",
         "workers",
     }
 )
@@ -445,6 +492,7 @@ CONTAINER_FIELDS = frozenset(
         "judge_budget",
         "judge_spend",
         "judges",
+        "language",
         "language_matches",
         "loose_budget",
         "loose_protocol_budget",
@@ -465,13 +513,16 @@ TOKEN_FIELDS = frozenset(
         "brain",
         "campaign",
         "date",
+        "detector",
         "digest",
+        "embedder",
         "id",
         "judge_identity",
         "judge_version",
         "kind",
         "model",
         "path",
+        "pins",
         "scenario_patterns",
         "seed",
         "stratum",

@@ -311,6 +311,7 @@ class ArmReportTests(unittest.TestCase):
             "helper_usd_known": False,
             "helper_seconds": 1.2,
             "first_pass": {"reply": "r", "clarification": False, "oracle": {"passed": False}},
+            "language": None,
         }
         stopped = {
             **_attempt("dns-update.en", "E", status="budget-stopped"),
@@ -351,6 +352,42 @@ class ArmReportTests(unittest.TestCase):
         )
         only = precision._arm_signals([stopped])["arm_signals"]
         self.assertEqual((only["working_set_recall"], only["selection_fallback_rate"]), (None, None))
+        self.assertIsNone(signals["language"])
+
+    def test_language_signals_keep_work_without_candidates_visible(self):
+        idle = dict.fromkeys(precision.LANGUAGE_COUNTS, 0)
+        worked = {**idle, "eligible": 1, "helper_calls": 1, "variant_reads": 2, "planned_collection": 1}
+        found = {**idle, "eligible": 2, "ranked_calls": 1, "ranked_candidates": 3, "rank_eligible": 1}
+        attempts = [
+            {"language": {**item, "service_seconds": seconds, "registry": None}}
+            for item, seconds in ((idle, 0.0), (worked, 0.25), (found, 0.5))
+        ]
+        summary = precision._language_signals([*attempts, {"language": None}])
+        self.assertEqual(
+            (summary["attempts"], summary["attempts_with_eligible_search"], summary["attempts_with_work"]), (3, 2, 2)
+        )
+        self.assertEqual((summary["attempts_with_candidates"], summary["ranked_candidates"]), (1, 3))
+        self.assertEqual(
+            (summary["variant_reads"], summary["planned_collection"], summary["service_seconds"]), (2, 1, 0.75)
+        )
+
+    def test_language_metadata_admits_only_its_closed_fields(self):
+        meta = {
+            "language": {
+                "detector": "lingua:common-high",
+                "detect_threshold": 0.35,
+                "embedder": None,
+                "rank_threshold": 0.76,
+                "threads": 1,
+                "pins": ["lingua-language-detector==2.2.0", "numpy==2.5.3"],
+                "warmup_reads": 4,
+                "warm_collections": 3,
+            }
+        }
+        self.assertEqual(precision.checked_meta(meta), meta)
+        for unsafe in ({"detector": "free text detector"}, {"registry": {"es": 3}}, {"threads": -1}):
+            with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
+                precision.checked_meta({"language": unsafe})
 
 
 class CompletionReportTests(unittest.TestCase):
@@ -680,7 +717,7 @@ class MetaTests(unittest.TestCase):
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
-        self.assertEqual((result["scenarios"], result["calibration_items"]), (360, 32))
+        self.assertEqual((result["scenarios"], result["calibration_items"]), (456, 32))
         scenario = corpus.SCENARIOS_BY_ID["status-migrate.en"]
         self.assertEqual(len(precision.brain_assistants(scenario)), len(scenario.assistants))
 

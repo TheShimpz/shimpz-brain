@@ -204,3 +204,14 @@ class LunaArmTests(unittest.TestCase):
         self.assertEqual(arms.task_arms("fresh", 1, ["A", "S"], 0, fresh.SCENARIOS[0]), ["A", "S"])
         self.assertEqual(len(arms.tasks("fresh2", 3, 0)), 3 * 80)
         self.assertEqual(arms.contracts_for(arms.ARMS["N"], "fresh2"), "fresh2")
+
+    def test_language_arms_run_on_n_with_their_registry(self):
+        registries = {label: arms.ARMS[label].registry for label in ("N", "NE", "NLW", "NLC", "NH", "NV", "NR")}
+        self.assertEqual(
+            registries, {"N": None, "NE": None, "NLW": "warm", "NLC": "cold", "NH": "warm", "NV": None, "NR": None}
+        )
+        self.assertEqual({arms.ARMS[label].brain for label in registries}, {"loose"})
+        self.assertTrue(arms.ARMS["NV"].embed and arms.ARMS["NR"].relax and arms.ARMS["NE"].language == "english")
+        self.assertEqual(len(arms.tasks("fresh3", 3, 0)), 3 * 96)
+        self.assertEqual(arms.contracts_for(arms.ARMS["NLW"], "fresh3"), "fresh3")
+        self.assertIsNone(arms.undispatched()["language"])

@@ -516,3 +516,19 @@ class OracleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MixedCollectionValidationTests(unittest.TestCase):
+    """Added after the freeze: validate() refuses a mixed collection that lost one of its two languages."""
+
+    def test_a_single_language_mixed_collection_is_refused(self):
+        from unittest import mock as patching
+
+        from eval import fresh3 as frozen
+
+        flattened = {key: ("pt" if key[0] == "documents" else code) for key, code in frozen.DATA_LANGUAGES.items()}
+        with (
+            patching.patch.dict(frozen.DATA_LANGUAGES, flattened),
+            self.assertRaisesRegex(ValueError, "mixed collection"),
+        ):
+            frozen.validate()
