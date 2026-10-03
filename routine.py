@@ -33,6 +33,8 @@ MAX_NAME_CHARS = 80
 MAX_QUOTE_CHARS = 500
 MAX_REPLY_CHARS = 280
 MAX_COMPILE_CHARS = 96 * 1024
+# A Team-held creation message, at most as long as the message a Routine grant can cite spans of.
+MAX_SOURCE_CHARS = 16_000
 MAX_ORIGINS = 64
 ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 STEP_ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
@@ -506,6 +508,13 @@ def compiler(
     return ask
 
 
+def recompiler(
+    model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
+) -> Callable[[str], Compiled]:
+    """The compiler on a copy of the Team's model that never retries a provider call by itself."""
+    return compiler(lambda: model().model_copy(update={"max_retries": 0}), provider, structured_output)
+
+
 def _target(arguments: object, routines: tuple[dict[str, object], ...]) -> tuple[bool, dict[str, object] | None]:
     """Whether the call is a closed create or update of a listed Routine, and that Routine for an update.
 
@@ -567,14 +576,12 @@ def _asked(compiled: Compiled, message: str, contracts: Mapping, target: dict | 
     return {"routine": wire, "reply": asked.render(), "clarification": asked.to_dict()}
 
 
-def _answer(compiled: Compiled, message: str, context: Any, target: dict[str, object] | None) -> object:
+def _answer(compiled: Compiled, message: str, assistants: tuple[Any, ...], target: dict[str, object] | None) -> object:
     """The wire change and reply of one compiled answer, or the closed reason it cannot be one."""
     if compiled.decision == "refused" or compiled.refusal is not None:
         return compiled.refusal or "unspecified"
     contracts = {
-        (assistant.id, action.id): action.input_schema
-        for assistant in context.assistants
-        for action in assistant.actions
+        (assistant.id, action.id): action.input_schema for assistant in assistants for action in assistant.actions
     }
     reply = team_memory._line(compiled.reply, MAX_REPLY_CHARS)
     if not reply:
@@ -600,7 +607,21 @@ def _compile(call: Mapping[str, Any], messages: list[Any], context: Any, ask: Ca
         compiled = ask(_prompt(current, context.assistants, target, context.locale))
     except CompileUnavailableError:
         return "unavailable"
-    return _answer(compiled, current, context, target)
+    return _answer(compiled, current, context.assistants, target)
+
+
+def recompile(message: str, assistants: tuple[Any, ...], locale: str | None, ask: Callable[[str], Compiled]) -> object:
+    """Compile a Routine from scratch from one Team-held creation message, outside any chat turn (ADR-0092).
+
+    The compiler sees exactly what a chat create sees: the message's own words and quoted regions and the Assistant
+    Action contracts, never history, memory, Skills, files, Action results, or a listed Routine to keep members from.
+    Returns the wire change and reply, with its question when the compiler asks, or the closed reason it cannot be one.
+    """
+    try:
+        compiled = ask(_prompt(message, assistants, None, locale))
+    except CompileUnavailableError:
+        return "unavailable"
+    return _answer(compiled, message, assistants, None)
 
 
 def _review(messages: list[Any], context: Any, ask: Callable[[str], Compiled], *, allowed: bool) -> object:

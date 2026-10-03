@@ -143,21 +143,7 @@ class TurnContextInput(ClosedInput):
         return agent_runtime.TurnContext(
             thread_id=self.thread_id,
             team_name=self.team_name,
-            assistants=tuple(
-                agent_runtime.AssistantDefinition(
-                    id=assistant.id,
-                    genesis=assistant.genesis,
-                    actions=tuple(
-                        agent_runtime.ActionDefinition(
-                            id=action.id,
-                            summary=action.summary,
-                            input_schema=action.input_schema,
-                        )
-                        for action in assistant.actions
-                    ),
-                )
-                for assistant in self.assistants
-            ),
+            assistants=_assistants(self.assistants),
             provider=agent_runtime.ProviderConfig(
                 provider=self.provider.provider,
                 model=self.provider.model,
@@ -169,6 +155,20 @@ class TurnContextInput(ClosedInput):
             routines=None if self.routines is None else tuple(self.routines),
             knowledge_writable=self.knowledge_writable,
         )
+
+
+def _assistants(value: list[AssistantInput]) -> tuple[agent_runtime.AssistantDefinition, ...]:
+    return tuple(
+        agent_runtime.AssistantDefinition(
+            id=assistant.id,
+            genesis=assistant.genesis,
+            actions=tuple(
+                agent_runtime.ActionDefinition(id=action.id, summary=action.summary, input_schema=action.input_schema)
+                for action in assistant.actions
+            ),
+        )
+        for assistant in value
+    )
 
 
 def _memories(value: list[dict[str, Any]] | None) -> tuple[team_memory.Memory, ...] | None:
@@ -307,6 +307,29 @@ class RoutineRecoveryInput(ClosedInput):
             self.proof,
             tuple(self.diagnostics),
             self.locale,
+        )
+
+
+class RoutineCompileInput(ClosedInput):
+    """A Team-held Routine creation message and the Team's current Assistant contracts, compiled from scratch."""
+
+    provider: ProviderInput
+    locale: interface_language.Locale | None
+    message: str = Field(min_length=1, max_length=team_routine.MAX_SOURCE_CHARS)
+    assistants: list[AssistantInput] = Field(min_length=1, max_length=agent_runtime.MAX_ASSISTANTS)
+
+    @field_validator("assistants")
+    @classmethod
+    def unique_assistants(cls, value: list[AssistantInput]) -> list[AssistantInput]:
+        if len({assistant.id for assistant in value}) != len(value):
+            raise ValueError("duplicate Assistant id")
+        return value
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
         )
 
 
@@ -452,6 +475,14 @@ class RuntimeLike:
     def routine_recovery(
         self, provider: agent_runtime.ProviderConfig, request: routine_recovery.RecoveryRequest
     ) -> str: ...
+
+    def routine_compile(
+        self,
+        provider: agent_runtime.ProviderConfig,
+        message: str,
+        assistants: tuple[agent_runtime.AssistantDefinition, ...],
+        locale: str | None,
+    ) -> object: ...
 
     def intent_route(
         self,
@@ -748,6 +779,34 @@ def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], Runti
         return {"decision": decision, "usage": usage}
 
 
+def _compiled_response(outcome: object) -> dict[str, object]:
+    """One closed compile answer: the wire change, reply, and any question, or the closed refusal reason."""
+    if isinstance(outcome, dict):
+        return {
+            "routine": outcome["routine"],
+            "reply": outcome["reply"],
+            "clarification": outcome.get("clarification"),
+            "refusal": None,
+        }
+    return {"routine": None, "reply": None, "clarification": None, "refusal": outcome}
+
+
+def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth) -> None:
+    """A Routine compiled from scratch from its Team-held creation message, outside any turn (ADR-0092)."""
+
+    @app.post("/v1/routine-compile", dependencies=[Depends(require_auth)])
+    async def routine_compile(request: Request, body: RoutineCompileInput) -> dict[str, object]:
+        # Team's Stop or deletion closes its request; that cancels only this compile's provider I/O.
+        outcome, usage = await _cancellable(
+            request,
+            lambda: current_runtime().routine_compile(
+                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale
+            ),
+            "Routine compile cancelled",
+        )
+        return {**_compiled_response(outcome), "usage": usage}
+
+
 def _register_intent_route(
     app: FastAPI,
     current_runtime: Callable[[], RuntimeLike],
@@ -895,6 +954,7 @@ def create_app(
 
     _register_intent_route(app, current_runtime, require_auth)
     _register_routine_recovery(app, current_runtime, require_auth)
+    _register_routine_compile(app, current_runtime, require_auth)
 
     return app
 

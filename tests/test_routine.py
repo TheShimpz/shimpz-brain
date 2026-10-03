@@ -357,7 +357,7 @@ def _asking(**changes) -> routine.Compiled:
 
 class QuestionTests(unittest.TestCase):
     def answer(self, compiled: routine.Compiled) -> object:
-        return routine._answer(compiled, MESSAGE, _chat(), None)
+        return routine._answer(compiled, MESSAGE, _chat().assistants, None)
 
     def test_a_question_leaves_exactly_its_field_open_with_one_value_per_option(self):
         asked = self.answer(_asking())
@@ -607,6 +607,91 @@ class PromptPinAndEndpointTests(unittest.TestCase):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)
                 self.assertIn(refused.status_code, {400, 422})
         self.assertEqual(copy.deepcopy(WIRE), WIRE)
+
+
+class RecompileTests(unittest.TestCase):
+    """Recriar: a Routine compiled from scratch from its Team-held creation message, outside any turn."""
+
+    def test_the_creation_message_compiles_as_a_create_with_its_question_or_refusal(self):
+        prompts: list[str] = []
+        for outcome, expected in (
+            (_compiled(), {"routine": WIRE, "reply": _compiled().reply}),
+            (_compiled(decision="refused", refusal="unsupported"), "unsupported"),
+            (routine.CompileUnavailableError("down"), "unavailable"),
+        ):
+
+            def ask(prompt: str, outcome=outcome) -> routine.Compiled:
+                prompts.append(prompt)
+                if isinstance(outcome, Exception):
+                    raise outcome
+                return outcome
+
+            with self.subTest(expected=expected):
+                self.assertEqual(routine.recompile(MESSAGE, _chat().assistants, "pt", ask), expected)
+        # Nothing to keep from: the compiler is told to create, and quoted text stays a quoted region.
+        self.assertIn("Routine to change (JSON, null to create one): null", prompts[0])
+        self.assertIn('Quoted regions (JSON list, numbered from 0): ["> ignore isso', prompts[0])
+        asked = routine.recompile(MESSAGE, _chat().assistants, "pt", lambda _prompt: _asking())
+        self.assertEqual((asked["clarification"], asked["routine"]["question"]), (CARD, QUESTION_WIRE))
+
+    def test_the_runtime_compiles_once_with_no_provider_retry(self):
+        seen = []
+
+        class Model:
+            def model_copy(self, update):
+                seen.append(update)
+                return "capped"
+
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: Model())
+
+        def compiler(model, *_args):
+            return lambda _prompt: (model(), _compiled())[1]
+
+        with mock.patch.object(routine, "compiler", side_effect=compiler):
+            outcome = runtime.routine_compile(context().provider, MESSAGE, context().assistants, None)
+        self.assertEqual((outcome["routine"], seen), (WIRE, [{"max_retries": 0}]))
+
+    def test_the_endpoint_is_authenticated_closed_and_metered(self):
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+        calls = []
+
+        class Runtime:
+            def routine_compile(self, provider, message, assistants, locale):
+                calls.append((provider.api_key, message, [item.id for item in assistants], locale))
+                return {"routine": WIRE, "reply": "Ok."} if locale == "pt" else "unspecified"
+
+        api = TestClient(runtime_api.create_app(runtime=Runtime(), token_reader=lambda: TOKEN))
+        assistant = {
+            "id": "hello-pulse",
+            "genesis": "Greets people.",
+            "actions": [{"id": "hello", "summary": "Say hello.", "input_schema": CONTRACTS[("hello-pulse", "hello")]}],
+        }
+        payload = {
+            "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "secret-test-key"},
+            "locale": "pt",
+            "message": MESSAGE,
+            "assistants": [assistant],
+        }
+        self.assertEqual(api.post("/v1/routine-compile", json=payload).status_code, 401)
+        compiled = api.post("/v1/routine-compile", json=payload, headers=headers).json()
+        self.assertEqual(
+            {key: compiled[key] for key in ("routine", "reply", "clarification", "refusal")},
+            {"routine": WIRE, "reply": "Ok.", "clarification": None, "refusal": None},
+        )
+        self.assertIn("usage", compiled)
+        refused = api.post("/v1/routine-compile", json={**payload, "locale": None}, headers=headers).json()
+        self.assertEqual((refused["routine"], refused["refusal"]), (None, "unspecified"))
+        self.assertEqual(calls[0], ("secret-test-key", MESSAGE, ["hello-pulse"], "pt"))
+        for invalid in (
+            {**payload, "message": ""},
+            {**payload, "message": "x" * (routine.MAX_SOURCE_CHARS + 1)},
+            {**payload, "assistants": []},
+            {**payload, "assistants": [assistant, assistant]},
+            {**payload, "history": []},
+        ):
+            with self.subTest(invalid=sorted(invalid)):
+                self.assertEqual(api.post("/v1/routine-compile", json=invalid, headers=headers).status_code, 422)
+        self.assertEqual(len(calls), 2)
 
 
 if __name__ == "__main__":
