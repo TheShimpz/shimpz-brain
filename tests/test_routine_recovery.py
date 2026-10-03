@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import agent_runtime
+import provider_client
 import routine_recovery
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -76,7 +77,7 @@ class DecideTests(unittest.TestCase):
         catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
         for entry in catalog["providers"]:
             config = agent_runtime.ProviderConfig(entry["id"], entry["models"][0]["id"], "secret-test-key")
-            capped = routine_recovery.capped(agent_runtime.provider_model(config, decision=True))
+            capped = routine_recovery.capped(provider_client.provider_model(config, decision=True))
             payload = capped._get_request_payload([("user", "hi")])
             with self.subTest(provider=entry["id"]):
                 key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"

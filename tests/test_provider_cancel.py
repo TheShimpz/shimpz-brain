@@ -20,6 +20,7 @@ import agent_runtime
 import httpcore
 import httpx
 import provider_cancel
+import provider_client
 import runtime_api
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -188,7 +189,7 @@ class CancellableTransportTests(unittest.TestCase):
 
         # Through the real OpenAI SDK: a pool timeout after Stop ends the call without a retry sleep.
         scope = provider_cancel.CancelScope()
-        model = agent_runtime.provider_model(
+        model = provider_client.provider_model(
             agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"), http_client=self.client
         )
         with (
@@ -531,12 +532,12 @@ class RecoveryDisconnectTests(unittest.TestCase):
 class PooledAnthropicTests(unittest.TestCase):
     def test_anthropic_turns_use_the_runtime_pool(self):
         with mock.patch.dict(os.environ, NO_PROXY_ENV):
-            factory = agent_runtime.ProviderModelFactory()
+            factory = provider_client.ProviderModelFactory()
         self.addCleanup(factory.close)
         model = factory(agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key"))
         self.assertIs(model._client._client, factory._http_client)
         self.assertIsInstance(factory._http_client._transport, provider_cancel._Transport)
-        self.assertIs(type(model), agent_runtime._pooled_chat_anthropic())
+        self.assertIs(type(model), provider_client._pooled_chat_anthropic())
 
 
 if __name__ == "__main__":

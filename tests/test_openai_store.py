@@ -11,6 +11,7 @@ import unittest
 
 import agent_runtime
 import httpx
+import provider_client
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -79,7 +80,7 @@ class OpenAIStoreTests(unittest.TestCase):
     def test_chat_and_decision_calls_are_unstored_and_ask_for_encrypted_reasoning(self) -> None:
         for decision in (False, True):
             with self.subTest(decision=decision):
-                model = agent_runtime.provider_model(CONFIG, http_client=httpx.Client(), decision=decision)
+                model = provider_client.provider_model(CONFIG, http_client=httpx.Client(), decision=decision)
                 payload = model._get_request_payload([HumanMessage(content="hi")])
                 self.assertIs(payload["store"], False)
                 self.assertEqual(payload["include"], ["reasoning.encrypted_content"])
@@ -88,7 +89,7 @@ class OpenAIStoreTests(unittest.TestCase):
         responses = _Responses()
         client = httpx.Client(transport=httpx.MockTransport(responses))
         runtime = agent_runtime.AgentRuntime(
-            InMemorySaver(), model_factory=lambda config: agent_runtime.provider_model(config, http_client=client)
+            InMemorySaver(), model_factory=lambda config: provider_client.provider_model(config, http_client=client)
         )
         context = agent_runtime.TurnContext("store-thread", "DNS Team", (DNS,), CONFIG)
         paused = runtime.start(context, '{"files":[],"message":"Is example.com active?"}')

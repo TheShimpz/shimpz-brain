@@ -16,6 +16,7 @@ import action_purpose
 import agent_runtime
 import memory
 import provider_cancel
+import provider_client
 import runtime_api
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -275,7 +276,7 @@ class CreateTests(unittest.TestCase):
             config = agent_runtime.ProviderConfig(
                 provider=entry["id"], model=entry["models"][0]["id"], api_key="secret-test-key"
             )
-            model = agent_runtime.provider_model(config, decision=True)
+            model = provider_client.provider_model(config, decision=True)
             payload = action_purpose.capped(model)._get_request_payload([("user", "hi")])
             with self.subTest(provider=entry["id"]):
                 key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"

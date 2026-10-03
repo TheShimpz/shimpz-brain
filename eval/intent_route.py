@@ -22,6 +22,7 @@ from pathlib import Path
 
 import agent_runtime
 import intent_route
+import provider_client
 
 # Least expensive option per provider in the umbrella model catalog on 2026-09-28.
 FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
@@ -269,7 +270,9 @@ def _key(path: Path) -> str:
     return raw[:-1].decode("ascii")
 
 
-def evaluate(factory: agent_runtime.ProviderModelFactory, provider: agent_runtime.ProviderConfig) -> dict[str, object]:
+def evaluate(
+    factory: provider_client.ProviderModelFactory, provider: agent_runtime.ProviderConfig
+) -> dict[str, object]:
     results = []
     for case in CASES:
         passed = rejected = 0
@@ -312,7 +315,7 @@ def main() -> int:
             )
             return 0
         provider = agent_runtime.ProviderConfig(args.provider, FLOOR_MODELS[args.provider], _key(args.key_file))
-        factory = agent_runtime.ProviderModelFactory()
+        factory = provider_client.ProviderModelFactory()
         try:
             result = evaluate(factory, provider)
         finally:

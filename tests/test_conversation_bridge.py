@@ -11,6 +11,7 @@ from unittest import mock
 import agent_runtime
 import context_budget
 import intent_route
+import provider_client
 import turn_prompt
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
@@ -158,7 +159,7 @@ class ConversationBridgeTests(unittest.TestCase):
                 usage=Usage(input_tokens=1, output_tokens=1),
             )
 
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=agent_runtime.provider_model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=provider_client.provider_model)
         with mock.patch.object(ChatAnthropic, "_create", send):
             self.assertEqual(
                 runtime.start(_context("anthropic", "claude-sonnet-5-5"), "Check it now.", WINDOW).reply, "ok"

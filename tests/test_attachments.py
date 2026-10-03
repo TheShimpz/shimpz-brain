@@ -23,6 +23,7 @@ import attachments as turn_attachments
 import httpx
 import openai
 import provider_cancel
+import provider_client
 import runtime_api
 import turn_pins
 from fastapi.testclient import TestClient
@@ -99,10 +100,10 @@ class _Factory:
         self.client = client
 
     def __call__(self, config: agent_runtime.ProviderConfig):
-        return agent_runtime.provider_model(config, http_client=self.client)
+        return provider_client.provider_model(config, http_client=self.client)
 
     def single_attempt(self, config: agent_runtime.ProviderConfig):
-        return agent_runtime.provider_model(config, http_client=self.client, retries=0)
+        return provider_client.provider_model(config, http_client=self.client, retries=0)
 
 
 class _Provider:
@@ -562,7 +563,7 @@ class RefusalEdgeTests(unittest.TestCase):
                 dataclasses.replace(context, **change)
 
     def test_the_production_factory_builds_a_model_without_hidden_retries(self) -> None:
-        factory = agent_runtime.ProviderModelFactory()
+        factory = provider_client.ProviderModelFactory()
         self.addCleanup(factory.close)
         config = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef", "low")
         self.assertEqual(factory.single_attempt(config).max_retries, 0)

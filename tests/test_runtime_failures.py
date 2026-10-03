@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import agent_runtime
+import provider_client
 from langgraph.checkpoint.memory import InMemorySaver
 from tests.test_agent_runtime import action, assistant, context
 
@@ -40,13 +41,13 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         factory = mock.Mock()
         connection = mock.Mock()
         checkpointer = SimpleNamespace(conn=connection)
-        with mock.patch.object(agent_runtime, "ProviderModelFactory", return_value=factory):
+        with mock.patch.object(provider_client, "ProviderModelFactory", return_value=factory):
             agent_runtime.AgentRuntime(checkpointer).close()
         factory.close.assert_called_once_with()
         connection.close.assert_called_once_with()
 
         factory_without_close = SimpleNamespace(close=None)
-        with mock.patch.object(agent_runtime, "ProviderModelFactory", return_value=factory_without_close):
+        with mock.patch.object(provider_client, "ProviderModelFactory", return_value=factory_without_close):
             agent_runtime.AgentRuntime(object()).close()
 
     def test_prepare_scope_projects_checkpoint_failures_and_races(self):

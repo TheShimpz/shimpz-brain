@@ -12,6 +12,7 @@ from unittest import mock
 import action_labels
 import agent_runtime
 import capability_plan
+import provider_client
 import structured
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
@@ -29,7 +30,7 @@ LABELS = {"labels": [{"id": "list-zones", "label": "Listar zonas"}]}
 
 
 def _runtime() -> agent_runtime.AgentRuntime:
-    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=agent_runtime.provider_model)
+    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=provider_client.provider_model)
 
 
 def _anthropic_reply(text: str | None, stop_reason: str = "end_turn") -> Message:

@@ -12,6 +12,7 @@ from unittest import mock
 import agent_runtime
 import clarification
 import memory
+import provider_client
 import runtime_api
 import turn_pins
 import turn_prompt
@@ -665,7 +666,7 @@ class RecompileTests(unittest.TestCase):
                 return lambda _prompt: _compiled()
 
             with mock.patch.object(routine, "compiler", side_effect=capture):
-                routine.recompiler(lambda config=config: agent_runtime.provider_model(config), entry["id"], None)
+                routine.recompiler(lambda config=config: provider_client.provider_model(config), entry["id"], None)
             payload = models[0]._get_request_payload([("user", "hi")])
             with self.subTest(provider=entry["id"]):
                 key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"

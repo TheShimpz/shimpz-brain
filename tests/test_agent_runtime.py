@@ -18,6 +18,7 @@ import action_schema
 import agent_runtime
 import clarification
 import context_budget
+import provider_client
 import turn_prompt
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -731,7 +732,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         invalid_config = SimpleNamespace(provider="unsupported", model="model", api_key="secret")
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model provider"):
-            agent_runtime.provider_model(invalid_config)
+            provider_client.provider_model(invalid_config)
 
     def test_result_projection_rejects_every_invalid_boundary_shape(self):
         self.assertEqual(context_budget.message_text(None), "")

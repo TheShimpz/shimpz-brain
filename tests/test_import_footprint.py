@@ -67,7 +67,9 @@ def _loaded_modules(probe: str, connection) -> None:
             assert graph is not None
             runtime.close()
         else:
-            agent_runtime.provider_model(provider_config)
+            import provider_client
+
+            provider_client.provider_model(provider_config)
     modules = tuple(sys.modules)
     connection.send({prefix: _has_module(modules, prefix) for prefix in TRACKED_MODULES})
     connection.close()

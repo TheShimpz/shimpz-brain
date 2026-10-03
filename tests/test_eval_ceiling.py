@@ -9,9 +9,9 @@ import threading
 import unittest
 from pathlib import Path
 
-import agent_runtime
 import httpx
 import openai
+import provider_client
 from eval import ceiling
 from eval import cost as eval_cost
 from langchain_openai import ChatOpenAI
@@ -89,7 +89,7 @@ class CeilingTests(unittest.TestCase):
         return ChatOpenAI(model="gpt-6-luna", api_key="sk-test-0123456789", http_client=client, **options)
 
     def _anthropic(self, recorder: Recorder):
-        model = agent_runtime._pooled_chat_anthropic()(model="claude-sonnet-5-5", api_key="sk-ant-test-0123456789")
+        model = provider_client._pooled_chat_anthropic()(model="claude-sonnet-5-5", api_key="sk-ant-test-0123456789")
         model._http_client = httpx.Client(transport=httpx.MockTransport(recorder))
         return model
 

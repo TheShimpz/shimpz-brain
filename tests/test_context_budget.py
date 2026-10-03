@@ -16,6 +16,7 @@ import agent_runtime
 import clarification
 import context_budget
 import httpx
+import provider_client
 import runtime_api
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -339,7 +340,7 @@ class RuntimeBudgetTests(unittest.TestCase):
                     self.connections.append(connection)
                     saver = runtime_api.PruningSqliteSaver(connection)
                     saver.setup()
-                    factory = functools.partial(agent_runtime.provider_model, http_client=client)
+                    factory = functools.partial(provider_client.provider_model, http_client=client)
                     runtime = agent_runtime.AgentRuntime(saver, model_factory=factory)
                     config = agent_runtime.ProviderConfig(provider, model, "sk-test")
                     turn = agent_runtime.TurnContext(f"cut-{provider}-{kind}", "Budget Team", (PINGER,), config)

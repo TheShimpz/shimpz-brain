@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 import agent_runtime
+import provider_client
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
 from langgraph.checkpoint.memory import InMemorySaver
@@ -52,7 +53,7 @@ class PromptCachingTests(unittest.TestCase):
             (CLOCK,),
             agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789abcdef"),
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=agent_runtime.provider_model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=provider_client.provider_model)
         with mock.patch.object(ChatAnthropic, "_create", send):
             first = runtime.start(context, "oi")
             second = runtime.start(context, "tudo bem?")
