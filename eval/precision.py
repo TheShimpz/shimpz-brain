@@ -31,15 +31,21 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import arms, corpus, fresh, judge, large_api, large_api_contract, private, split
+from eval import arms, corpus, fresh, fresh2, judge, large_api, large_api_contract, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
 from eval.large_api_arms import ASSISTANTS_TASKS
 
-SCENARIOS = {**corpus.SCENARIOS_BY_ID, **large_api.SCENARIOS_BY_ID, **fresh.SCENARIOS_BY_ID}
+# The blind held-out corpora, by stratum: every scenario of each is held out.
+BLIND = {"fresh": fresh, "fresh2": fresh2}
+SCENARIOS = {
+    **corpus.SCENARIOS_BY_ID,
+    **large_api.SCENARIOS_BY_ID,
+    **{key: value for module in BLIND.values() for key, value in module.SCENARIOS_BY_ID.items()},
+}
 CONTRACTS = {
-    "fresh": fresh.ASSISTANTS,
+    **{stratum: module.ASSISTANTS for stratum, module in BLIND.items()},
     "a": corpus.ASSISTANTS,
     "b": ASSISTANTS_B,
     "large": large_api_contract.ASSISTANTS,
@@ -618,15 +624,16 @@ def regrade(report: Mapping[str, object]) -> dict[str, object]:
 
 
 def _stratum(scenario_id: str) -> str:
-    if scenario_id in fresh.SCENARIOS_BY_ID:
-        return "fresh"
+    blind = next((stratum for stratum, module in BLIND.items() if scenario_id in module.SCENARIOS_BY_ID), None)
+    if blind is not None:
+        return blind
     return "large-api" if scenario_id in large_api.SCENARIOS_BY_ID else "precision"
 
 
 def _part(scenario_id: str, sets: Mapping[str, dict[str, list[str]]]) -> str:
-    """A blind fresh scenario is always held out; the others follow their stratum's frozen split."""
+    """A blind scenario is always held out; the others follow their stratum's frozen split."""
     stratum = _stratum(scenario_id)
-    return "held-out" if stratum == "fresh" else split.part(scenario_id, sets[stratum])
+    return "held-out" if stratum in BLIND else split.part(scenario_id, sets[stratum])
 
 
 def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
@@ -634,7 +641,7 @@ def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]
     present = {_stratum(str(attempt["scenario"])) for attempt in attempts}
     return [
         {"id": module.CORPUS_ID, "digest": module.digest(), "scenarios": len(module.SCENARIOS)}
-        for stratum, module in (("precision", corpus), ("large-api", large_api), ("fresh", fresh))
+        for stratum, module in (("precision", corpus), ("large-api", large_api), *BLIND.items())
         if stratum in present
     ]
 
@@ -851,11 +858,12 @@ def validate() -> dict[str, object]:
 
     corpus.validate()
     large_api.validate()
-    fresh.validate()
+    for module in BLIND.values():
+        module.validate()
     provider = agent_runtime.ProviderConfig("openai", judge.JUDGE_MODELS["openai"], "offline-validation-key", "low")
     checks = [(scenario, set_name) for scenario in corpus.SCENARIOS for set_name in ("a", "b")]
     checks += [(scenario, set_name) for scenario in large_api.SCENARIOS for set_name in ("large", "large-tasks")]
-    checks += [(scenario, "fresh") for scenario in fresh.SCENARIOS]
+    checks += [(scenario, stratum) for stratum, module in BLIND.items() for scenario in module.SCENARIOS]
     for scenario, set_name in checks:
         agent_runtime.TurnContext(
             "precision:validate",
@@ -871,7 +879,7 @@ def validate() -> dict[str, object]:
         "corpora": {
             corpus.CORPUS_ID: corpus.digest(),
             large_api.CORPUS_ID: large_api.digest(),
-            fresh.CORPUS_ID: fresh.digest(),
+            **{module.CORPUS_ID: module.digest() for module in BLIND.values()},
         },
         "scenarios": len(SCENARIOS),
         "calibration_items": len(judge.calibration_items()),

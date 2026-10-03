@@ -34,7 +34,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from eval import corpus, fresh, large_api, split
+from eval import corpus, fresh, fresh2, large_api, split
 from eval.contracts import DATE, HOSTNAME, SEARCH_TERMS, TIME
 from eval.corpus import LOCALES
 from eval.fixtures import Action
@@ -134,14 +134,16 @@ MODELS = {
     "sol": ("openai", "gpt-6.1-sol"),
     "sol56": ("openai", "gpt-5.6-sol"),
 }
-# Each stratum's scenarios and frozen split; the blind ``fresh-v1`` corpus has no split: all of it is held out.
+# Each stratum's scenarios and frozen split; the blind ``fresh-v1`` and ``fresh-v2`` corpora have no split: all of
+# each is held out.
 STRATA = {
     "precision": (corpus.SCENARIOS, split.SPLIT),
     "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT),
     "fresh": (fresh.SCENARIOS, None),
+    "fresh2": (fresh2.SCENARIOS, None),
 }
 # The contract set arm A's ``a`` stands for in each stratum.
-BASE_CONTRACTS = {"precision": "a", "large-api": "large", "fresh": "fresh"}
+BASE_CONTRACTS = {"precision": "a", "large-api": "large", "fresh": "fresh", "fresh2": "fresh2"}
 # What fixes an engineering campaign's schedule and its turns; a completion must match its campaign on every one.
 SCHEDULE_FIELDS = (
     "campaign",

@@ -200,6 +200,11 @@ class CorpusIdentityTests(unittest.TestCase):
         held = precision.build_report([attempt], [], {"seed": "s"}, part="held-out")
         self.assertEqual([item["id"] for item in held["corpora"]], [fresh.CORPUS_ID])
         self.assertEqual(precision.build_report([attempt], [], {"seed": "s"}, part="tuning")["runs"], [])
+        from eval import fresh2
+
+        second = {**_attempt(fresh2.SCENARIOS[0].id, "NRXP"), "contracts": "fresh2"}
+        both = precision.build_report([attempt, second], [], {"seed": "s"}, part="held-out")
+        self.assertEqual([item["id"] for item in both["corpora"]], [fresh.CORPUS_ID, fresh2.CORPUS_ID])
 
     def test_a_split_part_counts_only_its_own_judgments_and_names_only_its_own_corpus(self):
         tuning = split.load()["tuning"]
@@ -675,7 +680,7 @@ class MetaTests(unittest.TestCase):
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
-        self.assertEqual((result["scenarios"], result["calibration_items"]), (280, 32))
+        self.assertEqual((result["scenarios"], result["calibration_items"]), (360, 32))
         scenario = corpus.SCENARIOS_BY_ID["status-migrate.en"]
         self.assertEqual(len(precision.brain_assistants(scenario)), len(scenario.assistants))
 

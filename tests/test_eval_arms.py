@@ -202,3 +202,5 @@ class LunaArmTests(unittest.TestCase):
         self.assertEqual(arms.part("fresh", fresh.SCENARIOS[0].id), "held-out")
         self.assertEqual(arms.contracts_for(arms.ARMS["NRXP"], "fresh"), "fresh")
         self.assertEqual(arms.task_arms("fresh", 1, ["A", "S"], 0, fresh.SCENARIOS[0]), ["A", "S"])
+        self.assertEqual(len(arms.tasks("fresh2", 3, 0)), 3 * 80)
+        self.assertEqual(arms.contracts_for(arms.ARMS["N"], "fresh2"), "fresh2")
