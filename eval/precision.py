@@ -553,9 +553,22 @@ def regrade(report: Mapping[str, object]) -> dict[str, object]:
     return {**report, "decision": decision}
 
 
+def _stratum(scenario_id: str) -> str:
+    return "large-api" if scenario_id in large_api.SCENARIOS_BY_ID else "precision"
+
+
 def _part(scenario_id: str, sets: Mapping[str, dict[str, list[str]]]) -> str:
-    stratum = "large-api" if scenario_id in large_api.SCENARIOS_BY_ID else "precision"
-    return split.part(scenario_id, sets[stratum])
+    return split.part(scenario_id, sets[_stratum(scenario_id)])
+
+
+def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    """Name each corpus the reported attempts ran, never one they did not."""
+    present = {_stratum(str(attempt["scenario"])) for attempt in attempts}
+    return [
+        {"id": module.CORPUS_ID, "digest": module.digest(), "scenarios": len(module.SCENARIOS)}
+        for stratum, module in (("precision", corpus), ("large-api", large_api))
+        if stratum in present
+    ]
 
 
 def build_report(
@@ -626,7 +639,7 @@ def build_report(
     tiebreaks = [item for item in judged if item["tiebreak"] is not None]
     return {
         "schema": REPORT_SCHEMA,
-        "corpus": {"id": corpus.CORPUS_ID, "digest": corpus.digest(), "scenarios": len(corpus.SCENARIOS)},
+        "corpora": _corpora(attempts),
         "meta": checked_meta(dict(meta)),
         "split": None
         if part is None

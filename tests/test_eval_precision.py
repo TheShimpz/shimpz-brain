@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import model_usage
-from eval import arms, corpus, judge, precision, private, split
+from eval import arms, corpus, judge, large_api, precision, private, split
 from eval import cost as eval_cost
 
 GOOD = judge.Verdict(
@@ -143,7 +143,9 @@ class ReportTests(unittest.TestCase):
         for leaked in ("Done.", "list-zones", '"ledger"', '"reply"', '"input"'):
             self.assertNotIn(leaked, text)
         self.assertEqual(report["schema"], precision.REPORT_SCHEMA)
-        self.assertEqual(report["corpus"]["digest"], corpus.digest())
+        self.assertEqual(
+            report["corpora"], [{"id": corpus.CORPUS_ID, "digest": corpus.digest(), "scenarios": len(corpus.SCENARIOS)}]
+        )
         run = report["runs"][0]
         self.assertEqual((run["arm"], run["conclusive"], run["inconclusive"]), ("a", 72, 2))
         self.assertEqual(run["attempts"]["budget-stopped"], 2)
@@ -175,6 +177,19 @@ class ReportTests(unittest.TestCase):
         single = precision.build_report(attempts[:1], [], {})
         self.assertEqual((single["paired"], single["runs"][0]["mean_rounds"]), ([], 2.0))
         self.assertIsNone(precision._group([], "s", "empty")["mean_rounds"])
+
+
+class CorpusIdentityTests(unittest.TestCase):
+    def test_a_report_names_exactly_the_corpora_its_attempts_ran(self):
+        large = [_attempt(scenario.id, "L1") for scenario in large_api.SCENARIOS[:2]]
+        only_large = precision.build_report(large, [], {"seed": "s"})
+        self.assertEqual(
+            only_large["corpora"],
+            [{"id": large_api.CORPUS_ID, "digest": large_api.digest(), "scenarios": len(large_api.SCENARIOS)}],
+        )
+        both = precision.build_report([*large, _attempt(corpus.SCENARIOS[0].id, "A")], [], {"seed": "s"})
+        self.assertEqual([item["id"] for item in both["corpora"]], [corpus.CORPUS_ID, large_api.CORPUS_ID])
+        self.assertEqual(precision.build_report([], [], {})["corpora"], [])
 
 
 class ArmReportTests(unittest.TestCase):
