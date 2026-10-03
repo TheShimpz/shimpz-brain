@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import json
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import agent_runtime
@@ -649,7 +650,26 @@ class RecompileTests(unittest.TestCase):
 
         with mock.patch.object(routine, "compiler", side_effect=compiler):
             outcome = runtime.routine_compile(context().provider, MESSAGE, context().assistants, None)
-        self.assertEqual((outcome["routine"], seen), (WIRE, [{"max_retries": 0}]))
+        self.assertEqual(
+            (outcome["routine"], seen), (WIRE, [{"max_tokens": routine.MAX_RECOMPILE_OUTPUT_TOKENS, "max_retries": 0}])
+        )
+
+    def test_both_providers_bound_the_recompile_output_and_retry_nothing(self):
+        catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
+        for entry in catalog["providers"]:
+            config = agent_runtime.ProviderConfig(entry["id"], entry["models"][0]["id"], "secret-test-key")
+            models = []
+
+            def capture(model, *_args, models=models):
+                models.append(model())
+                return lambda _prompt: _compiled()
+
+            with mock.patch.object(routine, "compiler", side_effect=capture):
+                routine.recompiler(lambda config=config: agent_runtime.provider_model(config), entry["id"], None)
+            payload = models[0]._get_request_payload([("user", "hi")])
+            with self.subTest(provider=entry["id"]):
+                key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
+                self.assertEqual((payload[key], models[0].max_retries), (routine.MAX_RECOMPILE_OUTPUT_TOKENS, 0))
 
     def test_the_endpoint_is_authenticated_closed_and_metered(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}

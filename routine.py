@@ -35,6 +35,8 @@ MAX_REPLY_CHARS = 280
 MAX_COMPILE_CHARS = 96 * 1024
 # A Team-held creation message, at most as long as the message a Routine grant can cite spans of.
 MAX_SOURCE_CHARS = 16_000
+# The billed output of one Recriar compile, reasoning included: room for the largest compiled change, never unbounded.
+MAX_RECOMPILE_OUTPUT_TOKENS = 16_384
 MAX_ORIGINS = 64
 ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 STEP_ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
@@ -511,8 +513,12 @@ def compiler(
 def recompiler(
     model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
 ) -> Callable[[str], Compiled]:
-    """The compiler on a copy of the Team's model that never retries a provider call by itself."""
-    return compiler(lambda: model().model_copy(update={"max_retries": 0}), provider, structured_output)
+    """The compiler on a copy of the Team's model that bounds its billed output and never retries a call by itself."""
+    return compiler(
+        lambda: model().model_copy(update={"max_tokens": MAX_RECOMPILE_OUTPUT_TOKENS, "max_retries": 0}),
+        provider,
+        structured_output,
+    )
 
 
 def _target(arguments: object, routines: tuple[dict[str, object], ...]) -> tuple[bool, dict[str, object] | None]:
