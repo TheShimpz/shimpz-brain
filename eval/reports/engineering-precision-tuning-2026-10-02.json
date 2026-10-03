@@ -1,0 +1,2005 @@
+{
+ "corpus": {
+  "digest": "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab",
+  "id": "precision-v2.1",
+  "scenarios": 120
+ },
+ "decision": {
+  "grade": "exploratory",
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "reasons": [
+   "no-blind-owner-labels",
+   "labelled-exploratory"
+  ]
+ },
+ "judge_calibration": {
+  "adjudication": "author",
+  "blind": false,
+  "judge_budget": {
+   "cap_usd": 0.35,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.153054,
+   "unknown_settlements": 0
+  },
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "primary": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 29,
+    "rate": 0.90625,
+    "wilson95": [
+     0.7578,
+     0.9676
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   }
+  },
+  "tiebreak": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   }
+  }
+ },
+ "judges": {
+  "final_unsupported_claims": 33,
+  "judged_attempts": 1026,
+  "tiebreak_changed_reply_correct": 34,
+  "tiebreaks": 105,
+  "verdict_identities": [
+   "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7"
+  ]
+ },
+ "meta": {
+  "arms": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "E",
+   "EJ",
+   "S"
+  ],
+  "baseline_arm": "A",
+  "budget": {
+   "cap_usd": 5.2,
+   "contention_waits": 100,
+   "failed": 5,
+   "max_output_tokens": 32000,
+   "max_reservation_usd": 0.428885,
+   "refused": 1,
+   "requests": 4219,
+   "reservations_exceeded": 0,
+   "spent_usd": 4.796581,
+   "unknown_settlements": 5,
+   "unreported": 0,
+   "unsupported": 0
+  },
+  "campaign": "eng-precision-2026-10-02",
+  "commits": {
+   "brain": "7588013a3d14b72f83c09d177d086774fb199e65",
+   "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+   "umbrella": "15ecab8452cb81dc31c8c15c5712c364397dc21b"
+  },
+  "comparisons": [
+   [
+    "A",
+    "B"
+   ],
+   [
+    "B",
+    "C"
+   ],
+   [
+    "C",
+    "D"
+   ],
+   [
+    "D",
+    "E"
+   ],
+   [
+    "D",
+    "EJ"
+   ],
+   [
+    "A",
+    "C"
+   ],
+   [
+    "A",
+    "D"
+   ],
+   [
+    "A",
+    "E"
+   ],
+   [
+    "A",
+    "EJ"
+   ],
+   [
+    "A",
+    "S"
+   ],
+   [
+    "E",
+    "S"
+   ],
+   [
+    "EJ",
+    "S"
+   ]
+  ],
+  "held_out_repetitions": 3,
+  "jev_budget": {
+   "cap_usd": 0.05,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.00515,
+   "unknown_settlements": 0
+  },
+  "label": "exploratory",
+  "max_output_tokens": 32000,
+  "namespaces_budget": null,
+  "reference_repetitions": 1,
+  "sdk_retries": 0,
+  "seconds": 1695.8,
+  "seed": "3161e484c4489f9d",
+  "stopped_by_cap": true,
+  "stratum": "precision",
+  "tuning_repetitions": 1,
+  "workers": 6
+ },
+ "paired": [
+  {
+   "baseline": "A",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "B",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 41,
+   "difference": {
+    "clusters": 7,
+    "high": 0.2,
+    "items": 41,
+    "low": -0.5681818181818182,
+    "mean": -0.17073170731707318
+   },
+   "incomplete_pairs": 15,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "B",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "C",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 41,
+   "difference": {
+    "clusters": 7,
+    "high": 0.1590909090909091,
+    "items": 41,
+    "low": -0.19047619047619047,
+    "mean": 0.0
+   },
+   "incomplete_pairs": 15,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "C",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "D",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 42,
+   "difference": {
+    "clusters": 7,
+    "high": 0.13953488372093023,
+    "items": 42,
+    "low": -0.13333333333333333,
+    "mean": 0.0
+   },
+   "incomplete_pairs": 14,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "D",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "E",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 42,
+   "difference": {
+    "clusters": 7,
+    "high": 0.7,
+    "items": 42,
+    "low": 0.04878048780487805,
+    "mean": 0.35714285714285715
+   },
+   "incomplete_pairs": 14,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "D",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "EJ",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 42,
+   "difference": {
+    "clusters": 7,
+    "high": 0.3333333333333333,
+    "items": 42,
+    "low": 0.025,
+    "mean": 0.16666666666666666
+   },
+   "incomplete_pairs": 14,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "A",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "C",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 41,
+   "difference": {
+    "clusters": 7,
+    "high": 0.11764705882352941,
+    "items": 41,
+    "low": -0.5,
+    "mean": -0.17073170731707318
+   },
+   "incomplete_pairs": 15,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "A",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "D",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 41,
+   "difference": {
+    "clusters": 7,
+    "high": 0.20512820512820512,
+    "items": 41,
+    "low": -0.5384615384615384,
+    "mean": -0.17073170731707318
+   },
+   "incomplete_pairs": 15,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "A",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "E",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 41,
+   "difference": {
+    "clusters": 7,
+    "high": 0.42105263157894735,
+    "items": 41,
+    "low": 0.022727272727272728,
+    "mean": 0.17073170731707318
+   },
+   "incomplete_pairs": 15,
+   "repetitions": [
+    0
+   ]
+  },
+  {
+   "baseline": "A",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-precision-2026-10-02",
+   "candidate": "EJ",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 41,
+   "difference": {
+    "clusters": 7,
+    "high": 0.3333333333333333,
+    "items": 41,
+    "low": -0.3783783783783784,
+    "mean": 0.0
+   },
+   "incomplete_pairs": 15,
+   "repetitions": [
+    0
+   ]
+  }
+ ],
+ "pooled_identical_arms": [],
+ "runs": [
+  {
+   "arm": "A",
+   "arm_signals": {
+    "dispatched_attempts": 41,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 41,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.7317073170731705,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 15,
+    "completed": 41,
+    "turn-failed": 0
+   },
+   "campaign": "eng-precision-2026-10-02",
+   "clarifications": 1,
+   "conclusive": 41,
+   "cost": {
+    "attempts": 41,
+    "inconclusive_usd": 0.0,
+    "successes": 31,
+    "unknown_usage_attempts": 0,
+    "usd": 0.025363,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.000619,
+    "usd_per_successful_task": 0.000818
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 15,
+   "latency_seconds": {
+    "active_p50": 6.685429656878114,
+    "active_p95": 10.919387830421329,
+    "wall_p95": 10.92540687136352
+   },
+   "mean_rounds": 1.4821428571428572,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 9,
+    "passed_completed": 41,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 7,
+    "high": 1.0,
+    "items": 41,
+    "low": 0.47058823529411764,
+    "mean": 0.7560975609756098
+   },
+   "pass^3": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 12,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "answer": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 0.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 0.5
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.42857142857142855
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 14,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 4,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "en": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.5,
+      "mean": 0.8333333333333334
+     },
+     "es": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "fr": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "ja": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 3,
+      "low": 0.0,
+      "mean": 0.3333333333333333
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.2,
+      "mean": 0.6
+     },
+     "zh": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 2,
+      "high": 0.5,
+      "items": 11,
+      "low": 0.42857142857142855,
+      "mean": 0.45454545454545453
+     },
+     "2": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 23,
+      "low": 0.3333333333333333,
+      "mean": 0.8260869565217391
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 6,
+      "high": 0.9473684210526315,
+      "items": 35,
+      "low": 0.4,
+      "mean": 0.7142857142857143
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 6,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 6,
+      "high": 0.9411764705882353,
+      "items": 13,
+      "low": 0.4,
+      "mean": 0.7692307692307693
+     },
+     "4": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 13,
+      "low": 0.4666666666666667,
+      "mean": 0.7692307692307693
+     },
+     "needed": {
+      "clusters": 7,
+      "high": 0.9444444444444444,
+      "items": 15,
+      "low": 0.42857142857142855,
+      "mean": 0.7333333333333333
+     }
+    }
+   },
+   "success": {
+    "clusters": 7,
+    "high": 0.9545454545454546,
+    "items": 41,
+    "low": 0.4782608695652174,
+    "mean": 0.7560975609756098
+   },
+   "successes": 31,
+   "usage": {
+    "brain_operations": 124,
+    "cache_read_tokens": 396331,
+    "cache_write_tokens": 183664,
+    "failed_calls": 0,
+    "fresh_input_tokens": 378,
+    "input_tokens": 580373,
+    "model_calls": 126,
+    "output_tokens": 5991,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "B",
+   "arm_signals": {
+    "dispatched_attempts": 41,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 41,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.7317073170731705,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 15,
+    "completed": 41,
+    "turn-failed": 0
+   },
+   "campaign": "eng-precision-2026-10-02",
+   "clarifications": 1,
+   "conclusive": 41,
+   "cost": {
+    "attempts": 41,
+    "inconclusive_usd": 0.0,
+    "successes": 24,
+    "unknown_usage_attempts": 0,
+    "usd": 0.016182,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.000395,
+    "usd_per_successful_task": 0.000674
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 15,
+   "latency_seconds": {
+    "active_p50": 6.024476014077663,
+    "active_p95": 10.473642233759165,
+    "wall_p95": 10.47796961478889
+   },
+   "mean_rounds": 1.3214285714285714,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 27,
+    "passed_completed": 30,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 7,
+    "high": 0.8666666666666667,
+    "items": 41,
+    "low": 0.2647058823529412,
+    "mean": 0.5853658536585366
+   },
+   "pass^3": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 12,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "answer": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 0.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 0.75
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.8571428571428571
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 0.42857142857142855,
+      "items": 14,
+      "low": 0.0,
+      "mean": 0.21428571428571427
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 4,
+      "low": 0.25,
+      "mean": 0.75
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "en": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 6,
+      "low": 0.16666666666666666,
+      "mean": 0.5
+     },
+     "es": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 6,
+      "low": 0.16666666666666666,
+      "mean": 0.5
+     },
+     "fr": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "ja": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 3,
+      "low": 0.0,
+      "mean": 0.6666666666666666
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 0.8,
+      "items": 5,
+      "low": 0.0,
+      "mean": 0.4
+     },
+     "zh": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 6,
+      "low": 0.16666666666666666,
+      "mean": 0.5
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 2,
+      "high": 0.8571428571428571,
+      "items": 11,
+      "low": 0.75,
+      "mean": 0.8181818181818182
+     },
+     "2": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 23,
+      "low": 0.15789473684210525,
+      "mean": 0.6521739130434783
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 6,
+      "high": 0.8275862068965517,
+      "items": 35,
+      "low": 0.1875,
+      "mean": 0.5142857142857142
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 6,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 6,
+      "high": 0.7857142857142857,
+      "items": 13,
+      "low": 0.09090909090909091,
+      "mean": 0.46153846153846156
+     },
+     "4": {
+      "clusters": 7,
+      "high": 0.9411764705882353,
+      "items": 13,
+      "low": 0.25,
+      "mean": 0.6923076923076923
+     },
+     "needed": {
+      "clusters": 7,
+      "high": 0.9375,
+      "items": 15,
+      "low": 0.25,
+      "mean": 0.6
+     }
+    }
+   },
+   "success": {
+    "clusters": 7,
+    "high": 0.8666666666666667,
+    "items": 41,
+    "low": 0.27906976744186046,
+    "mean": 0.5853658536585366
+   },
+   "successes": 24,
+   "usage": {
+    "brain_operations": 115,
+    "cache_read_tokens": 522663,
+    "cache_write_tokens": 81832,
+    "failed_calls": 0,
+    "fresh_input_tokens": 351,
+    "input_tokens": 604846,
+    "model_calls": 117,
+    "output_tokens": 5474,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "C",
+   "arm_signals": {
+    "dispatched_attempts": 42,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 42,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.619047619047619,
+    "refusals": 9,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 14,
+    "completed": 42,
+    "turn-failed": 0
+   },
+   "campaign": "eng-precision-2026-10-02",
+   "clarifications": 3,
+   "conclusive": 42,
+   "cost": {
+    "attempts": 42,
+    "inconclusive_usd": 0.0,
+    "successes": 25,
+    "unknown_usage_attempts": 0,
+    "usd": 0.017123,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.000408,
+    "usd_per_successful_task": 0.000685
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 14,
+   "latency_seconds": {
+    "active_p50": 6.124687073752284,
+    "active_p95": 9.717623630538583,
+    "wall_p95": 9.721728628501296
+   },
+   "mean_rounds": 1.3214285714285714,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 22,
+    "passed_completed": 32,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 7,
+    "high": 0.8947368421052632,
+    "items": 42,
+    "low": 0.2826086956521739,
+    "mean": 0.5952380952380952
+   },
+   "pass^3": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 13,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "answer": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 0.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 1.0
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.42857142857142855
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 0.7142857142857143,
+      "items": 14,
+      "low": 0.0,
+      "mean": 0.35714285714285715
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 4,
+      "low": 0.0,
+      "mean": 0.5
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "en": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 6,
+      "low": 0.16666666666666666,
+      "mean": 0.5
+     },
+     "es": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 6,
+      "low": 0.16666666666666666,
+      "mean": 0.5
+     },
+     "fr": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "ja": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 4,
+      "low": 0.0,
+      "mean": 0.5
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.2,
+      "mean": 0.6
+     },
+     "zh": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 11,
+      "low": 0.42857142857142855,
+      "mean": 0.6363636363636364
+     },
+     "2": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.3333333333333333,
+      "mean": 0.75
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 35,
+      "low": 0.1875,
+      "mean": 0.5142857142857142
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 6,
+      "high": 0.9333333333333333,
+      "items": 13,
+      "low": 0.21428571428571427,
+      "mean": 0.6153846153846154
+     },
+     "4": {
+      "clusters": 7,
+      "high": 0.9,
+      "items": 13,
+      "low": 0.25,
+      "mean": 0.6153846153846154
+     },
+     "needed": {
+      "clusters": 7,
+      "high": 0.8823529411764706,
+      "items": 16,
+      "low": 0.16666666666666666,
+      "mean": 0.5625
+     }
+    }
+   },
+   "success": {
+    "clusters": 7,
+    "high": 0.8974358974358975,
+    "items": 42,
+    "low": 0.2653061224489796,
+    "mean": 0.5952380952380952
+   },
+   "successes": 25,
+   "usage": {
+    "brain_operations": 116,
+    "cache_read_tokens": 490946,
+    "cache_write_tokens": 87377,
+    "failed_calls": 0,
+    "fresh_input_tokens": 351,
+    "input_tokens": 578674,
+    "model_calls": 117,
+    "output_tokens": 6882,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "D",
+   "arm_signals": {
+    "dispatched_attempts": 43,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 43,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 1.1627906976744187,
+    "refusals": 12,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 13,
+    "completed": 43,
+    "turn-failed": 0
+   },
+   "campaign": "eng-precision-2026-10-02",
+   "clarifications": 1,
+   "conclusive": 43,
+   "cost": {
+    "attempts": 43,
+    "inconclusive_usd": 0.0,
+    "successes": 25,
+    "unknown_usage_attempts": 0,
+    "usd": 0.010317,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.00024,
+    "usd_per_successful_task": 0.000413
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 13,
+   "latency_seconds": {
+    "active_p50": 5.6489613354206085,
+    "active_p95": 11.527665572240949,
+    "wall_p95": 11.531801732257009
+   },
+   "mean_rounds": 1.4107142857142858,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 28,
+    "passed_completed": 31,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 7,
+    "high": 0.8974358974358975,
+    "items": 43,
+    "low": 0.2564102564102564,
+    "mean": 0.5813953488372093
+   },
+   "pass^3": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 13,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "answer": {
+      "clusters": 1,
+      "high": null,
+      "items": 5,
+      "low": null,
+      "mean": 0.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 1.0
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.7142857142857143
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 0.42857142857142855,
+      "items": 14,
+      "low": 0.0,
+      "mean": 0.21428571428571427
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.2,
+      "mean": 0.6
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "en": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "es": {
+      "clusters": 6,
+      "high": 0.8333333333333334,
+      "items": 6,
+      "low": 0.16666666666666666,
+      "mean": 0.5
+     },
+     "fr": {
+      "clusters": 6,
+      "high": 0.6666666666666666,
+      "items": 6,
+      "low": 0.0,
+      "mean": 0.3333333333333333
+     },
+     "ja": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 4,
+      "low": 0.0,
+      "mean": 0.5
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.2,
+      "mean": 0.6
+     },
+     "zh": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 11,
+      "low": 0.7142857142857143,
+      "mean": 0.8181818181818182
+     },
+     "2": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 25,
+      "low": 0.25,
+      "mean": 0.64
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 6,
+      "high": 0.8181818181818182,
+      "items": 36,
+      "low": 0.17647058823529413,
+      "mean": 0.5
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 6,
+      "high": 0.8125,
+      "items": 13,
+      "low": 0.15384615384615385,
+      "mean": 0.46153846153846156
+     },
+     "4": {
+      "clusters": 7,
+      "high": 0.9375,
+      "items": 14,
+      "low": 0.21428571428571427,
+      "mean": 0.6428571428571429
+     },
+     "needed": {
+      "clusters": 7,
+      "high": 0.9375,
+      "items": 16,
+      "low": 0.26666666666666666,
+      "mean": 0.625
+     }
+    }
+   },
+   "success": {
+    "clusters": 7,
+    "high": 0.868421052631579,
+    "items": 43,
+    "low": 0.26666666666666666,
+    "mean": 0.5813953488372093
+   },
+   "successes": 25,
+   "usage": {
+    "brain_operations": 122,
+    "cache_read_tokens": 357261,
+    "cache_write_tokens": 29099,
+    "failed_calls": 0,
+    "fresh_input_tokens": 372,
+    "input_tokens": 386732,
+    "model_calls": 124,
+    "output_tokens": 7594,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "E",
+   "arm_signals": {
+    "dispatched_attempts": 42,
+    "escalated": 21,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.5,
+    "escalation_signals": {
+     "argument-correction": 7,
+     "empty-lookup": 8,
+     "multi-assistant-write": 6
+    },
+    "exposure_attempts": 42,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 1.1428571428571428,
+    "refusals": 7,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 14,
+    "completed": 42,
+    "turn-failed": 0
+   },
+   "campaign": "eng-precision-2026-10-02",
+   "clarifications": 1,
+   "conclusive": 42,
+   "cost": {
+    "attempts": 42,
+    "inconclusive_usd": 0.0,
+    "successes": 39,
+    "unknown_usage_attempts": 0,
+    "usd": 0.256994,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.006119,
+    "usd_per_successful_task": 0.00659
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 14,
+   "latency_seconds": {
+    "active_p50": 8.074536561965942,
+    "active_p95": 16.9180947560817,
+    "wall_p95": 16.923097550868988
+   },
+   "mean_rounds": 1.7678571428571428,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 9,
+    "passed_completed": 42,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 7,
+    "high": 1.0,
+    "items": 42,
+    "low": 0.8292682926829268,
+    "mean": 0.9285714285714286
+   },
+   "pass^3": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 12,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "answer": {
+      "clusters": 1,
+      "high": null,
+      "items": 5,
+      "low": null,
+      "mean": 1.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 0.75
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.7142857142857143
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 14,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "en": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.5,
+      "mean": 0.8333333333333334
+     },
+     "fr": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 3,
+      "low": 0.0,
+      "mean": 0.6666666666666666
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "zh": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 2,
+      "high": 0.75,
+      "items": 11,
+      "low": 0.7142857142857143,
+      "mean": 0.7272727272727273
+     },
+     "2": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 36,
+      "low": 0.8055555555555556,
+      "mean": 0.9166666666666666
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 6,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 13,
+      "low": 0.6666666666666666,
+      "mean": 0.9230769230769231
+     },
+     "4": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 14,
+      "low": 0.8125,
+      "mean": 0.9285714285714286
+     },
+     "needed": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.7857142857142857,
+      "mean": 0.9333333333333333
+     }
+    }
+   },
+   "success": {
+    "clusters": 7,
+    "high": 1.0,
+    "items": 42,
+    "low": 0.8372093023255814,
+    "mean": 0.9285714285714286
+   },
+   "successes": 39,
+   "usage": {
+    "brain_operations": 162,
+    "cache_read_tokens": 626719,
+    "cache_write_tokens": 74419,
+    "failed_calls": 0,
+    "fresh_input_tokens": 473,
+    "input_tokens": 701611,
+    "model_calls": 168,
+    "output_tokens": 11797,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "EJ",
+   "arm_signals": {
+    "dispatched_attempts": 42,
+    "escalated": 25,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.5952380952380952,
+    "escalation_signals": {
+     "jev:ambiguous": 10,
+     "jev:compound-or-sensitive-write": 12,
+     "jev:simple-write": 3
+    },
+    "exposure_attempts": 42,
+    "jev_calls": 42,
+    "jev_failures": 0,
+    "jev_usd": 0.001111,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 1.1428571428571428,
+    "refusals": 8,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 14,
+    "completed": 42,
+    "turn-failed": 0
+   },
+   "campaign": "eng-precision-2026-10-02",
+   "clarifications": 3,
+   "conclusive": 42,
+   "cost": {
+    "attempts": 42,
+    "inconclusive_usd": 0.0,
+    "successes": 31,
+    "unknown_usage_attempts": 0,
+    "usd": 0.218502,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.005202,
+    "usd_per_successful_task": 0.007048
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 14,
+   "latency_seconds": {
+    "active_p50": 5.93575325421989,
+    "active_p95": 10.130041090771556,
+    "wall_p95": 10.13467832095921
+   },
+   "mean_rounds": 1.375,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 15,
+    "passed_completed": 36,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 7,
+    "high": 1.0,
+    "items": 42,
+    "low": 0.43902439024390244,
+    "mean": 0.7380952380952381
+   },
+   "pass^3": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 12,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "answer": {
+      "clusters": 1,
+      "high": null,
+      "items": 5,
+      "low": null,
+      "mean": 0.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 4,
+      "low": null,
+      "mean": 1.0
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 1.0
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 14,
+      "low": 0.14285714285714285,
+      "mean": 0.5714285714285714
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.2,
+      "mean": 0.6
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "en": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "es": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.3333333333333333,
+      "mean": 0.6666666666666666
+     },
+     "fr": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.5,
+      "mean": 0.8333333333333334
+     },
+     "ja": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 3,
+      "low": 0.0,
+      "mean": 0.6666666666666666
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 5,
+      "low": 0.4,
+      "mean": 0.8
+     },
+     "zh": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 6,
+      "low": 0.5,
+      "mean": 0.8333333333333334
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 11,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "2": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.2857142857142857,
+      "mean": 0.7916666666666666
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 7,
+      "low": null,
+      "mean": 0.14285714285714285
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 36,
+      "low": 0.34375,
+      "mean": 0.6944444444444444
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 6,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 6,
+      "high": 1.0,
+      "items": 13,
+      "low": 0.25,
+      "mean": 0.6923076923076923
+     },
+     "4": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 14,
+      "low": 0.4166666666666667,
+      "mean": 0.7857142857142857
+     },
+     "needed": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.42857142857142855,
+      "mean": 0.7333333333333333
+     }
+    }
+   },
+   "success": {
+    "clusters": 7,
+    "high": 1.0,
+    "items": 42,
+    "low": 0.3877551020408163,
+    "mean": 0.7380952380952381
+   },
+   "successes": 31,
+   "usage": {
+    "brain_operations": 119,
+    "cache_read_tokens": 477899,
+    "cache_write_tokens": 38111,
+    "failed_calls": 0,
+    "fresh_input_tokens": 347,
+    "input_tokens": 516357,
+    "model_calls": 120,
+    "output_tokens": 11107,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  }
+ ],
+ "schema": "shimpz.precision-eval.report/v1",
+ "split": {
+  "digests": [
+   "sha256:dfffbd92f62c9ea5715b51b84c7cb1e02f6b1a2abb8db8fb4c2c8f49960a84df",
+   "sha256:2aa96f56ce9d9418710f0e1d5f287b4922eecb5c69a45e7edd204d31e693ac1f"
+  ],
+  "part": "tuning",
+  "templates": [
+   "cf-dns-txt",
+   "cf-r2-bucket",
+   "cf-traffic-question",
+   "cf-update-a",
+   "cf-worker-route",
+   "dns-create",
+   "dns-delete",
+   "dns-question",
+   "meeting-message",
+   "message-clarify",
+   "task-bulk-complete",
+   "task-create"
+  ]
+ }
+}

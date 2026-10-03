@@ -1,0 +1,1267 @@
+{
+ "corpus": {
+  "digest": "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab",
+  "id": "precision-v2.1",
+  "scenarios": 120
+ },
+ "decision": {
+  "grade": "exploratory",
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "reasons": [
+   "no-blind-owner-labels",
+   "labelled-exploratory"
+  ]
+ },
+ "judge_calibration": {
+  "adjudication": "author",
+  "blind": false,
+  "judge_budget": {
+   "cap_usd": 0.35,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.153054,
+   "unknown_settlements": 0
+  },
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "primary": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 29,
+    "rate": 0.90625,
+    "wilson95": [
+     0.7578,
+     0.9676
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   }
+  },
+  "tiebreak": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   }
+  }
+ },
+ "judges": {
+  "final_unsupported_claims": 7,
+  "judged_attempts": 633,
+  "tiebreak_changed_reply_correct": 2,
+  "tiebreaks": 17,
+  "verdict_identities": [
+   "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7"
+  ]
+ },
+ "meta": {
+  "arms": [
+   "L1",
+   "L4",
+   "L5-tasks",
+   "LJ-tasks"
+  ],
+  "baseline_arm": "L1",
+  "budget": {
+   "cap_usd": 2.5,
+   "contention_waits": 0,
+   "failed": 0,
+   "max_output_tokens": 32000,
+   "max_reservation_usd": 0.445057,
+   "refused": 0,
+   "requests": 1389,
+   "reservations_exceeded": 0,
+   "spent_usd": 1.290878,
+   "unknown_settlements": 0,
+   "unreported": 0,
+   "unsupported": 0
+  },
+  "campaign": "eng-large-select-2026-10-02",
+  "commits": {
+   "brain": "7588013a3d14b72f83c09d177d086774fb199e65",
+   "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+   "umbrella": "15ecab8452cb81dc31c8c15c5712c364397dc21b"
+  },
+  "comparisons": [
+   [
+    "L1",
+    "L4"
+   ],
+   [
+    "L4",
+    "L5-tasks"
+   ],
+   [
+    "L4",
+    "LJ-tasks"
+   ],
+   [
+    "L1",
+    "L5-tasks"
+   ],
+   [
+    "L1",
+    "LJ-tasks"
+   ]
+  ],
+  "held_out_repetitions": 3,
+  "jev_budget": {
+   "cap_usd": 0.05,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.004219,
+   "unknown_settlements": 0
+  },
+  "label": "exploratory",
+  "max_output_tokens": 32000,
+  "namespaces_budget": null,
+  "reference_repetitions": 1,
+  "sdk_retries": 0,
+  "seconds": 723.0,
+  "seed": "023d6e9426833c09",
+  "stopped_by_cap": false,
+  "stratum": "large-api",
+  "tuning_repetitions": 1,
+  "workers": 6
+ },
+ "paired": [
+  {
+   "baseline": "L1",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-large-select-2026-10-02",
+   "candidate": "L4",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 120,
+   "difference": {
+    "clusters": 5,
+    "high": 0.03333333333333333,
+    "items": 120,
+    "low": -0.041666666666666664,
+    "mean": 0.0
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "baseline": "L4",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-large-select-2026-10-02",
+   "candidate": "L5-tasks",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 120,
+   "difference": {
+    "clusters": 5,
+    "high": 0.10833333333333334,
+    "items": 120,
+    "low": 0.0,
+    "mean": 0.041666666666666664
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "baseline": "L4",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-large-select-2026-10-02",
+   "candidate": "LJ-tasks",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 120,
+   "difference": {
+    "clusters": 5,
+    "high": 0.10833333333333334,
+    "items": 120,
+    "low": 0.0,
+    "mean": 0.041666666666666664
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "baseline": "L1",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-large-select-2026-10-02",
+   "candidate": "L5-tasks",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 120,
+   "difference": {
+    "clusters": 5,
+    "high": 0.075,
+    "items": 120,
+    "low": 0.008333333333333333,
+    "mean": 0.041666666666666664
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "baseline": "L1",
+   "baseline_model": "gpt-6-luna",
+   "baseline_provider": "openai",
+   "campaign": "eng-large-select-2026-10-02",
+   "candidate": "LJ-tasks",
+   "candidate_model": "gpt-6-luna",
+   "candidate_provider": "openai",
+   "complete_pairs": 120,
+   "difference": {
+    "clusters": 5,
+    "high": 0.075,
+    "items": 120,
+    "low": 0.008333333333333333,
+    "mean": 0.041666666666666664
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  }
+ ],
+ "pooled_identical_arms": [],
+ "runs": [
+  {
+   "arm": "L1",
+   "arm_signals": {
+    "dispatched_attempts": 120,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 120,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.55,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 120,
+    "turn-failed": 0
+   },
+   "campaign": "eng-large-select-2026-10-02",
+   "clarifications": 15,
+   "conclusive": 120,
+   "cost": {
+    "attempts": 120,
+    "inconclusive_usd": 0,
+    "successes": 115,
+    "unknown_usage_attempts": 0,
+    "usd": 0.090806,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.000757,
+    "usd_per_successful_task": 0.00079
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 10.039476426318288,
+    "active_p95": 13.07489157654345,
+    "wall_p95": 13.082817742601037
+   },
+   "mean_rounds": 1.6583333333333334,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 3,
+    "passed_completed": 117,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 5,
+    "high": 0.9916666666666666,
+    "items": 40,
+    "low": 0.925,
+    "mean": 0.9583333333333334
+   },
+   "pass^3": {
+    "clusters": 5,
+    "high": 0.975,
+    "items": 40,
+    "low": 0.775,
+    "mean": 0.875
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 96,
+      "low": 0.9375,
+      "mean": 0.96875
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.9166666666666666
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.8,
+      "mean": 0.9333333333333333
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.8,
+      "mean": 0.9333333333333333
+     },
+     "en": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "fr": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.8,
+      "mean": 0.9333333333333333
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.8,
+      "mean": 0.9333333333333333
+     },
+     "zh": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.8,
+      "mean": 0.9333333333333333
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.9166666666666666
+     },
+     "2": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 0.9166666666666666,
+      "mean": 0.9583333333333334
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 5,
+      "high": 0.9916666666666667,
+      "items": 120,
+      "low": 0.925,
+      "mean": 0.9583333333333334
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 36,
+      "low": 0.9090909090909091,
+      "mean": 0.9722222222222222
+     },
+     "4": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 0.9285714285714286,
+      "mean": 0.9761904761904762
+     },
+     "needed": {
+      "clusters": 5,
+      "high": 0.9761904761904762,
+      "items": 42,
+      "low": 0.8888888888888888,
+      "mean": 0.9285714285714286
+     }
+    }
+   },
+   "success": {
+    "clusters": 5,
+    "high": 0.9916666666666667,
+    "items": 120,
+    "low": 0.925,
+    "mean": 0.9583333333333334
+   },
+   "successes": 115,
+   "usage": {
+    "brain_operations": 319,
+    "cache_read_tokens": 5055220,
+    "cache_write_tokens": 326242,
+    "failed_calls": 0,
+    "fresh_input_tokens": 978,
+    "input_tokens": 5382440,
+    "model_calls": 326,
+    "output_tokens": 15064,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "L4",
+   "arm_signals": {
+    "dispatched_attempts": 120,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 120,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.55,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 119,
+    "turn-failed": 1
+   },
+   "campaign": "eng-large-select-2026-10-02",
+   "clarifications": 22,
+   "conclusive": 120,
+   "cost": {
+    "attempts": 120,
+    "inconclusive_usd": 0,
+    "successes": 115,
+    "unknown_usage_attempts": 0,
+    "usd": 0.022658,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.000189,
+    "usd_per_successful_task": 0.000197
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 4.954501545056701,
+    "active_p95": 8.533485202118754,
+    "wall_p95": 8.536852227523923
+   },
+   "mean_rounds": 0.8083333333333333,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 1,
+    "passed_completed": 119,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 40,
+    "low": 0.8916666666666666,
+    "mean": 0.9583333333333334
+   },
+   "pass^3": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 40,
+    "low": 0.825,
+    "mean": 0.925
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 96,
+      "low": 0.96875,
+      "mean": 0.9895833333333334
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.8333333333333334
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "en": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "fr": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.5333333333333333,
+      "mean": 0.8
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "zh": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 0.6,
+      "mean": 0.8666666666666667
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.8333333333333334
+     },
+     "2": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 0.9583333333333334,
+      "mean": 0.9861111111111112
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 120,
+      "low": 0.8916666666666667,
+      "mean": 0.9583333333333334
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 36,
+      "low": 0.7878787878787878,
+      "mean": 0.9166666666666666
+     },
+     "4": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 0.8571428571428571,
+      "mean": 0.9523809523809523
+     },
+     "needed": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    }
+   },
+   "success": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 120,
+    "low": 0.8916666666666667,
+    "mean": 0.9583333333333334
+   },
+   "successes": 115,
+   "usage": {
+    "brain_operations": 217,
+    "cache_read_tokens": 1374623,
+    "cache_write_tokens": 37331,
+    "failed_calls": 0,
+    "fresh_input_tokens": 657,
+    "input_tokens": 1412611,
+    "model_calls": 219,
+    "output_tokens": 10226,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "L5-tasks",
+   "arm_signals": {
+    "dispatched_attempts": 120,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 120,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.55,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 120,
+    "turn-failed": 0
+   },
+   "campaign": "eng-large-select-2026-10-02",
+   "clarifications": 24,
+   "conclusive": 120,
+   "cost": {
+    "attempts": 120,
+    "inconclusive_usd": 0,
+    "successes": 120,
+    "unknown_usage_attempts": 0,
+    "usd": 0.024384,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.000203,
+    "usd_per_successful_task": 0.000203
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 5.068938259035349,
+    "active_p95": 7.29255236685276,
+    "wall_p95": 7.295188874006271
+   },
+   "mean_rounds": 0.8,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 0,
+    "passed_completed": 120,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 40,
+    "low": 1.0,
+    "mean": 1.0
+   },
+   "pass^3": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 40,
+    "low": 1.0,
+    "mean": 1.0
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 96,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "en": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "fr": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "zh": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "2": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 120,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 36,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "needed": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    }
+   },
+   "success": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 120,
+    "low": 1.0,
+    "mean": 1.0
+   },
+   "successes": 120,
+   "usage": {
+    "brain_operations": 216,
+    "cache_read_tokens": 1341806,
+    "cache_write_tokens": 59748,
+    "failed_calls": 0,
+    "fresh_input_tokens": 648,
+    "input_tokens": 1402202,
+    "model_calls": 216,
+    "output_tokens": 9852,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "LJ-tasks",
+   "arm_signals": {
+    "dispatched_attempts": 120,
+    "escalated": 68,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.5666666666666667,
+    "escalation_signals": {
+     "jev:ambiguous": 16,
+     "jev:compound-or-sensitive-write": 32,
+     "jev:simple-write": 20
+    },
+    "exposure_attempts": 120,
+    "jev_calls": 120,
+    "jev_failures": 0,
+    "jev_usd": 0.00316,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.55,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 120,
+    "turn-failed": 0
+   },
+   "campaign": "eng-large-select-2026-10-02",
+   "clarifications": 1,
+   "conclusive": 120,
+   "cost": {
+    "attempts": 120,
+    "inconclusive_usd": 0,
+    "successes": 120,
+    "unknown_usage_attempts": 0,
+    "usd": 1.017137,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.008476,
+    "usd_per_successful_task": 0.008476
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 5.371880514547229,
+    "active_p95": 8.479798179119825,
+    "wall_p95": 8.48361817188561
+   },
+   "mean_rounds": 0.9916666666666667,
+   "model": "gpt-6-luna",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 0,
+    "passed_completed": 120,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 40,
+    "low": 1.0,
+    "mean": 1.0
+   },
+   "pass^3": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 40,
+    "low": 1.0,
+    "mean": 1.0
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 4,
+      "high": 1.0,
+      "items": 96,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "en": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "fr": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "pt": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "zh": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 15,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "2": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "3": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 120,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 36,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "needed": {
+      "clusters": 5,
+      "high": 1.0,
+      "items": 42,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    }
+   },
+   "success": {
+    "clusters": 5,
+    "high": 1.0,
+    "items": 120,
+    "low": 1.0,
+    "mean": 1.0
+   },
+   "successes": 120,
+   "usage": {
+    "brain_operations": 239,
+    "cache_read_tokens": 2398720,
+    "cache_write_tokens": 218727,
+    "failed_calls": 0,
+    "fresh_input_tokens": 762,
+    "input_tokens": 2618209,
+    "model_calls": 261,
+    "output_tokens": 22930,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  }
+ ],
+ "schema": "shimpz.precision-eval.report/v1",
+ "split": {
+  "digests": [
+   "sha256:dfffbd92f62c9ea5715b51b84c7cb1e02f6b1a2abb8db8fb4c2c8f49960a84df",
+   "sha256:2aa96f56ce9d9418710f0e1d5f287b4922eecb5c69a45e7edd204d31e693ac1f"
+  ],
+  "part": "held-out",
+  "templates": [
+   "cf-block-ip",
+   "cf-bucket-clarify",
+   "cf-devmode-purge",
+   "cf-purge-url",
+   "cf-ssl-strict",
+   "dns-bulk",
+   "dns-clarify",
+   "dns-update",
+   "event-create",
+   "message-direct",
+   "out-of-scope",
+   "status-migrate",
+   "task-complete"
+  ]
+ }
+}
