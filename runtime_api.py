@@ -18,12 +18,14 @@ from typing import Annotated, Any, Literal, Self
 import action_labels
 import action_purpose
 import agent_runtime
+import attachments as turn_attachments
 import capability_plan
 import intent_route
 import interface_language
 import memory as team_memory
 import model_usage
 import provider_cancel
+import routine_recovery
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
@@ -109,6 +111,9 @@ class ActionInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     summary: str = Field(min_length=1, max_length=2_000)
     input_schema: dict[str, Any]
+    # Whether the Action declares an authorization capability, and which input properties take a file (ADR-0093).
+    authorization: StrictBool
+    input_files: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(max_length=1)
 
 
 class AssistantInput(ClosedInput):
@@ -130,6 +135,8 @@ class TurnContextInput(ClosedInput):
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
+    # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
+    attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -142,21 +149,7 @@ class TurnContextInput(ClosedInput):
         return agent_runtime.TurnContext(
             thread_id=self.thread_id,
             team_name=self.team_name,
-            assistants=tuple(
-                agent_runtime.AssistantDefinition(
-                    id=assistant.id,
-                    genesis=assistant.genesis,
-                    actions=tuple(
-                        agent_runtime.ActionDefinition(
-                            id=action.id,
-                            summary=action.summary,
-                            input_schema=action.input_schema,
-                        )
-                        for action in assistant.actions
-                    ),
-                )
-                for assistant in self.assistants
-            ),
+            assistants=_assistants(self.assistants),
             provider=agent_runtime.ProviderConfig(
                 provider=self.provider.provider,
                 model=self.provider.model,
@@ -167,7 +160,35 @@ class TurnContextInput(ClosedInput):
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
             knowledge_writable=self.knowledge_writable,
+            attachments=_attachments(self.attachments),
         )
+
+
+def _assistants(value: list[AssistantInput]) -> tuple[agent_runtime.AssistantDefinition, ...]:
+    return tuple(
+        agent_runtime.AssistantDefinition(
+            id=assistant.id,
+            genesis=assistant.genesis,
+            actions=tuple(
+                agent_runtime.ActionDefinition(
+                    id=action.id,
+                    summary=action.summary,
+                    input_schema=action.input_schema,
+                    authorization=action.authorization,
+                    input_files=tuple(action.input_files),
+                )
+                for action in assistant.actions
+            ),
+        )
+        for assistant in value
+    )
+
+
+def _attachments(value: list[dict[str, Any]]) -> tuple[turn_attachments.Attachment, ...]:
+    try:
+        return turn_attachments.admit(value)
+    except turn_attachments.AttachmentContractError as exc:
+        raise agent_runtime.RuntimeContractError("invalid attachments") from exc
 
 
 def _memories(value: list[dict[str, Any]] | None) -> tuple[team_memory.Memory, ...] | None:
@@ -260,6 +281,68 @@ class ActionLabelsInput(ClosedInput):
             set(value)
         ) != len(value):
             raise ValueError("invalid Action label ids")
+        return value
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+
+class RoutineInput(ClosedInput):
+    name: str = Field(min_length=1, max_length=80)
+    request: str = Field(min_length=1, max_length=500)
+
+
+class RoutineStepInput(ClosedInput):
+    assistant: str = Field(min_length=1, max_length=128)
+    action: str = Field(min_length=1, max_length=128)
+
+
+class RoutineRecoveryInput(ClosedInput):
+    """A held run's failed step, Team's proof that it had no effect, and its sanitized diagnostics as data."""
+
+    provider: ProviderInput
+    locale: interface_language.Locale | None
+    routine: RoutineInput
+    step: RoutineStepInput
+    proof: Literal["not_occurred", "no_effect"]
+    diagnostics: list[dict[str, Any]] = Field(max_length=routine_recovery.MAX_DIAGNOSTICS)
+
+    def runtime_provider(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(
+            provider=self.provider.provider,
+            model=self.provider.model,
+            api_key=self.provider.api_key.get_secret_value(),
+        )
+
+    def runtime_request(self) -> routine_recovery.RecoveryRequest:
+        return routine_recovery.RecoveryRequest(
+            self.routine.name,
+            self.routine.request,
+            self.step.assistant,
+            self.step.action,
+            self.proof,
+            tuple(self.diagnostics),
+            self.locale,
+        )
+
+
+class RoutineCompileInput(ClosedInput):
+    """A Team-held Routine creation message and the Team's current Assistant contracts, compiled from scratch."""
+
+    provider: ProviderInput
+    locale: interface_language.Locale | None
+    message: str = Field(min_length=1, max_length=team_routine.MAX_SOURCE_CHARS)
+    assistants: list[AssistantInput] = Field(min_length=1, max_length=agent_runtime.MAX_ASSISTANTS)
+
+    @field_validator("assistants")
+    @classmethod
+    def unique_assistants(cls, value: list[AssistantInput]) -> list[AssistantInput]:
+        if len({assistant.id for assistant in value}) != len(value):
+            raise ValueError("duplicate Assistant id")
         return value
 
     def runtime_provider(self) -> agent_runtime.ProviderConfig:
@@ -408,6 +491,18 @@ class RuntimeLike:
         objective: str,
         candidates: tuple[capability_plan.CapabilityCandidate, ...],
     ) -> capability_plan.CapabilityPlan: ...
+
+    def routine_recovery(
+        self, provider: agent_runtime.ProviderConfig, request: routine_recovery.RecoveryRequest
+    ) -> str: ...
+
+    def routine_compile(
+        self,
+        provider: agent_runtime.ProviderConfig,
+        message: str,
+        assistants: tuple[agent_runtime.AssistantDefinition, ...],
+        locale: str | None,
+    ) -> object: ...
 
     def intent_route(
         self,
@@ -596,7 +691,7 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
         "reply": result.reply,
         "clarification": None if result.clarification is None else result.clarification.to_dict(),
         "memory": [change.to_dict() for change in result.memory],
-        "routine": None if result.routine is None else result.routine.to_dict(),
+        "routine": result.routine,
         "actions": [
             {
                 "interrupt_id": request.interrupt_id,
@@ -688,6 +783,48 @@ async def _validation_error_response(_request: Request, exc: RequestValidationEr
 
 async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
+
+
+def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth) -> None:
+    """The one model decision of a held Routine run's automatic recovery, with no tools or history (ADR-0092)."""
+
+    @app.post("/v1/routine-recovery", dependencies=[Depends(require_auth)])
+    async def routine_recovery_decision(request: Request, body: RoutineRecoveryInput) -> dict[str, object]:
+        # Team's Stop or recovery deadline closes its request; that cancels only this decision's provider I/O.
+        decision, usage = await _cancellable(
+            request,
+            lambda: current_runtime().routine_recovery(body.runtime_provider(), body.runtime_request()),
+            "Routine recovery cancelled",
+        )
+        return {"decision": decision, "usage": usage}
+
+
+def _compiled_response(outcome: object) -> dict[str, object]:
+    """One closed compile answer: the wire change, reply, and any question, or the closed refusal reason."""
+    if isinstance(outcome, dict):
+        return {
+            "routine": outcome["routine"],
+            "reply": outcome["reply"],
+            "clarification": outcome.get("clarification"),
+            "refusal": None,
+        }
+    return {"routine": None, "reply": None, "clarification": None, "refusal": outcome}
+
+
+def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth) -> None:
+    """A Routine compiled from scratch from its Team-held creation message, outside any turn (ADR-0092)."""
+
+    @app.post("/v1/routine-compile", dependencies=[Depends(require_auth)])
+    async def routine_compile(request: Request, body: RoutineCompileInput) -> dict[str, object]:
+        # Team's Stop or deletion closes its request; that cancels only this compile's provider I/O.
+        outcome, usage = await _cancellable(
+            request,
+            lambda: current_runtime().routine_compile(
+                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale
+            ),
+            "Routine compile cancelled",
+        )
+        return {**_compiled_response(outcome), "usage": usage}
 
 
 def _register_intent_route(
@@ -836,6 +973,8 @@ def create_app(
         )
 
     _register_intent_route(app, current_runtime, require_auth)
+    _register_routine_recovery(app, current_runtime, require_auth)
+    _register_routine_compile(app, current_runtime, require_auth)
 
     return app
 

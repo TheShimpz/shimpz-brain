@@ -25,6 +25,7 @@ import action_labels
 import action_purpose
 import action_schema
 import action_tool
+import attachments as turn_attachments
 import capability_plan as capability_planner
 import clarification as clarifier
 import context_budget
@@ -33,12 +34,14 @@ import intent_fast_path
 import intent_route as intent_router
 import memory as team_memory
 import provider_cancel
+import routine_recovery
 import turn_pins
 import turn_prompt
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from pydantic import SecretStr
-from structured_response import structured_output
+from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
+from structured import structured_output
 
 import routine as team_routine
 
@@ -76,22 +79,6 @@ DECISION_MAX_RETRIES = 1
 CHAT_EFFORTS = frozenset({"low", "medium", "high"})
 
 
-class RuntimeContractError(ValueError):
-    """Trusted orchestration input or persisted output violated the closed contract."""
-
-
-class ProviderRequestError(RuntimeError):
-    """A provider call failed without exposing provider response or credential material."""
-
-
-class ProviderResponseError(ProviderRequestError):
-    """A provider response violated a closed runtime contract without exposing its content."""
-
-
-class RuntimeStateError(RuntimeError):
-    """A checkpoint operation failed without exposing persisted conversation data."""
-
-
 def normalize_team_name(value: str) -> str:
     """Return bounded display data while rejecting control-character injection."""
     if not isinstance(value, str) or TEAM_NAME_CONTROL_RE.search(value):
@@ -125,10 +112,22 @@ class ActionDefinition:
     id: str
     summary: str
     input_schema: Mapping[str, Any]
+    # Whether the Action declares an authorization capability; only such Actions are offered while attachment content
+    # is in the turn (ADR-0093).
+    authorization: bool = False
+    # The input properties that take one attached file's id (ADR-0093).
+    input_files: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if ACTION_ID_RE.fullmatch(self.id) is None:
             raise RuntimeContractError("invalid Action id")
+        properties = self.input_schema.get("properties")
+        if (
+            type(self.authorization) is not bool
+            or len(self.input_files) > 1
+            or not all(isinstance(properties, Mapping) and name in properties for name in self.input_files)
+        ):
+            raise RuntimeContractError("invalid Action file or authorization declaration")
         if not self.summary.strip() or len(self.summary) > 2_000:
             raise RuntimeContractError("invalid Action summary")
         if self.input_schema.get("type") != "object":
@@ -207,30 +206,23 @@ class TurnContext:
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
     turn_message_id: str | None = None
+    # The message's prepared files (ADR-0093): request-local content that Team resends for every resume, and the token
+    # charge each provider call of the turn carries for them, counted once at the start.
+    attachments: tuple[turn_attachments.Attachment, ...] = ()
+    attachment_charge: int = 0
 
     def __post_init__(self) -> None:
         if type(self.turn_date) is not datetime.date:
             raise RuntimeContractError("invalid turn date")
         if not turn_pins.valid_turn(self.locale, self.turn_message_id, started=False):
             raise RuntimeContractError("invalid turn language or message")
-        if self.memories is not None:
-            try:
-                team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in self.memories])
-            except (AttributeError, TypeError, team_memory.MemoryContractError) as exc:
-                raise RuntimeContractError("invalid memory") from exc
-            object.__setattr__(self, "memories", tuple(self.memories))
-        if self.skills is not None:
-            try:
-                object.__setattr__(self, "skills", team_memory.canonical_skills(self.skills))
-            except team_memory.MemoryContractError as exc:
-                raise RuntimeContractError("invalid skills") from exc
-        if self.routines is not None:
-            try:
-                object.__setattr__(self, "routines", team_routine.canonical_routines(self.routines))
-            except team_routine.RoutineContractError as exc:
-                raise RuntimeContractError("invalid routines") from exc
-        if type(self.knowledge_writable) is not bool:
-            raise RuntimeContractError("invalid knowledge scope")
+        _admit_knowledge(self)
+        if (
+            not all(isinstance(item, turn_attachments.Attachment) for item in self.attachments)
+            or type(self.attachment_charge) is not int
+            or self.attachment_charge < 0
+        ):
+            raise RuntimeContractError("invalid attachments")
         if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
@@ -240,6 +232,28 @@ class TurnContext:
         if len(assistant_ids) != len(set(assistant_ids)):
             raise RuntimeContractError("duplicate Assistant id")
         object.__setattr__(self, "assistants", tuple(sorted(self.assistants, key=lambda item: item.id)))
+
+
+def _admit_knowledge(context: TurnContext) -> None:
+    """Canonicalize the turn's memories, skills, and Routines in place, refusing any that is invalid."""
+    if context.memories is not None:
+        try:
+            team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in context.memories])
+        except (AttributeError, TypeError, team_memory.MemoryContractError) as exc:
+            raise RuntimeContractError("invalid memory") from exc
+        object.__setattr__(context, "memories", tuple(context.memories))
+    if context.skills is not None:
+        try:
+            object.__setattr__(context, "skills", team_memory.canonical_skills(context.skills))
+        except team_memory.MemoryContractError as exc:
+            raise RuntimeContractError("invalid skills") from exc
+    if context.routines is not None:
+        try:
+            object.__setattr__(context, "routines", team_routine.canonical_routines(context.routines))
+        except team_routine.RoutineContractError as exc:
+            raise RuntimeContractError("invalid routines") from exc
+    if type(context.knowledge_writable) is not bool:
+        raise RuntimeContractError("invalid knowledge scope")
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,8 +272,8 @@ class TurnResult:
     clarification: clarifier.Clarification | None = None
     # The memory changes this completed logical turn proposed; the Team saves them when its reply commits.
     memory: tuple[team_memory.Change, ...] = ()
-    # The one Routine change it proposed and an independent check confirmed; the Team asks a human to confirm it.
-    routine: team_routine.Change | None = None
+    # The one Routine change its isolated compiler produced (ADR-0092); Team admits and commits it with the reply.
+    routine: dict[str, object] | None = None
 
 
 class Checkpointer(Protocol):
@@ -280,6 +294,7 @@ def provider_model(
     *,
     http_client: httpx.Client | None = None,
     decision: bool = False,
+    retries: int | None = None,
 ) -> BaseChatModel:
     """Create one direct provider client; the API key is never put in graph state."""
     secret = SecretStr(config.api_key)
@@ -287,12 +302,14 @@ def provider_model(
         "model": config.model,
         "api_key": secret,
         "timeout": DECISION_TIMEOUT_SECONDS if decision else 60.0,
-        "max_retries": DECISION_MAX_RETRIES if decision else 2,
+        "max_retries": retries if retries is not None else DECISION_MAX_RETRIES if decision else 2,
     }
     if config.provider == "openai":
         from langchain_openai import ChatOpenAI
 
-        openai = {**common, "use_responses_api": True}
+        # The owner keeps no conversation on OpenAI's side: every Responses call is unstored, and reasoning is carried
+        # between tool calls as encrypted content the adapter replays.
+        openai = {**common, "use_responses_api": True, "store": False, "include": ["reasoning.encrypted_content"]}
         if decision:
             openai["reasoning_effort"] = "low"
         elif config.effort is not None:
@@ -339,6 +356,10 @@ class ProviderModelFactory:
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
         return provider_model(config, http_client=self._http_client)
 
+    def single_attempt(self, config: ProviderConfig) -> BaseChatModel:
+        """A chat model without hidden SDK retries, for a turn whose retries reserve attachment budget (ADR-0093)."""
+        return provider_model(config, http_client=self._http_client, retries=0)
+
     def decision(self, config: ProviderConfig) -> BaseChatModel:
         """Build a short model with at most one retry for one structured routing decision."""
         return provider_model(config, http_client=self._http_client, decision=True)
@@ -349,8 +370,33 @@ class ProviderModelFactory:
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
     """Whether this turn offers the memory and the Routine tool; a Routine run's knowledge is read-only."""
-    writable = context.knowledge_writable
+    # A turn that carries attachments learns nothing and changes no Routine (ADR-0093).
+    writable = context.knowledge_writable and not context.attachments
     return writable and context.memories is not None, writable and context.routines is not None
+
+
+def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnContext:
+    """A resumed turn's context with exactly the pins its start recorded."""
+    try:
+        turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
+        locale, turn_message_id = turn_pins.restore_turn(metadata)
+        commitment, charge = turn_pins.restore_attachments(metadata)
+    except turn_pins.PinError as exc:
+        raise RuntimeStateError("checkpoint state is invalid") from exc
+    if commitment != turn_attachments.commitment(context.attachments):
+        # Team rehydrates the exact files the turn started with; anything else ends the turn explicitly (ADR-0093).
+        raise RuntimeContractError("attachments changed during the pending turn")
+    return replace(
+        context,
+        turn_date=turn_date,
+        memories=rules,
+        skills=skills,
+        routines=routines,
+        knowledge_writable=writable,
+        locale=locale,
+        turn_message_id=turn_message_id,
+        attachment_charge=charge,
+    )
 
 
 def _tool_name(assistant_id: str, action_id: str) -> str:
@@ -372,6 +418,8 @@ def _assistant_scope(context: TurnContext) -> str:
                     "id": action.id,
                     "summary": action.summary,
                     "input_schema": action.input_schema,
+                    "authorization": action.authorization,
+                    "input_files": list(action.input_files),
                 }
                 for action in sorted(assistant.actions, key=lambda item: item.id)
             ],
@@ -591,6 +639,9 @@ class AgentRuntime:
                     context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
                 ),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
+                **turn_pins.record_attachments(
+                    turn_attachments.commitment(context.attachments), context.attachment_charge
+                ),
             },
             "recursion_limit": DEFAULT_RECURSION_LIMIT,
         }
@@ -598,10 +649,17 @@ class AgentRuntime:
     def _agent(self, context: TurnContext, *, clarification_allowed: bool):
         from langchain.agents import create_agent
 
-        model = self._model_factory(context.provider)
+        # An attachment turn retries explicitly, reserving its charge per attempt, so its model makes no hidden retry.
+        single = getattr(self._model_factory, "single_attempt", None)
+        model = (
+            single(context.provider)
+            if context.attachments and callable(single)
+            else self._model_factory(context.provider)
+        )
+        exposed = turn_attachments.exposed(context.assistants, context.attachments)
         tools = [
             action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)
-            for assistant in context.assistants
+            for assistant in exposed
             for action in assistant.actions
         ]
         tools.append(clarifier.tool())
@@ -615,14 +673,15 @@ class AgentRuntime:
         return create_agent(
             model=model,
             tools=tools,
-            system_prompt=turn_prompt.system_prompt(context),
+            system_prompt=turn_prompt.system_prompt(replace(context, assistants=exposed)),
             checkpointer=self._checkpointer,
             middleware=[
                 *_prompt_caching(context.provider),
+                *turn_attachments.middleware(context.attachments, context.turn_message_id, context.attachment_charge),
                 clarifier.guard(allowed=clarification_allowed),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
                 *(
-                    [team_routine.guard(context.routines, self._routine_check(context), allowed=clarification_allowed)]
+                    [team_routine.guard(context, self._routine_compiler(context), allowed=clarification_allowed)]
                     if routine_tool
                     else []
                 ),
@@ -696,29 +755,14 @@ class AgentRuntime:
         messages = channel_values.get("messages", ())
         if not isinstance(messages, Sequence):
             raise RuntimeStateError("checkpoint state is invalid")
-        if resume:
-            try:
-                turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
-                locale, turn_message_id = turn_pins.restore_turn(metadata)
-            except turn_pins.PinError as exc:
-                raise RuntimeStateError("checkpoint state is invalid") from exc
-            context = replace(
-                context,
-                turn_date=turn_date,
-                memories=rules,
-                skills=skills,
-                routines=routines,
-                knowledge_writable=writable,
-                locale=locale,
-                turn_message_id=turn_message_id,
-            )
-        return context, tuple(messages)
+        return (_restored(context, metadata) if resume else context), tuple(messages)
 
     @staticmethod
     def _fixed_tokens(context: TurnContext) -> int:
+        exposed = turn_attachments.exposed(context.assistants, context.attachments)
         tools = [
             {"name": _tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
-            for assistant in context.assistants
+            for assistant in exposed
             for action in assistant.actions
         ]
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
@@ -726,7 +770,9 @@ class AgentRuntime:
         for included, module in ((memory_tool, team_memory), (routine_tool, team_routine)):
             if included:
                 tools.append({"name": module.TOOL_NAME, "summary": module.DESCRIPTION, "schema": module.SCHEMA})
-        return context_budget.fixed_tokens(turn_prompt.system_prompt(context), tools)
+        prompt = turn_prompt.system_prompt(replace(context, assistants=exposed))
+        # Every provider call of an attachment turn carries the attachments, so their charge is fixed context too.
+        return context_budget.fixed_tokens(prompt, tools) + context.attachment_charge
 
     def _fit_history(
         self,
@@ -744,7 +790,9 @@ class AgentRuntime:
         """
         fixed = self._fixed_tokens(context)
         try:
-            drop = context_budget.history_to_drop(history, fixed, context_budget.message_tokens(turn))
+            drop = context_budget.history_to_drop(
+                history, fixed, context_budget.message_tokens(turn), turn_attachments.read
+            )
             bridge = _conversation_bridge(conversation) if len(drop) == len(history) and conversation else ()
             if bridge:
                 context_budget.ensure_window(
@@ -763,6 +811,16 @@ class AgentRuntime:
                 raise RuntimeStateError("checkpoint trimming failed") from exc
             self._prune_history(context.thread_id)
         return bridge
+
+    def _attachment_charge(self, context: TurnContext) -> int:
+        """Count the attachments once per logical turn with the provider, bounded, and admit their token charge."""
+        if not context.attachments:
+            return 0
+        counter = turn_attachments.provider_counter(self._model_factory(context.provider), context.provider.provider)
+        try:
+            return turn_attachments.admit_charges(turn_attachments.charges(context.attachments, counter))
+        except turn_attachments.AttachmentContractError as exc:
+            raise RuntimeContractError(str(exc)) from exc
 
     def _ensure_resume_window(self, context: TurnContext, history: tuple[object, ...], results: Mapping) -> None:
         """Refuse a resumed call whose Action results would overflow the smallest model window."""
@@ -798,18 +856,28 @@ class AgentRuntime:
             lambda: self._model_factory(context.provider), context.provider.provider, structured_output
         )
 
-    def _routine_check(self, context: TurnContext):
-        return team_routine.checker(
+    def _routine_compiler(self, context: TurnContext):
+        return team_routine.compiler(
             lambda: self._model_factory(context.provider), context.provider.provider, structured_output
         )
 
+    def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
+        """End the turn on a compiled Routine change or question, remembering exactly the reply the user is shown."""
+        finished = None if state.get("__interrupt__") else team_routine.compiled(list(state.get("messages", ())))
+        if finished is None:
+            return None
+        reply, change, asked = finished
+        try:
+            agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})
+        except Exception as exc:
+            raise RuntimeStateError("checkpoint update failed") from exc
+        question = None if asked is None else clarifier.parse(asked)
+        return TurnResult(status="completed", reply=reply, routine=change, clarification=question)
+
     def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
-        """Attach a completed turn's independently confirmed memory and Routine changes."""
+        """Attach a completed turn's independently confirmed memory changes."""
         known = team_memory.describe(context.memories, context.skills)
-        result = team_memory.attach(result, state, self._memory_check(context), known)
-        if not _knowledge_tools(context)[1]:
-            return result
-        return team_routine.attach(result, state, context.routines)
+        return team_memory.attach(result, state, self._memory_check(context), known)
 
     def action_labels(
         self,
@@ -834,6 +902,17 @@ class AgentRuntime:
             raise RuntimeStateError("checkpoint read failed") from exc
         request = action_purpose.pending_request(checkpoint, pending)
         return action_purpose.create(functools.partial(self._decision_model, provider), provider.provider, request)
+
+    def routine_recovery(self, provider: ProviderConfig, request: routine_recovery.RecoveryRequest) -> str:
+        """The one decision of a held Routine run's automatic recovery: retry, ask, or pause (ADR-0092)."""
+        return routine_recovery.decide(functools.partial(self._decision_model, provider), provider.provider, request)
+
+    def routine_compile(
+        self, provider: ProviderConfig, message: str, assistants: tuple[AssistantDefinition, ...], locale: str | None
+    ) -> object:
+        """Recompile a Routine from its Team-held creation message, with no turn, tools, or history (ADR-0092)."""
+        ask = team_routine.recompiler(lambda: self._model_factory(provider), provider.provider, structured_output)
+        return team_routine.recompile(message, assistants, locale, ask)
 
     def capability_plan(
         self,
@@ -903,22 +982,28 @@ class AgentRuntime:
             window = intent_router.admit_conversation(conversation)
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError("invalid conversation window") from exc
-        turn_id = f"shimpz-turn-{secrets.token_hex(16)}"
+        prefix = turn_attachments.ATTACHED_TURN_PREFIX if context.attachments else "shimpz-turn-"
+        turn_id = f"{prefix}{secrets.token_hex(16)}"
         context = replace(context, turn_message_id=turn_id)
         lock = self._thread_lock(context.thread_id)
         try:
             with lock:
                 context, history = self._prepare_scope(context, resume=False)
                 self._prune_history(context.thread_id)
+                context = replace(context, attachment_charge=self._attachment_charge(context))
                 agent = self._agent(context, clarification_allowed=True)
                 turn = HumanMessage(content=message, id=turn_id)
                 bridge = self._fit_history(agent, context, history, turn, window)
                 state = agent.invoke({"messages": [*bridge, turn]}, config=self._config(context))
-                result = self._finish_clarification(agent, context, state) or self._settle(
-                    agent, context, state, after_message_id=turn_id
+                result = (
+                    self._finish_clarification(agent, context, state)
+                    or self._finish_routine(agent, context, state)
+                    or self._settle(agent, context, state, after_message_id=turn_id)
                 )
         except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
             raise
+        except turn_attachments.AttachmentContractError as exc:
+            raise RuntimeContractError(str(exc)) from exc
         except clarifier.UnanswerableToolCallError as exc:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:
@@ -942,6 +1027,8 @@ class AgentRuntime:
                 result = self._settle(agent, context, state, message_offset=message_offset)
         except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
             raise
+        except turn_attachments.AttachmentContractError as exc:
+            raise RuntimeContractError(str(exc)) from exc
         except clarifier.UnanswerableToolCallError as exc:
             raise RuntimeContractError("the model returned an unparsable tool call") from exc
         except Exception as exc:

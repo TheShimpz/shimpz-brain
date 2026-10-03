@@ -395,7 +395,7 @@ def checker(
     The raw response passes the closed structured-response validator, so a refusal, a duplicate key, or a reply that
     disagrees with the adapter's parse is CheckUnavailableError like any other failure.
     """
-    from structured_response import structured_value
+    from structured import structured_value
 
     def ask(prompt: str) -> Confirmation:
         try:

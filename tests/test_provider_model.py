@@ -113,8 +113,11 @@ class ProviderModelTests(unittest.TestCase):
             )
 
         self.assertTrue(openai.call_args.kwargs["use_responses_api"])
-        self.assertNotIn("use_responses_api", anthropic.call_args.kwargs)
-        self.assertEqual(set(openai.call_args.kwargs) - {"use_responses_api"}, set(anthropic.call_args.kwargs))
+        self.assertIs(openai.call_args.kwargs["store"], False)
+        self.assertEqual(openai.call_args.kwargs["include"], ["reasoning.encrypted_content"])
+        openai_only = {"use_responses_api", "store", "include"}
+        self.assertFalse(openai_only & set(anthropic.call_args.kwargs))
+        self.assertEqual(set(openai.call_args.kwargs) - openai_only, set(anthropic.call_args.kwargs))
 
     def test_decision_models_use_provider_specific_low_effort_with_one_retry(self):
         with (

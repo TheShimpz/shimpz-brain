@@ -41,6 +41,8 @@ def body(**updates):
                             "properties": {"name": {"type": "string"}},
                             "additionalProperties": False,
                         },
+                        "authorization": False,
+                        "input_files": [],
                     }
                 ],
             },
@@ -56,6 +58,8 @@ def body(**updates):
                             "properties": {"name": {"type": "string"}},
                             "additionalProperties": False,
                         },
+                        "authorization": False,
+                        "input_files": [],
                     }
                 ],
             },
@@ -65,6 +69,7 @@ def body(**updates):
         "skills": [],
         "routines": [],
         "knowledge_writable": True,
+        "attachments": [],
         "message": "Hello",
         "conversation": [],
         "locale": "pt",
@@ -114,6 +119,12 @@ class FakeRuntime:
             "install-required",
             ("shimpz-cloudflare", "shimpz-whatsapp"),
         )
+
+    def routine_recovery(self, provider, request):
+        self.calls.append(("routine_recovery", provider, request))
+        if self.error:
+            raise self.error
+        return "retry"
 
     def action_purpose(self, provider, pending):
         self.calls.append(("action_purpose", provider, pending))

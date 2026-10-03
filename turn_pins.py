@@ -22,7 +22,10 @@ ROUTINES_METADATA = "shimpz_turn_routines"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
 MESSAGE_METADATA = "shimpz_turn_message"
-TURN_MESSAGE_RE = re.compile(r"shimpz-turn-[0-9a-f]{32}\Z")
+ATTACHMENTS_METADATA = "shimpz_turn_attachments"
+# An ordinary turn's message id, or an attachment turn's, which the next new turn forgets whole (ADR-0093).
+TURN_MESSAGE_RE = re.compile(r"shimpz-(?:turn|attached)-[0-9a-f]{32}\Z")
+_COMMITMENT_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class PinError(ValueError):
@@ -111,6 +114,36 @@ def restore_turn(metadata: Mapping[str, object]) -> tuple[str | None, str]:
     if not valid_turn(locale, message_id) or _json(locale) != locale_value or _json(message_id) != message_value:
         raise PinError("recorded turn pins are invalid")
     return locale, message_id
+
+
+def record_attachments(commitment: str, charge: int) -> dict[str, str]:
+    """The checkpoint entry binding a turn to its exact prepared attachments and their counted token charge.
+
+    It records only a digest and an integer: the content itself never enters checkpoint state.
+    """
+    return {ATTACHMENTS_METADATA: _json({"commitment": commitment, "charge": charge})}
+
+
+def restore_attachments(metadata: Mapping[str, object]) -> tuple[str, int]:
+    """The exact attachment commitment and charge a start recorded; anything else is corrupt state."""
+    value = metadata.get(ATTACHMENTS_METADATA)
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        decoded = json.loads(value)
+    except ValueError as exc:
+        raise PinError("recorded turn pins are invalid") from exc
+    if (
+        not isinstance(decoded, dict)
+        or set(decoded) != {"commitment", "charge"}
+        or not isinstance(decoded["commitment"], str)
+        or _COMMITMENT_RE.fullmatch(decoded["commitment"]) is None
+        or type(decoded["charge"]) is not int
+        or decoded["charge"] < 0
+        or _json(decoded) != value
+    ):
+        raise PinError("recorded turn pins are invalid")
+    return decoded["commitment"], decoded["charge"]
 
 
 def valid_turn(locale: object, message_id: object, *, started: bool = True) -> bool:

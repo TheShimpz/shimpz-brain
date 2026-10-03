@@ -228,6 +228,45 @@ class CancellableTransportTests(unittest.TestCase):
         self.assertFalse(proxied._trust_env)
 
 
+class NestedScopeTests(unittest.TestCase):
+    def test_the_turn_reaches_a_nested_scope_and_leaving_it_cancels_only_the_nested_work(self):
+        turn = provider_cancel.CancelScope()
+
+        def work() -> tuple[bool, bool]:
+            with provider_cancel.nested() as counting:
+                self.assertFalse(counting.cancelled)
+                turn.cancel()
+                reached = counting.cancelled
+            return reached, counting.cancelled
+
+        self.assertEqual(turn.run(work), (True, True))
+        self.assertEqual(turn._children, set())
+
+        other = provider_cancel.CancelScope()
+        with provider_cancel.nested() as standalone:
+            pass
+        self.assertTrue(standalone.cancelled)
+
+        def leave() -> provider_cancel.CancelScope:
+            with provider_cancel.nested() as counting:
+                return counting
+
+        self.assertTrue(other.run(leave).cancelled)
+        self.assertFalse(other.cancelled)
+        self.assertEqual(other._children, set())
+
+    def test_a_nested_scope_opened_after_stop_is_already_cancelled(self):
+        turn = provider_cancel.CancelScope()
+        turn.cancel()
+
+        def work() -> bool:
+            with provider_cancel.nested() as counting:
+                return counting.cancelled
+
+        self.assertTrue(turn.run(work))
+        self.assertEqual(turn._children, set())
+
+
 class _SocketStream(httpcore.NetworkStream):
     """A network stream over one end of a socket pair, blocking like a real provider socket."""
 
@@ -373,7 +412,9 @@ class RuntimeCancellationTests(unittest.TestCase):
             sqlite3.connect(path).execute("PRAGMA integrity_check").fetchone()
 
 
-async def _asgi_turn(app, payload: dict[str, object], *, disconnect: asyncio.Event | None) -> dict[str, Any]:
+async def _asgi_turn(
+    app, payload: dict[str, object], *, disconnect: asyncio.Event | None, path: str = "/v1/turns"
+) -> dict[str, Any]:
     raw = json.dumps(payload).encode()
     # A trailing empty body message reaches only the disconnect watcher, which must keep waiting.
     messages = [
@@ -397,8 +438,8 @@ async def _asgi_turn(app, payload: dict[str, object], *, disconnect: asyncio.Eve
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
-        "path": "/v1/turns",
-        "raw_path": b"/v1/turns",
+        "path": path,
+        "raw_path": path.encode(),
         "query_string": b"",
         "root_path": "",
         "headers": [
@@ -449,6 +490,42 @@ class DisconnectTests(unittest.TestCase):
         self.assertEqual(cancelled, {"status": 409, "body": {"detail": "Chat turn cancelled"}})
         self.assertEqual(following["status"], 200)
         self.assertEqual(following["body"]["reply"], "Next turn.")
+
+
+class _BlockingRecovery:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+
+    def routine_recovery(self, _provider, _request):
+        self.entered.set()
+        scope = provider_cancel._SCOPE.get()
+        while not scope.cancelled:
+            time.sleep(0.01)
+        raise provider_cancel.ProviderCallCancelled
+
+
+class RecoveryDisconnectTests(unittest.TestCase):
+    def test_a_team_disconnect_cancels_a_blocked_recovery_decision_never_a_failure(self):
+        runtime = _BlockingRecovery()
+        app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
+        payload = {
+            "provider": {"provider": "openai", "model": "gpt-6-luna", "api_key": "secret-test-key"},
+            "locale": "pt",
+            "routine": {"name": "Daily DNS", "request": "Check DNS daily"},
+            "step": {"assistant": "dns", "action": "create-record"},
+            "proof": "not_occurred",
+            "diagnostics": [],
+        }
+
+        async def scenario():
+            disconnect = asyncio.Event()
+            decision = asyncio.create_task(_asgi_turn(app, payload, disconnect=disconnect, path="/v1/routine-recovery"))
+            self.assertTrue(await asyncio.to_thread(runtime.entered.wait, 5))
+            disconnect.set()
+            return await asyncio.wait_for(decision, 5)
+
+        # The blocked provider call stops with the request and answers as cancelled, not as a provider failure.
+        self.assertEqual(asyncio.run(scenario()), {"status": 409, "body": {"detail": "Routine recovery cancelled"}})
 
 
 class PooledAnthropicTests(unittest.TestCase):

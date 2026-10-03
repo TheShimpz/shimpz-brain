@@ -84,7 +84,7 @@ class ActionLabelsOutput(BaseModel):
 
 
 def _parse_action_labels(result: object, action_ids: tuple[str, ...]) -> tuple[ActionLabel, ...]:
-    from structured_response import structured_value
+    from structured import structured_value
 
     parsed = structured_value(result, ActionLabelsOutput, "Action label", MAX_ACTION_LABEL_RESPONSE_CHARS)
     labels = _action_label_items([item.model_dump() for item in parsed.labels], frozenset(action_ids))
@@ -95,13 +95,9 @@ def create(
     model: Callable[[], BaseChatModel], provider: str, locale: str, action_ids: tuple[str, ...]
 ) -> tuple[ActionLabel, ...]:
     """Create inert labels without conversation state, tools, or execution authority."""
-    from agent_runtime import (
-        ACTION_ID_RE,
-        ProviderRequestError,
-        ProviderResponseError,
-        RuntimeContractError,
-    )
-    from structured_response import structured_output
+    from agent_runtime import ACTION_ID_RE
+    from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
+    from structured import structured_output
 
     if not interface_language.valid(locale):
         raise RuntimeContractError("invalid interface language")

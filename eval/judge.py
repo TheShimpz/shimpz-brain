@@ -142,7 +142,7 @@ class JudgeError(RuntimeError):
 
 
 def judge(model: BaseChatModel, provider: str, item: Item) -> Verdict:
-    from structured_response import structured_output, structured_value
+    from structured import structured_output, structured_value
 
     try:
         result = structured_output(model, provider, Verdict).invoke(prompt(item))

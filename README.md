@@ -25,6 +25,19 @@ All POST endpoints require the private bearer mounted read-only at
 `/var/lib/shimpz-brain-runtime/checkpoints.sqlite3`. Provider API keys are operation-scoped request
 inputs: they are excluded from checkpoint state, responses, and logs.
 
+Start and resume both carry the message's prepared `attachments` (ADR-0093): bounded text, re-encoded JPEG or PNG
+images, or opaque markers that Team prepared from the selected files. They reach the model only in a request-local
+copy of each provider call, as native content after the turn's message (OpenAI `input_image` data URLs, Anthropic
+base64 image sources, and text blocks); graph state, checkpoints, and the persisted `{files, message}` envelope never
+contain them. The start counts each attachment once with the provider's counting endpoint, one attempt each within one
+8-second deadline. Without a count, text is charged one token per UTF-8 byte, which no pinned byte-level tokenizer
+exceeds, and an image refuses the turn. It admits 8,000 tokens per file, 16,000 per call, and 64,000 per logical turn,
+reserving the charge before every provider attempt: an attachment turn's model makes no hidden SDK retry, and its
+explicit retries record their attempts on the persisted reply. It records only a digest and that charge; a resume must
+carry the identical attachments. While any text or image is attached, only
+Actions that declare an authorization capability are offered, memory and Routine tools are withheld, and the next new
+turn forgets the whole attachment exchange.
+
 Before each start or resume, the runtime prunes that thread to its newest self-contained checkpoint
 and pending writes in each LangGraph namespace. The controller owns the only resumable
 human-interaction state and expires its authority to resume within 900 seconds. The newest suspended

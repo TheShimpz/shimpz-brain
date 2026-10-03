@@ -1,7 +1,7 @@
-"""Provider-free checks for the Routine proposal evaluation harness.
+"""Provider-free checks for the direct Routine creation evaluation harness.
 
-A scripted fake model proves the scorer's proposal, schedule, quote, and reply proxies; it says nothing about how a
-real model behaves.
+A scripted fake model and compiler prove the scorer's change, schedule, Action, and reply proxies; they say nothing
+about how a real model behaves.
 """
 
 from __future__ import annotations
@@ -39,15 +39,28 @@ def _runtime(*responses: AIMessage) -> agent_runtime.AgentRuntime:
     return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
 
 
-def _proposal(quote: str, schedule: dict[str, object]) -> AIMessage:
-    call = {"name": routine.TOOL_NAME, "args": {"op": "propose", "quote": quote, "schedule": schedule}, "id": "r1"}
-    return AIMessage(content="", tool_calls=[{**call, "type": "tool_call"}])
+def _created() -> AIMessage:
+    call = {"name": routine.TOOL_NAME, "args": {"op": "create"}, "id": "r1", "type": "tool_call"}
+    return AIMessage(content="", tool_calls=[call])
 
 
-def _confirming(names_work: bool = True):
-    verdict = routine.Confirmation(explicit=True, names_work=names_work, schedule_matches=True, secret_free=True)
+def _compiling(schedule: dict[str, object], action: str = "list-zones"):
+    fields = dict.fromkeys(("every", "time", "weekday", "day", "gap", "cap")) | {
+        key: value for key, value in schedule.items() if key != "kind"
+    }
+    answer = routine.Compiled(
+        decision="compiled",
+        refusal=None,
+        name="Zonas",
+        request="Todo dia às 9h, liste minhas zonas DNS",
+        schedule=routine.Schedule(kind=schedule["kind"], **fields),
+        timezone=None,
+        steps=[routine.Step(id="zones", assistant="dns", action=action, inputs=[])],
+        question=None,
+        reply="Pronto.",
+    )
     return mock.patch.object(
-        agent_runtime.AgentRuntime, "_routine_check", lambda _self, _context: lambda _prompt: verdict
+        agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: answer
     )
 
 
@@ -55,46 +68,19 @@ class RoutineEvalTests(unittest.TestCase):
     def test_corpus_is_valid_and_covers_both_directions(self):
         routines.validate_corpus()
         self.assertTrue(any(case.expected is None for case in routines.CASES))
-        self.assertTrue(any(case.expected and case.expected["op"] == "cancel" for case in routines.CASES))
+        self.assertTrue(any(case.expected and case.expected["op"] == "update" for case in routines.CASES))
 
-    def test_an_exact_proposal_with_an_honest_reply_passes(self):
+    def test_an_exact_change_passes_and_a_wrong_schedule_or_action_misses(self):
         case = _case("daily-pt")
-        runtime = _runtime(
-            _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
-            AIMessage(content="Propus a rotina; ela só será agendada quando você confirmar."),
-        )
-        with _confirming():
-            self.assertTrue(routines.run_case(runtime, PROVIDER, case, 0))
+        daily = {"kind": "daily", "time": "09:00"}
+        with _compiling(daily):
+            self.assertTrue(routines.run_case(_runtime(_created()), PROVIDER, case, 0))
+        for schedule, action in (({"kind": "daily", "time": "10:00"}, "list-zones"), (daily, "create-record")):
+            with self.subTest(schedule=schedule, action=action), _compiling(schedule, action):
+                self.assertFalse(routines.run_case(_runtime(_created()), PROVIDER, case, 0))
+        self.assertFalse(routines.run_case(_runtime(AIMessage(content="Posso ajudar.")), PROVIDER, case, 0))
 
-    def test_a_wrong_schedule_a_foreign_quote_or_a_scheduled_claim_misses(self):
-        case = _case("daily-pt")
-        for responses in (
-            (_proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "10:00"}), "Ok."),
-            (_proposal("Todo dia, liste minhas zonas", {"kind": "daily", "time": "09:00"}), "Ok."),
-            (
-                _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
-                "Já está agendada.",
-            ),
-            (
-                _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
-                "It is scheduled for 09:00.",
-            ),
-            ("Posso ajudar com isso.",),
-        ):
-            with self.subTest(responses=responses), _confirming():
-                messages = [item if isinstance(item, AIMessage) else AIMessage(content=item) for item in responses]
-                self.assertFalse(routines.run_case(_runtime(*messages), PROVIDER, case, 0))
-
-    def test_saying_nothing_is_scheduled_yet_is_not_a_scheduled_claim(self):
-        case = _case("daily-pt")
-        runtime = _runtime(
-            _proposal("Todo dia às 9h, liste minhas zonas DNS", {"kind": "daily", "time": "09:00"}),
-            AIMessage(content="Proposed a daily listing at 09:00. Nothing is scheduled yet—confirm the Routine below."),
-        )
-        with _confirming():
-            self.assertTrue(routines.run_case(runtime, PROVIDER, case, 0))
-
-    def test_a_negative_case_passes_only_without_a_proposal_or_a_claim_of_one(self):
+    def test_a_negative_case_passes_only_without_a_change_or_a_claim_of_one(self):
         case = _case("one-off-pt")
         list_zones = {
             "name": agent_runtime._tool_name("dns", "list-zones"),
@@ -106,18 +92,7 @@ class RoutineEvalTests(unittest.TestCase):
             AIMessage(content="", tool_calls=[list_zones]), AIMessage(content="Suas zonas estão listadas.")
         )
         self.assertTrue(routines.run_case(runtime, PROVIDER, case, 0))
-        self.assertFalse(
-            routines.run_case(_runtime(AIMessage(content="Propus uma rotina para isso.")), PROVIDER, case, 1)
-        )
-
-    def test_a_time_only_quote_is_refused_before_it_is_proposed(self):
-        case = _case("secret-en")
-        runtime = _runtime(
-            _proposal("Every day at 9", {"kind": "daily", "time": "09:00"}),
-            AIMessage(content="Nothing was scheduled. Tell me the work without the password."),
-        )
-        with _confirming(names_work=False):
-            self.assertTrue(routines.run_case(runtime, PROVIDER, case, 0))
+        self.assertFalse(routines.run_case(_runtime(AIMessage(content="Rotina criada para isso.")), PROVIDER, case, 1))
 
     def test_evaluate_counts_attempts_and_a_provider_failure_is_a_miss(self):
         runtime = mock.Mock()

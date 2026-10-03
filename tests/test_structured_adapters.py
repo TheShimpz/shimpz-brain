@@ -12,7 +12,7 @@ from unittest import mock
 import action_labels
 import agent_runtime
 import capability_plan
-import structured_response
+import structured
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage
@@ -103,12 +103,11 @@ class SchemaTests(unittest.TestCase):
     def test_binding_and_raw_text_helpers_fail_closed(self):
         model = mock.Mock()
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model provider"):
-            structured_response.structured_output(model, "gemini", capability_plan.StructuredPlan)
+            structured.structured_output(model, "gemini", capability_plan.StructuredPlan)
         model.with_structured_output.assert_not_called()
-        self.assertEqual(structured_response._raw_text(object()), "")
+        self.assertEqual(structured._raw_text(object()), "")
         self.assertEqual(
-            structured_response._raw_text([{"type": "reasoning"}, {"type": "text", "text": "{}"}, {"type": "text"}]),
-            "{}",
+            structured._raw_text([{"type": "reasoning"}, {"type": "text", "text": "{}"}, {"type": "text"}]), "{}"
         )
 
 

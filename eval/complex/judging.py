@@ -104,7 +104,7 @@ class TrajectoryJudgeError(RuntimeError):
 
 
 def judge(model, provider: str, trajectory: Trajectory) -> TrajectoryVerdict:
-    from structured_response import structured_output, structured_value
+    from structured import structured_output, structured_value
 
     try:
         result = structured_output(model, provider, TrajectoryVerdict).invoke(prompt(trajectory))
