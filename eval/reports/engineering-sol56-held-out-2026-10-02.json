@@ -1,0 +1,811 @@
+{
+ "completions": [],
+ "corpora": [
+  {
+   "digest": "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab",
+   "id": "precision-v2.1",
+   "scenarios": 120
+  }
+ ],
+ "decision": {
+  "grade": "exploratory",
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "reasons": [
+   "no-blind-owner-labels",
+   "labelled-exploratory"
+  ]
+ },
+ "judge_calibration": {
+  "adjudication": "author",
+  "blind": false,
+  "judge_budget": {
+   "cap_usd": 0.35,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.153054,
+   "unknown_settlements": 0
+  },
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "primary": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 29,
+    "rate": 0.90625,
+    "wilson95": [
+     0.7578,
+     0.9676
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   }
+  },
+  "tiebreak": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   }
+  }
+ },
+ "judges": {
+  "final_unsupported_claims": 3,
+  "judged_attempts": 383,
+  "tiebreak_changed_reply_correct": 14,
+  "tiebreaks": 29,
+  "verdict_identities": [
+   "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7"
+  ]
+ },
+ "meta": {
+  "arms": [
+   "SOL56",
+   "S"
+  ],
+  "baseline_arm": "S",
+  "budget": {
+   "cap_usd": 8.9,
+   "contention_waits": 104,
+   "failed": 0,
+   "max_output_tokens": 32000,
+   "max_reservation_usd": 0.83726,
+   "refused": 0,
+   "requests": 1095,
+   "reservations_exceeded": 0,
+   "spent_usd": 5.995107,
+   "unknown_settlements": 0,
+   "unreported": 0,
+   "unsupported": 0
+  },
+  "campaign": "eng-sol56-precision-2026-10-02",
+  "canary": {
+   "budget": {
+    "cap_usd": 1.2,
+    "contention_waits": 10,
+    "failed": 0,
+    "max_output_tokens": 32000,
+    "max_reservation_usd": 0.752192,
+    "refused": 0,
+    "requests": 12,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.091984,
+    "unknown_settlements": 0,
+    "unreported": 0,
+    "unsupported": 0
+   },
+   "campaign": "canary-sol56",
+   "commits": {
+    "brain": "587a268293b31733bbac38af1cdbe2a2c20e62b7",
+    "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+    "umbrella": "e07503a77802320cff6ffd8b110c8ffc6c415c6f"
+   },
+   "model": "gpt-5.6-sol",
+   "provider": "openai",
+   "repetitions": 1,
+   "scenarios": 4,
+   "seed": "canary-sol56",
+   "workers": 4
+  },
+  "commits": {
+   "brain": "587a268293b31733bbac38af1cdbe2a2c20e62b7",
+   "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+   "umbrella": "e07503a77802320cff6ffd8b110c8ffc6c415c6f"
+  },
+  "comparisons": [
+   [
+    "S",
+    "SOL56"
+   ]
+  ],
+  "held_out_repetitions": 3,
+  "jev_budget": {
+   "cap_usd": 0.0,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.0,
+   "unknown_settlements": 0
+  },
+  "judge_budget": {
+   "cap_usd": 1.0,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.182907,
+   "unknown_settlements": 0
+  },
+  "label": "exploratory",
+  "max_output_tokens": 32000,
+  "namespaces_budget": null,
+  "reference_repetitions": 3,
+  "sdk_retries": 0,
+  "seconds": 455.5,
+  "seed": "bd3c790ea70d581b",
+  "stopped_by_cap": false,
+  "stratum": "precision",
+  "tuning_repetitions": 0,
+  "workers": 6
+ },
+ "paired": [
+  {
+   "baseline": "S",
+   "baseline_model": "claude-sonnet-5-5",
+   "baseline_provider": "anthropic",
+   "campaign": "eng-sol56-precision-2026-10-02",
+   "candidate": "SOL56",
+   "candidate_model": "gpt-5.6-sol",
+   "candidate_provider": "openai",
+   "complete_pairs": 192,
+   "difference": {
+    "clusters": 8,
+    "high": 0.026041666666666668,
+    "items": 192,
+    "low": -0.3802083333333333,
+    "mean": -0.11979166666666667
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  }
+ ],
+ "pooled_identical_arms": [],
+ "runs": [
+  {
+   "arm": "S",
+   "arm_signals": {
+    "dispatched_attempts": 192,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 192,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.765625,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 192,
+    "turn-failed": 0
+   },
+   "campaign": "eng-sol56-precision-2026-10-02",
+   "clarifications": 23,
+   "conclusive": 192,
+   "cost": {
+    "attempts": 192,
+    "inconclusive_usd": 0,
+    "successes": 190,
+    "superseded": {
+     "attempts": 0,
+     "dispatched": 0,
+     "usd": 0,
+     "usd_known": true
+    },
+    "unknown_usage_attempts": 0,
+    "usd": 2.948998,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.015359,
+    "usd_per_successful_task": 0.015521
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 5.427908834069967,
+    "active_p95": 12.491756927222013,
+    "wall_p95": 12.497405400499701
+   },
+   "mean_rounds": 1.8854166666666667,
+   "model": "claude-sonnet-5-5",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 0,
+    "passed_completed": 192,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.96875,
+    "mean": 0.9895833333333334
+   },
+   "pass^3": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.953125,
+    "mean": 0.984375
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "anthropic",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "refuse": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.9166666666666666
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "en": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "fr": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "pt": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "zh": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.75,
+      "mean": 0.9166666666666666
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 0.9166666666666666,
+      "mean": 0.9722222222222222
+     },
+     "2": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "3": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 168,
+      "low": 0.9642857142857143,
+      "mean": 0.9880952380952381
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 60,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 63,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "needed": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 69,
+      "low": 0.9130434782608695,
+      "mean": 0.9710144927536232
+     }
+    }
+   },
+   "success": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 192,
+    "low": 0.96875,
+    "mean": 0.9895833333333334
+   },
+   "successes": 190,
+   "usage": {
+    "brain_operations": 554,
+    "cache_read_tokens": 4094714,
+    "cache_write_tokens": 559483,
+    "failed_calls": 0,
+    "fresh_input_tokens": 1494,
+    "input_tokens": 4655691,
+    "model_calls": 555,
+    "output_tokens": 72836,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "SOL56",
+   "arm_signals": {
+    "dispatched_attempts": 192,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 192,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.765625,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 191,
+    "turn-failed": 1
+   },
+   "campaign": "eng-sol56-precision-2026-10-02",
+   "clarifications": 24,
+   "conclusive": 192,
+   "cost": {
+    "attempts": 192,
+    "inconclusive_usd": 0,
+    "successes": 167,
+    "superseded": {
+     "attempts": 0,
+     "dispatched": 0,
+     "usd": 0,
+     "usd_known": true
+    },
+    "unknown_usage_attempts": 0,
+    "usd": 3.046108,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.015865,
+    "usd_per_successful_task": 0.01824
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 5.8031805995851755,
+    "active_p95": 15.640432422980666,
+    "wall_p95": 15.64897677861154
+   },
+   "mean_rounds": 1.8125,
+   "model": "gpt-5.6-sol",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 27,
+    "passed_completed": 167,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.6197916666666666,
+    "mean": 0.8697916666666666
+   },
+   "pass^3": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.609375,
+    "mean": 0.859375
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 0.9583333333333334,
+      "mean": 0.9861111111111112
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "refuse": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 0.0,
+      "mean": 0.5
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "de": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "en": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.5833333333333334,
+      "mean": 0.8333333333333334
+     },
+     "es": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "fr": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "ja": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "pt": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "zh": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "2": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 0.0,
+      "mean": 0.5
+     },
+     "3": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 0.9583333333333334,
+      "mean": 0.9791666666666666
+     },
+     "4": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 168,
+      "low": 0.5654761904761905,
+      "mean": 0.8511904761904762
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 60,
+      "low": 0.6666666666666666,
+      "mean": 0.9
+     },
+     "4": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 63,
+      "low": 0.5555555555555556,
+      "mean": 0.8412698412698413
+     },
+     "needed": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 69,
+      "low": 0.6086956521739131,
+      "mean": 0.8695652173913043
+     }
+    }
+   },
+   "success": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 192,
+    "low": 0.6145833333333334,
+    "mean": 0.8697916666666666
+   },
+   "successes": 167,
+   "usage": {
+    "brain_operations": 540,
+    "cache_read_tokens": 2153951,
+    "cache_write_tokens": 321522,
+    "failed_calls": 0,
+    "fresh_input_tokens": 1620,
+    "input_tokens": 2477093,
+    "model_calls": 540,
+    "output_tokens": 44598,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  }
+ ],
+ "schema": "shimpz.precision-eval.report/v1",
+ "split": {
+  "digests": [
+   "sha256:dfffbd92f62c9ea5715b51b84c7cb1e02f6b1a2abb8db8fb4c2c8f49960a84df",
+   "sha256:2aa96f56ce9d9418710f0e1d5f287b4922eecb5c69a45e7edd204d31e693ac1f"
+  ],
+  "part": "held-out",
+  "templates": [
+   "cf-block-ip",
+   "cf-bucket-clarify",
+   "cf-devmode-purge",
+   "cf-purge-url",
+   "cf-ssl-strict",
+   "dns-bulk",
+   "dns-clarify",
+   "dns-update",
+   "event-create",
+   "message-direct",
+   "out-of-scope",
+   "status-migrate",
+   "task-complete"
+  ]
+ }
+}
