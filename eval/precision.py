@@ -10,6 +10,7 @@ eval.precision`` then:
 - ``judge`` judges every completed attempt of a transcript under a hard US dollar cap (``--cap``);
 - ``report`` writes the sanitized report: counts, rates with cluster bootstrap intervals, pass^k, paired
   differences, tokens, cost, latency, and judge statistics, never a prompt, reply, key, Action input, or result.
+  ``--completion`` merges a later run of the same campaign that repeated only its budget-stopped attempts.
 
 An attempt succeeds when its Team turn completed, the oracle passed, and the final judge verdict passes. A stopped or
 unjudged attempt is inconclusive and never counted as a failure or a success.
@@ -188,7 +189,23 @@ def _usage(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
     }
 
 
-def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: str) -> dict[str, object]:
+def _superseded(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """The budget-stopped records a completion replaced: a dispatched one was still paid for, apart from the run's."""
+    dispatched = [attempt for attempt in attempts if int(attempt["operations"]) > 0]
+    return {
+        "attempts": len(attempts),
+        "dispatched": len(dispatched),
+        "usd": round(sum(float(attempt["usd"]) for attempt in dispatched), 6),
+        "usd_known": all(bool(attempt["usage_known"]) for attempt in dispatched),
+    }
+
+
+def _group(
+    rows: Sequence[tuple[Mapping[str, object], str]],
+    seed: str,
+    name: str,
+    superseded: Sequence[Mapping[str, object]] = (),
+) -> dict[str, object]:
     attempts = [attempt for attempt, _ in rows]
     conclusive = [(attempt, result) for attempt, result in rows if result != "inconclusive"]
     # Every attempt's oracle counts its writes, a failed turn's included: a write before the failure still happened.
@@ -228,6 +245,8 @@ def _group(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: st
             "inconclusive_usd": round(
                 sum(float(attempt["usd"]) for attempt, result in rows if result == "inconclusive"), 6
             ),
+            # Spent on attempts a completion replaced; never in the per-task figures above, never dropped.
+            "superseded": _superseded(superseded),
         },
         "latency_seconds": {
             "active_p50": eval_stats.percentile(active, 0.5),
@@ -323,6 +342,7 @@ def _paired(
 NUMBER_FIELDS = frozenset(
     {
         "agree",
+        "budget_stopped",
         "calibration_usd",
         "contention_waits",
         "cap_usd",
@@ -331,6 +351,7 @@ NUMBER_FIELDS = frozenset(
         "items",
         "max_output_tokens",
         "max_reservation_usd",
+        "missing",
         "rate",
         "reference_repetitions",
         "refused",
@@ -370,6 +391,8 @@ CONTAINER_FIELDS = frozenset(
         "canary",
         "commits",
         "comparisons",
+        "completion",
+        "completions",
         "corpus",
         "efforts",
         "final_judging",
@@ -571,35 +594,88 @@ def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]
     ]
 
 
+def merge_completions(
+    attempts: Sequence[Mapping[str, object]], completions: Sequence[Sequence[Mapping[str, object]]]
+) -> tuple[list[Mapping[str, object]], list[Mapping[str, object]], list[dict[str, int]]]:
+    """Apply completion runs in order; each record supersedes one budget-stopped record of its key or fills a gap.
+
+    A completion repeats only what the budget censored: it may never replace a conclusive outcome (a failure
+    included), repeat a key within itself, or name a campaign the earlier attempts did not run. Returns the merged
+    attempts, the superseded records (whose spend still counts), and one summary per completion.
+    """
+    merged: dict[str, Mapping[str, object]] = {}
+    for attempt in attempts:
+        key = attempt_key(attempt)
+        if key in merged:
+            raise ValueError("duplicate attempt or pairing key")
+        merged[key] = attempt
+    campaigns = {str(attempt["campaign"]) for attempt in attempts}
+    superseded: list[Mapping[str, object]] = []
+    summaries = []
+    for records in completions:
+        keys = [attempt_key(record) for record in records]
+        if len(set(keys)) != len(keys):
+            raise ValueError("duplicate attempt or pairing key")
+        if any(str(record["campaign"]) not in campaigns for record in records):
+            raise ValueError("a completion names a campaign the earlier attempts did not run")
+        replaced = [merged[key] for key in keys if key in merged]
+        if any(item["status"] != "budget-stopped" for item in replaced):
+            raise ValueError("a completion repeats a conclusive attempt")
+        superseded.extend(replaced)
+        merged.update(zip(keys, records, strict=True))
+        summaries.append({"attempts": len(keys), "superseded": len(replaced), "filled": len(keys) - len(replaced)})
+    return list(merged.values()), superseded, summaries
+
+
+def _run_key(attempt: Mapping[str, object]) -> tuple[str, str, str, str]:
+    return str(attempt["campaign"]), str(attempt["provider"]), str(attempt["model"]), str(attempt["arm"])
+
+
+def _completion_provenance(meta: Mapping[str, object], completions: Sequence[Sequence[Mapping[str, object]]]) -> None:
+    """Each merged completion must have its own run metadata, in order, for its campaign."""
+    recorded = meta.get("completions") or []
+    if len(recorded) != len(completions) or any(
+        {str(record["campaign"]) for record in records} - {str(item.get("campaign"))}
+        for item, records in zip(recorded, completions, strict=True)
+    ):
+        raise ValueError("a completion run lacks its metadata")
+
+
 def build_report(
     attempts: Sequence[Mapping[str, object]],
     judged: Sequence[Mapping[str, object]],
     meta: Mapping[str, object],
     calibration: Mapping[str, object] | None = None,
     part: str | None = None,
+    completions: Sequence[Sequence[Mapping[str, object]]] = (),
 ) -> dict[str, object]:
     """Group attempts by campaign, provider, model, and arm; pair arms only within one campaign, across models too.
 
     Every attempt key (campaign, provider, model, arm, repetition, scenario) must be unique, so two campaigns are
-    never merged into one pair, and an arm runs under one model per campaign. Each arm is paired against the
-    ``baseline_arm`` the metadata names, or the first arm, unless the metadata lists ``comparisons``.
+    never merged into one pair, and an arm runs under one model per campaign; ``completions`` supersede only
+    budget-stopped records (``merge_completions``). Each arm is paired against the ``baseline_arm`` the metadata
+    names, or the first arm, unless the metadata lists ``comparisons``.
     """
+    _completion_provenance(meta, completions)
     sets = None if part is None else {"precision": split.load(), "large-api": split.load(split.LARGE_API_SPLIT)}
-    if part is not None:
-        attempts = [attempt for attempt in attempts if _part(str(attempt["scenario"]), sets) == part]
-    keys = [attempt_key(attempt) for attempt in attempts]
-    reported = set(keys)
-    if len(keys) != len(reported):
-        raise ValueError("duplicate attempt or pairing key")
+
+    def inside(items: Sequence[Mapping[str, object]]) -> list[Mapping[str, object]]:
+        return [item for item in items if part is None or _part(str(item["scenario"]), sets) == part]
+
+    attempts, superseded, merged = merge_completions(inside(attempts), [inside(items) for items in completions])
+    reported = {attempt_key(attempt) for attempt in attempts}
     # Only the reported attempts' verdicts count: a split part never carries the rest of its campaign's judgments.
     judged = [item for item in judged if str(item["key"]) in reported]
     decisions = {str(item["key"]): item for item in judged}
+    if len(decisions) != len(judged):
+        raise ValueError("duplicate judgment")
     seed = str(meta.get("seed", "precision"))
     groups: dict[tuple[str, str, str, str], list[tuple[Mapping[str, object], str]]] = defaultdict(list)
     for attempt in attempts:
-        result = outcome(attempt, decisions.get(attempt_key(attempt)))
-        key = (str(attempt["campaign"]), str(attempt["provider"]), str(attempt["model"]), str(attempt["arm"]))
-        groups[key].append((attempt, result))
+        groups[_run_key(attempt)].append((attempt, outcome(attempt, decisions.get(attempt_key(attempt)))))
+    replaced: dict[tuple[str, str, str, str], list[Mapping[str, object]]] = defaultdict(list)
+    for attempt in superseded:
+        replaced[_run_key(attempt)].append(attempt)
     runs = []
     by_campaign: dict[str, dict[str, list]] = defaultdict(dict)
     models: dict[str, dict[str, tuple[str, str]]] = defaultdict(dict)
@@ -608,7 +684,7 @@ def build_report(
         name = f"{campaign}:{provider}:{model}:{arm}"
         checked_identity(campaign, provider, model, arm, sorted(effort))
         identity = {"campaign": campaign, "provider": provider, "model": model, "arm": arm, "effort": sorted(effort)}
-        runs.append({**identity, **_group(rows, seed, name)})
+        runs.append({**identity, **_group(rows, seed, name, replaced[campaign, provider, model, arm])})
         if arm in by_campaign[campaign]:
             raise ValueError("an arm runs under two models in one campaign")
         by_campaign[campaign][arm] = rows
@@ -655,6 +731,7 @@ def build_report(
             ],
         },
         "decision": grade(calibration, judged, meta),
+        "completions": merged,
         "judge_calibration": None if calibration is None else checked_meta(dict(calibration)),
         "runs": runs,
         "paired": paired,
@@ -731,7 +808,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("validate", "calibrate", "judge", "report", "regrade"))
     parser.add_argument("--transcript", type=Path)
-    parser.add_argument("--judged", type=Path)
+    parser.add_argument(
+        "--completion",
+        type=Path,
+        action="append",
+        default=[],
+        help="a later transcript of the same campaign that repeated only its budget-stopped attempts (in order)",
+    )
+    parser.add_argument("--judged", type=Path, action="append", default=[], help="judgments (repeatable)")
     parser.add_argument("--calibration", type=Path)
     parser.add_argument("--meta", type=Path, help="campaign metadata JSON the driver wrote")
     parser.add_argument("--key-file", type=Path)
@@ -751,7 +835,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "report":
             meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
             calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
-            report = build_report(read_jsonl(args.transcript), read_jsonl(args.judged), meta, calibration, args.split)
+            judged = [item for path in args.judged for item in read_jsonl(path)]
+            completions = [read_jsonl(path) for path in args.completion]
+            report = build_report(read_jsonl(args.transcript), judged, meta, calibration, args.split, completions)
             args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         from eval.ceiling import Ceiling
