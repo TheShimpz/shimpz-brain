@@ -62,7 +62,11 @@ _QUOTES = ('"', '"'), ("“", "”"), ("„", "“"), ("«", "»"), ("‹", "›
 _QUOTED = [
     re.compile(re.escape(left) + r"([^" + re.escape(right) + r"]{1,200})" + re.escape(right)) for left, right in _QUOTES
 ]
-_NUMBER = re.compile(r"(?<![A-Za-z\d\-\u2212])[-\u2212]?\d+(?:[ \u00a0\u202f']\d{3}(?!\d))*(?:[.,]\d+)*(?![A-Za-z\d])")
+# Whole number tokens only: possessive quantifiers never give back a separator or digit, so no prefix of an
+# unsupported expression (12.5e3, 11.90kg) is read as a number of its own.
+_NUMBER = re.compile(
+    r"(?<![A-Za-z\d\-\u2212.,])[-\u2212]?\d++(?:[ \u00a0\u202f']\d{3}(?!\d))*+(?:[.,]\d++)*+(?![A-Za-z\d])"
+)
 _MERIDIEM = re.compile(r"\s?(?:a\.m\.|p\.m\.|am\b|pm\b)")
 _MERIDIEM_BEFORE = ("午前", "午後", "上午", "下午")
 _ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})\Z")

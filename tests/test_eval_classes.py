@@ -49,6 +49,10 @@ class TraceTests(unittest.TestCase):
         self.assertFalse(found(3, "5e3"))
         self.assertFalse(found(1, "room A1"))
         self.assertFalse(found(1, "12kg"))
+        self.assertFalse(found(12, "12.5e3"))
+        self.assertFalse(found(11, "11.90kg"))
+        self.assertFalse(found(1, "1,100kg"))
+        self.assertFalse(found(90, "11.90"))
 
     def test_dates_and_times_match_only_unambiguous_surface_forms(self):
         self.assertTrue(found("2026-10-25", "le 25/10/2026"))
