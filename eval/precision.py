@@ -588,8 +588,11 @@ def build_report(
     if part is not None:
         attempts = [attempt for attempt in attempts if _part(str(attempt["scenario"]), sets) == part]
     keys = [attempt_key(attempt) for attempt in attempts]
-    if len(keys) != len(set(keys)):
+    reported = set(keys)
+    if len(keys) != len(reported):
         raise ValueError("duplicate attempt or pairing key")
+    # Only the reported attempts' verdicts count: a split part never carries the rest of its campaign's judgments.
+    judged = [item for item in judged if str(item["key"]) in reported]
     decisions = {str(item["key"]): item for item in judged}
     seed = str(meta.get("seed", "precision"))
     groups: dict[tuple[str, str, str, str], list[tuple[Mapping[str, object], str]]] = defaultdict(list)

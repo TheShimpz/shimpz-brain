@@ -191,6 +191,36 @@ class CorpusIdentityTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in both["corpora"]], [corpus.CORPUS_ID, large_api.CORPUS_ID])
         self.assertEqual(precision.build_report([], [], {})["corpora"], [])
 
+    def test_a_split_part_counts_only_its_own_judgments_and_names_only_its_own_corpus(self):
+        tuning = split.load()["tuning"]
+        precision_tuning = [_attempt(s.id, "L1") for s in corpus.SCENARIOS if s.template.id in tuning][:4]
+        large = [{**_attempt(s.id, "L1"), "contracts": "large"} for s in large_api.SCENARIOS]
+        attempts = [*precision_tuning, *large]
+        # Every tuning verdict is a tiebroken failure from another judge; none of it may reach the held-out report.
+        tuned = {precision.attempt_key(attempt) for attempt in precision_tuning}
+        tuned |= {
+            precision.attempt_key(a)
+            for a in large
+            if split.part(str(a["scenario"]), split.load(split.LARGE_API_SPLIT)) == "tuning"
+        }
+        judged = [
+            {**_decision(a, BAD, BAD), "judge_identity": "sha256:" + "0" * 64}
+            if precision.attempt_key(a) in tuned
+            else _decision(a)
+            for a in attempts
+        ]
+        report = precision.build_report(attempts, judged, {"seed": "s"}, None, "held-out")
+        held_out = len(attempts) - len(tuned)
+        self.assertEqual([item["id"] for item in report["corpora"]], [large_api.CORPUS_ID])
+        self.assertEqual(report["runs"][0]["conclusive"], held_out)
+        self.assertEqual((report["judges"]["judged_attempts"], report["judges"]["tiebreaks"]), (held_out, 0))
+        self.assertEqual(report["judges"]["verdict_identities"], [judge.identity()])
+        self.assertNotIn("verdict-of-another-judge", report["decision"]["reasons"])
+        other = precision.build_report(attempts, judged, {"seed": "s"}, None, "tuning")
+        self.assertEqual([item["id"] for item in other["corpora"]], [corpus.CORPUS_ID, large_api.CORPUS_ID])
+        self.assertEqual((other["judges"]["judged_attempts"], other["judges"]["tiebreaks"]), (len(tuned),) * 2)
+        self.assertIn("verdict-of-another-judge", other["decision"]["reasons"])
+
 
 class ArmReportTests(unittest.TestCase):
     def test_arm_attempts_report_signals_comparisons_and_one_split_part(self):
