@@ -1,0 +1,686 @@
+{
+ "arms": {
+  "N": {
+   "active_seconds_p50": 9.26,
+   "active_seconds_p95": 12.62,
+   "by_class": {
+    "chain": [
+     8,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     3,
+     3
+    ],
+    "optional": [
+     5,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 0,
+    "fields_optional_refused": 0,
+    "fields_user_refused": 0,
+    "helper_checks": 0,
+    "helper_unusable": 0,
+    "optional_refused": 0,
+    "plan_empty": 0,
+    "plan_failed": 0,
+    "traced": 0,
+    "user_refused": 0,
+    "working_set_attached": 0,
+    "writes_checked": 0
+   },
+   "oracle_passed": 21,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 1.0,
+    "items": 23,
+    "low": 0.76,
+    "mean": 0.9130434782608695
+   },
+   "paired_tasks": 23,
+   "records_all": 455,
+   "records_dispatched": 41,
+   "usd_paired": 0.010194,
+   "usd_per_attempt_paired": 0.000443
+  },
+  "N-U": {
+   "active_seconds_p50": 9.0,
+   "active_seconds_p95": 18.01,
+   "by_class": {
+    "chain": [
+     5,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     2,
+     3
+    ],
+    "optional": [
+     4,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 5,
+    "fields_optional_refused": 0,
+    "fields_user_refused": 7,
+    "helper_checks": 8,
+    "helper_unusable": 0,
+    "optional_refused": 0,
+    "plan_empty": 0,
+    "plan_failed": 0,
+    "traced": 9,
+    "user_refused": 5,
+    "working_set_attached": 0,
+    "writes_checked": 17
+   },
+   "oracle_passed": 16,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 0.9444444444444444,
+    "items": 23,
+    "low": 0.4166666666666667,
+    "mean": 0.6956521739130435
+   },
+   "paired_tasks": 23,
+   "records_all": 454,
+   "records_dispatched": 38,
+   "usd_paired": 0.012105,
+   "usd_per_attempt_paired": 0.000526
+  },
+  "N-V": {
+   "active_seconds_p50": 10.55,
+   "active_seconds_p95": 17.09,
+   "by_class": {
+    "chain": [
+     9,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     3,
+     3
+    ],
+    "optional": [
+     5,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 6,
+    "fields_optional_refused": 2,
+    "fields_user_refused": 0,
+    "helper_checks": 7,
+    "helper_unusable": 0,
+    "optional_refused": 2,
+    "plan_empty": 0,
+    "plan_failed": 0,
+    "traced": 16,
+    "user_refused": 0,
+    "working_set_attached": 0,
+    "writes_checked": 23
+   },
+   "oracle_passed": 22,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 1.0,
+    "items": 23,
+    "low": 0.8421052631578947,
+    "mean": 0.9565217391304348
+   },
+   "paired_tasks": 23,
+   "records_all": 454,
+   "records_dispatched": 35,
+   "usd_paired": 0.013797,
+   "usd_per_attempt_paired": 0.0006
+  },
+  "N-W": {
+   "active_seconds_p50": 8.23,
+   "active_seconds_p95": 13.88,
+   "by_class": {
+    "chain": [
+     9,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     3,
+     3
+    ],
+    "optional": [
+     5,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 0,
+    "fields_optional_refused": 0,
+    "fields_user_refused": 0,
+    "helper_checks": 0,
+    "helper_unusable": 0,
+    "optional_refused": 0,
+    "plan_empty": 0,
+    "plan_failed": 0,
+    "traced": 0,
+    "user_refused": 0,
+    "working_set_attached": 67,
+    "writes_checked": 0
+   },
+   "oracle_passed": 22,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 1.0,
+    "items": 23,
+    "low": 0.8636363636363636,
+    "mean": 0.9565217391304348
+   },
+   "paired_tasks": 23,
+   "records_all": 455,
+   "records_dispatched": 39,
+   "usd_paired": 0.013554,
+   "usd_per_attempt_paired": 0.000589
+  },
+  "N-WQ": {
+   "active_seconds_p50": 14.2,
+   "active_seconds_p95": 22.0,
+   "by_class": {
+    "chain": [
+     7,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     3,
+     3
+    ],
+    "optional": [
+     5,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 0,
+    "fields_optional_refused": 0,
+    "fields_user_refused": 0,
+    "helper_checks": 0,
+    "helper_unusable": 0,
+    "optional_refused": 0,
+    "plan_empty": 3,
+    "plan_failed": 0,
+    "plan_steps": 73,
+    "traced": 0,
+    "user_refused": 0,
+    "working_set_attached": 68,
+    "writes_checked": 0
+   },
+   "oracle_passed": 20,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 1.0,
+    "items": 23,
+    "low": 0.7241379310344828,
+    "mean": 0.8695652173913043
+   },
+   "paired_tasks": 23,
+   "records_all": 454,
+   "records_dispatched": 38,
+   "usd_paired": 0.031611,
+   "usd_per_attempt_paired": 0.001374
+  },
+  "N-WQVU": {
+   "active_seconds_p50": 15.33,
+   "active_seconds_p95": 23.21,
+   "by_class": {
+    "chain": [
+     6,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     3,
+     3
+    ],
+    "optional": [
+     5,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 10,
+    "fields_optional_refused": 3,
+    "fields_user_refused": 3,
+    "helper_checks": 10,
+    "helper_unusable": 0,
+    "optional_refused": 2,
+    "plan_empty": 3,
+    "plan_failed": 0,
+    "plan_steps": 73,
+    "traced": 11,
+    "user_refused": 2,
+    "working_set_attached": 68,
+    "writes_checked": 21
+   },
+   "oracle_passed": 19,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 1.0,
+    "items": 23,
+    "low": 0.6363636363636364,
+    "mean": 0.8260869565217391
+   },
+   "paired_tasks": 23,
+   "records_all": 454,
+   "records_dispatched": 36,
+   "usd_paired": 0.032817,
+   "usd_per_attempt_paired": 0.001427
+  },
+  "N-WVU": {
+   "active_seconds_p50": 11.38,
+   "active_seconds_p95": 16.24,
+   "by_class": {
+    "chain": [
+     8,
+     10
+    ],
+    "clarify": [
+     5,
+     5
+    ],
+    "control": [
+     3,
+     3
+    ],
+    "optional": [
+     5,
+     5
+    ]
+   },
+   "effects_all_records": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "wrong_scope": 0
+   },
+   "mechanisms_paired": {
+    "fields_helper_supplied": 10,
+    "fields_optional_refused": 1,
+    "fields_user_refused": 6,
+    "helper_checks": 10,
+    "helper_unusable": 0,
+    "optional_refused": 1,
+    "plan_empty": 0,
+    "plan_failed": 0,
+    "traced": 13,
+    "user_refused": 3,
+    "working_set_attached": 69,
+    "writes_checked": 23
+   },
+   "oracle_passed": 21,
+   "oracle_rate_cluster95": {
+    "clusters": 10,
+    "high": 1.0,
+    "items": 23,
+    "low": 0.7777777777777778,
+    "mean": 0.9130434782608695
+   },
+   "paired_tasks": 23,
+   "records_all": 456,
+   "records_dispatched": 37,
+   "usd_paired": 0.018981,
+   "usd_per_attempt_paired": 0.000825
+  }
+ },
+ "campaign": "luna-classes-b",
+ "caveat": "complete-case subset of a seed-randomized schedule cut by credit exhaustion; oracle only (final state and every effect); clarify templates count only 'nothing written' (asking unjudged); descriptive, conditional on these tasks",
+ "corpus": {
+  "digest": "sha256:7d5c47197d50a0a84bf7a143aa8f47f67b1dc3cd6645cbbb9fbd7ac56f99a66f",
+  "id": "fresh-v4-classes"
+ },
+ "coverage": {
+  "completed": 178,
+  "paired_attempts": 161,
+  "paired_tasks": 23,
+  "scheduled": 1680,
+  "templates_in_paired_subset": {
+   "boiler-payment": 1,
+   "cancel-transfer": 2,
+   "invoice-amount": 2,
+   "lease-extend": 3,
+   "lock-visit": 4,
+   "payee-iban": 3,
+   "plain-transfer": 1,
+   "renew-forms": 1,
+   "tap-cap": 4,
+   "visit-move": 2
+  }
+ },
+ "judged": 0,
+ "meta": {
+  "b": {
+   "arms": [
+    "N",
+    "N-W",
+    "N-WQ",
+    "N-V",
+    "N-U",
+    "N-WVU",
+    "N-WQVU"
+   ],
+   "budget": {
+    "cap_usd": 0.03,
+    "contention_waits": 0,
+    "failed": 0,
+    "max_output_tokens": 32000,
+    "max_reservation_usd": 0.0,
+    "refused": 0,
+    "requests": 0,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.0,
+    "unknown_settlements": 0,
+    "unreported": 0,
+    "unsupported": 0
+   },
+   "campaign": "luna-classes-b",
+   "commits": {
+    "brain": "d9916e5f13c76f78699cb5e236efa2ce9432494f",
+    "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+    "umbrella": "923f4fd1d4dbb9208c7047f2885e60275d0368dc"
+   },
+   "held_out_repetitions": 3,
+   "helper_budget": {
+    "cap_usd": 0.3,
+    "contention_waits": 0,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.083749,
+    "unknown_settlements": 19
+   },
+   "loose_budget": {
+    "cap_usd": 1.5,
+    "contention_waits": 0,
+    "failed": 71,
+    "max_output_tokens": 32000,
+    "max_reservation_usd": 0.022858,
+    "refused": 5,
+    "requests": 737,
+    "reservations_exceeded": 0,
+    "spent_usd": 1.499016,
+    "unknown_settlements": 71,
+    "unreported": 0,
+    "unsupported": 0
+   },
+   "loose_protocol_budget": null,
+   "max_output_tokens": 32000,
+   "seconds": 376.9,
+   "seed": "5eed0b1d0c1a55e5",
+   "stopped_by_cap": true,
+   "stratum": "fresh-classes",
+   "tuning_repetitions": 0,
+   "workers": 6
+  },
+  "c1": {
+   "arms": [
+    "N",
+    "N-W",
+    "N-WQ",
+    "N-V",
+    "N-U",
+    "N-WVU",
+    "N-WQVU"
+   ],
+   "budget": {
+    "cap_usd": 0.03,
+    "contention_waits": 0,
+    "failed": 0,
+    "max_output_tokens": 32000,
+    "max_reservation_usd": 0.0,
+    "refused": 0,
+    "requests": 0,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.0,
+    "unknown_settlements": 0,
+    "unreported": 0,
+    "unsupported": 0
+   },
+   "campaign": "luna-classes-b",
+   "commits": {
+    "brain": "d9916e5f13c76f78699cb5e236efa2ce9432494f",
+    "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+    "umbrella": "fe92bb8f9108d39d6478f02d72e867be305d1e1e"
+   },
+   "completion": {
+    "digest": [
+     "sha256:0100c3cf243cd5da8adedd3f3ebbc6e10ce2b300e08b92cd273cf997d4010dba"
+    ],
+    "rerun": 1502
+   },
+   "held_out_repetitions": 3,
+   "helper_budget": {
+    "cap_usd": 0.25,
+    "contention_waits": 0,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.006886,
+    "unknown_settlements": 2
+   },
+   "loose_budget": {
+    "cap_usd": 1.3,
+    "contention_waits": 0,
+    "failed": 10,
+    "max_output_tokens": 32000,
+    "max_reservation_usd": 0.0208,
+    "refused": 0,
+    "requests": 10,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.191507,
+    "unknown_settlements": 10,
+    "unreported": 0,
+    "unsupported": 0
+   },
+   "loose_protocol_budget": null,
+   "max_output_tokens": 32000,
+   "outage_stopped": true,
+   "seconds": 5.0,
+   "seed": "5eed0b1d0c1a55e5",
+   "stopped_by_cap": true,
+   "stratum": "fresh-classes",
+   "tuning_repetitions": 0,
+   "workers": 6
+  }
+ },
+ "paired_vs_N": {
+  "N-U": {
+   "clusters": 10,
+   "high": -0.058823529411764705,
+   "items": 23,
+   "low": -0.34782608695652173,
+   "mean": -0.21739130434782608
+  },
+  "N-V": {
+   "clusters": 10,
+   "high": 0.23076923076923078,
+   "items": 23,
+   "low": -0.14285714285714285,
+   "mean": 0.043478260869565216
+  },
+  "N-W": {
+   "clusters": 10,
+   "high": 0.2222222222222222,
+   "items": 23,
+   "low": -0.125,
+   "mean": 0.043478260869565216
+  },
+  "N-WQ": {
+   "clusters": 10,
+   "high": 0.0,
+   "items": 23,
+   "low": -0.14285714285714285,
+   "mean": -0.043478260869565216
+  },
+  "N-WQVU": {
+   "clusters": 10,
+   "high": 0.0,
+   "items": 23,
+   "low": -0.2727272727272727,
+   "mean": -0.08695652173913043
+  },
+  "N-WVU": {
+   "clusters": 10,
+   "high": 0.10344827586206896,
+   "items": 23,
+   "low": -0.15789473684210525,
+   "mean": 0.0
+  }
+ },
+ "schema": "shimpz.precision-eval.classes-partial/v1",
+ "seed": "5eed0b1d0c1a55e5",
+ "spend": {
+  "caps": {
+   "inference_usd": 5.0,
+   "judges_usd": 1.5
+  },
+  "ledger": [
+   {
+    "id": "S0",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 0.035609
+   },
+   {
+    "id": "T1",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 0.37902
+   },
+   {
+    "id": "T1B",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 0.170021
+   },
+   {
+    "id": "T2",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 0.597639
+   },
+   {
+    "id": "T1J",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.061742
+   },
+   {
+    "id": "PJ1",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.000121
+   },
+   {
+    "id": "PJ2",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.00031
+   },
+   {
+    "id": "PJ3",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.004144
+   },
+   {
+    "id": "PJ4",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.001334
+   },
+   {
+    "id": "T1J2",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.086839
+   },
+   {
+    "id": "T1BJ",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.052275
+   },
+   {
+    "id": "T2J",
+    "kind": "judges",
+    "state": "settled",
+    "usd": 0.194513
+   },
+   {
+    "id": "T1C",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 0.028101
+   },
+   {
+    "id": "B",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 1.8
+   },
+   {
+    "id": "C1",
+    "kind": "inference",
+    "state": "settled",
+    "usd": 1.55
+   }
+  ]
+ },
+ "status": "censored-unjudged",
+ "stop": "OpenAI API credits exhausted (insufficient_quota / credit_balance_exhausted) during B; confirmed for C1, retrospective for B"
+}

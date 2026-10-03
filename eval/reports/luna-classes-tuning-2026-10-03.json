@@ -1,0 +1,3303 @@
+{
+ "campaigns": {
+  "t1": {
+   "meta": {
+    "arms": [
+     "N",
+     "N-W",
+     "N-WQ",
+     "N-V",
+     "N-U",
+     "N-WVU",
+     "N-WQVU",
+     "N-WQVUP"
+    ],
+    "budget": {
+     "cap_usd": 0.03,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.0,
+     "refused": 0,
+     "requests": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.0,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "campaign": "luna-classes-t1",
+    "commits": {
+     "brain": "5579a35ae32e1103e9e524c059d37ad6c6f3351d",
+     "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+     "umbrella": "e421afde982584924b74e9400b45f5f58451ded7"
+    },
+    "held_out_repetitions": 1,
+    "helper_budget": {
+     "cap_usd": 0.3,
+     "contention_waits": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.06747,
+     "unknown_settlements": 0
+    },
+    "loose_budget": {
+     "cap_usd": 0.45,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.022047,
+     "refused": 0,
+     "requests": 1622,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.246782,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "loose_protocol_budget": {
+     "cap_usd": 0.2,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.022028,
+     "refused": 0,
+     "requests": 234,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.064768,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "max_output_tokens": 32000,
+    "seconds": 896.1,
+    "seed": "4f4baff9be5ed9cd",
+    "stopped_by_cap": false,
+    "stratum": "fresh2",
+    "tuning_repetitions": 1,
+    "workers": 6
+   },
+   "summary": {
+    "arms": {
+     "N": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 11,
+        "rate": 0.5416666666666666,
+        "success": 13,
+        "wilson95": [
+         0.3507486535891948,
+         0.72108666268789
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 1,
+        "rate": 0.875,
+        "success": 7,
+        "wilson95": [
+         0.5291118177871464,
+         0.9775825085499433
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 61,
+      "mechanisms": {
+       "fields_helper_supplied": 0,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 0,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 0,
+       "user_refused": 0,
+       "working_set_attached": 0,
+       "writes_checked": 0
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 12,
+        "rate": 0.85,
+        "success": 68,
+        "wilson95": [
+         0.7558677143867665,
+         0.9120595949383645
+        ]
+       },
+       "user_refused=0": {
+        "failure": 12,
+        "rate": 0.85,
+        "success": 68,
+        "wilson95": [
+         0.7558677143867665,
+         0.9120595949383645
+        ]
+       }
+      },
+      "successes": 68,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 4,
+        "success": 4
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "failure": 1,
+        "success": 7
+       },
+       "postage-expense": {
+        "failure": 7,
+        "success": 1
+       },
+       "refund-refuse": {
+        "success": 8
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.05924386789811283
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.02291,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000337,
+      "usd_unknown_attempts": 0
+     },
+     "N-U": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 8,
+        "inconclusive": 16,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.32440756488388023
+        ]
+       },
+       "answer": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "clarify": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "harmless-default": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "refuse": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "safe-lookup": {
+        "inconclusive": 24,
+        "rate": null,
+        "wilson95": null
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 0,
+      "mechanisms": {
+       "fields_helper_supplied": 20,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 4,
+       "helper_checks": 16,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 54,
+       "user_refused": 4,
+       "working_set_attached": 0,
+       "writes_checked": 70
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 8,
+        "inconclusive": 72,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.32440756488388023
+        ]
+       },
+       "user_refused=0": {
+        "failure": 4,
+        "inconclusive": 72,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.4898908364545973
+        ]
+       },
+       "user_refused>0": {
+        "failure": 4,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.4898908364545973
+        ]
+       }
+      },
+      "successes": 0,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 3,
+        "inconclusive": 5
+       },
+       "email-update": {
+        "inconclusive": 8
+       },
+       "expense-log": {
+        "inconclusive": 8
+       },
+       "parcel-cancel": {
+        "inconclusive": 8
+       },
+       "parcel-express": {
+        "inconclusive": 8
+       },
+       "pending-total": {
+        "inconclusive": 8
+       },
+       "points-clarify": {
+        "inconclusive": 8
+       },
+       "postage-expense": {
+        "failure": 5,
+        "inconclusive": 3
+       },
+       "refund-refuse": {
+        "inconclusive": 8
+       },
+       "submit-meals": {
+        "inconclusive": 8
+       }
+      },
+      "unnecessary_question_wilson95": null,
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.023386,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": null,
+      "usd_unknown_attempts": 0
+     },
+     "N-V": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 4,
+        "rate": 0.8333333333333334,
+        "success": 20,
+        "wilson95": [
+         0.6414692935030095,
+         0.9332132367136705
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "failure": 1,
+        "rate": 0.9583333333333334,
+        "success": 23,
+        "wilson95": [
+         0.7975819352134406,
+         0.9926065438344942
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 68,
+      "mechanisms": {
+       "fields_helper_supplied": 16,
+       "fields_optional_refused": 7,
+       "fields_user_refused": 0,
+       "helper_checks": 13,
+       "helper_unusable": 0,
+       "optional_refused": 5,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 64,
+       "user_refused": 0,
+       "working_set_attached": 0,
+       "writes_checked": 77
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 5,
+        "rate": 0.9333333333333333,
+        "success": 70,
+        "wilson95": [
+         0.8532493994143954,
+         0.9711899371005063
+        ]
+       },
+       "optional_refused>0": {
+        "rate": 1.0,
+        "success": 5,
+        "wilson95": [
+         0.5655175352168251,
+         1.0
+        ]
+       },
+       "user_refused=0": {
+        "failure": 5,
+        "rate": 0.9375,
+        "success": 75,
+        "wilson95": [
+         0.8618985123272557,
+         0.973010624329158
+        ]
+       }
+      },
+      "successes": 75,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 4,
+        "success": 4
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "failure": 1,
+        "success": 7
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "success": 8
+       },
+       "postage-expense": {
+        "success": 8
+       },
+       "refund-refuse": {
+        "success": 8
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.053471336520070537
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.024328,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000324,
+      "usd_unknown_attempts": 0
+     },
+     "N-W": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 4,
+        "rate": 0.8333333333333334,
+        "success": 20,
+        "wilson95": [
+         0.6414692935030095,
+         0.9332132367136705
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 1,
+        "rate": 0.875,
+        "success": 7,
+        "wilson95": [
+         0.5291118177871464,
+         0.9775825085499433
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "failure": 1,
+        "inconclusive": 1,
+        "rate": 0.8571428571428571,
+        "success": 6,
+        "wilson95": [
+         0.4868721707256811,
+         0.9743203756552565
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 1,
+       "wrong_scope": 1
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 66,
+      "mechanisms": {
+       "fields_helper_supplied": 0,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 0,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 0,
+       "user_refused": 0,
+       "working_set_attached": 156,
+       "writes_checked": 0
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 6,
+        "inconclusive": 1,
+        "rate": 0.9240506329113924,
+        "success": 73,
+        "wilson95": [
+         0.8440458309717235,
+         0.9647279515496333
+        ]
+       },
+       "user_refused=0": {
+        "failure": 6,
+        "inconclusive": 1,
+        "rate": 0.9240506329113924,
+        "success": 73,
+        "wilson95": [
+         0.8440458309717235,
+         0.9647279515496333
+        ]
+       }
+      },
+      "successes": 73,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 2,
+        "success": 6
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "failure": 1,
+        "success": 7
+       },
+       "postage-expense": {
+        "failure": 2,
+        "success": 6
+       },
+       "refund-refuse": {
+        "failure": 1,
+        "inconclusive": 1,
+        "success": 6
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.05500255701354129
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.030917,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000424,
+      "usd_unknown_attempts": 0
+     },
+     "N-WQ": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 2,
+        "rate": 0.9166666666666666,
+        "success": 22,
+        "wilson95": [
+         0.741511978067893,
+         0.9768411847029567
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 1,
+        "rate": 0.875,
+        "success": 7,
+        "wilson95": [
+         0.5291118177871464,
+         0.9775825085499433
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 70,
+      "mechanisms": {
+       "fields_helper_supplied": 0,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 0,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_failed": 8,
+       "plan_steps": 160,
+       "plans": 72,
+       "traced": 0,
+       "user_refused": 0,
+       "working_set_attached": 161,
+       "writes_checked": 0
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 3,
+        "rate": 0.9625,
+        "success": 77,
+        "wilson95": [
+         0.8954527990995489,
+         0.9871654310800886
+        ]
+       },
+       "user_refused=0": {
+        "failure": 3,
+        "rate": 0.9625,
+        "success": 77,
+        "wilson95": [
+         0.8954527990995489,
+         0.9871654310800886
+        ]
+       }
+      },
+      "successes": 77,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "success": 8
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "failure": 1,
+        "success": 7
+       },
+       "postage-expense": {
+        "failure": 2,
+        "success": 6
+       },
+       "refund-refuse": {
+        "success": 8
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.05202306241026692
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.074829,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000972,
+      "usd_unknown_attempts": 0
+     },
+     "N-WQVU": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 6,
+        "inconclusive": 18,
+        "rate": 0.0,
+        "wilson95": [
+         2.7755575615628914e-17,
+         0.3903342879021653
+        ]
+       },
+       "answer": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "clarify": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "harmless-default": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "refuse": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "safe-lookup": {
+        "inconclusive": 24,
+        "rate": null,
+        "wilson95": null
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 0,
+      "mechanisms": {
+       "fields_helper_supplied": 37,
+       "fields_optional_refused": 2,
+       "fields_user_refused": 7,
+       "helper_checks": 18,
+       "helper_unusable": 0,
+       "optional_refused": 2,
+       "plan_failed": 8,
+       "plan_steps": 160,
+       "plans": 72,
+       "traced": 58,
+       "user_refused": 6,
+       "working_set_attached": 156,
+       "writes_checked": 76
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 4,
+        "inconclusive": 74,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.4898908364545973
+        ]
+       },
+       "optional_refused>0": {
+        "failure": 2,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.6576197724933469
+        ]
+       },
+       "user_refused=0": {
+        "inconclusive": 74,
+        "rate": null,
+        "wilson95": null
+       },
+       "user_refused>0": {
+        "failure": 6,
+        "rate": 0.0,
+        "wilson95": [
+         2.7755575615628914e-17,
+         0.3903342879021653
+        ]
+       }
+      },
+      "successes": 0,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "inconclusive": 8
+       },
+       "email-update": {
+        "inconclusive": 8
+       },
+       "expense-log": {
+        "inconclusive": 8
+       },
+       "parcel-cancel": {
+        "inconclusive": 8
+       },
+       "parcel-express": {
+        "inconclusive": 8
+       },
+       "pending-total": {
+        "inconclusive": 8
+       },
+       "points-clarify": {
+        "inconclusive": 8
+       },
+       "postage-expense": {
+        "failure": 6,
+        "inconclusive": 2
+       },
+       "refund-refuse": {
+        "inconclusive": 8
+       },
+       "submit-meals": {
+        "inconclusive": 8
+       }
+      },
+      "unnecessary_question_wilson95": null,
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.079635,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": null,
+      "usd_unknown_attempts": 0
+     },
+     "N-WQVUP": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 3,
+        "inconclusive": 21,
+        "rate": 0.0,
+        "wilson95": [
+         5.551115123125783e-17,
+         0.5614970317550454
+        ]
+       },
+       "answer": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "clarify": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "harmless-default": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "refuse": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "safe-lookup": {
+        "inconclusive": 24,
+        "rate": null,
+        "wilson95": null
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 0,
+      "mechanisms": {
+       "fields_helper_supplied": 36,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 2,
+       "helper_checks": 15,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_failed": 8,
+       "plan_steps": 159,
+       "plans": 72,
+       "traced": 61,
+       "user_refused": 2,
+       "working_set_attached": 159,
+       "writes_checked": 76
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 3,
+        "inconclusive": 77,
+        "rate": 0.0,
+        "wilson95": [
+         5.551115123125783e-17,
+         0.5614970317550454
+        ]
+       },
+       "user_refused=0": {
+        "failure": 1,
+        "inconclusive": 77,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       },
+       "user_refused>0": {
+        "failure": 2,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.6576197724933469
+        ]
+       }
+      },
+      "successes": 0,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "inconclusive": 8
+       },
+       "email-update": {
+        "inconclusive": 8
+       },
+       "expense-log": {
+        "inconclusive": 8
+       },
+       "parcel-cancel": {
+        "inconclusive": 8
+       },
+       "parcel-express": {
+        "inconclusive": 8
+       },
+       "pending-total": {
+        "inconclusive": 8
+       },
+       "points-clarify": {
+        "inconclusive": 8
+       },
+       "postage-expense": {
+        "failure": 3,
+        "inconclusive": 5
+       },
+       "refund-refuse": {
+        "inconclusive": 8
+       },
+       "submit-meals": {
+        "inconclusive": 8
+       }
+      },
+      "unnecessary_question_wilson95": null,
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.086935,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": null,
+      "usd_unknown_attempts": 0
+     },
+     "N-WVU": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 3,
+        "rate": 0.875,
+        "success": 21,
+        "wilson95": [
+         0.6899611872949993,
+         0.9565566591987655
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 69,
+      "mechanisms": {
+       "fields_helper_supplied": 55,
+       "fields_optional_refused": 7,
+       "fields_user_refused": 1,
+       "helper_checks": 23,
+       "helper_unusable": 0,
+       "optional_refused": 7,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 59,
+       "user_refused": 1,
+       "working_set_attached": 162,
+       "writes_checked": 82
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 3,
+        "rate": 0.958904109589041,
+        "success": 70,
+        "wilson95": [
+         0.8859990837370165,
+         0.9859260596460794
+        ]
+       },
+       "optional_refused>0": {
+        "rate": 1.0,
+        "success": 7,
+        "wilson95": [
+         0.6456695649333126,
+         1.0
+        ]
+       },
+       "user_refused=0": {
+        "failure": 2,
+        "rate": 0.9746835443037974,
+        "success": 77,
+        "wilson95": [
+         0.9123141537110886,
+         0.9930296326934152
+        ]
+       },
+       "user_refused>0": {
+        "failure": 1,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       }
+      },
+      "successes": 77,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 2,
+        "success": 6
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "success": 8
+       },
+       "postage-expense": {
+        "failure": 1,
+        "success": 7
+       },
+       "refund-refuse": {
+        "success": 8
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       3.469446951953614e-18,
+       0.05273725818905173
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.036079,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000469,
+      "usd_unknown_attempts": 0
+     }
+    },
+    "schema": "shimpz.precision-eval.classes-summary/v1"
+   }
+  },
+  "t1b": {
+   "meta": {
+    "arms": [
+     "N-U",
+     "N-WQVU",
+     "N-WQVUP"
+    ],
+    "budget": {
+     "cap_usd": 0.03,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.0,
+     "refused": 0,
+     "requests": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.0,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "campaign": "luna-classes-t1b",
+    "commits": {
+     "brain": "45be0ebe5441852d6493cc71784b97efc17e1852",
+     "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+     "umbrella": "7b20f692766f3c010fb5b0f1ac47b139dff88356"
+    },
+    "held_out_repetitions": 1,
+    "helper_budget": {
+     "cap_usd": 0.2,
+     "contention_waits": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.032199,
+     "unknown_settlements": 0
+    },
+    "loose_budget": {
+     "cap_usd": 0.2,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.021838,
+     "refused": 0,
+     "requests": 465,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.076429,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "loose_protocol_budget": {
+     "cap_usd": 0.15,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.022016,
+     "refused": 0,
+     "requests": 233,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.061393,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "max_output_tokens": 32000,
+    "seconds": 376.7,
+    "seed": "7cdc235a3e5cf6d6",
+    "stopped_by_cap": false,
+    "stratum": "fresh2",
+    "tuning_repetitions": 1,
+    "workers": 6
+   },
+   "summary": {
+    "arms": {
+     "N-U": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 8,
+        "rate": 0.6666666666666666,
+        "success": 16,
+        "wilson95": [
+         0.4670631683813174,
+         0.8202780967270225
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "inconclusive": 1,
+        "rate": 1.0,
+        "success": 7,
+        "wilson95": [
+         0.6456695649333126,
+         1.0
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 64,
+      "mechanisms": {
+       "fields_helper_supplied": 22,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 2,
+       "helper_checks": 16,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 53,
+       "user_refused": 2,
+       "working_set_attached": 0,
+       "writes_checked": 69
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 8,
+        "inconclusive": 1,
+        "rate": 0.8987341772151899,
+        "success": 71,
+        "wilson95": [
+         0.8127005885203687,
+         0.9477881920594146
+        ]
+       },
+       "user_refused=0": {
+        "failure": 6,
+        "inconclusive": 1,
+        "rate": 0.922077922077922,
+        "success": 71,
+        "wilson95": [
+         0.8402438428027608,
+         0.9637990449458338
+        ]
+       },
+       "user_refused>0": {
+        "failure": 2,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.6576197724933469
+        ]
+       }
+      },
+      "successes": 71,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 4,
+        "success": 4
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "inconclusive": 1,
+        "success": 7
+       },
+       "postage-expense": {
+        "failure": 4,
+        "success": 4
+       },
+       "refund-refuse": {
+        "success": 8
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.05662405979280534
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.020208,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000285,
+      "usd_unknown_attempts": 0
+     },
+     "N-WQVU": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "inconclusive": 3,
+        "rate": 1.0,
+        "success": 5,
+        "wilson95": [
+         0.5655175352168251,
+         1.0
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "inconclusive": 1,
+        "rate": 1.0,
+        "success": 7,
+        "wilson95": [
+         0.6456695649333126,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 71,
+      "mechanisms": {
+       "fields_helper_supplied": 48,
+       "fields_optional_refused": 5,
+       "fields_user_refused": 0,
+       "helper_checks": 21,
+       "helper_unusable": 0,
+       "optional_refused": 5,
+       "plan_empty": 8,
+       "plan_failed": 0,
+       "plan_steps": 160,
+       "plans": 72,
+       "traced": 64,
+       "user_refused": 0,
+       "working_set_attached": 166,
+       "writes_checked": 85
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "inconclusive": 4,
+        "rate": 1.0,
+        "success": 71,
+        "wilson95": [
+         0.9486720478031097,
+         1.0
+        ]
+       },
+       "optional_refused>0": {
+        "rate": 1.0,
+        "success": 5,
+        "wilson95": [
+         0.5655175352168251,
+         1.0
+        ]
+       },
+       "user_refused=0": {
+        "inconclusive": 4,
+        "rate": 1.0,
+        "success": 76,
+        "wilson95": [
+         0.9518864149348628,
+         1.0
+        ]
+       }
+      },
+      "successes": 76,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "success": 8
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "inconclusive": 3,
+        "success": 5
+       },
+       "postage-expense": {
+        "success": 8
+       },
+       "refund-refuse": {
+        "inconclusive": 1,
+        "success": 7
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.05132795219689034
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.073464,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000967,
+      "usd_unknown_attempts": 0
+     },
+     "N-WQVUP": {
+      "attempts": 80,
+      "classes": {
+       "act": {
+        "failure": 2,
+        "rate": 0.9166666666666666,
+        "success": 22,
+        "wilson95": [
+         0.741511978067893,
+         0.9768411847029567
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "refuse": {
+        "inconclusive": 2,
+        "rate": 1.0,
+        "success": 6,
+        "wilson95": [
+         0.6096657120978346,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "rate": 1.0,
+        "success": 24,
+        "wilson95": [
+         0.8620237953250198,
+         1.0
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 68,
+      "mechanisms": {
+       "fields_helper_supplied": 43,
+       "fields_optional_refused": 2,
+       "fields_user_refused": 1,
+       "helper_checks": 18,
+       "helper_unusable": 0,
+       "optional_refused": 2,
+       "plan_empty": 8,
+       "plan_failed": 0,
+       "plan_steps": 161,
+       "plans": 72,
+       "traced": 61,
+       "user_refused": 1,
+       "working_set_attached": 161,
+       "writes_checked": 79
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 2,
+        "inconclusive": 2,
+        "rate": 0.9736842105263158,
+        "success": 74,
+        "wilson95": [
+         0.9090337890134194,
+         0.9927533409248718
+        ]
+       },
+       "optional_refused>0": {
+        "rate": 1.0,
+        "success": 2,
+        "wilson95": [
+         0.34238022750665303,
+         1.0
+        ]
+       },
+       "user_refused=0": {
+        "failure": 1,
+        "inconclusive": 2,
+        "rate": 0.987012987012987,
+        "success": 76,
+        "wilson95": [
+         0.9300380108531947,
+         0.9977037827028759
+        ]
+       },
+       "user_refused>0": {
+        "failure": 1,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       }
+      },
+      "successes": 76,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "apology-pastry": {
+        "failure": 1,
+        "success": 7
+       },
+       "email-update": {
+        "success": 8
+       },
+       "expense-log": {
+        "success": 8
+       },
+       "parcel-cancel": {
+        "success": 8
+       },
+       "parcel-express": {
+        "success": 8
+       },
+       "pending-total": {
+        "success": 8
+       },
+       "points-clarify": {
+        "success": 8
+       },
+       "postage-expense": {
+        "failure": 1,
+        "success": 7
+       },
+       "refund-refuse": {
+        "inconclusive": 2,
+        "success": 6
+       },
+       "submit-meals": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.053471336520070537
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.07635,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.001005,
+      "usd_unknown_attempts": 0
+     }
+    },
+    "schema": "shimpz.precision-eval.classes-summary/v1"
+   }
+  },
+  "t1c": {
+   "meta": {
+    "arms": [
+     "N-U",
+     "N-WVU"
+    ],
+    "budget": {
+     "cap_usd": 0.03,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.0,
+     "refused": 0,
+     "requests": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.0,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "campaign": "luna-classes-t1c",
+    "commits": {
+     "brain": "d9916e5f13c76f78699cb5e236efa2ce9432494f",
+     "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+     "umbrella": "923f4fd1d4dbb9208c7047f2885e60275d0368dc"
+    },
+    "held_out_repetitions": 1,
+    "helper_budget": {
+     "cap_usd": 0.05,
+     "contention_waits": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.003508,
+     "unknown_settlements": 0
+    },
+    "loose_budget": {
+     "cap_usd": 0.1,
+     "contention_waits": 85,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.021155,
+     "refused": 0,
+     "requests": 151,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.024593,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "loose_protocol_budget": null,
+    "max_output_tokens": 32000,
+    "scenario_patterns": [
+     "email-update",
+     "expense-log",
+     "postage-expense"
+    ],
+    "seconds": 99.3,
+    "seed": "68762c8e188f8cc2",
+    "stopped_by_cap": false,
+    "stratum": "fresh2",
+    "tuning_repetitions": 1,
+    "workers": 6
+   },
+   "summary": {
+    "arms": {
+     "N-U": {
+      "attempts": 24,
+      "classes": {
+       "act": {
+        "failure": 4,
+        "inconclusive": 4,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.4898908364545973
+        ]
+       },
+       "harmless-default": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "safe-lookup": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 0,
+      "mechanisms": {
+       "fields_helper_supplied": 16,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 8,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 24,
+       "user_refused": 0,
+       "working_set_attached": 0,
+       "writes_checked": 32
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 4,
+        "inconclusive": 20,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.4898908364545973
+        ]
+       },
+       "user_refused=0": {
+        "failure": 4,
+        "inconclusive": 20,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.4898908364545973
+        ]
+       }
+      },
+      "successes": 0,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "email-update": {
+        "inconclusive": 8
+       },
+       "expense-log": {
+        "inconclusive": 8
+       },
+       "postage-expense": {
+        "failure": 4,
+        "inconclusive": 4
+       }
+      },
+      "unnecessary_question_wilson95": null,
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.011688,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": null,
+      "usd_unknown_attempts": 0
+     },
+     "N-WVU": {
+      "attempts": 24,
+      "classes": {
+       "act": {
+        "failure": 1,
+        "inconclusive": 7,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       },
+       "harmless-default": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       },
+       "safe-lookup": {
+        "inconclusive": 8,
+        "rate": null,
+        "wilson95": null
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 0,
+      "mechanisms": {
+       "fields_helper_supplied": 27,
+       "fields_optional_refused": 6,
+       "fields_user_refused": 1,
+       "helper_checks": 14,
+       "helper_unusable": 0,
+       "optional_refused": 6,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 23,
+       "user_refused": 1,
+       "working_set_attached": 53,
+       "writes_checked": 37
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 1,
+        "inconclusive": 17,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       },
+       "optional_refused>0": {
+        "inconclusive": 6,
+        "rate": null,
+        "wilson95": null
+       },
+       "user_refused=0": {
+        "inconclusive": 23,
+        "rate": null,
+        "wilson95": null
+       },
+       "user_refused>0": {
+        "failure": 1,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       }
+      },
+      "successes": 0,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "email-update": {
+        "inconclusive": 8
+       },
+       "expense-log": {
+        "inconclusive": 8
+       },
+       "postage-expense": {
+        "failure": 1,
+        "inconclusive": 7
+       }
+      },
+      "unnecessary_question_wilson95": null,
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.016412,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": null,
+      "usd_unknown_attempts": 0
+     }
+    },
+    "schema": "shimpz.precision-eval.classes-summary/v1"
+   }
+  },
+  "t2": {
+   "meta": {
+    "arms": [
+     "N",
+     "N-V",
+     "N-U",
+     "N-WVU",
+     "N-WQVU",
+     "N-WQVUP"
+    ],
+    "budget": {
+     "cap_usd": 0.03,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.0,
+     "refused": 0,
+     "requests": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.0,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "campaign": "luna-classes-t2",
+    "commits": {
+     "brain": "ad43cdec07e3923c4e12cd80f25348737a38aa0f",
+     "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+     "umbrella": "923f4fd1d4dbb9208c7047f2885e60275d0368dc"
+    },
+    "held_out_repetitions": 1,
+    "helper_budget": {
+     "cap_usd": 0.3,
+     "contention_waits": 0,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.055084,
+     "unknown_settlements": 0
+    },
+    "loose_budget": {
+     "cap_usd": 0.45,
+     "contention_waits": 0,
+     "failed": 1,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.021365,
+     "refused": 0,
+     "requests": 1877,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.273095,
+     "unknown_settlements": 1,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "loose_protocol_budget": {
+     "cap_usd": 0.2,
+     "contention_waits": 0,
+     "failed": 0,
+     "max_output_tokens": 32000,
+     "max_reservation_usd": 0.021664,
+     "refused": 0,
+     "requests": 364,
+     "reservations_exceeded": 0,
+     "spent_usd": 0.092555,
+     "unknown_settlements": 0,
+     "unreported": 0,
+     "unsupported": 0
+    },
+    "max_output_tokens": 32000,
+    "seconds": 966.1,
+    "seed": "0c97d40c916f5adc",
+    "stopped_by_cap": false,
+    "stratum": "precision",
+    "tuning_repetitions": 1,
+    "workers": 6
+   },
+   "summary": {
+    "arms": {
+     "N": {
+      "attempts": 120,
+      "classes": {
+       "act": {
+        "failure": 6,
+        "rate": 0.85,
+        "success": 34,
+        "wilson95": [
+         0.709276756335103,
+         0.9293881228267964
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 1,
+        "rate": 0.9375,
+        "success": 15,
+        "wilson95": [
+         0.7167126242970107,
+         0.9888806552353576
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "failure": 4,
+        "rate": 0.875,
+        "success": 28,
+        "wilson95": [
+         0.7193169451834978,
+         0.9502986561251991
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 94,
+      "mechanisms": {
+       "fields_helper_supplied": 0,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 0,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 0,
+       "user_refused": 0,
+       "working_set_attached": 0,
+       "writes_checked": 0
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 11,
+        "rate": 0.9083333333333333,
+        "success": 109,
+        "wilson95": [
+         0.843291530273291,
+         0.9480428171514347
+        ]
+       },
+       "user_refused=0": {
+        "failure": 11,
+        "rate": 0.9083333333333333,
+        "success": 109,
+        "wilson95": [
+         0.843291530273291,
+         0.9480428171514347
+        ]
+       }
+      },
+      "successes": 109,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "dns-bulk": {
+        "failure": 5,
+        "success": 3
+       },
+       "dns-clarify": {
+        "failure": 1,
+        "success": 7
+       },
+       "dns-create": {
+        "success": 8
+       },
+       "dns-delete": {
+        "success": 8
+       },
+       "dns-question": {
+        "success": 8
+       },
+       "dns-update": {
+        "failure": 2,
+        "success": 6
+       },
+       "event-create": {
+        "success": 8
+       },
+       "meeting-message": {
+        "success": 8
+       },
+       "message-clarify": {
+        "success": 8
+       },
+       "message-direct": {
+        "success": 8
+       },
+       "out-of-scope": {
+        "success": 8
+       },
+       "status-migrate": {
+        "failure": 1,
+        "success": 7
+       },
+       "task-bulk-complete": {
+        "success": 8
+       },
+       "task-complete": {
+        "failure": 2,
+        "success": 6
+       },
+       "task-create": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.03926207629154474
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.036493,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000335,
+      "usd_unknown_attempts": 0
+     },
+     "N-U": {
+      "attempts": 120,
+      "classes": {
+       "act": {
+        "failure": 6,
+        "rate": 0.85,
+        "success": 34,
+        "wilson95": [
+         0.709276756335103,
+         0.9293881228267964
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 2,
+        "rate": 0.875,
+        "success": 14,
+        "wilson95": [
+         0.639771727342413,
+         0.9650225122567595
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "refuse": {
+        "failure": 1,
+        "rate": 0.875,
+        "success": 7,
+        "wilson95": [
+         0.5291118177871464,
+         0.9775825085499433
+        ]
+       },
+       "safe-lookup": {
+        "failure": 2,
+        "rate": 0.9375,
+        "success": 30,
+        "wilson95": [
+         0.7985287685584542,
+         0.982689432968359
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 96,
+      "mechanisms": {
+       "fields_helper_supplied": 5,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 3,
+       "helper_checks": 8,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 109,
+       "user_refused": 3,
+       "working_set_attached": 0,
+       "writes_checked": 117
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 11,
+        "rate": 0.9083333333333333,
+        "success": 109,
+        "wilson95": [
+         0.843291530273291,
+         0.9480428171514347
+        ]
+       },
+       "user_refused=0": {
+        "failure": 8,
+        "rate": 0.9316239316239316,
+        "success": 109,
+        "wilson95": [
+         0.8708575754228228,
+         0.9649482894324245
+        ]
+       },
+       "user_refused>0": {
+        "failure": 3,
+        "rate": 0.0,
+        "wilson95": [
+         5.551115123125783e-17,
+         0.5614970317550454
+        ]
+       }
+      },
+      "successes": 109,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "dns-bulk": {
+        "failure": 3,
+        "success": 5
+       },
+       "dns-clarify": {
+        "success": 8
+       },
+       "dns-create": {
+        "success": 8
+       },
+       "dns-delete": {
+        "success": 8
+       },
+       "dns-question": {
+        "success": 8
+       },
+       "dns-update": {
+        "success": 8
+       },
+       "event-create": {
+        "success": 8
+       },
+       "meeting-message": {
+        "success": 8
+       },
+       "message-clarify": {
+        "failure": 2,
+        "success": 6
+       },
+       "message-direct": {
+        "success": 8
+       },
+       "out-of-scope": {
+        "failure": 1,
+        "success": 7
+       },
+       "status-migrate": {
+        "failure": 3,
+        "success": 5
+       },
+       "task-bulk-complete": {
+        "success": 8
+       },
+       "task-complete": {
+        "failure": 2,
+        "success": 6
+       },
+       "task-create": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0018411702168162486,
+       0.056666176227157854
+      ],
+      "unnecessary_questions": 1,
+      "usd_all_attempts": 0.043455,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000399,
+      "usd_unknown_attempts": 0
+     },
+     "N-V": {
+      "attempts": 120,
+      "classes": {
+       "act": {
+        "failure": 3,
+        "rate": 0.925,
+        "success": 37,
+        "wilson95": [
+         0.8013576647568946,
+         0.9741639742254119
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 1,
+        "rate": 0.9375,
+        "success": 15,
+        "wilson95": [
+         0.7167126242970107,
+         0.9888806552353576
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "failure": 3,
+        "rate": 0.90625,
+        "success": 29,
+        "wilson95": [
+         0.7578184527161212,
+         0.9675984487016337
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 98,
+      "mechanisms": {
+       "fields_helper_supplied": 0,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 0,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 121,
+       "user_refused": 0,
+       "working_set_attached": 0,
+       "writes_checked": 121
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 7,
+        "rate": 0.9416666666666667,
+        "success": 113,
+        "wilson95": [
+         0.8844740796636988,
+         0.9714589899997798
+        ]
+       },
+       "user_refused=0": {
+        "failure": 7,
+        "rate": 0.9416666666666667,
+        "success": 113,
+        "wilson95": [
+         0.8844740796636988,
+         0.9714589899997798
+        ]
+       }
+      },
+      "successes": 113,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "dns-bulk": {
+        "failure": 1,
+        "success": 7
+       },
+       "dns-clarify": {
+        "failure": 1,
+        "success": 7
+       },
+       "dns-create": {
+        "success": 8
+       },
+       "dns-delete": {
+        "success": 8
+       },
+       "dns-question": {
+        "success": 8
+       },
+       "dns-update": {
+        "failure": 2,
+        "success": 6
+       },
+       "event-create": {
+        "success": 8
+       },
+       "meeting-message": {
+        "success": 8
+       },
+       "message-clarify": {
+        "success": 8
+       },
+       "message-direct": {
+        "success": 8
+       },
+       "out-of-scope": {
+        "success": 8
+       },
+       "status-migrate": {
+        "failure": 2,
+        "success": 6
+       },
+       "task-bulk-complete": {
+        "success": 8
+       },
+       "task-complete": {
+        "failure": 1,
+        "success": 7
+       },
+       "task-create": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       3.469446951953614e-18,
+       0.037719990121680605
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.043227,
+      "usd_is_lower_bound": true,
+      "usd_known": false,
+      "usd_per_success_all_attempts": 0.000383,
+      "usd_unknown_attempts": 1
+     },
+     "N-WQVU": {
+      "attempts": 120,
+      "classes": {
+       "act": {
+        "rate": 1.0,
+        "success": 40,
+        "wilson95": [
+         0.9123783988027135,
+         1.0
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 2,
+        "inconclusive": 1,
+        "rate": 0.8666666666666667,
+        "success": 13,
+        "wilson95": [
+         0.6211801716767764,
+         0.9626387408969346
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "refuse": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "safe-lookup": {
+        "failure": 3,
+        "rate": 0.90625,
+        "success": 29,
+        "wilson95": [
+         0.7578184527161212,
+         0.9675984487016337
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 101,
+      "mechanisms": {
+       "fields_helper_supplied": 8,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 0,
+       "helper_checks": 8,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 8,
+       "plan_failed": 0,
+       "plan_steps": 266,
+       "plans": 112,
+       "traced": 119,
+       "user_refused": 0,
+       "working_set_attached": 291,
+       "writes_checked": 127
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 5,
+        "inconclusive": 1,
+        "rate": 0.957983193277311,
+        "success": 114,
+        "wilson95": [
+         0.9054010530615868,
+         0.9819215255403342
+        ]
+       },
+       "user_refused=0": {
+        "failure": 5,
+        "inconclusive": 1,
+        "rate": 0.957983193277311,
+        "success": 114,
+        "wilson95": [
+         0.9054010530615868,
+         0.9819215255403342
+        ]
+       }
+      },
+      "successes": 114,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "dns-bulk": {
+        "success": 8
+       },
+       "dns-clarify": {
+        "failure": 2,
+        "inconclusive": 1,
+        "success": 5
+       },
+       "dns-create": {
+        "success": 8
+       },
+       "dns-delete": {
+        "success": 8
+       },
+       "dns-question": {
+        "success": 8
+       },
+       "dns-update": {
+        "failure": 2,
+        "success": 6
+       },
+       "event-create": {
+        "success": 8
+       },
+       "meeting-message": {
+        "success": 8
+       },
+       "message-clarify": {
+        "success": 8
+       },
+       "message-direct": {
+        "success": 8
+       },
+       "out-of-scope": {
+        "success": 8
+       },
+       "status-migrate": {
+        "success": 8
+       },
+       "task-bulk-complete": {
+        "success": 8
+       },
+       "task-complete": {
+        "failure": 1,
+        "success": 7
+       },
+       "task-create": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0,
+       0.03664064639985608
+      ],
+      "unnecessary_questions": 0,
+      "usd_all_attempts": 0.110363,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000968,
+      "usd_unknown_attempts": 0
+     },
+     "N-WQVUP": {
+      "attempts": 120,
+      "classes": {
+       "act": {
+        "failure": 3,
+        "rate": 0.925,
+        "success": 37,
+        "wilson95": [
+         0.8013576647568946,
+         0.9741639742254119
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "refuse": {
+        "failure": 2,
+        "rate": 0.75,
+        "success": 6,
+        "wilson95": [
+         0.40927543031016883,
+         0.9285207872478909
+        ]
+       },
+       "safe-lookup": {
+        "failure": 1,
+        "rate": 0.96875,
+        "success": 31,
+        "wilson95": [
+         0.8425573617998744,
+         0.9944621398359969
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 100,
+      "mechanisms": {
+       "fields_helper_supplied": 6,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 2,
+       "helper_checks": 8,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 10,
+       "plan_failed": 0,
+       "plan_steps": 267,
+       "plans": 110,
+       "traced": 116,
+       "user_refused": 2,
+       "working_set_attached": 290,
+       "writes_checked": 124
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 6,
+        "rate": 0.95,
+        "success": 114,
+        "wilson95": [
+         0.8951971146376326,
+         0.9768856355855343
+        ]
+       },
+       "user_refused=0": {
+        "failure": 4,
+        "rate": 0.9661016949152542,
+        "success": 114,
+        "wilson95": [
+         0.9160723989651733,
+         0.9867401663528403
+        ]
+       },
+       "user_refused>0": {
+        "failure": 2,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.6576197724933469
+        ]
+       }
+      },
+      "successes": 114,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "dns-bulk": {
+        "failure": 1,
+        "success": 7
+       },
+       "dns-clarify": {
+        "success": 8
+       },
+       "dns-create": {
+        "success": 8
+       },
+       "dns-delete": {
+        "success": 8
+       },
+       "dns-question": {
+        "success": 8
+       },
+       "dns-update": {
+        "failure": 1,
+        "success": 7
+       },
+       "event-create": {
+        "success": 8
+       },
+       "meeting-message": {
+        "success": 8
+       },
+       "message-clarify": {
+        "success": 8
+       },
+       "message-direct": {
+        "success": 8
+       },
+       "out-of-scope": {
+        "failure": 2,
+        "success": 6
+       },
+       "status-migrate": {
+        "failure": 2,
+        "success": 6
+       },
+       "task-bulk-complete": {
+        "success": 8
+       },
+       "task-complete": {
+        "success": 8
+       },
+       "task-create": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.00550196755016235,
+       0.07001179072854388
+      ],
+      "unnecessary_questions": 2,
+      "usd_all_attempts": 0.119855,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.001051,
+      "usd_unknown_attempts": 0
+     },
+     "N-WVU": {
+      "attempts": 120,
+      "classes": {
+       "act": {
+        "failure": 5,
+        "rate": 0.875,
+        "success": 35,
+        "wilson95": [
+         0.738878801611489,
+         0.945404997490546
+        ]
+       },
+       "answer": {
+        "rate": 1.0,
+        "success": 8,
+        "wilson95": [
+         0.6755924351161198,
+         1.0
+        ]
+       },
+       "clarify": {
+        "failure": 1,
+        "inconclusive": 1,
+        "rate": 0.9333333333333333,
+        "success": 14,
+        "wilson95": [
+         0.7018347012621998,
+         0.9881331045067315
+        ]
+       },
+       "harmless-default": {
+        "rate": 1.0,
+        "success": 16,
+        "wilson95": [
+         0.8063923194655637,
+         1.0
+        ]
+       },
+       "refuse": {
+        "failure": 1,
+        "rate": 0.875,
+        "success": 7,
+        "wilson95": [
+         0.5291118177871464,
+         0.9775825085499433
+        ]
+       },
+       "safe-lookup": {
+        "failure": 3,
+        "rate": 0.90625,
+        "success": 29,
+        "wilson95": [
+         0.7578184527161212,
+         0.9675984487016337
+        ]
+       }
+      },
+      "effects": {
+       "duplicates": 0,
+       "forbidden": 0,
+       "wrong_scope": 0
+      },
+      "helper_only_paid_attempts": 0,
+      "judged_non_clarify": 96,
+      "mechanisms": {
+       "fields_helper_supplied": 7,
+       "fields_optional_refused": 0,
+       "fields_user_refused": 1,
+       "helper_checks": 8,
+       "helper_unusable": 0,
+       "optional_refused": 0,
+       "plan_empty": 0,
+       "plan_failed": 0,
+       "plans": 0,
+       "traced": 109,
+       "user_refused": 1,
+       "working_set_attached": 275,
+       "writes_checked": 117
+      },
+      "refusal_conditioned": {
+       "optional_refused=0": {
+        "failure": 10,
+        "inconclusive": 1,
+        "rate": 0.9159663865546218,
+        "success": 109,
+        "wilson95": [
+         0.8522016466406133,
+         0.9537151908051682
+        ]
+       },
+       "user_refused=0": {
+        "failure": 9,
+        "inconclusive": 1,
+        "rate": 0.923728813559322,
+        "success": 109,
+        "wilson95": [
+         0.8613819052612005,
+         0.9593567904824484
+        ]
+       },
+       "user_refused>0": {
+        "failure": 1,
+        "rate": 0.0,
+        "wilson95": [
+         0.0,
+         0.7934506856227626
+        ]
+       }
+      },
+      "successes": 109,
+      "superseded": {
+       "attempts": 0,
+       "effects": {
+        "duplicates": 0,
+        "forbidden": 0,
+        "wrong_scope": 0
+       },
+       "paid": 0,
+       "usd": 0,
+       "usd_unknown_attempts": 0
+      },
+      "templates": {
+       "dns-bulk": {
+        "failure": 3,
+        "success": 5
+       },
+       "dns-clarify": {
+        "failure": 1,
+        "inconclusive": 1,
+        "success": 6
+       },
+       "dns-create": {
+        "success": 8
+       },
+       "dns-delete": {
+        "success": 8
+       },
+       "dns-question": {
+        "success": 8
+       },
+       "dns-update": {
+        "success": 8
+       },
+       "event-create": {
+        "success": 8
+       },
+       "meeting-message": {
+        "success": 8
+       },
+       "message-clarify": {
+        "success": 8
+       },
+       "message-direct": {
+        "success": 8
+       },
+       "out-of-scope": {
+        "failure": 1,
+        "success": 7
+       },
+       "status-migrate": {
+        "failure": 2,
+        "success": 6
+       },
+       "task-bulk-complete": {
+        "success": 8
+       },
+       "task-complete": {
+        "failure": 3,
+        "success": 5
+       },
+       "task-create": {
+        "success": 8
+       }
+      },
+      "unnecessary_question_wilson95": [
+       0.0018411702168162486,
+       0.056666176227157854
+      ],
+      "unnecessary_questions": 1,
+      "usd_all_attempts": 0.047022,
+      "usd_is_lower_bound": false,
+      "usd_known": true,
+      "usd_per_success_all_attempts": 0.000431,
+      "usd_unknown_attempts": 0
+     }
+    },
+    "schema": "shimpz.precision-eval.classes-summary/v1"
+   }
+  }
+ },
+ "grade": "exploratory",
+ "judging": "oracle-passing completed attempts only (question rates conditional)",
+ "notes": [
+  "t1 N-U, N-WQVU, N-WQVUP ran before the provenance-prompt fix (brain 45be0eb) and were superseded by t1b",
+  "t1c is an unjudged recheck after brain d9916e5"
+ ],
+ "schema": "shimpz.precision-eval.classes-tuning/v1"
+}
