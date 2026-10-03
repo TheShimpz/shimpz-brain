@@ -129,5 +129,29 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(arms.ARMS["E"], arms.Arm("b", checks=True, working_set=True, cascade=True))
 
 
+class ScheduleTests(unittest.TestCase):
+    def test_a_reference_arm_runs_only_its_held_out_reference_repetitions(self):
+        fields = {
+            "campaign": "c",
+            "arms": ["A", "S"],
+            "stratum": "precision",
+            "held_out_repetitions": 3,
+            "tuning_repetitions": 1,
+            "reference_repetitions": 1,
+        }
+        plan = arms.schedule(fields)
+        sets = split.load()
+        held = sum(split.part(s.id, sets) == "held-out" for s in corpus.SCENARIOS)
+        luna = [item for item in plan if item["arm"] == "A"]
+        sonnet = [item for item in plan if item["arm"] == "S"]
+        self.assertEqual(len(luna), 3 * held + len(corpus.SCENARIOS) - held)
+        self.assertEqual(len(sonnet), held)
+        self.assertEqual(
+            {(item["provider"], item["model"], item["repetition"]) for item in sonnet}, {(*arms.ESCALATION, 0)}
+        )
+        self.assertEqual({(item["provider"], item["model"]) for item in luna}, {arms.MODELS["luna"]})
+        self.assertTrue(all(split.part(str(item["scenario"]), sets) == "held-out" for item in sonnet))
+
+
 if __name__ == "__main__":
     unittest.main()

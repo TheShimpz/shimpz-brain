@@ -24,6 +24,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from eval import corpus, large_api, split
 from eval.contracts import DATE, HOSTNAME, SEARCH_TERMS, TIME
 from eval.corpus import LOCALES
 from eval.fixtures import Action
@@ -87,6 +88,61 @@ ARMS = {
     "LJ-tasks": Arm("large-tasks", checks=True, routing="jev"),
     "LS": Arm("large", model="sonnet"),
 }
+MODELS = {"luna": ("openai", "gpt-6-luna"), "sonnet": ESCALATION}
+STRATA = {"precision": (corpus.SCENARIOS, split.SPLIT), "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT)}
+# What fixes an engineering campaign's schedule and its turns; a completion must match its campaign on every one.
+SCHEDULE_FIELDS = (
+    "campaign",
+    "seed",
+    "arms",
+    "stratum",
+    "held_out_repetitions",
+    "tuning_repetitions",
+    "reference_repetitions",
+    "max_output_tokens",
+)
+
+
+def tasks(stratum: str, held_out_repetitions: int, tuning_repetitions: int) -> list[tuple[int, corpus.Scenario]]:
+    """Every (repetition, scenario) task of one stratum's frozen split, in schedule order."""
+    scenarios, path = STRATA[stratum]
+    sets = split.load(path)
+    repetitions = {"held-out": held_out_repetitions, "tuning": tuning_repetitions}
+    return [
+        (repetition, scenario)
+        for scenario in scenarios
+        for repetition in range(repetitions[split.part(scenario.id, sets)])
+    ]
+
+
+def task_arms(
+    stratum: str, reference_repetitions: int, labels: Sequence[str], repetition: int, scenario: corpus.Scenario
+) -> list[str]:
+    """The arms one task runs: a Sonnet reference arm only on its first reference repetitions of held-out ones."""
+    held_out = split.part(scenario.id, split.load(STRATA[stratum][1])) == "held-out"
+    reference = held_out and repetition < reference_repetitions
+    return [label for label in labels if ARMS[label].model != "sonnet" or reference]
+
+
+def schedule(fields: Mapping[str, object]) -> list[dict[str, object]]:
+    """The identity (campaign, provider, model, arm, repetition, scenario) of every attempt a campaign schedules."""
+    stratum = str(fields["stratum"])
+    return [
+        {
+            "campaign": fields["campaign"],
+            "provider": MODELS[ARMS[label].model][0],
+            "model": MODELS[ARMS[label].model][1],
+            "arm": label,
+            "repetition": repetition,
+            "scenario": scenario.id,
+        }
+        for repetition, scenario in tasks(
+            stratum, int(fields["held_out_repetitions"]), int(fields["tuning_repetitions"])
+        )
+        for label in task_arms(
+            stratum, int(fields["reference_repetitions"]), list(fields["arms"]), repetition, scenario
+        )
+    ]
 
 
 def undispatched() -> dict[str, object]:

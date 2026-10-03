@@ -31,7 +31,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import corpus, judge, large_api, large_api_contract, private, split
+from eval import arms, corpus, judge, large_api, large_api_contract, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
@@ -595,28 +595,18 @@ def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]
     ]
 
 
-# What fixes a campaign's schedule and its turns: a completion run's metadata must match its campaign's on each.
-COMPLETION_FIELDS = (
-    "campaign",
-    "seed",
-    "arms",
-    "stratum",
-    "held_out_repetitions",
-    "tuning_repetitions",
-    "reference_repetitions",
-    "max_output_tokens",
-)
-
-
 def merge_completions(
-    attempts: Sequence[Mapping[str, object]], completions: Sequence[Sequence[Mapping[str, object]]]
+    attempts: Sequence[Mapping[str, object]],
+    completions: Sequence[Sequence[Mapping[str, object]]],
+    schedule: frozenset[str] | None = None,
 ) -> tuple[list[Mapping[str, object]], list[Mapping[str, object]], list[dict[str, int]]]:
     """Apply completion runs in order; each record supersedes one budget-stopped record of its key or fills a gap.
 
     A completion repeats only what the budget censored: it may never replace a conclusive outcome (a failure
     included) or change the replaced attempt's effort, repeat a key within itself, or fill an attempt of a run or
-    effort the earlier attempts never had. Returns the merged attempts, the superseded records (whose spend still
-    counts), and one summary per completion.
+    effort the earlier attempts never had. Given the campaign's ``schedule`` of attempt keys, every earlier attempt
+    must be in it and each completion must run exactly the keys still budget-stopped or missing. Returns the merged
+    attempts, the superseded records (whose spend still counts), and one summary per completion.
     """
     merged: dict[str, Mapping[str, object]] = {}
     for attempt in attempts:
@@ -624,6 +614,8 @@ def merge_completions(
         if key in merged:
             raise ValueError("duplicate attempt or pairing key")
         merged[key] = attempt
+    if schedule is not None and not set(merged) <= schedule:
+        raise ValueError("an attempt is outside its campaign's schedule")
     runs = {(_run_key(attempt), str(attempt["effort"])) for attempt in attempts}
     superseded: list[Mapping[str, object]] = []
     summaries = []
@@ -633,6 +625,8 @@ def merge_completions(
             raise ValueError("duplicate attempt or pairing key")
         if any((_run_key(record), str(record["effort"])) not in runs for record in records):
             raise ValueError("a completion runs an attempt its campaign never ran")
+        if schedule is not None and set(keys) != _censored(merged, schedule):
+            raise ValueError("a completion runs other than its campaign's censored attempts")
         replaced = [merged[key] for key in keys if key in merged]
         if any(item["status"] != "budget-stopped" for item in replaced):
             raise ValueError("a completion repeats a conclusive attempt")
@@ -646,6 +640,18 @@ def merge_completions(
         merged.update(zip(keys, records, strict=True))
         summaries.append({"attempts": len(keys), "superseded": len(replaced), "filled": len(keys) - len(replaced)})
     return list(merged.values()), superseded, summaries
+
+
+def _censored(merged: Mapping[str, Mapping[str, object]], schedule: frozenset[str]) -> set[str]:
+    """The scheduled keys a completion must run: still budget-stopped, or never recorded."""
+    return {key for key, attempt in merged.items() if attempt["status"] == "budget-stopped"} | (schedule - set(merged))
+
+
+def _schedule(meta: Mapping[str, object]) -> frozenset[str]:
+    """The attempt keys the report metadata's campaign schedules; a completion needs every schedule field."""
+    if any(meta.get(name) is None for name in arms.SCHEDULE_FIELDS):
+        raise ValueError("a completion run lacks its metadata")
+    return frozenset(attempt_key(identity) for identity in arms.schedule(meta))
 
 
 def _run_key(attempt: Mapping[str, object]) -> tuple[str, str, str, str]:
@@ -668,7 +674,7 @@ def _completion_provenance(
     for item, records, summary in zip(recorded, completions, summaries, strict=True):
         origin = item.get("completion") or {}
         if (
-            any(item.get(name) != meta.get(name) for name in COMPLETION_FIELDS)
+            any(item.get(name) != meta.get(name) for name in arms.SCHEDULE_FIELDS)
             or {str(record["campaign"]) for record in records} - {meta.get("campaign")}
             or (origin.get("budget_stopped"), origin.get("missing")) != (summary["superseded"], summary["filled"])
         ):
@@ -702,7 +708,8 @@ def build_report(
     names, or the first arm, unless the metadata lists ``comparisons``.
     """
     # Completions are admitted over the whole campaign; a split part then keeps only its own records.
-    attempts, superseded, merged = merge_completions(attempts, completions)
+    schedule = _schedule(meta) if completions else None
+    attempts, superseded, merged = merge_completions(attempts, completions, schedule)
     _completion_provenance(meta, completions, merged)
     sets = None if part is None else {"precision": split.load(), "large-api": split.load(split.LARGE_API_SPLIT)}
     if part is not None:
@@ -736,14 +743,14 @@ def build_report(
         models[campaign][arm] = (provider, model)
     paired = []
     pooled = []
-    for campaign, arms in sorted(by_campaign.items()):
-        if len(arms) < 2:
+    for campaign, ran in sorted(by_campaign.items()):
+        if len(ran) < 2:
             continue
-        rows = [row for items in arms.values() for row in items]
-        baseline = meta.get("baseline_arm") if meta.get("baseline_arm") in arms else sorted(arms)[0]
+        rows = [row for items in ran.values() for row in items]
+        baseline = meta.get("baseline_arm") if meta.get("baseline_arm") in ran else sorted(ran)[0]
         comparisons = [
-            (base, candidate) for base, candidate in meta.get("comparisons", ()) if {base, candidate} <= set(arms)
-        ] or [(baseline, candidate) for candidate in sorted(arms) if candidate != baseline]
+            (base, candidate) for base, candidate in meta.get("comparisons", ()) if {base, candidate} <= set(ran)
+        ] or [(baseline, candidate) for candidate in sorted(ran) if candidate != baseline]
         # Arms of one campaign pair across models too (A against its Sonnet reference S); each side names its model.
         paired.extend(
             {

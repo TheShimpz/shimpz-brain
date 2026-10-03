@@ -310,25 +310,29 @@ class ArmReportTests(unittest.TestCase):
 
 class CompletionReportTests(unittest.TestCase):
     def setUp(self):
-        self.stopped = {**_attempt("dns-create.en", "A", status="budget-stopped"), "operations": 0, "usd": 0.0}
-        self.partial = {
-            **_attempt("dns-update.en", "A", status="budget-stopped"),
-            "usd": 0.004,
-            "usage_known": False,
-        }
-        self.failed = _attempt("dns-delete.en", "A", status="turn-failed")
-        self.earlier = [self.stopped, self.partial, self.failed]
         self.schedule = {
             "campaign": "c",
             "seed": "s",
             "arms": ["A"],
             "stratum": "precision",
-            "held_out_repetitions": 3,
+            "held_out_repetitions": 1,
             "tuning_repetitions": 1,
             "reference_repetitions": 1,
             "max_output_tokens": 32000,
         }
-        self.assertEqual(set(self.schedule), set(precision.COMPLETION_FIELDS))
+        self.assertEqual(set(self.schedule), set(arms.SCHEDULE_FIELDS))
+        identities = arms.schedule(self.schedule)
+        self.assertEqual(len(identities), len(corpus.SCENARIOS))
+        self.full = [_attempt(item["scenario"], "A", item["repetition"]) for item in identities]
+        self.stopped = {**self._stopped(self.full[0]), "operations": 0, "usd": 0.0}
+        self.partial = {**self._stopped(self.full[1]), "usd": 0.004, "usage_known": False}
+        self.failed = {**self.full[2], "status": "turn-failed"}
+        # The fourth scheduled attempt was never recorded.
+        self.earlier = [self.stopped, self.partial, self.failed, *self.full[4:]]
+
+    @staticmethod
+    def _stopped(attempt):
+        return {**attempt, "status": "budget-stopped"}
 
     def _meta(self, *counts):
         """Report metadata naming one completion run per (budget_stopped, missing) count."""
@@ -336,54 +340,77 @@ class CompletionReportTests(unittest.TestCase):
         return {**self.schedule, "completions": runs}
 
     def test_a_completion_supersedes_only_budget_stopped_records_and_keeps_their_spend(self):
-        redone = [_attempt("dns-create.en", "A"), _attempt("dns-update.en", "A"), _attempt("dns-create.de", "A")]
-        judged = [_decision(attempt) for attempt in redone]
+        redone = [self.full[0], self.full[1], self.full[3]]
+        judged = [_decision(attempt) for attempt in self.full]
         report = precision.build_report(self.earlier, judged, self._meta((2, 1)), completions=[redone])
         self.assertEqual(report["completions"], [{"attempts": 3, "superseded": 2, "filled": 1}])
         (run,) = report["runs"]
         self.assertEqual(run["attempts"]["budget-stopped"], 0)
-        self.assertEqual((run["conclusive"], run["successes"], run["inconclusive"]), (4, 3, 0))
+        direct = precision.build_report([*self.full[:2], self.failed, *self.full[3:]], judged, {"seed": "s"})
+        # Merged, the campaign scores exactly as if its censored attempts had run the first time.
+        self.assertEqual((run["conclusive"], run["inconclusive"]), (120, 0))
+        self.assertEqual(
+            (run["successes"], run["pass^3"]), (direct["runs"][0]["successes"], direct["runs"][0]["pass^3"])
+        )
         # The partial attempt's spend stays, apart from the per-task figures; its unknown cost stays visible.
         self.assertEqual(run["cost"]["superseded"], {"attempts": 2, "dispatched": 1, "usd": 0.004, "usd_known": False})
-        self.assertEqual((run["cost"]["attempts"], run["cost"]["usd"], run["cost"]["usd_known"]), (4, 0.004, True))
+        self.assertEqual((run["cost"]["attempts"], run["cost"]["usd"], run["cost"]["usd_known"]), (120, 0.12, True))
         plain = precision.build_report(self.earlier, [], {"seed": "s"})
         self.assertEqual(plain["completions"], [])
         self.assertEqual(
             plain["runs"][0]["cost"]["superseded"], {"attempts": 0, "dispatched": 0, "usd": 0, "usd_known": True}
         )
-        # A second completion supersedes a record the first left budget-stopped, in order.
-        again = [{**_attempt("dns-create.en", "A", status="budget-stopped"), "operations": 0, "usd": 0.0}]
-        twice = precision.build_report(self.earlier, [], self._meta((1, 0), (1, 0)), completions=[again, [redone[0]]])
-        self.assertEqual([item["superseded"] for item in twice["completions"]], [1, 1])
+        # A second completion runs only what the first left budget-stopped, in order.
+        first = [self.stopped, self.full[1], self.full[3]]
+        meta = self._meta((2, 1), (1, 0))
+        twice = precision.build_report(self.earlier, judged, meta, completions=[first, [self.full[0]]])
+        self.assertEqual([item["superseded"] for item in twice["completions"]], [2, 1])
+        self.assertEqual(twice["runs"][0]["conclusive"], 120)
+
+    def test_a_completion_runs_exactly_its_campaign_s_censored_attempts(self):
+        meta = self._meta((2, 1))
+        unscheduled = _attempt(self.full[0]["scenario"], "A", 99)
+        for completion in (
+            [self.full[0], self.full[1]],
+            [self.full[0], self.full[1], self.full[3], unscheduled],
+            [self.full[0], self.full[1], self.full[3], self.full[2]],
+        ):
+            with self.subTest(records=len(completion)), self.assertRaisesRegex(ValueError, "censored attempts"):
+                precision.build_report(self.earlier, [], meta, completions=[completion])
+        with self.assertRaisesRegex(ValueError, "outside its campaign"):
+            precision.build_report([*self.earlier, self._stopped(unscheduled)], [], meta, completions=[[]])
+        # A completion needs its own run metadata: every schedule field, the same schedule, and its exact counts.
+        redone = [self.full[0], self.full[1], self.full[3]]
+        for bad in (
+            {"seed": "s"},
+            {**meta, "max_output_tokens": None},
+            {**meta, "completions": [{**meta["completions"][0], "seed": "other"}]},
+            self._meta((1, 2)),
+            self._meta((2, 0)),
+            {**self._meta((2, 1)), "completions": []},
+        ):
+            with self.subTest(meta=bad), self.assertRaisesRegex(ValueError, "metadata"):
+                precision.build_report(self.earlier, [], bad, completions=[redone])
+        with self.assertRaisesRegex(ValueError, "duplicate judgment"):
+            precision.build_report(self.earlier, [_decision(self.full[0])] * 2, meta, completions=[redone])
 
     def test_a_completion_never_replaces_a_conclusive_outcome_or_repeats_a_key(self):
+        stopped = self._stopped(_attempt("dns-update.en", "A"))
+        failed = _attempt("dns-delete.en", "A", status="turn-failed")
+        earlier = [stopped, failed, {**_attempt("dns-update.ar", "A"), "effort": "high"}]
         cases = [
             ([_attempt("dns-delete.en", "A")], "conclusive"),
-            ([_attempt("dns-create.en", "A"), _attempt("dns-create.en", "A")], "duplicate attempt"),
-            ([{**_attempt("dns-create.en", "A"), "campaign": "other"}], "never ran"),
-            ([_attempt("dns-create.en", "B")], "never ran"),
-            ([{**_attempt("dns-create.de", "A"), "effort": "medium"}], "never ran"),
-            ([{**_attempt("dns-create.en", "A"), "effort": "high"}, _attempt("dns-update.en", "A", 0)], "effort"),
+            ([_attempt("dns-update.en", "A"), _attempt("dns-update.en", "A")], "duplicate attempt"),
+            ([{**_attempt("dns-update.en", "A"), "campaign": "other"}], "never ran"),
+            ([_attempt("dns-update.en", "B")], "never ran"),
+            ([{**_attempt("dns-update.de", "A"), "effort": "medium"}], "never ran"),
+            ([{**_attempt("dns-update.en", "A"), "effort": "high"}], "effort"),
         ]
-        with_high = [*self.earlier, {**_attempt("dns-create.ar", "A"), "effort": "high"}]
         for completion, message in cases:
             with self.subTest(message), self.assertRaisesRegex(ValueError, message):
-                precision.build_report(with_high, [], self._meta((1, 0)), completions=[completion])
+                precision.merge_completions(earlier, [completion])
         with self.assertRaisesRegex(ValueError, "duplicate attempt"):
-            precision.build_report([*self.earlier, self.failed], [], {"seed": "s"})
-        # A completion needs its own run metadata: the same schedule and exactly its superseded and filled counts.
-        redone = _attempt("dns-create.en", "A")
-        for meta in (
-            {"seed": "s"},
-            {**self._meta((1, 0)), "seed": "other"},
-            self._meta((2, 0)),
-            self._meta((1, 1)),
-            {**self._meta((1, 0)), "campaign": "other"},
-        ):
-            with self.subTest(meta=meta), self.assertRaisesRegex(ValueError, "metadata"):
-                precision.build_report(self.earlier, [], meta, completions=[[redone]])
-        with self.assertRaisesRegex(ValueError, "duplicate judgment"):
-            precision.build_report(self.earlier, [_decision(redone)] * 2, self._meta((1, 0)), completions=[[redone]])
+            precision.merge_completions([*earlier, stopped], [])
 
     def test_each_completion_names_the_digests_of_the_transcripts_it_completed(self):
         meta = self._meta((1, 0), (1, 0))
@@ -397,16 +424,17 @@ class CompletionReportTests(unittest.TestCase):
         precision.check_completion_sources({"seed": "s"}, [b"t"])
 
     def test_a_split_part_merges_only_its_own_completion_records(self):
-        held = next(s for s in corpus.SCENARIOS if split.part(s.id, split.load()) == "held-out")
-        tuned = next(s for s in corpus.SCENARIOS if split.part(s.id, split.load()) == "tuning")
-        earlier = [_attempt(s.id, "A", status="budget-stopped") for s in (held, tuned)]
-        redone = [_attempt(s.id, "A") for s in (held, tuned)]
-        judged = [_decision(attempt) for attempt in redone]
-        report = precision.build_report(earlier, judged, self._meta((2, 0)), None, "held-out", [redone])
+        sets = split.load()
+        parts = [split.part(str(attempt["scenario"]), sets) for attempt in self.full]
+        held, tuned = parts.index("held-out"), parts.index("tuning")
+        earlier = [self._stopped(a) if i in {held, tuned} else a for i, a in enumerate(self.full)]
+        judged = [_decision(attempt) for attempt in self.full]
+        completion = [self.full[held], self.full[tuned]]
+        report = precision.build_report(earlier, judged, self._meta((2, 0)), None, "held-out", [completion])
         self.assertEqual(report["completions"], [{"attempts": 2, "superseded": 2, "filled": 0}])
         (run,) = report["runs"]
-        self.assertEqual((run["conclusive"], run["cost"]["superseded"]["dispatched"]), (1, 1))
-        self.assertEqual(report["judges"]["judged_attempts"], 1)
+        self.assertEqual((run["conclusive"], run["cost"]["superseded"]["attempts"]), (64, 1))
+        self.assertEqual(report["judges"]["judged_attempts"], 64)
 
 
 class CrossModelReportTests(unittest.TestCase):
