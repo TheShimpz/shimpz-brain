@@ -7,7 +7,9 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import agent_runtime
 import model_usage
 from eval import cost
 
@@ -56,6 +58,22 @@ class PriceTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "invalid usage"):
                 cost.Usage.of(invalid)
+
+    def test_an_evaluation_only_model_is_priced_and_admitted_only_where_asked(self):
+        sol = cost.price("gpt-5.6-sol")
+        self.assertEqual(sol.provider, "openai")
+        self.assertAlmostEqual(sol.input, 4e-6)
+        self.assertAlmostEqual(sol.output, 20e-6)
+        self.assertAlmostEqual(sol.cache_read, 0.4e-6)
+        self.assertAlmostEqual(sol.cache_write, 4e-6)
+        self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model"):
+            agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key", "low")
+        with mock.patch.dict(agent_runtime.MODELS_BY_PROVIDER):
+            cost.admit_evaluation_models(agent_runtime.MODELS_BY_PROVIDER)
+            self.assertEqual(agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key", "low").effort, "low")
+            self.assertIn("gpt-6.1-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
+        self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
 
     def test_a_call_bound_prices_every_input_token_at_the_dearest_input_rate(self):
         self.assertAlmostEqual(cost.call_bound("claude-sonnet-5-5", 1_000, 100), (1_000 * 2.5 + 100 * 10) * 1e-6)

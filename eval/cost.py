@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, fields
 from pathlib import Path
 
@@ -34,6 +34,10 @@ FIELDS = (
 CACHE_READ_MULTIPLIER = {"openai": 0.1, "anthropic": 0.1}
 CACHE_READ_MULTIPLIER_BY_MODEL = {"claude-opus-5-5": 0.05, "gpt-6.1-sol": 0.05}
 CACHE_WRITE_MULTIPLIER = {"openai": 1.0, "anthropic": 1.25}
+# Models priced for evaluation only, which the product catalog does not offer, in US cents per million input and output
+# tokens: gpt-5.6-sol's promotional list price (listed through at least 2026-11-21, prompts up to 272k input tokens),
+# frozen on 2026-10-02. Only a disposable evaluation Brain admits them (``admit_evaluation_models``).
+EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}}
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,20 +51,40 @@ class Price:
     cache_write: float
 
 
-def price(model: str, catalog: Path = CATALOG) -> Price:
+def _list_prices(catalog: Path) -> Iterator[tuple[str, str, int, int]]:
+    """(provider, model, input cents, output cents) per million tokens: the catalog's, then the evaluation-only ones."""
     for provider in json.loads(catalog.read_text(encoding="utf-8"))["providers"]:
         for entry in provider["models"]:
-            if entry["id"] == model:
-                per_token = entry["input_usd_per_million_cents"] / 100 / 1_000_000
-                read = CACHE_READ_MULTIPLIER_BY_MODEL.get(model, CACHE_READ_MULTIPLIER[provider["id"]])
-                return Price(
-                    provider["id"],
-                    per_token,
-                    entry["output_usd_per_million_cents"] / 100 / 1_000_000,
-                    per_token * read,
-                    per_token * CACHE_WRITE_MULTIPLIER[provider["id"]],
-                )
+            yield (
+                provider["id"],
+                entry["id"],
+                entry["input_usd_per_million_cents"],
+                entry["output_usd_per_million_cents"],
+            )
+    for provider_id, models in EVALUATION_MODELS.items():
+        for model_id, (input_cents, output_cents) in models.items():
+            yield provider_id, model_id, input_cents, output_cents
+
+
+def price(model: str, catalog: Path = CATALOG) -> Price:
+    for provider, model_id, input_cents, output_cents in _list_prices(catalog):
+        if model_id == model:
+            per_token = input_cents / 100 / 1_000_000
+            read = CACHE_READ_MULTIPLIER_BY_MODEL.get(model, CACHE_READ_MULTIPLIER[provider])
+            return Price(
+                provider,
+                per_token,
+                output_cents / 100 / 1_000_000,
+                per_token * read,
+                per_token * CACHE_WRITE_MULTIPLIER[provider],
+            )
     raise ValueError("unknown model")
+
+
+def admit_evaluation_models(models_by_provider: dict[str, frozenset[str]]) -> None:
+    """Let one disposable evaluation Brain run the evaluation-only models; no product process calls this."""
+    for provider, models in EVALUATION_MODELS.items():
+        models_by_provider[provider] = models_by_provider[provider] | frozenset(models)
 
 
 @dataclass(frozen=True, slots=True)

@@ -154,6 +154,8 @@ class ScheduleTests(unittest.TestCase):
 
     def test_a_gpt_sol_reference_runs_arm_a_on_held_out_repetitions_only(self):
         self.assertEqual(arms.ARMS["SOL"], arms.Arm("a", model="sol"))
+        self.assertEqual(arms.ARMS["SOL56"], arms.Arm("a", model="sol56"))
+        self.assertEqual(arms.MODELS["sol56"], ("openai", "gpt-5.6-sol"))
         fields = {
             "campaign": "c",
             "arms": ["SOL", "S"],

@@ -12,8 +12,8 @@ Cumulative arms over Luna at effort low:
 - E: D with a cascade. On a risk signal before any write ran, the turn restarts on the escalation model; reads have
   no effect, so restarting replays nothing that changed state. After a write the turn stays on Luna.
 
-Reference arms run A's configuration on another model (S and LS on claude-sonnet-5-5, SOL on gpt-6.1-sol), only on
-held-out scenarios.
+Reference arms run A's configuration on another model (S and LS on claude-sonnet-5-5, SOL on gpt-6.1-sol, SOL56 on
+the evaluation-only gpt-5.6-sol), only on held-out scenarios.
 
 Nothing here is production runtime: the driver applies it in its own Team process. This module uses only the
 standard library.
@@ -56,8 +56,8 @@ class Arm:
     ``exposure`` is ``scope`` (every Assistant in scope), ``namespaces`` (provider tool search over resource-group
     namespaces), ``groups`` (deterministic group ranking), or ``jev-groups`` (Jev group selection, falling back to
     ``fallback`` when no group is confident). ``routing`` ``jev`` decides Luna or the escalation model before the
-    turn; a ``model`` other than ``luna`` (``sonnet``, the escalation model, or ``sol``) runs the whole arm on that
-    model as a reference.
+    turn; a ``model`` other than ``luna`` (``sonnet``, the escalation model, ``sol``, or ``sol56``) runs the whole arm
+    on that model as a reference.
     """
 
     contracts: str
@@ -79,6 +79,7 @@ ARMS = {
     "EJ": Arm("b", checks=True, working_set=True, routing="jev"),
     "S": Arm("a", model="sonnet"),
     "SOL": Arm("a", model="sol"),
+    "SOL56": Arm("a", model="sol56"),
     "L1": Arm("large"),
     "L2": Arm("large", exposure="namespaces"),
     "L3": Arm("large", exposure="groups"),
@@ -93,7 +94,12 @@ ARMS = {
     "LJ-tasks": Arm("large-tasks", checks=True, routing="jev"),
     "LS": Arm("large", model="sonnet"),
 }
-MODELS = {"luna": ("openai", "gpt-6-luna"), "sonnet": ESCALATION, "sol": ("openai", "gpt-6.1-sol")}
+MODELS = {
+    "luna": ("openai", "gpt-6-luna"),
+    "sonnet": ESCALATION,
+    "sol": ("openai", "gpt-6.1-sol"),
+    "sol56": ("openai", "gpt-5.6-sol"),
+}
 STRATA = {"precision": (corpus.SCENARIOS, split.SPLIT), "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT)}
 # What fixes an engineering campaign's schedule and its turns; a completion must match its campaign on every one.
 SCHEDULE_FIELDS = (
