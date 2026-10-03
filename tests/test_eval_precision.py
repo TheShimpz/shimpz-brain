@@ -13,6 +13,7 @@ from unittest import mock
 import model_usage
 from eval import arms, corpus, judge, large_api, precision, private, split
 from eval import cost as eval_cost
+from eval import signals as eval_signals
 
 GOOD = judge.Verdict(
     reply_correct=True,
@@ -274,7 +275,9 @@ class ArmReportTests(unittest.TestCase):
         self.assertEqual([a.id for a in item.assistants], ["dns"])
         self.assertIn("get-record", [a.id for a in item.assistants[0].actions])
         self.assertNotIn("arm_signals", precision._group([(_attempt("dns-create.en"), "success")], "s", "plain"))
-        self.assertIsNone(precision._arm_signals([{**attempts[0], "operations": 0}])["arm_signals"]["escalation_rate"])
+        self.assertIsNone(
+            eval_signals.arm_signals([{**attempts[0], "operations": 0}])["arm_signals"]["escalation_rate"]
+        )
 
     def test_a_stopped_record_first_keeps_every_signal_and_its_denominator(self):
         ran = {
@@ -331,7 +334,7 @@ class ArmReportTests(unittest.TestCase):
             (signals["jev_calls"], signals["jev_failures"], signals["jev_usd"], signals["jev_usd_known"]),
             (2, 1, 0.0002, False),
         )
-        fell_back = precision._arm_signals([stopped, ran, {**ran, "selection_fallback": True}])["arm_signals"]
+        fell_back = eval_signals.arm_signals([stopped, ran, {**ran, "selection_fallback": True}])["arm_signals"]
         self.assertEqual((fell_back["selection_fallbacks"], fell_back["selection_fallback_rate"]), (1, 0.5))
         self.assertEqual((signals["selection_fallbacks"], signals["selection_fallback_rate"]), (0, 0.0))
         self.assertEqual(
@@ -350,19 +353,19 @@ class ArmReportTests(unittest.TestCase):
             (signals["helper_calls"], signals["helper_failures"], signals["helper_usd"], signals["helper_usd_known"]),
             (3, 1, 0.0003, False),
         )
-        only = precision._arm_signals([stopped])["arm_signals"]
+        only = eval_signals.arm_signals([stopped])["arm_signals"]
         self.assertEqual((only["working_set_recall"], only["selection_fallback_rate"]), (None, None))
         self.assertIsNone(signals["language"])
 
     def test_language_signals_keep_work_without_candidates_visible(self):
-        idle = dict.fromkeys(precision.LANGUAGE_COUNTS, 0)
+        idle = dict.fromkeys(eval_signals.LANGUAGE_COUNTS, 0)
         worked = {**idle, "eligible": 1, "helper_calls": 1, "variant_reads": 2, "planned_collection": 1}
         found = {**idle, "eligible": 2, "ranked_calls": 1, "ranked_candidates": 3, "rank_eligible": 1}
         attempts = [
             {"language": {**item, "service_seconds": seconds, "registry": None}}
             for item, seconds in ((idle, 0.0), (worked, 0.25), (found, 0.5))
         ]
-        summary = precision._language_signals([*attempts, {"language": None}])
+        summary = eval_signals.language_signals([*attempts, {"language": None}])
         self.assertEqual(
             (summary["attempts"], summary["attempts_with_eligible_search"], summary["attempts_with_work"]), (3, 2, 2)
         )
