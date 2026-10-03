@@ -860,6 +860,13 @@ class AgentRuntime:
         """The one decision of a held Routine run's automatic recovery: retry, ask, or pause (ADR-0092)."""
         return routine_recovery.decide(functools.partial(self._decision_model, provider), provider.provider, request)
 
+    def routine_compile(
+        self, provider: ProviderConfig, message: str, assistants: tuple[AssistantDefinition, ...], locale: str | None
+    ) -> object:
+        """Recompile a Routine from its Team-held creation message, with no turn, tools, or history (ADR-0092)."""
+        ask = team_routine.recompiler(lambda: self._model_factory(provider), provider.provider, structured_output)
+        return team_routine.recompile(message, assistants, locale, ask)
+
     def capability_plan(
         self,
         provider: ProviderConfig,
