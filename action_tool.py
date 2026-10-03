@@ -22,6 +22,10 @@ MAX_LISTED_NAMES = 16
 _PLAIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}")
 
 
+class ActionTool(StructuredTool):
+    """A declared Action's request tool, typed so a provider binding can tell it apart from Brain's own tools."""
+
+
 def correction(tool_name: str, action: ActionDefinition) -> str:
     """Closed correction text; it names required properties only when every one is a plain identifier."""
     required = action.input_schema.get("required", ())
@@ -47,7 +51,7 @@ def action_schema_validator(schema: Mapping[str, Any]):
     return action_schema.payload_validator(schema, Registry(retrieve=_refuse_retrieval))
 
 
-def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) -> StructuredTool:
+def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) -> ActionTool:
     """Build a tool that can only suspend the graph with a schema-valid, typed Action request."""
     from langgraph.types import interrupt
     from referencing.exceptions import Unresolvable
@@ -73,7 +77,7 @@ def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) 
             }
         )
 
-    return StructuredTool.from_function(
+    return ActionTool.from_function(
         suspend_for_controller,
         name=tool_name,
         description=f"Internal Assistant {assistant_id}, Action {action.id}: {action.summary}",

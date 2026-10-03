@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 from typing import TYPE_CHECKING
 
+import action_tool
 import httpx
 import provider_cancel
 from langchain_core.language_models import BaseChatModel
@@ -39,8 +40,6 @@ def provider_model(
         "max_retries": retries if retries is not None else DECISION_MAX_RETRIES if decision else 2,
     }
     if config.provider == "openai":
-        from langchain_openai import ChatOpenAI
-
         # The owner keeps no conversation on OpenAI's side: every Responses call is unstored, and reasoning is carried
         # between tool calls as encrypted content the adapter replays.
         openai = {**common, "use_responses_api": True, "store": False, "include": ["reasoning.encrypted_content"]}
@@ -50,7 +49,7 @@ def provider_model(
             openai["reasoning_effort"] = config.effort
         if http_client is not None:
             openai["http_client"] = http_client
-        return ChatOpenAI(**openai)
+        return _action_chat_openai()(**openai)
     if config.provider == "anthropic":
         effort = "low" if decision else config.effort
         anthropic = {**common, **({"effort": effort} if effort is not None else {})}
@@ -58,6 +57,32 @@ def provider_model(
         model._http_client = http_client
         return model
     raise RuntimeContractError("unsupported model provider")
+
+
+@functools.cache
+def _action_chat_openai() -> type[BaseChatModel]:
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+    from langchain_openai import ChatOpenAI
+
+    class ActionChatOpenAI(ChatOpenAI):
+        """ChatOpenAI that sends every Action tool with ``strict: false`` and its declared ``required`` list.
+
+        The Responses API treats a function tool sent without ``strict`` as strict when it can and then requires every
+        property, so the model invents a value for each optional Action property (ADR-0094). Optional stays optional;
+        the Action tool still validates every payload and Team validates again. Brain's own tools keep the provider
+        default.
+        """
+
+        def bind_tools(self, tools, **kwargs):
+            return super().bind_tools(
+                [
+                    convert_to_openai_tool(tool, strict=False) if isinstance(tool, action_tool.ActionTool) else tool
+                    for tool in tools
+                ],
+                **kwargs,
+            )
+
+    return ActionChatOpenAI
 
 
 @functools.cache

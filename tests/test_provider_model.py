@@ -34,7 +34,7 @@ class ProviderModelTests(unittest.TestCase):
 
     def test_every_catalog_provider_has_a_runtime_adapter(self):
         with (
-            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch.object(provider_client, "_action_chat_openai", return_value=(openai := mock.Mock())),
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             for provider, models in agent_runtime.MODELS_BY_PROVIDER.items():
@@ -54,10 +54,11 @@ class ProviderModelTests(unittest.TestCase):
         transport = mock.Mock()
         with (
             mock.patch.object(agent_runtime.httpx, "Client", return_value=transport),
-            mock.patch(
-                "langchain_openai.ChatOpenAI",
-                side_effect=[mock.Mock(), mock.Mock(), mock.Mock()],
-            ) as constructor,
+            mock.patch.object(
+                provider_client,
+                "_action_chat_openai",
+                return_value=(constructor := mock.Mock(side_effect=[mock.Mock(), mock.Mock(), mock.Mock()])),
+            ),
         ):
             factory = provider_client.ProviderModelFactory()
             factory(
@@ -95,7 +96,7 @@ class ProviderModelTests(unittest.TestCase):
 
     def test_openai_uses_responses_api_without_changing_anthropic(self):
         with (
-            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch.object(provider_client, "_action_chat_openai", return_value=(openai := mock.Mock())),
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             provider_client.provider_model(
@@ -122,7 +123,7 @@ class ProviderModelTests(unittest.TestCase):
 
     def test_decision_models_use_provider_specific_low_effort_with_one_retry(self):
         with (
-            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch.object(provider_client, "_action_chat_openai", return_value=(openai := mock.Mock())),
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             provider_client.provider_model(
@@ -154,7 +155,7 @@ class ProviderModelTests(unittest.TestCase):
 
     def test_chat_models_use_the_configured_effort_and_other_models_keep_the_provider_default(self):
         with (
-            mock.patch("langchain_openai.ChatOpenAI") as openai,
+            mock.patch.object(provider_client, "_action_chat_openai", return_value=(openai := mock.Mock())),
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             for effort in ("low", "medium", "high"):
