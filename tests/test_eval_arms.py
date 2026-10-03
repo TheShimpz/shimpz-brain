@@ -70,6 +70,7 @@ class WorkingSetTests(unittest.TestCase):
         self.assertEqual(len(many), arms.WORKING_SET_LIMIT)
         self.assertEqual(arms.relevance("Schedule lunch at 12:00", "en", ["calendar"]), {"calendar": 2})
         self.assertEqual(arms.relevance("Hi", "en", ["tasks"]), {"tasks": 0})
+        self.assertEqual(arms.relevance("Hi", "en", ["unlisted"]), {"unlisted": 0})
 
     def test_tuning_scenarios_keep_every_needed_assistant(self):
         sets = split.load()

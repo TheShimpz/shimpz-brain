@@ -249,7 +249,8 @@ def undispatched() -> dict[str, object]:
 def relevance(message: str, locale: str, scope: Sequence[str]) -> dict[str, int]:
     """Each Assistant's matched declared terms, plus a domain or address cue for DNS and a date or time for Calendar."""
     text = message.casefold()
-    scores = {name: sum(term.casefold() in text for term in TERMS[name][locale]) for name in scope}
+    # An Assistant without declared terms (such as a blind fresh-v1 one) matches nothing.
+    scores = {name: sum(term.casefold() in text for term in TERMS.get(name, {}).get(locale, ())) for name in scope}
     if "dns" in scores and (DOMAIN_RE.search(message) or IPV4_RE.search(message)):
         scores["dns"] += 1
     if "calendar" in scores and (DATE_RE.search(message) or TIME_RE.search(message)):
