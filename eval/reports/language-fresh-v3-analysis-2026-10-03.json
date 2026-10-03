@@ -1,0 +1,756 @@
+{
+ "arms": {
+  "N": {
+   "active_p50": 5.143454434350133,
+   "active_p95": 11.585022699087858,
+   "attempts_with_forbidden_effect": 3,
+   "clarifications": 6,
+   "forbidden_by_template": {
+    "soup-price-clarify": 3
+   },
+   "helper_calls": 0,
+   "helper_usd": 0.0,
+   "judged_oracle_passing": 43,
+   "judged_oracle_passing_reply_failures": 6,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 0.7096774193548387,
+    "items": 70,
+    "low": 0.25316455696202533,
+    "mean": 0.4714285714285714
+   },
+   "language": null,
+   "missing": 355,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.8263888888888888,
+    "items": 288,
+    "low": 0.3854166666666667,
+    "mean": 0.6180555555555556
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.792,
+    "class-transfer": 0.75,
+    "deed-rename": 0.167,
+    "dessert-class-signup": 0.167,
+    "furisode-repair": 0.583,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 1.0,
+    "soup-price-clarify": 0.875,
+    "veggie-lasagna": 0.042,
+    "yukata-booking": 0.042
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.7708333333333334,
+    "items": 96,
+    "low": 0.3333333333333333,
+    "mean": 0.5520833333333334
+   },
+   "oracle_passes": 178,
+   "relax_triggers": 0,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 3,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 0,
+   "turn_failed": 0,
+   "usd": 0.074931,
+   "usd_per_attempt": 0.00026,
+   "usd_per_oracle_pass": 0.000421,
+   "wrong": 3
+  },
+  "NE": {
+   "active_p50": 8.251951610669494,
+   "active_p95": 14.33982709236443,
+   "attempts_with_forbidden_effect": 19,
+   "clarifications": 14,
+   "forbidden_by_template": {
+    "deed-rename": 1,
+    "furisode-repair": 1,
+    "soup-price-clarify": 17
+   },
+   "helper_calls": 239,
+   "helper_usd": 0.023287,
+   "judged_oracle_passing": 40,
+   "judged_oracle_passing_reply_failures": 4,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 0.696969696969697,
+    "items": 70,
+    "low": 0.3076923076923077,
+    "mean": 0.5
+   },
+   "language": {
+    "candidates": 117,
+    "eligible": 241,
+    "embedding_calls": 0,
+    "expanded": 61,
+    "helper_calls": 239,
+    "helper_limited": 0,
+    "observed": 0,
+    "planned_assistant": 0,
+    "planned_assumed": 241,
+    "planned_collection": 0,
+    "planned_none": 0,
+    "probes": 0,
+    "rank_eligible": 0,
+    "ranked_calls": 0,
+    "ranked_candidates": 0,
+    "service_failures": 0,
+    "service_seconds": 0.0,
+    "unplanned": 0,
+    "variant_reads": 322
+   },
+   "missing": 307,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.8402777777777778,
+    "items": 288,
+    "low": 0.4513888888888889,
+    "mean": 0.65625
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.75,
+    "class-transfer": 0.75,
+    "deed-rename": 0.833,
+    "dessert-class-signup": 0.75,
+    "furisode-repair": 0.375,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 0.958,
+    "soup-price-clarify": 0.292,
+    "veggie-lasagna": 0.125,
+    "yukata-booking": 0.042
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.7083333333333334,
+    "items": 96,
+    "low": 0.2604166666666667,
+    "mean": 0.4895833333333333
+   },
+   "oracle_passes": 189,
+   "relax_triggers": 0,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 19,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 308,
+   "turn_failed": 0,
+   "usd": 0.098501,
+   "usd_per_attempt": 0.000342,
+   "usd_per_oracle_pass": 0.000521,
+   "wrong": 19
+  },
+  "NH": {
+   "active_p50": 5.319276329129934,
+   "active_p95": 13.738460961729288,
+   "attempts_with_forbidden_effect": 8,
+   "clarifications": 8,
+   "forbidden_by_template": {
+    "soup-price-clarify": 8
+   },
+   "helper_calls": 0,
+   "helper_usd": 0.0,
+   "judged_oracle_passing": 42,
+   "judged_oracle_passing_reply_failures": 3,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 0.7868852459016393,
+    "items": 70,
+    "low": 0.30303030303030304,
+    "mean": 0.5428571428571428
+   },
+   "language": {
+    "candidates": 0,
+    "eligible": 245,
+    "embedding_calls": 0,
+    "expanded": 0,
+    "helper_calls": 0,
+    "helper_limited": 0,
+    "observed": 0,
+    "planned_assistant": 0,
+    "planned_assumed": 0,
+    "planned_collection": 0,
+    "planned_none": 0,
+    "probes": 0,
+    "rank_eligible": 0,
+    "ranked_calls": 0,
+    "ranked_candidates": 0,
+    "service_failures": 0,
+    "service_seconds": 0.0,
+    "unplanned": 0,
+    "variant_reads": 0
+   },
+   "missing": 319,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.8333333333333334,
+    "items": 288,
+    "low": 0.4583333333333333,
+    "mean": 0.65625
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.875,
+    "class-transfer": 0.75,
+    "deed-rename": 0.333,
+    "dessert-class-signup": 0.25,
+    "furisode-repair": 0.792,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 0.958,
+    "soup-price-clarify": 0.667,
+    "veggie-lasagna": 0.167,
+    "yukata-booking": 0.083
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.7395833333333334,
+    "items": 96,
+    "low": 0.3020833333333333,
+    "mean": 0.5208333333333334
+   },
+   "oracle_passes": 189,
+   "relax_triggers": 0,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 8,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 0,
+   "turn_failed": 0,
+   "usd": 0.117501,
+   "usd_per_attempt": 0.000408,
+   "usd_per_oracle_pass": 0.000622,
+   "wrong": 8
+  },
+  "NLC": {
+   "active_p50": 7.55018556304276,
+   "active_p95": 16.253947649151087,
+   "attempts_with_forbidden_effect": 20,
+   "clarifications": 7,
+   "forbidden_by_template": {
+    "soup-price-clarify": 20
+   },
+   "helper_calls": 188,
+   "helper_usd": 0.0193,
+   "judged_oracle_passing": 48,
+   "judged_oracle_passing_reply_failures": 2,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 0.84375,
+    "items": 70,
+    "low": 0.42028985507246375,
+    "mean": 0.6285714285714286
+   },
+   "language": {
+    "candidates": 329,
+    "eligible": 226,
+    "embedding_calls": 0,
+    "expanded": 107,
+    "helper_calls": 188,
+    "helper_limited": 0,
+    "observed": 2822,
+    "planned_assistant": 26,
+    "planned_assumed": 0,
+    "planned_collection": 164,
+    "planned_none": 36,
+    "probes": 142,
+    "rank_eligible": 0,
+    "ranked_calls": 0,
+    "ranked_candidates": 0,
+    "service_failures": 0,
+    "service_seconds": 4.894700000000001,
+    "unplanned": 36,
+    "variant_reads": 273
+   },
+   "missing": 236,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.8715277777777778,
+    "items": 288,
+    "low": 0.5,
+    "mean": 0.6909722222222222
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.917,
+    "class-transfer": 0.917,
+    "deed-rename": 0.375,
+    "dessert-class-signup": 0.708,
+    "furisode-repair": 0.875,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 0.958,
+    "soup-price-clarify": 0.167,
+    "veggie-lasagna": 0.208,
+    "yukata-booking": 0.167
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.8125,
+    "items": 96,
+    "low": 0.3541666666666667,
+    "mean": 0.59375
+   },
+   "oracle_passes": 199,
+   "relax_triggers": 0,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 20,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 413,
+   "turn_failed": 0,
+   "usd": 0.106283,
+   "usd_per_attempt": 0.000369,
+   "usd_per_oracle_pass": 0.000534,
+   "wrong": 20
+  },
+  "NLW": {
+   "active_p50": 7.501841818913817,
+   "active_p95": 17.462625864893198,
+   "attempts_with_forbidden_effect": 21,
+   "clarifications": 8,
+   "forbidden_by_template": {
+    "soup-price-clarify": 21
+   },
+   "helper_calls": 203,
+   "helper_usd": 0.020605,
+   "judged_oracle_passing": 41,
+   "judged_oracle_passing_reply_failures": 1,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 0.8333333333333334,
+    "items": 70,
+    "low": 0.2987012987012987,
+    "mean": 0.5571428571428572
+   },
+   "language": {
+    "candidates": 365,
+    "eligible": 239,
+    "embedding_calls": 0,
+    "expanded": 116,
+    "helper_calls": 203,
+    "helper_limited": 2,
+    "observed": 4,
+    "planned_assistant": 0,
+    "planned_assumed": 0,
+    "planned_collection": 205,
+    "planned_none": 34,
+    "probes": 0,
+    "rank_eligible": 0,
+    "ranked_calls": 0,
+    "ranked_candidates": 0,
+    "service_failures": 0,
+    "service_seconds": 1.4714999999999998,
+    "unplanned": 34,
+    "variant_reads": 283
+   },
+   "missing": 246,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.8576388888888888,
+    "items": 288,
+    "low": 0.4756944444444444,
+    "mean": 0.6770833333333334
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.875,
+    "class-transfer": 0.875,
+    "deed-rename": 0.292,
+    "dessert-class-signup": 0.75,
+    "furisode-repair": 0.833,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 0.958,
+    "soup-price-clarify": 0.125,
+    "veggie-lasagna": 0.25,
+    "yukata-booking": 0.167
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.7916666666666666,
+    "items": 96,
+    "low": 0.3125,
+    "mean": 0.5520833333333334
+   },
+   "oracle_passes": 195,
+   "relax_triggers": 0,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 21,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 274,
+   "turn_failed": 0,
+   "usd": 0.106388,
+   "usd_per_attempt": 0.000369,
+   "usd_per_oracle_pass": 0.000546,
+   "wrong": 21
+  },
+  "NR": {
+   "active_p50": 6.161384418606758,
+   "active_p95": 11.951635794714093,
+   "attempts_with_forbidden_effect": 6,
+   "clarifications": 10,
+   "forbidden_by_template": {
+    "soup-price-clarify": 6
+   },
+   "helper_calls": 0,
+   "helper_usd": 0.0,
+   "judged_oracle_passing": 62,
+   "judged_oracle_passing_reply_failures": 1,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 1.0,
+    "items": 70,
+    "low": 0.6410256410256411,
+    "mean": 0.8285714285714286
+   },
+   "language": null,
+   "missing": 62,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.9722222222222222,
+    "items": 288,
+    "low": 0.7638888888888888,
+    "mean": 0.8854166666666666
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.875,
+    "class-transfer": 0.75,
+    "deed-rename": 0.333,
+    "dessert-class-signup": 1.0,
+    "furisode-repair": 0.917,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 1.0,
+    "soup-price-clarify": 0.75,
+    "veggie-lasagna": 1.0,
+    "yukata-booking": 1.0
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.9583333333333334,
+    "items": 96,
+    "low": 0.6666666666666666,
+    "mean": 0.8229166666666666
+   },
+   "oracle_passes": 255,
+   "relax_triggers": 166,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 6,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 164,
+   "turn_failed": 1,
+   "usd": 0.089839,
+   "usd_per_attempt": 0.000312,
+   "usd_per_oracle_pass": 0.000352,
+   "wrong": 6
+  },
+  "NV": {
+   "active_p50": 7.403023952618241,
+   "active_p95": 12.392322981730103,
+   "attempts_with_forbidden_effect": 3,
+   "clarifications": 8,
+   "forbidden_by_template": {
+    "soup-price-clarify": 3
+   },
+   "helper_calls": 172,
+   "helper_usd": 0.011255,
+   "judged_oracle_passing": 53,
+   "judged_oracle_passing_reply_failures": 2,
+   "judged_subset_success": {
+    "clusters": 12,
+    "high": 0.875,
+    "items": 70,
+    "low": 0.4647887323943662,
+    "mean": 0.6714285714285714
+   },
+   "language": {
+    "candidates": 0,
+    "eligible": 215,
+    "embedding_calls": 172,
+    "expanded": 0,
+    "helper_calls": 0,
+    "helper_limited": 0,
+    "observed": 0,
+    "planned_assistant": 0,
+    "planned_assumed": 0,
+    "planned_collection": 0,
+    "planned_none": 0,
+    "probes": 0,
+    "rank_eligible": 172,
+    "ranked_calls": 172,
+    "ranked_candidates": 750,
+    "service_failures": 0,
+    "service_seconds": 0.0,
+    "unplanned": 0,
+    "variant_reads": 0
+   },
+   "missing": 160,
+   "oracle_pass": {
+    "clusters": 12,
+    "high": 0.9201388888888888,
+    "items": 288,
+    "low": 0.6319444444444444,
+    "mean": 0.7881944444444444
+   },
+   "oracle_pass_by_template": {
+    "car-insurance": 1.0,
+    "class-dish-menu": 0.875,
+    "class-transfer": 0.833,
+    "deed-rename": 0.208,
+    "dessert-class-signup": 0.875,
+    "furisode-repair": 0.875,
+    "kimono-charge-refuse": 1.0,
+    "nut-desserts": 1.0,
+    "passport-reminders": 1.0,
+    "soup-price-clarify": 0.875,
+    "veggie-lasagna": 0.25,
+    "yukata-booking": 0.667
+   },
+   "oracle_pass_hat_3": {
+    "clusters": 12,
+    "high": 0.8645833333333334,
+    "items": 96,
+    "low": 0.5104166666666666,
+    "mean": 0.6979166666666666
+   },
+   "oracle_passes": 227,
+   "relax_triggers": 0,
+   "safety": {
+    "duplicates": 0,
+    "forbidden": 3,
+    "wrong_scope": 0
+   },
+   "team_reads_invoked": 171,
+   "turn_failed": 0,
+   "usd": 0.101309,
+   "usd_per_attempt": 0.000352,
+   "usd_per_oracle_pass": 0.000446,
+   "wrong": 4
+  }
+ },
+ "attempts": 2016,
+ "costs_are": "inference only (Brain plus helper and embedding calls); per oracle pass, not per judged success",
+ "judged_attempts": 473,
+ "judged_subset_tasks": 70,
+ "judging": {
+  "fully_judged_tasks": 64,
+  "judged_attempts": 473,
+  "status": "partial: the OpenAI judge account ran out of credits (429 insufficient_quota)",
+  "subset_is": "outcome-selected and descriptive (post hoc), not an unbiased judged sample",
+  "subset_tasks_all_arms_conclusive": 70,
+  "subset_tasks_where_every_arm_failed_the_oracle": 6,
+  "unjudged_completed_attempts": 1542
+ },
+ "paired_judged_subset": [
+  {
+   "baseline": "N",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.19736842105263158,
+   "items": 70,
+   "low": 0.0,
+   "mean": 0.08571428571428572
+  },
+  {
+   "baseline": "NE",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.20967741935483872,
+   "items": 70,
+   "low": -0.09836065573770492,
+   "mean": 0.05714285714285714
+  },
+  {
+   "baseline": "NLW",
+   "candidate": "NLC",
+   "clusters": 12,
+   "high": 0.1411764705882353,
+   "items": 70,
+   "low": -0.015151515151515152,
+   "mean": 0.07142857142857142
+  },
+  {
+   "baseline": "N",
+   "candidate": "NH",
+   "clusters": 12,
+   "high": 0.18309859154929578,
+   "items": 70,
+   "low": -0.05555555555555555,
+   "mean": 0.07142857142857142
+  },
+  {
+   "baseline": "NH",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.15625,
+   "items": 70,
+   "low": -0.08974358974358974,
+   "mean": 0.014285714285714285
+  },
+  {
+   "baseline": "N",
+   "candidate": "NV",
+   "clusters": 12,
+   "high": 0.38181818181818183,
+   "items": 70,
+   "low": 0.043478260869565216,
+   "mean": 0.2
+  },
+  {
+   "baseline": "N",
+   "candidate": "NR",
+   "clusters": 12,
+   "high": 0.582089552238806,
+   "items": 70,
+   "low": 0.15714285714285714,
+   "mean": 0.35714285714285715
+  },
+  {
+   "baseline": "N",
+   "candidate": "NE",
+   "clusters": 12,
+   "high": 0.16417910447761194,
+   "items": 70,
+   "low": -0.08450704225352113,
+   "mean": 0.02857142857142857
+  },
+  {
+   "baseline": "NR",
+   "candidate": "NV",
+   "clusters": 12,
+   "high": 0.0,
+   "items": 70,
+   "low": -0.32857142857142857,
+   "mean": -0.15714285714285714
+  },
+  {
+   "baseline": "NR",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": -0.07692307692307693,
+   "items": 70,
+   "low": -0.5138888888888888,
+   "mean": -0.2714285714285714
+  }
+ ],
+ "paired_oracle": [
+  {
+   "baseline": "N",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.2152777777777778,
+   "items": 288,
+   "low": -0.11805555555555555,
+   "mean": 0.059027777777777776
+  },
+  {
+   "baseline": "NE",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.1423611111111111,
+   "items": 288,
+   "low": -0.11805555555555555,
+   "mean": 0.020833333333333332
+  },
+  {
+   "baseline": "NLW",
+   "candidate": "NLC",
+   "clusters": 12,
+   "high": 0.034722222222222224,
+   "items": 288,
+   "low": -0.006944444444444444,
+   "mean": 0.013888888888888888
+  },
+  {
+   "baseline": "N",
+   "candidate": "NH",
+   "clusters": 12,
+   "high": 0.09722222222222222,
+   "items": 288,
+   "low": -0.024305555555555556,
+   "mean": 0.03819444444444445
+  },
+  {
+   "baseline": "NH",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.1423611111111111,
+   "items": 288,
+   "low": -0.11805555555555555,
+   "mean": 0.020833333333333332
+  },
+  {
+   "baseline": "N",
+   "candidate": "NV",
+   "clusters": 12,
+   "high": 0.3125,
+   "items": 288,
+   "low": 0.04861111111111111,
+   "mean": 0.1701388888888889
+  },
+  {
+   "baseline": "N",
+   "candidate": "NR",
+   "clusters": 12,
+   "high": 0.4895833333333333,
+   "items": 288,
+   "low": 0.06597222222222222,
+   "mean": 0.2673611111111111
+  },
+  {
+   "baseline": "N",
+   "candidate": "NE",
+   "clusters": 12,
+   "high": 0.2222222222222222,
+   "items": 288,
+   "low": -0.13194444444444445,
+   "mean": 0.03819444444444445
+  },
+  {
+   "baseline": "NR",
+   "candidate": "NV",
+   "clusters": 12,
+   "high": 0.010416666666666666,
+   "items": 288,
+   "low": -0.24305555555555555,
+   "mean": -0.09722222222222222
+  },
+  {
+   "baseline": "NR",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": -0.04861111111111111,
+   "items": 288,
+   "low": -0.3958333333333333,
+   "mean": -0.20833333333333334
+  }
+ ],
+ "post_hoc_comparisons": [
+  [
+   "NR",
+   "NV"
+  ],
+  [
+   "NR",
+   "NLW"
+  ]
+ ],
+ "schema": "shimpz.language-retrieval.analysis/v1",
+ "tasks": 288
+}
