@@ -49,6 +49,13 @@ STATUS_PAGE = "https://status.example.org/network"
 STATUS_IP = "203.0.113.77"
 
 
+# The failure codes this world's Actions raise before any effect, as an Assistant would declare them (ADR-0094 Luna-99
+# arm X); an undeclared Action is a protocol failure, never a no-effect business failure.
+NO_EFFECT_CODES = frozenset(
+    {"zone-not-found", "record-exists", "record-not-found", "task-not-found", "contact-not-found"}
+)
+
+
 class ActionFailedError(RuntimeError):
     """The simulated Assistant failed the Action, as an Assistant exiting nonzero does: the Team turn aborts."""
 

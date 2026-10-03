@@ -191,6 +191,16 @@ class CorpusIdentityTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in both["corpora"]], [corpus.CORPUS_ID, large_api.CORPUS_ID])
         self.assertEqual(precision.build_report([], [], {})["corpora"], [])
 
+    def test_blind_fresh_attempts_are_held_out_on_their_own_corpus_and_contracts(self):
+        from eval import fresh
+
+        scenario = fresh.SCENARIOS[0]
+        attempt = {**_attempt(scenario.id, "N"), "contracts": "fresh"}
+        self.assertEqual(precision.judge_item(attempt).assistants[0].id, scenario.assistants[0])
+        held = precision.build_report([attempt], [], {"seed": "s"}, part="held-out")
+        self.assertEqual([item["id"] for item in held["corpora"]], [fresh.CORPUS_ID])
+        self.assertEqual(precision.build_report([attempt], [], {"seed": "s"}, part="tuning")["runs"], [])
+
     def test_a_split_part_counts_only_its_own_judgments_and_names_only_its_own_corpus(self):
         tuning = split.load()["tuning"]
         precision_tuning = [_attempt(s.id, "L1") for s in corpus.SCENARIOS if s.template.id in tuning][:4]
@@ -282,6 +292,17 @@ class ArmReportTests(unittest.TestCase):
             "jev_failures": 1,
             "route": None,
             "route_confidence": None,
+            "relaxed_reads": 1,
+            "rewritten_reads": 2,
+            "recoveries": 1,
+            "critic_revisions": 1,
+            "replays_refused": 1,
+            "helper_calls": 3,
+            "helper_failures": 1,
+            "helper_usd": 0.0003,
+            "helper_usd_known": False,
+            "helper_seconds": 1.2,
+            "first_pass": {"reply": "r", "clarification": False, "oracle": {"passed": False}},
         }
         stopped = {
             **_attempt("dns-update.en", "E", status="budget-stopped"),
@@ -304,6 +325,15 @@ class ArmReportTests(unittest.TestCase):
         fell_back = precision._arm_signals([stopped, ran, {**ran, "selection_fallback": True}])["arm_signals"]
         self.assertEqual((fell_back["selection_fallbacks"], fell_back["selection_fallback_rate"]), (1, 0.5))
         self.assertEqual((signals["selection_fallbacks"], signals["selection_fallback_rate"]), (0, 0.0))
+        self.assertEqual(
+            (signals["relaxed_reads"], signals["rewritten_reads"], signals["recoveries"], signals["replays_refused"]),
+            (1, 2, 1, 1),
+        )
+        self.assertEqual((signals["critic_revisions"], signals["first_pass_oracle_passed"]), (1, 0))
+        self.assertEqual(
+            (signals["helper_calls"], signals["helper_failures"], signals["helper_usd"], signals["helper_usd_known"]),
+            (3, 1, 0.0003, False),
+        )
         only = precision._arm_signals([stopped])["arm_signals"]
         self.assertEqual((only["working_set_recall"], only["selection_fallback_rate"]), (None, None))
 
@@ -635,7 +665,7 @@ class MetaTests(unittest.TestCase):
 class CommandTests(unittest.TestCase):
     def test_validate_admits_every_scenario_in_brain(self):
         result = precision.validate()
-        self.assertEqual((result["scenarios"], result["calibration_items"]), (200, 32))
+        self.assertEqual((result["scenarios"], result["calibration_items"]), (280, 32))
         scenario = corpus.SCENARIOS_BY_ID["status-migrate.en"]
         self.assertEqual(len(precision.brain_assistants(scenario)), len(scenario.assistants))
 

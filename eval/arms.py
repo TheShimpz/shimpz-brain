@@ -15,6 +15,13 @@ Cumulative arms over Luna at effort low:
 Reference arms run A's configuration on another model (S and LS on claude-sonnet-5-5, SOL on gpt-6.1-sol, SOL56 on
 the evaluation-only gpt-5.6-sol), only on held-out scenarios.
 
+Luna-99 arms add one search-and-recovery mechanism of ``eval.recovery`` each, over A's baseline contracts in every
+stratum: N binds Action tools to OpenAI non-strict, so an optional property may be omitted; NN presents optional
+properties as required but nullable and drops the nulls; R re-reads an empty read without its optional arguments; H
+asks a helper model for other read arguments; X returns a no-effect Action failure as a result with a hint; P appends
+the working protocol to the system prompt; K lets a critic send a finished turn back once. NRX, NRXP, NRXPK, and NRXPH
+combine them.
+
 Nothing here is production runtime: the driver applies it in its own Team process. This module uses only the
 standard library.
 """
@@ -27,7 +34,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from eval import corpus, large_api, split
+from eval import corpus, fresh, large_api, split
 from eval.contracts import DATE, HOSTNAME, SEARCH_TERMS, TIME
 from eval.corpus import LOCALES
 from eval.fixtures import Action
@@ -52,7 +59,8 @@ TERMS = {
 class Arm:
     """One arm: its contract set, Team-side checks, Assistant working set, large-API exposure, and model routing.
 
-    ``contracts`` is ``a`` or ``b`` (precision corpus), ``large`` or ``large-tasks`` (large-API stratum).
+    ``contracts`` is ``a`` or ``b`` (precision corpus), ``large`` or ``large-tasks`` (large-API stratum); ``a`` is
+    each stratum's baseline set (``BASE_CONTRACTS``), so A and the Luna-99 arms run in every stratum.
     ``exposure`` is ``scope`` (every Assistant in scope), ``namespaces`` (provider tool search over resource-group
     namespaces), ``groups`` (deterministic group ranking), or ``jev-groups`` (Jev group selection, falling back to
     ``fallback`` when no group is confident). ``routing`` ``jev`` decides Luna or the escalation model before the
@@ -68,6 +76,21 @@ class Arm:
     routing: str = "none"
     model: str = "luna"
     fallback: str = "scope"
+    # Luna-99 mechanisms (eval.recovery): ``optional`` is strict (the provider default), loose, or nullable.
+    optional: str = "strict"
+    relax: bool = False
+    rewrite: bool = False
+    recover: bool = False
+    protocol: bool = False
+    critic: bool = False
+
+    @property
+    def brain(self) -> str:
+        """The disposable Brain profile the arm's turns run on: its tool exposure, tool strictness, and prompt."""
+        if self.exposure == "namespaces":
+            return "namespaces"
+        flags = [name for name, on in (("loose", self.optional == "loose"), ("protocol", self.protocol)) if on]
+        return "-".join(flags) or "default"
 
 
 ARMS = {
@@ -93,6 +116,17 @@ ARMS = {
     "LJ-groups": Arm("large", checks=True, exposure="groups", routing="jev"),
     "LJ-tasks": Arm("large-tasks", checks=True, routing="jev"),
     "LS": Arm("large", model="sonnet"),
+    "N": Arm("a", optional="loose"),
+    "NN": Arm("a", optional="nullable"),
+    "R": Arm("a", relax=True),
+    "H": Arm("a", rewrite=True),
+    "X": Arm("a", recover=True),
+    "P": Arm("a", protocol=True),
+    "K": Arm("a", critic=True),
+    "NRX": Arm("a", optional="loose", relax=True, recover=True),
+    "NRXP": Arm("a", optional="loose", relax=True, recover=True, protocol=True),
+    "NRXPK": Arm("a", optional="loose", relax=True, recover=True, protocol=True, critic=True),
+    "NRXPH": Arm("a", optional="loose", relax=True, recover=True, protocol=True, rewrite=True),
 }
 MODELS = {
     "luna": ("openai", "gpt-6-luna"),
@@ -100,7 +134,14 @@ MODELS = {
     "sol": ("openai", "gpt-6.1-sol"),
     "sol56": ("openai", "gpt-5.6-sol"),
 }
-STRATA = {"precision": (corpus.SCENARIOS, split.SPLIT), "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT)}
+# Each stratum's scenarios and frozen split; the blind ``fresh-v1`` corpus has no split: all of it is held out.
+STRATA = {
+    "precision": (corpus.SCENARIOS, split.SPLIT),
+    "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT),
+    "fresh": (fresh.SCENARIOS, None),
+}
+# The contract set arm A's ``a`` stands for in each stratum.
+BASE_CONTRACTS = {"precision": "a", "large-api": "large", "fresh": "fresh"}
 # What fixes an engineering campaign's schedule and its turns; a completion must match its campaign on every one.
 SCHEDULE_FIELDS = (
     "campaign",
@@ -114,15 +155,24 @@ SCHEDULE_FIELDS = (
 )
 
 
+def contracts_for(arm: Arm, stratum: str) -> str:
+    """The contract set an arm runs in a stratum: ``a`` is the stratum's baseline set, any other set is literal."""
+    return BASE_CONTRACTS[stratum] if arm.contracts == "a" else arm.contracts
+
+
+def part(stratum: str, scenario_id: str) -> str:
+    """The split part of a scenario: from its stratum's frozen split, or held-out for a stratum without one."""
+    path = STRATA[stratum][1]
+    return "held-out" if path is None else split.part(scenario_id, split.load(path))
+
+
 def tasks(stratum: str, held_out_repetitions: int, tuning_repetitions: int) -> list[tuple[int, corpus.Scenario]]:
     """Every (repetition, scenario) task of one stratum's frozen split, in schedule order."""
-    scenarios, path = STRATA[stratum]
-    sets = split.load(path)
     repetitions = {"held-out": held_out_repetitions, "tuning": tuning_repetitions}
     return [
         (repetition, scenario)
-        for scenario in scenarios
-        for repetition in range(repetitions[split.part(scenario.id, sets)])
+        for scenario in STRATA[stratum][0]
+        for repetition in range(repetitions[part(stratum, scenario.id)])
     ]
 
 
@@ -130,7 +180,7 @@ def task_arms(
     stratum: str, reference_repetitions: int, labels: Sequence[str], repetition: int, scenario: corpus.Scenario
 ) -> list[str]:
     """The arms one task runs: a reference arm (any model but Luna) only on its first held-out repetitions."""
-    held_out = split.part(scenario.id, split.load(STRATA[stratum][1])) == "held-out"
+    held_out = part(stratum, scenario.id) == "held-out"
     reference = held_out and repetition < reference_repetitions
     return [label for label in labels if ARMS[label].model == "luna" or reference]
 
@@ -179,6 +229,17 @@ def undispatched() -> dict[str, object]:
         "jev_failures": 0,
         "route": None,
         "route_confidence": None,
+        "relaxed_reads": 0,
+        "rewritten_reads": 0,
+        "recoveries": 0,
+        "critic_revisions": 0,
+        "helper_calls": 0,
+        "helper_failures": 0,
+        "helper_usd": 0.0,
+        "helper_usd_known": True,
+        "helper_seconds": 0.0,
+        "replays_refused": 0,
+        "first_pass": None,
     }
 
 

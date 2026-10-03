@@ -108,7 +108,7 @@ class ArmRegistryTests(unittest.TestCase):
             self.assertIn(arm.exposure, {"scope", "namespaces", "groups", "jev-groups"}, name)
             self.assertIn(
                 (arm.routing, arm.model, arm.fallback),
-                {(r, m, f) for r in ("none", "jev") for m in ("luna", "sonnet") for f in ("scope", "namespaces")},
+                {(r, m, f) for r in ("none", "jev") for m in arms.MODELS for f in ("scope", "namespaces")},
             )
         self.assertEqual(arms.relevance("Purge the cache.", "en", ["edge", "weather"])["edge"], 2)
 

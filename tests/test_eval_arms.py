@@ -178,3 +178,26 @@ class ScheduleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LunaArmTests(unittest.TestCase):
+    def test_luna_99_arms_run_on_their_brain_profile_and_the_stratum_baseline_contracts(self):
+        self.assertEqual(arms.ARMS["N"].brain, "loose")
+        self.assertEqual(arms.ARMS["P"].brain, "protocol")
+        self.assertEqual(arms.ARMS["NRXPK"].brain, "loose-protocol")
+        self.assertEqual(arms.ARMS["NN"].brain, "default")
+        self.assertEqual(arms.ARMS["L2"].brain, "namespaces")
+        self.assertEqual(arms.contracts_for(arms.ARMS["N"], "large-api"), "large")
+        self.assertEqual(arms.contracts_for(arms.ARMS["A"], "precision"), "a")
+        self.assertEqual(arms.contracts_for(arms.ARMS["C"], "precision"), "b")
+        self.assertTrue(arms.ARMS["NRXPH"].rewrite and arms.ARMS["NRXPK"].critic)
+        self.assertEqual(arms.undispatched()["first_pass"], None)
+
+    def test_the_blind_fresh_stratum_is_all_held_out_on_its_own_contracts(self):
+        from eval import fresh
+
+        planned = arms.tasks("fresh", 2, 5)
+        self.assertEqual(len(planned), 2 * len(fresh.SCENARIOS))
+        self.assertEqual(arms.part("fresh", fresh.SCENARIOS[0].id), "held-out")
+        self.assertEqual(arms.contracts_for(arms.ARMS["NRXP"], "fresh"), "fresh")
+        self.assertEqual(arms.task_arms("fresh", 1, ["A", "S"], 0, fresh.SCENARIOS[0]), ["A", "S"])

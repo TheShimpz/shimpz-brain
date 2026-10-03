@@ -31,14 +31,15 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import arms, corpus, judge, large_api, large_api_contract, private, split
+from eval import arms, corpus, fresh, judge, large_api, large_api_contract, private, split
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
 from eval.large_api_arms import ASSISTANTS_TASKS
 
-SCENARIOS = {**corpus.SCENARIOS_BY_ID, **large_api.SCENARIOS_BY_ID}
+SCENARIOS = {**corpus.SCENARIOS_BY_ID, **large_api.SCENARIOS_BY_ID, **fresh.SCENARIOS_BY_ID}
 CONTRACTS = {
+    "fresh": fresh.ASSISTANTS,
     "a": corpus.ASSISTANTS,
     "b": ASSISTANTS_B,
     "large": large_api_contract.ASSISTANTS,
@@ -293,7 +294,28 @@ def _arm_signals(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
             "jev_failures": sum(int(a["jev_failures"]) for a in engineering),
             "jev_usd": round(sum(float(a["jev_usd"]) for a in engineering), 6),
             "jev_usd_known": all(bool(a["jev_usd_known"]) for a in engineering),
+            **_recovery_signals(engineering),
         }
+    }
+
+
+def _recovery_signals(engineering: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """The Luna-99 mechanisms' extra work, each counted on every engineering attempt (zero where an arm lacks it).
+
+    Every helper request is counted, its answer usable or not; a K second pass reports the first pass's oracle too.
+    """
+    first = [a["first_pass"] for a in engineering if a.get("first_pass")]
+    return {
+        "relaxed_reads": sum(int(a.get("relaxed_reads", 0)) for a in engineering),
+        "rewritten_reads": sum(int(a.get("rewritten_reads", 0)) for a in engineering),
+        "recoveries": sum(int(a.get("recoveries", 0)) for a in engineering),
+        "critic_revisions": sum(int(a.get("critic_revisions", 0)) for a in engineering),
+        "replays_refused": sum(int(a.get("replays_refused", 0)) for a in engineering),
+        "first_pass_oracle_passed": sum(bool(item["oracle"]["passed"]) for item in first),
+        "helper_calls": sum(int(a.get("helper_calls", 0)) for a in engineering),
+        "helper_failures": sum(int(a.get("helper_failures", 0)) for a in engineering),
+        "helper_usd": round(sum(float(a.get("helper_usd", 0.0)) for a in engineering), 6),
+        "helper_usd_known": all(bool(a.get("helper_usd_known", True)) for a in engineering),
     }
 
 
@@ -349,6 +371,7 @@ NUMBER_FIELDS = frozenset(
         "cap_usd",
         "failed",
         "held_out_repetitions",
+        "helper_max_output_tokens",
         "items",
         "max_output_tokens",
         "max_reservation_usd",
@@ -398,14 +421,18 @@ CONTAINER_FIELDS = frozenset(
         "efforts",
         "final_judging",
         "honest_about_failures",
+        "helper_budget",
         "jev_budget",
         "judge_budget",
         "judge_spend",
         "judges",
         "language_matches",
+        "loose_budget",
+        "loose_protocol_budget",
         "namespaces_budget",
         "openai_paired",
         "primary",
+        "protocol_budget",
         "reply_correct",
         "tiebreak",
         "turns_correct",
@@ -578,11 +605,15 @@ def regrade(report: Mapping[str, object]) -> dict[str, object]:
 
 
 def _stratum(scenario_id: str) -> str:
+    if scenario_id in fresh.SCENARIOS_BY_ID:
+        return "fresh"
     return "large-api" if scenario_id in large_api.SCENARIOS_BY_ID else "precision"
 
 
 def _part(scenario_id: str, sets: Mapping[str, dict[str, list[str]]]) -> str:
-    return split.part(scenario_id, sets[_stratum(scenario_id)])
+    """A blind fresh scenario is always held out; the others follow their stratum's frozen split."""
+    stratum = _stratum(scenario_id)
+    return "held-out" if stratum == "fresh" else split.part(scenario_id, sets[stratum])
 
 
 def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
@@ -590,7 +621,7 @@ def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]
     present = {_stratum(str(attempt["scenario"])) for attempt in attempts}
     return [
         {"id": module.CORPUS_ID, "digest": module.digest(), "scenarios": len(module.SCENARIOS)}
-        for stratum, module in (("precision", corpus), ("large-api", large_api))
+        for stratum, module in (("precision", corpus), ("large-api", large_api), ("fresh", fresh))
         if stratum in present
     ]
 
@@ -807,9 +838,11 @@ def validate() -> dict[str, object]:
 
     corpus.validate()
     large_api.validate()
+    fresh.validate()
     provider = agent_runtime.ProviderConfig("openai", judge.JUDGE_MODELS["openai"], "offline-validation-key", "low")
     checks = [(scenario, set_name) for scenario in corpus.SCENARIOS for set_name in ("a", "b")]
     checks += [(scenario, set_name) for scenario in large_api.SCENARIOS for set_name in ("large", "large-tasks")]
+    checks += [(scenario, "fresh") for scenario in fresh.SCENARIOS]
     for scenario, set_name in checks:
         agent_runtime.TurnContext(
             "precision:validate",
@@ -822,7 +855,11 @@ def validate() -> dict[str, object]:
         )
     return {
         "status": "corpus-valid",
-        "corpora": {corpus.CORPUS_ID: corpus.digest(), large_api.CORPUS_ID: large_api.digest()},
+        "corpora": {
+            corpus.CORPUS_ID: corpus.digest(),
+            large_api.CORPUS_ID: large_api.digest(),
+            fresh.CORPUS_ID: fresh.digest(),
+        },
         "scenarios": len(SCENARIOS),
         "calibration_items": len(judge.calibration_items()),
     }

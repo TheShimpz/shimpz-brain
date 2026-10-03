@@ -35,6 +35,12 @@ BUCKETS = ("media-assets", "backups-2026")
 TRAFFIC = {("zn-1a2b", "2026-10-01"): 48213, ("zn-3c4d", "2026-10-01"): 9120}
 
 
+# The failure codes the edge Assistant's Actions raise before any effect (ADR-0094 Luna-99 arm X).
+NO_EFFECT_CODES = frozenset(
+    {"zone-not-found", "record-not-found", "script-not-found", "bucket-exists", "bucket-not-found"}
+)
+
+
 class EdgeWorld:
     """The edge Assistant's simulated state; Actions the templates use keep state, any other write is an effect."""
 
