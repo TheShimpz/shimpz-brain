@@ -80,31 +80,35 @@ class FailureTests(unittest.TestCase):
 
 
 class HelperTests(unittest.TestCase):
-    def test_rewrites_parse_dedupe_bound_and_keep_resource_selectors(self):
+    def test_rewrites_parse_dedupe_bound_and_change_only_free_search_text(self):
         text = recovery.rewrite_input("m", "g", "list", "s", TASKS, {"tag": "x"})
         self.assertEqual(json.loads(text)["arguments_that_returned_nothing"], {"tag": "x"})
-        answer = json.dumps(
-            {
-                "alternatives": [
-                    '{"tag": "x"}',
-                    '{"a": 1}',
-                    '{"a": 1}',
-                    "nope",
-                    "[1]",
-                    3,
-                    *map(json.dumps, ({"b": 1}, {"c": 1}, {"d": 1})),
-                ]
+        items = ['{"tag": "x"}', '{"a": 1}', '{"a": 1}', "nope", "[1]", 3, '{"b": 1}', '{"c": 1}', '{"d": 1}']
+        proposed = recovery.answer(json.dumps({"alternatives": items}), "alternatives")
+        self.assertEqual(recovery.alternatives(proposed, {"tag": "x"}), [{"a": 1}, {"b": 1}, {"c": 1}])
+        self.assertIsNone(recovery.answer("not json", "alternatives"))
+        self.assertIsNone(recovery.answer(None, "alternatives"))
+        self.assertEqual(recovery.alternatives(3, {}), [])
+        schema = {
+            "properties": {
+                "zone_id": {"type": "string"},
+                "name": {"type": "string"},
+                "type": {"type": "string", "enum": ["A"]},
+                "count": {"type": "integer"},
             }
-        )
-        self.assertEqual(recovery.alternatives(answer, {"tag": "x"}), [{"a": 1}, {"b": 1}, {"c": 1}])
-        self.assertEqual(recovery.alternatives("not json", {}), [])
-        self.assertEqual(recovery.alternatives('{"alternatives": 3}', {}), [])
-        schema = {"required": ["zone_id", "query"]}
-        earlier = ['{"zones": [{"id": "zn-1"}]}']
-        original = {"zone_id": "zn-1", "query": "dentist"}
-        self.assertTrue(recovery.kept_selectors(original, {"zone_id": "zn-1", "query": "x"}, schema, earlier))
-        self.assertFalse(recovery.kept_selectors(original, {"zone_id": "zn-2", "query": "x"}, schema, earlier))
-        self.assertTrue(recovery.kept_selectors({"zone_id": ""}, {"zone_id": "zn-2"}, schema, earlier))
+        }
+        earlier = ['{"records": [{"name": "www.example.com"}]}']
+        original = {"zone_id": "zn-1", "name": "dentista", "type": "A"}
+        self.assertTrue(recovery.kept_scope(original, {**original, "name": "dentist"}, schema, earlier))
+        self.assertTrue(recovery.kept_scope(original, {"zone_id": "zn-1", "type": "A"}, schema, earlier))
+        # A user-given resource selector, an enum, an undeclared or non-string field, or a value from a result is fixed.
+        self.assertFalse(recovery.kept_scope(original, {**original, "zone_id": "zn-2"}, schema, earlier))
+        self.assertFalse(recovery.kept_scope(original, {**original, "type": "AAAA"}, schema, earlier))
+        self.assertFalse(recovery.kept_scope(original, {**original, "extra": "x"}, schema, earlier))
+        self.assertFalse(recovery.kept_scope(original, {**original, "count": 2}, schema, earlier))
+        seen = {**original, "name": "www.example.com"}
+        self.assertFalse(recovery.kept_scope(seen, {**seen, "name": "www"}, schema, earlier))
+        self.assertFalse(recovery.kept_scope({}, {"name": "x"}, {"properties": []}, earlier))
 
     def test_the_critic_sees_clipped_records_and_its_answer_is_parsed_closed(self):
         ledger = [{"assistant": "dns", "action": "list", "input": {}, "result": {"x": "y" * 900}}, {"failed": "c"}]
@@ -116,6 +120,7 @@ class HelperTests(unittest.TestCase):
         self.assertIsNone(recovery.critique('{"verdict": "ok", "problem": ""}'))
         self.assertIsNone(recovery.critique('{"verdict": "revise", "problem": ""}'))
         self.assertIsNone(recovery.critique("[]"))
+        self.assertIsNone(recovery.critique('{"verdict": "revise", "problem": 3}'))
         self.assertIn('"fix it"', recovery.review_section("fix it"))
 
     def test_helper_requests_are_structured_and_their_text_is_read(self):

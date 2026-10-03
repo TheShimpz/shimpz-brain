@@ -199,12 +199,31 @@ def fingerprint(assistant_id: str, action_id: str, arguments: Mapping[str, objec
     return json.dumps([assistant_id, action_id, arguments], ensure_ascii=False, sort_keys=True, default=str)
 
 
-def kept_selectors(original: Mapping, candidate: Mapping, schema: Mapping, earlier: Sequence[str]) -> bool:
-    """A rewrite keeps every required argument whose value came from an earlier result, such as a resource id."""
-    required = set(schema.get("required", ()))
-    for name in required & set(original):
-        value = json.dumps(original[name], ensure_ascii=False, default=str).strip('"').casefold()
-        if value and any(value in text for text in earlier) and candidate.get(name) != original[name]:
+_ID_NAME = ("id", "_id", "_ids")
+
+
+def rewritable(name: str, schema: object, value: object, earlier: Sequence[str]) -> bool:
+    """Whether a rewrite may change this argument: free search text, never a resource selector.
+
+    Free text is a string property without enum, pattern, format, or const whose name is not an identifier's and whose
+    value did not come from an earlier result. A product version declares its search fields instead.
+    """
+    if not isinstance(schema, Mapping) or schema.get("type") != "string" or name.endswith(_ID_NAME):
+        return False
+    if any(key in schema for key in ("enum", "pattern", "format", "const")):
+        return False
+    text = str(value).casefold()
+    return not (text and any(text in seen for seen in earlier))
+
+
+def kept_scope(original: Mapping, candidate: Mapping, schema: Mapping, earlier: Sequence[str]) -> bool:
+    """A rewrite changes, adds, or drops only rewritable search text; every other argument stays exactly as it was."""
+    properties = schema.get("properties", {}) if isinstance(schema.get("properties"), Mapping) else {}
+    for name in set(original) | set(candidate):
+        if original.get(name) == candidate.get(name) and (name in original) == (name in candidate):
+            continue
+        values = [side[name] for side in (original, candidate) if name in side]
+        if not all(rewritable(name, properties.get(name), value, earlier) for value in values):
             return False
     return True
 
@@ -229,12 +248,16 @@ def rewrite_input(
     )
 
 
-def alternatives(text: str, tried: Mapping[str, object]) -> list[dict[str, object]]:
-    """Distinct argument objects parsed from a rewrite answer, never the ones already tried; malformed ones drop."""
+def answer(text: str | None, key: str) -> object:
+    """The named field of a structured helper answer, or None when the answer is missing or malformed."""
     try:
-        proposed = json.loads(text)["alternatives"]
+        return json.loads(text)[key] if text is not None else None
     except ValueError, KeyError, TypeError:
-        return []
+        return None
+
+
+def alternatives(proposed: object, tried: Mapping[str, object]) -> list[dict[str, object]]:
+    """Distinct argument objects parsed from a rewrite answer, never the ones already tried; malformed ones drop."""
     found: list[dict[str, object]] = []
     for item in proposed if isinstance(proposed, list) else []:
         try:
@@ -260,13 +283,10 @@ def critic_input(message: str, ledger: Sequence[Mapping[str, object]], reply: st
     return json.dumps(body, ensure_ascii=False, sort_keys=True)
 
 
-def critique(text: str) -> str | None:
+def critique(text: str | None) -> str | None:
     """The problem to send back, or None when the critic found none or its answer is unusable."""
-    try:
-        answer = json.loads(text)
-        verdict, problem = answer["verdict"], str(answer["problem"]).strip()
-    except ValueError, KeyError, TypeError:
-        return None
+    verdict, problem = answer(text, "verdict"), answer(text, "problem")
+    problem = str(problem).strip() if isinstance(problem, str) else ""
     return problem[:PROBLEM_CHARS] if verdict == "revise" and problem else None
 
 

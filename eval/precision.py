@@ -299,21 +299,34 @@ def _arm_signals(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
     }
 
 
+# How each read Team made itself (arms R and H) ended: run, served from the attempt's cache, refused by schema
+# admission, failed in the Assistant, refused by the per-attempt bound, or (a rewrite) refused by the scope fence.
+TEAM_READ_OUTCOMES = ("invoked", "cached", "rejected", "failed", "limited", "fenced")
+
+
 def _recovery_signals(engineering: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """The Luna-99 mechanisms' extra work, each counted on every engineering attempt (zero where an arm lacks it).
 
-    Every helper request is counted, its answer usable or not; a K second pass reports the first pass's oracle too.
+    Every dispatched helper request is counted, its answer usable or not, and a refused one apart; triggers (relax,
+    rewrite candidates) are kept apart from the reads Team actually made; a K second pass reports the first pass's
+    oracle too.
     """
     first = [a["first_pass"] for a in engineering if a.get("first_pass")]
     return {
-        "relaxed_reads": sum(int(a.get("relaxed_reads", 0)) for a in engineering),
-        "rewritten_reads": sum(int(a.get("rewritten_reads", 0)) for a in engineering),
+        "relax_triggers": sum(int(a.get("relax_triggers", 0)) for a in engineering),
+        "rewrite_candidates": sum(int(a.get("rewrite_candidates", 0)) for a in engineering),
         "recoveries": sum(int(a.get("recoveries", 0)) for a in engineering),
         "critic_revisions": sum(int(a.get("critic_revisions", 0)) for a in engineering),
         "replays_refused": sum(int(a.get("replays_refused", 0)) for a in engineering),
         "first_pass_oracle_passed": sum(bool(item["oracle"]["passed"]) for item in first),
+        "team_reads": {
+            outcome: sum(int((a.get("team_reads") or {}).get(outcome, 0)) for a in engineering)
+            for outcome in TEAM_READ_OUTCOMES
+        },
         "helper_calls": sum(int(a.get("helper_calls", 0)) for a in engineering),
         "helper_failures": sum(int(a.get("helper_failures", 0)) for a in engineering),
+        "helper_refused": sum(int(a.get("helper_refused", 0)) for a in engineering),
+        "helper_unusable": sum(int(a.get("helper_unusable", 0)) for a in engineering),
         "helper_usd": round(sum(float(a.get("helper_usd", 0.0)) for a in engineering), 6),
         "helper_usd_known": all(bool(a.get("helper_usd_known", True)) for a in engineering),
     }

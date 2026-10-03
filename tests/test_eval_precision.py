@@ -292,13 +292,16 @@ class ArmReportTests(unittest.TestCase):
             "jev_failures": 1,
             "route": None,
             "route_confidence": None,
-            "relaxed_reads": 1,
-            "rewritten_reads": 2,
+            "relax_triggers": 1,
+            "rewrite_candidates": 2,
             "recoveries": 1,
             "critic_revisions": 1,
             "replays_refused": 1,
             "helper_calls": 3,
             "helper_failures": 1,
+            "helper_refused": 0,
+            "helper_unusable": 1,
+            "team_reads": {"invoked": 2, "cached": 1, "rejected": 0, "failed": 0, "limited": 0, "fenced": 1},
             "helper_usd": 0.0003,
             "helper_usd_known": False,
             "helper_seconds": 1.2,
@@ -326,10 +329,17 @@ class ArmReportTests(unittest.TestCase):
         self.assertEqual((fell_back["selection_fallbacks"], fell_back["selection_fallback_rate"]), (1, 0.5))
         self.assertEqual((signals["selection_fallbacks"], signals["selection_fallback_rate"]), (0, 0.0))
         self.assertEqual(
-            (signals["relaxed_reads"], signals["rewritten_reads"], signals["recoveries"], signals["replays_refused"]),
+            (
+                signals["relax_triggers"],
+                signals["rewrite_candidates"],
+                signals["recoveries"],
+                signals["replays_refused"],
+            ),
             (1, 2, 1, 1),
         )
         self.assertEqual((signals["critic_revisions"], signals["first_pass_oracle_passed"]), (1, 0))
+        self.assertEqual((signals["team_reads"]["invoked"], signals["team_reads"]["fenced"]), (2, 1))
+        self.assertEqual((signals["helper_unusable"], signals["helper_refused"]), (1, 0))
         self.assertEqual(
             (signals["helper_calls"], signals["helper_failures"], signals["helper_usd"], signals["helper_usd_known"]),
             (3, 1, 0.0003, False),
