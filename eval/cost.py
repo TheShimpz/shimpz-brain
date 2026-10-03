@@ -38,6 +38,9 @@ CACHE_WRITE_MULTIPLIER = {"openai": 1.0, "anthropic": 1.25}
 # tokens: gpt-5.6-sol's promotional list price (listed through at least 2026-11-21, prompts up to 272k input tokens),
 # frozen on 2026-10-02. Only a disposable evaluation Brain admits them (``admit_evaluation_models``).
 EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}}
+# The input bound up to which an evaluation-only price holds; above it the provider bills a dearer long-context price,
+# so the ceiling refuses the request instead of reserving it at this one.
+PRICED_INPUT_TOKENS = {"gpt-5.6-sol": 272_000}
 
 
 @dataclass(frozen=True, slots=True)

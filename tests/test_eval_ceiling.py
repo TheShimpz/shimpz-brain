@@ -142,13 +142,24 @@ class CeilingTests(unittest.TestCase):
         self.assertEqual(asyncio.run(asynchronous.get("https://example.net/x")).status_code, 200)
         self.assertEqual((recorder.requests[:-1], self.ceiling.counts["unsupported"]), ([], 4))
         self.assertEqual(client.get("https://example.net/x").status_code, 200)
+        # An evaluation-only price holds only up to its input bound: a longer request is refused, a shorter one runs.
+        limit = eval_cost.PRICED_INPUT_TOKENS["gpt-5.6-sol"] - ceiling.REQUEST_ALLOWANCE_TOKENS
+        long = {"model": "gpt-5.6-sol", "input": "x" * limit}
+        with self.assertRaises(ceiling.UnsupportedRequestError):
+            client.post("https://api.openai.com/v1/responses", json=long)
+        self.assertEqual(self.ceiling.counts["unsupported"], 5)
+        spent = self.ceiling.budget.spent
+        short = client.post("https://api.openai.com/v1/responses", json={"model": "gpt-5.6-sol"})
+        self.assertEqual(short.status_code, 200)
+        priced = eval_cost.Usage(model_calls=1, input_tokens=10, output_tokens=5, cache_read_tokens=4)
+        self.assertAlmostEqual(self.ceiling.budget.spent - spent, eval_cost.cost(priced, "gpt-5.6-sol").usd)
         self.ceiling.uninstall()
         self.ceiling = ceiling.Ceiling(0.0001, 32_000, self.state)
         self.ceiling.install()
         with self.assertRaises(openai.APIConnectionError) as refused:
             self._openai(recorder, use_responses_api=True).invoke("hi")
         self.assertIsInstance(refused.exception.__cause__, eval_cost.BudgetExhaustedError)
-        self.assertEqual((len(recorder.requests), self.ceiling.counts["refused"]), (2, 1))
+        self.assertEqual((len(recorder.requests), self.ceiling.counts["refused"]), (3, 1))
 
     def test_failed_and_unreported_requests_keep_their_reservation(self):
         with self.assertRaises(openai.InternalServerError):

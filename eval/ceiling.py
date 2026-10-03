@@ -11,7 +11,8 @@ every schema, so it sees the exact bytes that would be sent:
   absent; the body is re-encoded;
 - the worst case of that final body is reserved for the model the body names: one input token per byte plus an
   allowance at the dearest input rate, and the output limit at the output rate; a request the cap cannot hold is
-  refused before it is sent, and one that only has to wait for in-flight work to settle waits;
+  refused before it is sent, and one that only has to wait for in-flight work to settle waits; a request to an
+  evaluation-only model whose bound exceeds the input its price holds for is refused as unsupported;
 - the response's reported usage settles the reservation; a failed or unparsable response keeps all of it.
 
 Chat models are also built with no SDK retries; a retry would be one more request reserved on its own. The ceiling
@@ -145,7 +146,10 @@ class Ceiling:
         body[field] = min(int(body.get(field) or self.max_output), self.max_output)
         content = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         model = body["model"]
-        amount = eval_cost.call_bound(model, len(content) + REQUEST_ALLOWANCE_TOKENS, self.max_output)
+        tokens = len(content) + REQUEST_ALLOWANCE_TOKENS
+        if tokens > eval_cost.PRICED_INPUT_TOKENS.get(model, tokens):
+            self.refuse_unsupported()
+        amount = eval_cost.call_bound(model, tokens, self.max_output)
         try:
             reservation = self.budget.reserve(amount, wait=True)
         except eval_cost.BudgetExhaustedError:
