@@ -45,6 +45,10 @@ class TraceTests(unittest.TestCase):
         self.assertFalse(found(100, "1,100 or 4 100"))
         self.assertFalse(found(1234, "1,234"))
         self.assertFalse(found("2283", "ORD-2283"))
+        self.assertFalse(found(5, "5e3"))
+        self.assertFalse(found(3, "5e3"))
+        self.assertFalse(found(1, "room A1"))
+        self.assertFalse(found(1, "12kg"))
 
     def test_dates_and_times_match_only_unambiguous_surface_forms(self):
         self.assertTrue(found("2026-10-25", "le 25/10/2026"))
@@ -125,11 +129,15 @@ class HelperTests(unittest.TestCase):
                     {"name": "count", "supplied": True, "evidence": "12 boxes"},
                     {"name": "count", "supplied": False, "evidence": ""},
                     {"name": "other", "supplied": True, "evidence": "Dated"},
+                    {"name": "boxes", "supplied": True, "evidence": 12},
+                    {"name": "none", "supplied": "true", "evidence": "12 boxes"},
                     "junk",
                 ]
             }
         )
-        self.assertEqual(classes.supplied(answer, ["date", "note", "amount", "count"], message), {"date"})
+        self.assertEqual(
+            classes.supplied(answer, ["date", "note", "amount", "count", "boxes", "none"], message), {"date"}
+        )
         self.assertIsNone(classes.supplied(None, ["date"], message))
         self.assertIsNone(classes.supplied("not json", ["date"], message))
         self.assertIsNone(classes.supplied("[1]", ["date"], message))

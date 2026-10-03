@@ -62,7 +62,7 @@ _QUOTES = ('"', '"'), ("“", "”"), ("„", "“"), ("«", "»"), ("‹", "›
 _QUOTED = [
     re.compile(re.escape(left) + r"([^" + re.escape(right) + r"]{1,200})" + re.escape(right)) for left, right in _QUOTES
 ]
-_NUMBER = re.compile(r"[-\u2212]?\d+(?:[ \u00a0\u202f']\d{3}(?!\d))*(?:[.,]\d+)*")
+_NUMBER = re.compile(r"(?<![A-Za-z\d\-\u2212])[-\u2212]?\d+(?:[ \u00a0\u202f']\d{3}(?!\d))*(?:[.,]\d+)*(?![A-Za-z\d])")
 _MERIDIEM = re.compile(r"\s?(?:a\.m\.|p\.m\.|am\b|pm\b)")
 _MERIDIEM_BEFORE = ("午前", "午後", "上午", "下午")
 _ISO_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})\Z")
@@ -342,8 +342,10 @@ def supplied(answer: str | None, fields: Sequence[str], message: str) -> set[str
     for item in items:
         if not isinstance(item, dict) or item.get("name") not in fields:
             continue
-        evidence = normalize(item.get("evidence", ""))
-        cited = item.get("supplied") is True and bool(evidence) and evidence in text
+        # Only the declared types count: a numeric or null evidence is no citation of the user's words.
+        raw, verdict = item.get("evidence"), item.get("supplied")
+        evidence = normalize(raw) if isinstance(raw, str) else ""
+        cited = verdict is True and bool(evidence) and evidence in text
         verdicts.setdefault(str(item["name"]), set()).add(cited)
     # A field answered twice with different verdicts is not supplied.
     return {name for name, seen in verdicts.items() if seen == {True}}
