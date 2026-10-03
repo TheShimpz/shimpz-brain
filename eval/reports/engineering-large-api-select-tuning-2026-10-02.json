@@ -1,9 +1,11 @@
 {
- "corpus": {
-  "digest": "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab",
-  "id": "precision-v2.1",
-  "scenarios": 120
- },
+ "corpora": [
+  {
+   "digest": "sha256:a8f5f0b0a5aba19fcd701cf8a2d5cd36e3d113fe8f38c7560fe09499061fa112",
+   "id": "large-api-v1",
+   "scenarios": 80
+  }
+ ],
  "decision": {
   "grade": "exploratory",
   "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
@@ -115,10 +117,10 @@
   }
  },
  "judges": {
-  "final_unsupported_claims": 7,
-  "judged_attempts": 633,
-  "tiebreak_changed_reply_correct": 2,
-  "tiebreaks": 17,
+  "final_unsupported_claims": 1,
+  "judged_attempts": 157,
+  "tiebreak_changed_reply_correct": 0,
+  "tiebreaks": 1,
   "verdict_identities": [
    "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7"
   ]
