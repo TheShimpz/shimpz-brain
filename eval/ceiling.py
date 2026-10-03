@@ -6,7 +6,9 @@ at the httpx transport boundary, where the SDKs have merged every override (``ex
 every schema, so it sees the exact bytes that would be sent:
 
 - only the chat endpoints (``/v1/responses`` and ``/v1/chat/completions`` on api.openai.com, ``/v1/messages`` on
-  api.anthropic.com) are admitted, non-streaming; any other request to a provider host is refused;
+  api.anthropic.com), non-streaming, and OpenAI's ``/v1/embeddings`` for a priced embedding model (the language
+  component benchmark; it bills input only, so it has no output limit) are admitted; any other provider request is
+  refused;
 - every output-limit field of the JSON body is clamped to the output limit, and the endpoint's own field is set when
   absent; the body is re-encoded;
 - the worst case of that final body is reserved for the model the body names: one input token per byte plus an
@@ -42,6 +44,7 @@ ENDPOINTS = {
     ("api.openai.com", "/v1/chat/completions"): "max_completion_tokens",
     ("api.anthropic.com", "/v1/messages"): "max_tokens",
 }
+EMBEDDINGS = ("api.openai.com", "/v1/embeddings")
 
 
 class UnsupportedRequestError(RuntimeError):
@@ -64,15 +67,19 @@ def _counts(usage: dict, required: tuple[str, ...], optional: tuple[str, ...]) -
     return None if None in counts else counts
 
 
-def usage_of(host: str, body: object) -> eval_cost.Usage | None:
-    """The usage a chat response reports, in Brain's terms (input includes cache reads and writes), or None.
+def usage_of(host: str, body: object, path: str = "") -> eval_cost.Usage | None:
+    """The usage a chat or embeddings response reports in Brain's terms (input includes cache traffic), or None.
 
     Every required count must be present as a non-negative integer, and every optional one absent, null, or such an
-    integer; anything else is unreported usage, so the request keeps its whole reservation.
+    integer; anything else is unreported usage, so the request keeps its whole reservation. An embeddings response
+    reports only its input (``prompt_tokens``).
     """
     usage = body.get("usage") if isinstance(body, dict) else None
     if not isinstance(usage, dict):
         return None
+    if (host, path) == EMBEDDINGS:
+        counts = _counts(usage, ("prompt_tokens",), ())
+        return None if counts is None else eval_cost.Usage(model_calls=1, input_tokens=counts[0])
     if host == "api.anthropic.com":
         counts = _counts(
             usage, ("input_tokens", "output_tokens"), ("cache_read_input_tokens", "cache_creation_input_tokens")
@@ -133,23 +140,28 @@ class Ceiling:
 
     def admit(self, request: httpx.Request) -> tuple[httpx.Request, eval_cost.Reservation, str]:
         """Clamp the outgoing body, reserve its worst case for the model it names, and return the request to send."""
-        field = ENDPOINTS.get((request.url.host, request.url.path))
+        target = (request.url.host, request.url.path)
+        embeddings = target == EMBEDDINGS
+        field = ENDPOINTS.get(target)
         try:
-            body = json.loads(request.read()) if field else None
+            body = json.loads(request.read()) if field or embeddings else None
         except ValueError:
             body = None
-        if field is None or not isinstance(body, dict) or body.get("stream") or not isinstance(body.get("model"), str):
+        if not isinstance(body, dict) or body.get("stream") or not isinstance(body.get("model"), str):
             self.refuse_unsupported()
-        for name in LIMIT_FIELDS:
-            if body.get(name) is not None:
-                body[name] = min(int(body[name]), self.max_output)
-        body[field] = min(int(body.get(field) or self.max_output), self.max_output)
-        content = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         model = body["model"]
+        if embeddings and model not in eval_cost.EMBEDDING_MODELS["openai"]:
+            self.refuse_unsupported()
+        if not embeddings:
+            for name in LIMIT_FIELDS:
+                if body.get(name) is not None:
+                    body[name] = min(int(body[name]), self.max_output)
+            body[field] = min(int(body.get(field) or self.max_output), self.max_output)
+        content = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         tokens = len(content) + REQUEST_ALLOWANCE_TOKENS
         if tokens > eval_cost.PRICED_INPUT_TOKENS.get(model, tokens):
             self.refuse_unsupported()
-        amount = eval_cost.call_bound(model, tokens, self.max_output)
+        amount = eval_cost.call_bound(model, tokens, 0 if embeddings else self.max_output)
         try:
             reservation = self.budget.reserve(amount, wait=True)
         except eval_cost.BudgetExhaustedError:
@@ -166,13 +178,18 @@ class Ceiling:
         return admitted, reservation, model
 
     def settle(
-        self, reservation: eval_cost.Reservation, model: str, host: str, response: httpx.Response | None
+        self,
+        reservation: eval_cost.Reservation,
+        model: str,
+        host: str,
+        response: httpx.Response | None,
+        path: str = "",
     ) -> None:
         """Settle the reservation exactly once, whatever the response holds: unreadable usage keeps all of it."""
         usage = None
         try:
             if response is not None:
-                usage = usage_of(host, json.loads(response.read()))
+                usage = usage_of(host, json.loads(response.read()), path)
         except ValueError:
             usage = None
         finally:
@@ -194,9 +211,9 @@ class Ceiling:
             try:
                 response = original_send(client, admitted, **kwargs)
             except BaseException:
-                ceiling.settle(reservation, model, request.url.host, None)
+                ceiling.settle(reservation, model, request.url.host, None, request.url.path)
                 raise
-            ceiling.settle(reservation, model, request.url.host, response)
+            ceiling.settle(reservation, model, request.url.host, response, request.url.path)
             return response
 
         original_async_send = httpx.AsyncClient.send

@@ -38,6 +38,10 @@ CACHE_WRITE_MULTIPLIER = {"openai": 1.0, "anthropic": 1.25}
 # tokens: gpt-5.6-sol's promotional list price (listed through at least 2026-11-21, prompts up to 272k input tokens),
 # frozen on 2026-10-02. Only a disposable evaluation Brain admits them (``admit_evaluation_models``).
 EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}}
+# Embedding models priced for the language-retrieval component benchmark only, in US cents per million input tokens
+# (they bill no output), frozen on 2026-10-03 from the provider's pricing page; only the evaluation ceiling's embeddings
+# endpoint reserves for them.
+EMBEDDING_MODELS = {"openai": {"text-embedding-3-small": 2, "text-embedding-3-large": 13}}
 # The input bound up to which an evaluation-only price holds; above it the provider bills a dearer long-context price,
 # so the ceiling refuses the request instead of reserving it at this one.
 PRICED_INPUT_TOKENS = {"gpt-5.6-sol": 272_000}
@@ -67,6 +71,9 @@ def _list_prices(catalog: Path) -> Iterator[tuple[str, str, int, int]]:
     for provider_id, models in EVALUATION_MODELS.items():
         for model_id, (input_cents, output_cents) in models.items():
             yield provider_id, model_id, input_cents, output_cents
+    for provider_id, models in EMBEDDING_MODELS.items():
+        for model_id, input_cents in models.items():
+            yield provider_id, model_id, input_cents, 0
 
 
 def price(model: str, catalog: Path = CATALOG) -> Price:

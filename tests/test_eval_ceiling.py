@@ -227,6 +227,40 @@ class CeilingTests(unittest.TestCase):
         self.assertEqual(self.ceiling.budget._reserved, 0.0)
         self.assertEqual(json.loads(admitted.content)["max_output_tokens"], 32_000)
 
+    def test_embeddings_reserve_input_only_and_settle_on_prompt_tokens(self):
+        body = {"object": "list", "data": [], "model": "text-embedding-3-small", "usage": {"prompt_tokens": 1000}}
+        recorder = Recorder(body)
+        client = httpx.Client(transport=httpx.MockTransport(recorder))
+        request = {"model": "text-embedding-3-small", "input": ["taza azul", "tetera"], "max_output_tokens": 9}
+        client.post("https://api.openai.com/v1/embeddings", json=request)
+        # The body is sent unchanged: an embeddings request has no output limit to clamp.
+        self.assertEqual(recorder.requests, [("/v1/embeddings", request)])
+        self.assertAlmostEqual(self.ceiling.budget.spent, 1000 * 0.02 / 1e6)
+        self.assertEqual(self.ceiling.counts["requests"], 1)
+        sent = json.dumps(request, separators=(",", ":")).encode()
+        bound = eval_cost.call_bound("text-embedding-3-small", len(sent) + ceiling.REQUEST_ALLOWANCE_TOKENS, 0)
+        self.assertAlmostEqual(self.ceiling.max_reservation, bound)
+        self.assertEqual(
+            ceiling.usage_of("api.openai.com", {"usage": {"prompt_tokens": 7}}, "/v1/embeddings").input_tokens, 7
+        )
+        for usage in ({}, {"prompt_tokens": -1}, {"prompt_tokens": 1.5}, {"prompt_tokens": True}):
+            self.assertIsNone(ceiling.usage_of("api.openai.com", {"usage": usage}, "/v1/embeddings"))
+        unreported = httpx.Client(transport=httpx.MockTransport(Recorder({"object": "list", "usage": {}})))
+        spent = self.ceiling.budget.spent
+        unreported.post("https://api.openai.com/v1/embeddings", json={"model": "text-embedding-3-large", "input": "x"})
+        self.assertGreater(self.ceiling.budget.spent - spent, 0.0)
+        self.assertEqual(self.ceiling.counts["unreported"], 1)
+
+    def test_an_unpriced_or_streamed_embeddings_request_is_refused(self):
+        recorder = Recorder({"usage": {"prompt_tokens": 1}})
+        client = httpx.Client(transport=httpx.MockTransport(recorder))
+        for request in ({"model": "gpt-6-luna", "input": "x"}, {"model": "text-embedding-3-small", "stream": True}):
+            with self.subTest(request=request), self.assertRaises(ceiling.UnsupportedRequestError):
+                client.post("https://api.openai.com/v1/embeddings", json=request)
+        with self.assertRaises(ceiling.UnsupportedRequestError):
+            client.post("https://api.openai.com/v1/embeddings", content=b"not json")
+        self.assertEqual((recorder.requests, self.ceiling.counts["unsupported"]), ([], 3))
+
     def test_concurrent_state_writes_never_collide(self):
         workers = [threading.Thread(target=lambda: [self.ceiling.write_state() for _ in range(40)]) for _ in range(8)]
         for worker in workers:
