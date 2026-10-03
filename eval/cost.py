@@ -32,7 +32,7 @@ FIELDS = (
 )
 # Cache prices as multiples of the input price, frozen on 2026-10-02 from the providers' pricing pages.
 CACHE_READ_MULTIPLIER = {"openai": 0.1, "anthropic": 0.1}
-CACHE_READ_MULTIPLIER_BY_MODEL = {"claude-opus-5-5": 0.05}
+CACHE_READ_MULTIPLIER_BY_MODEL = {"claude-opus-5-5": 0.05, "gpt-6.1-sol": 0.05}
 CACHE_WRITE_MULTIPLIER = {"openai": 1.0, "anthropic": 1.25}
 
 

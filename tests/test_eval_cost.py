@@ -29,6 +29,7 @@ class PriceTests(unittest.TestCase):
         self.assertAlmostEqual(sonnet.cache_read, 0.2e-6)
         self.assertAlmostEqual(sonnet.cache_write, 2.5e-6)
         self.assertAlmostEqual(cost.price("claude-opus-5-5").cache_read, 0.2e-6)
+        self.assertAlmostEqual(cost.price("gpt-6.1-sol").cache_read, 0.1e-6)
         with self.assertRaisesRegex(ValueError, "unknown model"):
             cost.price("gpt-unknown")
 
