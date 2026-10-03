@@ -152,6 +152,27 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual({(item["provider"], item["model"]) for item in luna}, {arms.MODELS["luna"]})
         self.assertTrue(all(split.part(str(item["scenario"]), sets) == "held-out" for item in sonnet))
 
+    def test_a_gpt_sol_reference_runs_arm_a_on_held_out_repetitions_only(self):
+        self.assertEqual(arms.ARMS["SOL"], arms.Arm("a", model="sol"))
+        fields = {
+            "campaign": "c",
+            "arms": ["SOL", "S"],
+            "stratum": "precision",
+            "held_out_repetitions": 3,
+            "tuning_repetitions": 0,
+            "reference_repetitions": 3,
+        }
+        plan = arms.schedule(fields)
+        sets = split.load()
+        held = sum(split.part(s.id, sets) == "held-out" for s in corpus.SCENARIOS)
+        identities = {(item["arm"], item["provider"], item["model"]) for item in plan}
+        sol = {(item["repetition"], item["scenario"]) for item in plan if item["arm"] == "SOL"}
+        sonnet = {(item["repetition"], item["scenario"]) for item in plan if item["arm"] == "S"}
+        self.assertEqual(len(plan), 2 * 3 * held)
+        self.assertEqual(identities, {("SOL", "openai", "gpt-6.1-sol"), ("S", *arms.ESCALATION)})
+        self.assertEqual(sol, sonnet)
+        self.assertTrue(all(split.part(scenario, sets) == "held-out" for _repetition, scenario in sonnet))
+
 
 if __name__ == "__main__":
     unittest.main()

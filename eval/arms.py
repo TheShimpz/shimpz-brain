@@ -12,6 +12,9 @@ Cumulative arms over Luna at effort low:
 - E: D with a cascade. On a risk signal before any write ran, the turn restarts on the escalation model; reads have
   no effect, so restarting replays nothing that changed state. After a write the turn stays on Luna.
 
+Reference arms run A's configuration on another model (S and LS on claude-sonnet-5-5, SOL on gpt-6.1-sol), only on
+held-out scenarios.
+
 Nothing here is production runtime: the driver applies it in its own Team process. This module uses only the
 standard library.
 """
@@ -53,7 +56,8 @@ class Arm:
     ``exposure`` is ``scope`` (every Assistant in scope), ``namespaces`` (provider tool search over resource-group
     namespaces), ``groups`` (deterministic group ranking), or ``jev-groups`` (Jev group selection, falling back to
     ``fallback`` when no group is confident). ``routing`` ``jev`` decides Luna or the escalation model before the
-    turn; ``model`` ``sonnet`` runs the whole arm on the escalation model as a reference.
+    turn; a ``model`` other than ``luna`` (``sonnet``, the escalation model, or ``sol``) runs the whole arm on that
+    model as a reference.
     """
 
     contracts: str
@@ -74,6 +78,7 @@ ARMS = {
     "E": Arm("b", checks=True, working_set=True, cascade=True),
     "EJ": Arm("b", checks=True, working_set=True, routing="jev"),
     "S": Arm("a", model="sonnet"),
+    "SOL": Arm("a", model="sol"),
     "L1": Arm("large"),
     "L2": Arm("large", exposure="namespaces"),
     "L3": Arm("large", exposure="groups"),
@@ -88,7 +93,7 @@ ARMS = {
     "LJ-tasks": Arm("large-tasks", checks=True, routing="jev"),
     "LS": Arm("large", model="sonnet"),
 }
-MODELS = {"luna": ("openai", "gpt-6-luna"), "sonnet": ESCALATION}
+MODELS = {"luna": ("openai", "gpt-6-luna"), "sonnet": ESCALATION, "sol": ("openai", "gpt-6.1-sol")}
 STRATA = {"precision": (corpus.SCENARIOS, split.SPLIT), "large-api": (large_api.SCENARIOS, split.LARGE_API_SPLIT)}
 # What fixes an engineering campaign's schedule and its turns; a completion must match its campaign on every one.
 SCHEDULE_FIELDS = (
@@ -118,10 +123,10 @@ def tasks(stratum: str, held_out_repetitions: int, tuning_repetitions: int) -> l
 def task_arms(
     stratum: str, reference_repetitions: int, labels: Sequence[str], repetition: int, scenario: corpus.Scenario
 ) -> list[str]:
-    """The arms one task runs: a Sonnet reference arm only on its first reference repetitions of held-out ones."""
+    """The arms one task runs: a reference arm (any model but Luna) only on its first held-out repetitions."""
     held_out = split.part(scenario.id, split.load(STRATA[stratum][1])) == "held-out"
     reference = held_out and repetition < reference_repetitions
-    return [label for label in labels if ARMS[label].model != "sonnet" or reference]
+    return [label for label in labels if ARMS[label].model == "luna" or reference]
 
 
 def schedule(fields: Mapping[str, object]) -> list[dict[str, object]]:
