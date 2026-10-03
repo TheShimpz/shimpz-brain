@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import dataclasses
+import hashlib
 import json
 import math
 import os
@@ -594,14 +595,28 @@ def _corpora(attempts: Sequence[Mapping[str, object]]) -> list[dict[str, object]
     ]
 
 
+# What fixes a campaign's schedule and its turns: a completion run's metadata must match its campaign's on each.
+COMPLETION_FIELDS = (
+    "campaign",
+    "seed",
+    "arms",
+    "stratum",
+    "held_out_repetitions",
+    "tuning_repetitions",
+    "reference_repetitions",
+    "max_output_tokens",
+)
+
+
 def merge_completions(
     attempts: Sequence[Mapping[str, object]], completions: Sequence[Sequence[Mapping[str, object]]]
 ) -> tuple[list[Mapping[str, object]], list[Mapping[str, object]], list[dict[str, int]]]:
     """Apply completion runs in order; each record supersedes one budget-stopped record of its key or fills a gap.
 
     A completion repeats only what the budget censored: it may never replace a conclusive outcome (a failure
-    included), repeat a key within itself, or name a campaign the earlier attempts did not run. Returns the merged
-    attempts, the superseded records (whose spend still counts), and one summary per completion.
+    included) or change the replaced attempt's effort, repeat a key within itself, or fill an attempt of a run or
+    effort the earlier attempts never had. Returns the merged attempts, the superseded records (whose spend still
+    counts), and one summary per completion.
     """
     merged: dict[str, Mapping[str, object]] = {}
     for attempt in attempts:
@@ -609,18 +624,24 @@ def merge_completions(
         if key in merged:
             raise ValueError("duplicate attempt or pairing key")
         merged[key] = attempt
-    campaigns = {str(attempt["campaign"]) for attempt in attempts}
+    runs = {(_run_key(attempt), str(attempt["effort"])) for attempt in attempts}
     superseded: list[Mapping[str, object]] = []
     summaries = []
     for records in completions:
         keys = [attempt_key(record) for record in records]
         if len(set(keys)) != len(keys):
             raise ValueError("duplicate attempt or pairing key")
-        if any(str(record["campaign"]) not in campaigns for record in records):
-            raise ValueError("a completion names a campaign the earlier attempts did not run")
+        if any((_run_key(record), str(record["effort"])) not in runs for record in records):
+            raise ValueError("a completion runs an attempt its campaign never ran")
         replaced = [merged[key] for key in keys if key in merged]
         if any(item["status"] != "budget-stopped" for item in replaced):
             raise ValueError("a completion repeats a conclusive attempt")
+        if any(
+            merged[key]["effort"] != record["effort"]
+            for key, record in zip(keys, records, strict=True)
+            if key in merged
+        ):
+            raise ValueError("a completion changes an attempt's effort")
         superseded.extend(replaced)
         merged.update(zip(keys, records, strict=True))
         summaries.append({"attempts": len(keys), "superseded": len(replaced), "filled": len(keys) - len(replaced)})
@@ -631,14 +652,38 @@ def _run_key(attempt: Mapping[str, object]) -> tuple[str, str, str, str]:
     return str(attempt["campaign"]), str(attempt["provider"]), str(attempt["model"]), str(attempt["arm"])
 
 
-def _completion_provenance(meta: Mapping[str, object], completions: Sequence[Sequence[Mapping[str, object]]]) -> None:
-    """Each merged completion must have its own run metadata, in order, for its campaign."""
+def _completion_provenance(
+    meta: Mapping[str, object],
+    completions: Sequence[Sequence[Mapping[str, object]]],
+    summaries: Sequence[Mapping[str, int]],
+) -> None:
+    """Each merged completion has its own run metadata, in order, of the same campaign schedule and counts.
+
+    The driver's metadata names how many keys it found budget-stopped and missing, so a completion must supersede
+    and fill exactly those, and its every record must belong to the campaign the metadata names.
+    """
     recorded = meta.get("completions") or []
-    if len(recorded) != len(completions) or any(
-        {str(record["campaign"]) for record in records} - {str(item.get("campaign"))}
-        for item, records in zip(recorded, completions, strict=True)
-    ):
+    if len(recorded) != len(completions):
         raise ValueError("a completion run lacks its metadata")
+    for item, records, summary in zip(recorded, completions, summaries, strict=True):
+        origin = item.get("completion") or {}
+        if (
+            any(item.get(name) != meta.get(name) for name in COMPLETION_FIELDS)
+            or {str(record["campaign"]) for record in records} - {meta.get("campaign")}
+            or (origin.get("budget_stopped"), origin.get("missing")) != (summary["superseded"], summary["filled"])
+        ):
+            raise ValueError("a completion run lacks its metadata")
+
+
+def check_completion_sources(meta: Mapping[str, object], sources: Sequence[bytes]) -> None:
+    """Each completion's metadata names, in order, the digest of every transcript it completed.
+
+    ``sources`` are the original transcript and then each completion's, as merged.
+    """
+    digests = [f"sha256:{hashlib.sha256(source).hexdigest()}" for source in sources]
+    for index, item in enumerate(meta.get("completions") or []):
+        if (item.get("completion") or {}).get("digest") != digests[: index + 1]:
+            raise ValueError("a completion run completed another transcript")
 
 
 def build_report(
@@ -656,13 +701,13 @@ def build_report(
     budget-stopped records (``merge_completions``). Each arm is paired against the ``baseline_arm`` the metadata
     names, or the first arm, unless the metadata lists ``comparisons``.
     """
-    _completion_provenance(meta, completions)
+    # Completions are admitted over the whole campaign; a split part then keeps only its own records.
+    attempts, superseded, merged = merge_completions(attempts, completions)
+    _completion_provenance(meta, completions, merged)
     sets = None if part is None else {"precision": split.load(), "large-api": split.load(split.LARGE_API_SPLIT)}
-
-    def inside(items: Sequence[Mapping[str, object]]) -> list[Mapping[str, object]]:
-        return [item for item in items if part is None or _part(str(item["scenario"]), sets) == part]
-
-    attempts, superseded, merged = merge_completions(inside(attempts), [inside(items) for items in completions])
+    if part is not None:
+        attempts = [attempt for attempt in attempts if _part(str(attempt["scenario"]), sets) == part]
+        superseded = [attempt for attempt in superseded if _part(str(attempt["scenario"]), sets) == part]
     reported = {attempt_key(attempt) for attempt in attempts}
     # Only the reported attempts' verdicts count: a split part never carries the rest of its campaign's judgments.
     judged = [item for item in judged if str(item["key"]) in reported]
@@ -731,6 +776,7 @@ def build_report(
             ],
         },
         "decision": grade(calibration, judged, meta),
+        # Campaign-wide: how many records each merged completion run superseded or filled.
         "completions": merged,
         "judge_calibration": None if calibration is None else checked_meta(dict(calibration)),
         "runs": runs,
@@ -804,6 +850,17 @@ def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[Judg
     return judgments[0], judgments[1]
 
 
+def _report(args: argparse.Namespace) -> None:
+    """Build the report from one transcript, its completion runs in order, and every judgment file."""
+    meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
+    calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
+    judged = [item for path in args.judged for item in read_jsonl(path)]
+    check_completion_sources(meta, [path.read_bytes() for path in (args.transcript, *args.completion)])
+    completions = [read_jsonl(path) for path in args.completion]
+    report = build_report(read_jsonl(args.transcript), judged, meta, calibration, args.split, completions)
+    args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("validate", "calibrate", "judge", "report", "regrade"))
@@ -833,12 +890,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.out.write_text(json.dumps(regraded, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         if args.command == "report":
-            meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
-            calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
-            judged = [item for path in args.judged for item in read_jsonl(path)]
-            completions = [read_jsonl(path) for path in args.completion]
-            report = build_report(read_jsonl(args.transcript), judged, meta, calibration, args.split, completions)
-            args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+            _report(args)
             return 0
         from eval.ceiling import Ceiling
 
