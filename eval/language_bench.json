@@ -1,0 +1,8454 @@
+{
+ "detection": [
+  {
+   "lang": "pt",
+   "text": "Caneca térmica Stanley 500 ml"
+  },
+  {
+   "lang": "pt",
+   "text": "Pão de queijo"
+  },
+  {
+   "lang": "pt",
+   "text": "pão francês"
+  },
+  {
+   "lang": "pt",
+   "text": "Pão"
+  },
+  {
+   "lang": "pt",
+   "text": "Feijão"
+  },
+  {
+   "lang": "pt",
+   "text": "Toalhas"
+  },
+  {
+   "lang": "pt",
+   "text": "Lençóis"
+  },
+  {
+   "lang": "pt",
+   "text": "Geladeira"
+  },
+  {
+   "lang": "pt",
+   "text": "Fogão"
+  },
+  {
+   "lang": "pt",
+   "text": "Liquidificador"
+  },
+  {
+   "lang": "pt",
+   "text": "Segunda via do boleto"
+  },
+  {
+   "lang": "pt",
+   "text": "Obrigado"
+  },
+  {
+   "lang": "pt",
+   "text": "Lembrete"
+  },
+  {
+   "lang": "pt",
+   "text": "Almoço"
+  },
+  {
+   "lang": "pt",
+   "text": "Faxina"
+  },
+  {
+   "lang": "pt",
+   "text": "Açougue"
+  },
+  {
+   "lang": "pt",
+   "text": "Ligar para o contador"
+  },
+  {
+   "lang": "pt",
+   "text": "pagar boleto da luz"
+  },
+  {
+   "lang": "pt",
+   "text": "Reunião com fornecedor"
+  },
+  {
+   "lang": "pt",
+   "text": "Fatura atrasada"
+  },
+  {
+   "lang": "pt",
+   "text": "feijão preto 1kg"
+  },
+  {
+   "lang": "pt",
+   "text": "Açúcar mascavo"
+  },
+  {
+   "lang": "pt",
+   "text": "Toalha de banho"
+  },
+  {
+   "lang": "pt",
+   "text": "toalhas de rosto"
+  },
+  {
+   "lang": "pt",
+   "text": "Cadeira de escritório"
+  },
+  {
+   "lang": "pt",
+   "text": "Conserto do chuveiro"
+  },
+  {
+   "lang": "pt",
+   "text": "renovar CNH"
+  },
+  {
+   "lang": "pt",
+   "text": "Aniversário da vovó"
+  },
+  {
+   "lang": "pt",
+   "text": "Recibo do aluguel"
+  },
+  {
+   "lang": "pt",
+   "text": "orcamento reforma cozinha"
+  },
+  {
+   "lang": "pt",
+   "text": "Cliente reclamou da entrega"
+  },
+  {
+   "lang": "pt",
+   "text": "entrega atrasou de novo"
+  },
+  {
+   "lang": "pt",
+   "text": "Muito bom, recomendo"
+  },
+  {
+   "lang": "pt",
+   "text": "Pedido cancelado pelo cliente"
+  },
+  {
+   "lang": "pt",
+   "text": "Devolução"
+  },
+  {
+   "lang": "pt",
+   "text": "Estoque baixo"
+  },
+  {
+   "lang": "pt",
+   "text": "Planilha de gastos"
+  },
+  {
+   "lang": "pt",
+   "text": "Comprovante de pagamento"
+  },
+  {
+   "lang": "pt",
+   "text": "Ração para cachorro"
+  },
+  {
+   "lang": "pt",
+   "text": "Escova de dentes macia"
+  },
+  {
+   "lang": "pt",
+   "text": "Suco de laranja natural"
+  },
+  {
+   "lang": "pt",
+   "text": "Coxinha de frango"
+  },
+  {
+   "lang": "pt",
+   "text": "Tapioca com coco"
+  },
+  {
+   "lang": "pt",
+   "text": "Fone de ouvido sem fio"
+  },
+  {
+   "lang": "pt",
+   "text": "carregador do celular"
+  },
+  {
+   "lang": "pt",
+   "text": "Lápis de cor 24 cores"
+  },
+  {
+   "lang": "pt",
+   "text": "Agendar consulta no dentista"
+  },
+  {
+   "lang": "pt",
+   "text": "buscar as crianças na escola"
+  },
+  {
+   "lang": "pt",
+   "text": "Notas fiscais de março"
+  },
+  {
+   "lang": "pt",
+   "text": "Passagem de ônibus"
+  },
+  {
+   "lang": "pt",
+   "text": "Seguro do carro"
+  },
+  {
+   "lang": "pt",
+   "text": "Manutenção do ar-condicionado"
+  },
+  {
+   "lang": "pt",
+   "text": "Camiseta branca tamanho M"
+  },
+  {
+   "lang": "pt",
+   "text": "Calça jeans"
+  },
+  {
+   "lang": "pt",
+   "text": "Tênis de corrida"
+  },
+  {
+   "lang": "pt",
+   "text": "Bolsa de couro"
+  },
+  {
+   "lang": "pt",
+   "text": "nao esquecer o guarda-chuva"
+  },
+  {
+   "lang": "pt",
+   "text": "Obrigado pela atenção"
+  },
+  {
+   "lang": "pt",
+   "text": "Endereço de cobrança"
+  },
+  {
+   "lang": "pt",
+   "text": "cafe com leite"
+  },
+  {
+   "lang": "pt",
+   "text": "Pão de forma"
+  },
+  {
+   "lang": "pt",
+   "text": "Água sem gás"
+  },
+  {
+   "lang": "pt",
+   "text": "Bolo de cenoura"
+  },
+  {
+   "lang": "pt",
+   "text": "Sorvete de morango"
+  },
+  {
+   "lang": "pt",
+   "text": "Sopa do dia"
+  },
+  {
+   "lang": "pt",
+   "text": "Vinho tinto da casa"
+  },
+  {
+   "lang": "pt",
+   "text": "concerto da geladeira"
+  },
+  {
+   "lang": "pt",
+   "text": "O produto chegou com a embalagem amassada, mas funciona bem"
+  },
+  {
+   "lang": "pt",
+   "text": "Cliente pediu para trocar o tamanho da camiseta antes do envio"
+  },
+  {
+   "lang": "es",
+   "text": "Taza de café"
+  },
+  {
+   "lang": "es",
+   "text": "café con leche"
+  },
+  {
+   "lang": "es",
+   "text": "Toallas"
+  },
+  {
+   "lang": "es",
+   "text": "Sábanas"
+  },
+  {
+   "lang": "es",
+   "text": "Nevera"
+  },
+  {
+   "lang": "es",
+   "text": "Fregadero"
+  },
+  {
+   "lang": "es",
+   "text": "Licuadora"
+  },
+  {
+   "lang": "es",
+   "text": "Recordatorio"
+  },
+  {
+   "lang": "es",
+   "text": "Cumpleaños"
+  },
+  {
+   "lang": "es",
+   "text": "Almuerzo"
+  },
+  {
+   "lang": "es",
+   "text": "Gracias"
+  },
+  {
+   "lang": "es",
+   "text": "Carnicería"
+  },
+  {
+   "lang": "es",
+   "text": "Lavavajillas"
+  },
+  {
+   "lang": "es",
+   "text": "Agua sin gas"
+  },
+  {
+   "lang": "es",
+   "text": "Pan de molde"
+  },
+  {
+   "lang": "es",
+   "text": "Queso manchego"
+  },
+  {
+   "lang": "es",
+   "text": "Llamar al contador"
+  },
+  {
+   "lang": "es",
+   "text": "pagar la factura de la luz"
+  },
+  {
+   "lang": "es",
+   "text": "Reunión con proveedores"
+  },
+  {
+   "lang": "es",
+   "text": "Lista de la compra"
+  },
+  {
+   "lang": "es",
+   "text": "Factura vencida"
+  },
+  {
+   "lang": "es",
+   "text": "Frijoles negros 1 kg"
+  },
+  {
+   "lang": "es",
+   "text": "Azúcar moreno"
+  },
+  {
+   "lang": "es",
+   "text": "Toalla de baño"
+  },
+  {
+   "lang": "es",
+   "text": "toallas de mano"
+  },
+  {
+   "lang": "es",
+   "text": "Silla de oficina"
+  },
+  {
+   "lang": "es",
+   "text": "Arreglar la ducha"
+  },
+  {
+   "lang": "es",
+   "text": "renovar el pasaporte"
+  },
+  {
+   "lang": "es",
+   "text": "cumpleanos de la abuela"
+  },
+  {
+   "lang": "es",
+   "text": "Recibo del alquiler"
+  },
+  {
+   "lang": "es",
+   "text": "Presupuesto reforma cocina"
+  },
+  {
+   "lang": "es",
+   "text": "El cliente se quejó del envío"
+  },
+  {
+   "lang": "es",
+   "text": "el pedido llegó tarde"
+  },
+  {
+   "lang": "es",
+   "text": "Muy bueno, lo recomiendo"
+  },
+  {
+   "lang": "es",
+   "text": "Pedido cancelado por el cliente"
+  },
+  {
+   "lang": "es",
+   "text": "Devolución"
+  },
+  {
+   "lang": "es",
+   "text": "Existencias bajas"
+  },
+  {
+   "lang": "es",
+   "text": "Comprobante de pago"
+  },
+  {
+   "lang": "es",
+   "text": "Pienso para perros"
+  },
+  {
+   "lang": "es",
+   "text": "Cepillo de dientes suave"
+  },
+  {
+   "lang": "es",
+   "text": "Zumo de naranja natural"
+  },
+  {
+   "lang": "es",
+   "text": "churros con chocolate"
+  },
+  {
+   "lang": "es",
+   "text": "Auriculares inalámbricos"
+  },
+  {
+   "lang": "es",
+   "text": "cargador del móvil"
+  },
+  {
+   "lang": "es",
+   "text": "Lápices de colores 24 unidades"
+  },
+  {
+   "lang": "es",
+   "text": "Pedir cita con el dentista"
+  },
+  {
+   "lang": "es",
+   "text": "recoger a los niños del colegio"
+  },
+  {
+   "lang": "es",
+   "text": "Billete de autobús"
+  },
+  {
+   "lang": "es",
+   "text": "Seguro del coche"
+  },
+  {
+   "lang": "es",
+   "text": "Mantenimiento del aire acondicionado"
+  },
+  {
+   "lang": "es",
+   "text": "Camiseta blanca talla M"
+  },
+  {
+   "lang": "es",
+   "text": "Pantalón vaquero"
+  },
+  {
+   "lang": "es",
+   "text": "Bolso de cuero"
+  },
+  {
+   "lang": "es",
+   "text": "no olvidar el paraguas"
+  },
+  {
+   "lang": "es",
+   "text": "Gracias por su atención"
+  },
+  {
+   "lang": "es",
+   "text": "Dirección de facturación"
+  },
+  {
+   "lang": "es",
+   "text": "cafe con leche"
+  },
+  {
+   "lang": "es",
+   "text": "Tortilla de patatas"
+  },
+  {
+   "lang": "es",
+   "text": "Jamón ibérico 100 g"
+  },
+  {
+   "lang": "es",
+   "text": "Helado de fresa"
+  },
+  {
+   "lang": "es",
+   "text": "Sopa del día"
+  },
+  {
+   "lang": "es",
+   "text": "Vino tinto de la casa"
+  },
+  {
+   "lang": "es",
+   "text": "llamar al plomero manana"
+  },
+  {
+   "lang": "es",
+   "text": "El producto llegó con la caja dañada, pero funciona bien"
+  },
+  {
+   "lang": "es",
+   "text": "La clienta pidió cambiar la talla de la camiseta antes del envío"
+  },
+  {
+   "lang": "it",
+   "text": "Tazza da caffè"
+  },
+  {
+   "lang": "it",
+   "text": "caffè macchiato"
+  },
+  {
+   "lang": "it",
+   "text": "Asciugamani"
+  },
+  {
+   "lang": "it",
+   "text": "Lenzuola"
+  },
+  {
+   "lang": "it",
+   "text": "Frigorifero"
+  },
+  {
+   "lang": "it",
+   "text": "Frullatore"
+  },
+  {
+   "lang": "it",
+   "text": "Promemoria"
+  },
+  {
+   "lang": "it",
+   "text": "Compleanno"
+  },
+  {
+   "lang": "it",
+   "text": "Pranzo"
+  },
+  {
+   "lang": "it",
+   "text": "Grazie"
+  },
+  {
+   "lang": "it",
+   "text": "Macelleria"
+  },
+  {
+   "lang": "it",
+   "text": "Spesa"
+  },
+  {
+   "lang": "it",
+   "text": "Scontrino"
+  },
+  {
+   "lang": "it",
+   "text": "Lavatrice"
+  },
+  {
+   "lang": "it",
+   "text": "Bolletta"
+  },
+  {
+   "lang": "it",
+   "text": "Acqua naturale"
+  },
+  {
+   "lang": "it",
+   "text": "Acqua frizzante"
+  },
+  {
+   "lang": "it",
+   "text": "Pane in cassetta"
+  },
+  {
+   "lang": "it",
+   "text": "Chiamare il commercialista"
+  },
+  {
+   "lang": "it",
+   "text": "pagare la bolletta della luce"
+  },
+  {
+   "lang": "it",
+   "text": "Riunione con i fornitori"
+  },
+  {
+   "lang": "it",
+   "text": "Lista della spesa"
+  },
+  {
+   "lang": "it",
+   "text": "Fattura scaduta"
+  },
+  {
+   "lang": "it",
+   "text": "Zucchero di canna"
+  },
+  {
+   "lang": "it",
+   "text": "Asciugamano da bagno"
+  },
+  {
+   "lang": "it",
+   "text": "Sedia da ufficio"
+  },
+  {
+   "lang": "it",
+   "text": "Riparare la doccia"
+  },
+  {
+   "lang": "it",
+   "text": "rinnovare il passaporto"
+  },
+  {
+   "lang": "it",
+   "text": "Compleanno della nonna"
+  },
+  {
+   "lang": "it",
+   "text": "Ricevuta dell'affitto"
+  },
+  {
+   "lang": "it",
+   "text": "Preventivo ristrutturazione cucina"
+  },
+  {
+   "lang": "it",
+   "text": "Il cliente si è lamentato della consegna"
+  },
+  {
+   "lang": "it",
+   "text": "consegna in ritardo"
+  },
+  {
+   "lang": "it",
+   "text": "Ottimo, lo consiglio"
+  },
+  {
+   "lang": "it",
+   "text": "Ordine annullato dal cliente"
+  },
+  {
+   "lang": "it",
+   "text": "Reso"
+  },
+  {
+   "lang": "it",
+   "text": "Scorte basse"
+  },
+  {
+   "lang": "it",
+   "text": "Crocchette per cani"
+  },
+  {
+   "lang": "it",
+   "text": "Spazzolino morbido"
+  },
+  {
+   "lang": "it",
+   "text": "Spremuta d'arancia"
+  },
+  {
+   "lang": "it",
+   "text": "Cornetto alla crema"
+  },
+  {
+   "lang": "it",
+   "text": "Cuffie senza fili"
+  },
+  {
+   "lang": "it",
+   "text": "caricabatterie del telefono"
+  },
+  {
+   "lang": "it",
+   "text": "Matite colorate 24 pezzi"
+  },
+  {
+   "lang": "it",
+   "text": "Prenotare visita dal dentista"
+  },
+  {
+   "lang": "it",
+   "text": "prendere i bambini a scuola"
+  },
+  {
+   "lang": "it",
+   "text": "Biglietto dell'autobus"
+  },
+  {
+   "lang": "it",
+   "text": "Manutenzione condizionatore"
+  },
+  {
+   "lang": "it",
+   "text": "Maglietta bianca taglia M"
+  },
+  {
+   "lang": "it",
+   "text": "Scarpe da corsa"
+  },
+  {
+   "lang": "it",
+   "text": "Borsa in pelle"
+  },
+  {
+   "lang": "it",
+   "text": "non dimenticare l'ombrello"
+  },
+  {
+   "lang": "it",
+   "text": "Grazie per l'attenzione"
+  },
+  {
+   "lang": "it",
+   "text": "Indirizzo di fatturazione"
+  },
+  {
+   "lang": "it",
+   "text": "un caffe al banco"
+  },
+  {
+   "lang": "it",
+   "text": "Formaggio grattugiato"
+  },
+  {
+   "lang": "it",
+   "text": "Prosciutto crudo 100 g"
+  },
+  {
+   "lang": "it",
+   "text": "Gelato alla fragola"
+  },
+  {
+   "lang": "it",
+   "text": "Zuppa del giorno"
+  },
+  {
+   "lang": "it",
+   "text": "Vino rosso della casa"
+  },
+  {
+   "lang": "it",
+   "text": "chiamare l'idraulico domani"
+  },
+  {
+   "lang": "it",
+   "text": "perche il pacco non e arrivato"
+  },
+  {
+   "lang": "it",
+   "text": "Il prodotto è arrivato con la scatola rovinata, ma funziona bene"
+  },
+  {
+   "lang": "it",
+   "text": "La cliente ha chiesto di cambiare la taglia della maglietta prima della spedizione"
+  },
+  {
+   "lang": "fr",
+   "text": "Mug isotherme"
+  },
+  {
+   "lang": "fr",
+   "text": "Café au lait"
+  },
+  {
+   "lang": "fr",
+   "text": "Rappel rendez-vous"
+  },
+  {
+   "lang": "fr",
+   "text": "Facture"
+  },
+  {
+   "lang": "fr",
+   "text": "Draps"
+  },
+  {
+   "lang": "fr",
+   "text": "Réfrigérateur"
+  },
+  {
+   "lang": "fr",
+   "text": "Mixeur"
+  },
+  {
+   "lang": "fr",
+   "text": "Anniversaire"
+  },
+  {
+   "lang": "fr",
+   "text": "Déjeuner"
+  },
+  {
+   "lang": "fr",
+   "text": "Merci"
+  },
+  {
+   "lang": "fr",
+   "text": "Boucherie"
+  },
+  {
+   "lang": "fr",
+   "text": "Courses du samedi"
+  },
+  {
+   "lang": "fr",
+   "text": "Lave-vaisselle"
+  },
+  {
+   "lang": "fr",
+   "text": "Ménage"
+  },
+  {
+   "lang": "fr",
+   "text": "Eau gazeuse"
+  },
+  {
+   "lang": "fr",
+   "text": "Pain de mie"
+  },
+  {
+   "lang": "fr",
+   "text": "Appeler le comptable"
+  },
+  {
+   "lang": "fr",
+   "text": "payer la facture d'électricité"
+  },
+  {
+   "lang": "fr",
+   "text": "Réunion avec les fournisseurs"
+  },
+  {
+   "lang": "fr",
+   "text": "Liste de courses"
+  },
+  {
+   "lang": "fr",
+   "text": "Facture en retard"
+  },
+  {
+   "lang": "fr",
+   "text": "Sucre roux"
+  },
+  {
+   "lang": "fr",
+   "text": "Serviette de bain"
+  },
+  {
+   "lang": "fr",
+   "text": "Chaise de bureau"
+  },
+  {
+   "lang": "fr",
+   "text": "Réparer la douche"
+  },
+  {
+   "lang": "fr",
+   "text": "Renouveler le passeport"
+  },
+  {
+   "lang": "fr",
+   "text": "Anniversaire de mamie"
+  },
+  {
+   "lang": "fr",
+   "text": "Quittance de loyer"
+  },
+  {
+   "lang": "fr",
+   "text": "Devis rénovation cuisine"
+  },
+  {
+   "lang": "fr",
+   "text": "Le client s'est plaint de la livraison"
+  },
+  {
+   "lang": "fr",
+   "text": "livraison en retard"
+  },
+  {
+   "lang": "fr",
+   "text": "Très bien, je recommande"
+  },
+  {
+   "lang": "fr",
+   "text": "Commande annulée"
+  },
+  {
+   "lang": "fr",
+   "text": "Retour produit"
+  },
+  {
+   "lang": "fr",
+   "text": "Stock faible"
+  },
+  {
+   "lang": "fr",
+   "text": "Tableau des dépenses"
+  },
+  {
+   "lang": "fr",
+   "text": "Justificatif de paiement"
+  },
+  {
+   "lang": "fr",
+   "text": "Croquettes pour chien"
+  },
+  {
+   "lang": "fr",
+   "text": "Brosse à dents souple"
+  },
+  {
+   "lang": "fr",
+   "text": "Jus d'orange pressé"
+  },
+  {
+   "lang": "fr",
+   "text": "Pain au chocolat"
+  },
+  {
+   "lang": "fr",
+   "text": "Écouteurs sans fil"
+  },
+  {
+   "lang": "fr",
+   "text": "Chargeur de téléphone"
+  },
+  {
+   "lang": "fr",
+   "text": "Cahier à grands carreaux"
+  },
+  {
+   "lang": "fr",
+   "text": "Crayons de couleur 24 pièces"
+  },
+  {
+   "lang": "fr",
+   "text": "Prendre rendez-vous chez le dentiste"
+  },
+  {
+   "lang": "fr",
+   "text": "récupérer les enfants à l'école"
+  },
+  {
+   "lang": "fr",
+   "text": "Ticket de bus"
+  },
+  {
+   "lang": "fr",
+   "text": "Entretien de la climatisation"
+  },
+  {
+   "lang": "fr",
+   "text": "T-shirt blanc taille M"
+  },
+  {
+   "lang": "fr",
+   "text": "Chaussures de course"
+  },
+  {
+   "lang": "fr",
+   "text": "Sac en cuir"
+  },
+  {
+   "lang": "fr",
+   "text": "ne pas oublier le parapluie"
+  },
+  {
+   "lang": "fr",
+   "text": "Merci pour votre patience"
+  },
+  {
+   "lang": "fr",
+   "text": "Adresse de facturation"
+  },
+  {
+   "lang": "fr",
+   "text": "frigo en panne"
+  },
+  {
+   "lang": "fr",
+   "text": "cafe creme"
+  },
+  {
+   "lang": "fr",
+   "text": "Glace à la fraise"
+  },
+  {
+   "lang": "fr",
+   "text": "Soupe du jour"
+  },
+  {
+   "lang": "fr",
+   "text": "Vin rouge maison"
+  },
+  {
+   "lang": "fr",
+   "text": "appeler le plombier demain"
+  },
+  {
+   "lang": "fr",
+   "text": "Le produit est arrivé avec le carton abîmé, mais il fonctionne bien"
+  },
+  {
+   "lang": "fr",
+   "text": "La cliente a demandé de changer la taille du t-shirt avant l'envoi"
+  },
+  {
+   "lang": "de",
+   "text": "Kaffeebecher"
+  },
+  {
+   "lang": "de",
+   "text": "Milchkaffee"
+  },
+  {
+   "lang": "de",
+   "text": "Erinnerung"
+  },
+  {
+   "lang": "de",
+   "text": "Rechnung"
+  },
+  {
+   "lang": "de",
+   "text": "Handtücher"
+  },
+  {
+   "lang": "de",
+   "text": "Bettwäsche"
+  },
+  {
+   "lang": "de",
+   "text": "Kühlschrank"
+  },
+  {
+   "lang": "de",
+   "text": "Geburtstag"
+  },
+  {
+   "lang": "de",
+   "text": "Mittagessen"
+  },
+  {
+   "lang": "de",
+   "text": "Danke"
+  },
+  {
+   "lang": "de",
+   "text": "Metzgerei"
+  },
+  {
+   "lang": "de",
+   "text": "Einkauf"
+  },
+  {
+   "lang": "de",
+   "text": "Kassenbon"
+  },
+  {
+   "lang": "de",
+   "text": "Brot"
+  },
+  {
+   "lang": "de",
+   "text": "Wurst"
+  },
+  {
+   "lang": "de",
+   "text": "Staubsauger"
+  },
+  {
+   "lang": "de",
+   "text": "Apfelsaft"
+  },
+  {
+   "lang": "de",
+   "text": "Mineralwasser ohne Kohlensäure"
+  },
+  {
+   "lang": "de",
+   "text": "Toastbrot"
+  },
+  {
+   "lang": "de",
+   "text": "Steuerberater anrufen"
+  },
+  {
+   "lang": "de",
+   "text": "Stromrechnung bezahlen"
+  },
+  {
+   "lang": "de",
+   "text": "Besprechung mit Lieferanten"
+  },
+  {
+   "lang": "de",
+   "text": "Einkaufsliste"
+  },
+  {
+   "lang": "de",
+   "text": "Überfällige Rechnung"
+  },
+  {
+   "lang": "de",
+   "text": "brauner Zucker"
+  },
+  {
+   "lang": "de",
+   "text": "Badetuch"
+  },
+  {
+   "lang": "de",
+   "text": "Bürostuhl"
+  },
+  {
+   "lang": "de",
+   "text": "Dusche reparieren"
+  },
+  {
+   "lang": "de",
+   "text": "Reisepass verlängern"
+  },
+  {
+   "lang": "de",
+   "text": "Omas Geburtstag"
+  },
+  {
+   "lang": "de",
+   "text": "Kostenvoranschlag Küchenumbau"
+  },
+  {
+   "lang": "de",
+   "text": "Kunde hat sich über die Lieferung beschwert"
+  },
+  {
+   "lang": "de",
+   "text": "Lieferung verspätet"
+  },
+  {
+   "lang": "de",
+   "text": "Sehr gut, gerne wieder"
+  },
+  {
+   "lang": "de",
+   "text": "Bestellung storniert"
+  },
+  {
+   "lang": "de",
+   "text": "Rücksendung"
+  },
+  {
+   "lang": "de",
+   "text": "Niedriger Lagerbestand"
+  },
+  {
+   "lang": "de",
+   "text": "Zahlungsbeleg"
+  },
+  {
+   "lang": "de",
+   "text": "Hundefutter"
+  },
+  {
+   "lang": "de",
+   "text": "Zahnbürste weich"
+  },
+  {
+   "lang": "de",
+   "text": "frisch gepresster Orangensaft"
+  },
+  {
+   "lang": "de",
+   "text": "Brezel mit Butter"
+  },
+  {
+   "lang": "de",
+   "text": "Kabellose Kopfhörer"
+  },
+  {
+   "lang": "de",
+   "text": "Handy-Ladekabel"
+  },
+  {
+   "lang": "de",
+   "text": "Buntstifte 24 Stück"
+  },
+  {
+   "lang": "de",
+   "text": "Zahnarzttermin vereinbaren"
+  },
+  {
+   "lang": "de",
+   "text": "Kinder von der Schule abholen"
+  },
+  {
+   "lang": "de",
+   "text": "Busfahrkarte"
+  },
+  {
+   "lang": "de",
+   "text": "Wartung Klimaanlage"
+  },
+  {
+   "lang": "de",
+   "text": "T-Shirt weiß Größe M"
+  },
+  {
+   "lang": "de",
+   "text": "Laufschuhe"
+  },
+  {
+   "lang": "de",
+   "text": "Ledertasche"
+  },
+  {
+   "lang": "de",
+   "text": "Regenschirm nicht vergessen"
+  },
+  {
+   "lang": "de",
+   "text": "Vielen Dank für Ihre Geduld"
+  },
+  {
+   "lang": "de",
+   "text": "Rechnungsadresse"
+  },
+  {
+   "lang": "de",
+   "text": "Schluessel abholen"
+  },
+  {
+   "lang": "de",
+   "text": "Gruene Bohnen"
+  },
+  {
+   "lang": "de",
+   "text": "Waschmaschine kaputt"
+  },
+  {
+   "lang": "de",
+   "text": "Erdbeereis"
+  },
+  {
+   "lang": "de",
+   "text": "Tagessuppe"
+  },
+  {
+   "lang": "de",
+   "text": "Hauswein rot"
+  },
+  {
+   "lang": "de",
+   "text": "Klempner morgen anrufen"
+  },
+  {
+   "lang": "de",
+   "text": "Fahrrad reparieren"
+  },
+  {
+   "lang": "de",
+   "text": "Weihnachtsmarkt"
+  },
+  {
+   "lang": "de",
+   "text": "Das Produkt kam mit beschädigter Verpackung an, funktioniert aber gut"
+  },
+  {
+   "lang": "de",
+   "text": "Die Kundin möchte vor dem Versand die Größe des T-Shirts ändern"
+  },
+  {
+   "lang": "nl",
+   "text": "Koffiemok"
+  },
+  {
+   "lang": "nl",
+   "text": "Koffie verkeerd"
+  },
+  {
+   "lang": "nl",
+   "text": "Herinnering"
+  },
+  {
+   "lang": "nl",
+   "text": "Rekening"
+  },
+  {
+   "lang": "nl",
+   "text": "Handdoeken"
+  },
+  {
+   "lang": "nl",
+   "text": "Beddengoed"
+  },
+  {
+   "lang": "nl",
+   "text": "Koelkast"
+  },
+  {
+   "lang": "nl",
+   "text": "Verjaardag"
+  },
+  {
+   "lang": "nl",
+   "text": "Avondeten"
+  },
+  {
+   "lang": "nl",
+   "text": "Bedankt"
+  },
+  {
+   "lang": "nl",
+   "text": "Slagerij"
+  },
+  {
+   "lang": "nl",
+   "text": "Boodschappen"
+  },
+  {
+   "lang": "nl",
+   "text": "Kassabon"
+  },
+  {
+   "lang": "nl",
+   "text": "brood"
+  },
+  {
+   "lang": "nl",
+   "text": "kaas"
+  },
+  {
+   "lang": "nl",
+   "text": "Stofzuiger"
+  },
+  {
+   "lang": "nl",
+   "text": "Fiets"
+  },
+  {
+   "lang": "nl",
+   "text": "Appelsap"
+  },
+  {
+   "lang": "nl",
+   "text": "Water zonder prik"
+  },
+  {
+   "lang": "nl",
+   "text": "Casinobrood"
+  },
+  {
+   "lang": "nl",
+   "text": "Boekhouder bellen"
+  },
+  {
+   "lang": "nl",
+   "text": "Energierekening betalen"
+  },
+  {
+   "lang": "nl",
+   "text": "Overleg met leveranciers"
+  },
+  {
+   "lang": "nl",
+   "text": "Boodschappenlijst"
+  },
+  {
+   "lang": "nl",
+   "text": "Achterstallige factuur"
+  },
+  {
+   "lang": "nl",
+   "text": "bruine suiker"
+  },
+  {
+   "lang": "nl",
+   "text": "Badhanddoek"
+  },
+  {
+   "lang": "nl",
+   "text": "Bureaustoel"
+  },
+  {
+   "lang": "nl",
+   "text": "Douche repareren"
+  },
+  {
+   "lang": "nl",
+   "text": "Paspoort verlengen"
+  },
+  {
+   "lang": "nl",
+   "text": "Verjaardag van oma"
+  },
+  {
+   "lang": "nl",
+   "text": "Offerte keukenrenovatie"
+  },
+  {
+   "lang": "nl",
+   "text": "Klant klaagde over de bezorging"
+  },
+  {
+   "lang": "nl",
+   "text": "Bezorging vertraagd"
+  },
+  {
+   "lang": "nl",
+   "text": "Heel goed, aanrader"
+  },
+  {
+   "lang": "nl",
+   "text": "Bestelling geannuleerd"
+  },
+  {
+   "lang": "nl",
+   "text": "Retourzending"
+  },
+  {
+   "lang": "nl",
+   "text": "Lage voorraad"
+  },
+  {
+   "lang": "nl",
+   "text": "Uitgavenoverzicht"
+  },
+  {
+   "lang": "nl",
+   "text": "Hondenvoer"
+  },
+  {
+   "lang": "nl",
+   "text": "Tandenborstel zacht"
+  },
+  {
+   "lang": "nl",
+   "text": "Vers geperste sinaasappelsap"
+  },
+  {
+   "lang": "nl",
+   "text": "Broodje kaas"
+  },
+  {
+   "lang": "nl",
+   "text": "Appeltaart met slagroom"
+  },
+  {
+   "lang": "nl",
+   "text": "Draadloze koptelefoon"
+  },
+  {
+   "lang": "nl",
+   "text": "Kleurpotloden 24 stuks"
+  },
+  {
+   "lang": "nl",
+   "text": "Afspraak bij de tandarts maken"
+  },
+  {
+   "lang": "nl",
+   "text": "Kinderen ophalen van school"
+  },
+  {
+   "lang": "nl",
+   "text": "Buskaartje"
+  },
+  {
+   "lang": "nl",
+   "text": "Onderhoud airco"
+  },
+  {
+   "lang": "nl",
+   "text": "T-shirt wit maat M"
+  },
+  {
+   "lang": "nl",
+   "text": "Hardloopschoenen"
+  },
+  {
+   "lang": "nl",
+   "text": "Leren tas"
+  },
+  {
+   "lang": "nl",
+   "text": "Paraplu niet vergeten"
+  },
+  {
+   "lang": "nl",
+   "text": "Bedankt voor uw geduld"
+  },
+  {
+   "lang": "nl",
+   "text": "Factuuradres"
+  },
+  {
+   "lang": "nl",
+   "text": "Groene bonen"
+  },
+  {
+   "lang": "nl",
+   "text": "Wasmachine kapot"
+  },
+  {
+   "lang": "nl",
+   "text": "Aardbeienijs"
+  },
+  {
+   "lang": "nl",
+   "text": "Soep van de dag"
+  },
+  {
+   "lang": "nl",
+   "text": "Rode huiswijn"
+  },
+  {
+   "lang": "nl",
+   "text": "loodgieter morgen bellen"
+  },
+  {
+   "lang": "nl",
+   "text": "fiets repareren"
+  },
+  {
+   "lang": "nl",
+   "text": "Kerstmarkt"
+  },
+  {
+   "lang": "nl",
+   "text": "Het product kwam aan met een beschadigde doos, maar werkt prima"
+  },
+  {
+   "lang": "nl",
+   "text": "De klant wil de maat van het T-shirt wijzigen voor verzending"
+  },
+  {
+   "lang": "pl",
+   "text": "Kubek termiczny"
+  },
+  {
+   "lang": "pl",
+   "text": "Kawa z mlekiem"
+  },
+  {
+   "lang": "pl",
+   "text": "Przypomnienie"
+  },
+  {
+   "lang": "pl",
+   "text": "Rachunek"
+  },
+  {
+   "lang": "pl",
+   "text": "Ręczniki"
+  },
+  {
+   "lang": "pl",
+   "text": "Pościel"
+  },
+  {
+   "lang": "pl",
+   "text": "Lodówka"
+  },
+  {
+   "lang": "pl",
+   "text": "Urodziny"
+  },
+  {
+   "lang": "pl",
+   "text": "Obiad"
+  },
+  {
+   "lang": "pl",
+   "text": "Dziękuję"
+  },
+  {
+   "lang": "pl",
+   "text": "Zakupy"
+  },
+  {
+   "lang": "pl",
+   "text": "Paragon fiskalny"
+  },
+  {
+   "lang": "pl",
+   "text": "Chleb"
+  },
+  {
+   "lang": "pl",
+   "text": "Odkurzacz"
+  },
+  {
+   "lang": "pl",
+   "text": "Rower"
+  },
+  {
+   "lang": "pl",
+   "text": "Żurek"
+  },
+  {
+   "lang": "pl",
+   "text": "Pierogi ruskie"
+  },
+  {
+   "lang": "pl",
+   "text": "Woda niegazowana"
+  },
+  {
+   "lang": "pl",
+   "text": "Chleb tostowy"
+  },
+  {
+   "lang": "pl",
+   "text": "Zadzwonić do księgowej"
+  },
+  {
+   "lang": "pl",
+   "text": "Zapłacić rachunek za prąd"
+  },
+  {
+   "lang": "pl",
+   "text": "Spotkanie z dostawcami"
+  },
+  {
+   "lang": "pl",
+   "text": "Lista zakupów"
+  },
+  {
+   "lang": "pl",
+   "text": "Zaległa faktura"
+  },
+  {
+   "lang": "pl",
+   "text": "Cukier trzcinowy"
+  },
+  {
+   "lang": "pl",
+   "text": "Ręcznik kąpielowy"
+  },
+  {
+   "lang": "pl",
+   "text": "Krzesło biurowe"
+  },
+  {
+   "lang": "pl",
+   "text": "Naprawić prysznic"
+  },
+  {
+   "lang": "pl",
+   "text": "Odnowić paszport"
+  },
+  {
+   "lang": "pl",
+   "text": "Urodziny babci"
+  },
+  {
+   "lang": "pl",
+   "text": "Wycena remontu kuchni"
+  },
+  {
+   "lang": "pl",
+   "text": "Klient skarżył się na dostawę"
+  },
+  {
+   "lang": "pl",
+   "text": "Dostawa opóźniona"
+  },
+  {
+   "lang": "pl",
+   "text": "Bardzo dobry, polecam"
+  },
+  {
+   "lang": "pl",
+   "text": "Zamówienie anulowane"
+  },
+  {
+   "lang": "pl",
+   "text": "Zwrot towaru"
+  },
+  {
+   "lang": "pl",
+   "text": "Niski stan magazynowy"
+  },
+  {
+   "lang": "pl",
+   "text": "Zestawienie wydatków"
+  },
+  {
+   "lang": "pl",
+   "text": "Dowód wpłaty"
+  },
+  {
+   "lang": "pl",
+   "text": "Karma dla psa"
+  },
+  {
+   "lang": "pl",
+   "text": "Szczoteczka do zębów miękka"
+  },
+  {
+   "lang": "pl",
+   "text": "Sok pomarańczowy świeżo wyciskany"
+  },
+  {
+   "lang": "pl",
+   "text": "Słuchawki bezprzewodowe"
+  },
+  {
+   "lang": "pl",
+   "text": "Ładowarka do telefonu"
+  },
+  {
+   "lang": "pl",
+   "text": "Zeszyt w linie"
+  },
+  {
+   "lang": "pl",
+   "text": "Kredki 24 kolory"
+  },
+  {
+   "lang": "pl",
+   "text": "Umówić wizytę u dentysty"
+  },
+  {
+   "lang": "pl",
+   "text": "Odebrać dzieci ze szkoły"
+  },
+  {
+   "lang": "pl",
+   "text": "Bilet autobusowy"
+  },
+  {
+   "lang": "pl",
+   "text": "Ubezpieczenie samochodu"
+  },
+  {
+   "lang": "pl",
+   "text": "Serwis klimatyzacji"
+  },
+  {
+   "lang": "pl",
+   "text": "Koszulka biała rozmiar M"
+  },
+  {
+   "lang": "pl",
+   "text": "Buty do biegania"
+  },
+  {
+   "lang": "pl",
+   "text": "Nie zapomnij parasola"
+  },
+  {
+   "lang": "pl",
+   "text": "Dziękujemy za cierpliwość"
+  },
+  {
+   "lang": "pl",
+   "text": "ser zolty"
+  },
+  {
+   "lang": "pl",
+   "text": "pralka zepsuta"
+  },
+  {
+   "lang": "pl",
+   "text": "lodowka"
+  },
+  {
+   "lang": "pl",
+   "text": "dzieki"
+  },
+  {
+   "lang": "pl",
+   "text": "Lody truskawkowe"
+  },
+  {
+   "lang": "pl",
+   "text": "Zupa dnia"
+  },
+  {
+   "lang": "pl",
+   "text": "Czerwone wino domowe"
+  },
+  {
+   "lang": "pl",
+   "text": "zadzwonic do hydraulika jutro"
+  },
+  {
+   "lang": "pl",
+   "text": "Produkt dotarł w zgniecionym kartonie, ale działa bez zarzutu"
+  },
+  {
+   "lang": "pl",
+   "text": "Klientka prosi o zmianę rozmiaru koszulki przed wysyłką"
+  },
+  {
+   "lang": "tr",
+   "text": "Termos kupa"
+  },
+  {
+   "lang": "tr",
+   "text": "Sütlü kahve"
+  },
+  {
+   "lang": "tr",
+   "text": "Hatırlatma"
+  },
+  {
+   "lang": "tr",
+   "text": "Havlular"
+  },
+  {
+   "lang": "tr",
+   "text": "Nevresim takımı"
+  },
+  {
+   "lang": "tr",
+   "text": "Buzdolabı"
+  },
+  {
+   "lang": "tr",
+   "text": "Doğum günü"
+  },
+  {
+   "lang": "tr",
+   "text": "Öğle yemeği"
+  },
+  {
+   "lang": "tr",
+   "text": "Teşekkürler"
+  },
+  {
+   "lang": "tr",
+   "text": "Kasap"
+  },
+  {
+   "lang": "tr",
+   "text": "Alışveriş"
+  },
+  {
+   "lang": "tr",
+   "text": "Ekmek"
+  },
+  {
+   "lang": "tr",
+   "text": "Süpürge"
+  },
+  {
+   "lang": "tr",
+   "text": "Bisiklet"
+  },
+  {
+   "lang": "tr",
+   "text": "Simit"
+  },
+  {
+   "lang": "tr",
+   "text": "Maden suyu"
+  },
+  {
+   "lang": "tr",
+   "text": "Tost ekmeği"
+  },
+  {
+   "lang": "tr",
+   "text": "Muhasebeciyi ara"
+  },
+  {
+   "lang": "tr",
+   "text": "Elektrik faturasını öde"
+  },
+  {
+   "lang": "tr",
+   "text": "Tedarikçilerle toplantı"
+  },
+  {
+   "lang": "tr",
+   "text": "Alışveriş listesi"
+  },
+  {
+   "lang": "tr",
+   "text": "Gecikmiş fatura"
+  },
+  {
+   "lang": "tr",
+   "text": "Esmer şeker"
+  },
+  {
+   "lang": "tr",
+   "text": "Banyo havlusu"
+  },
+  {
+   "lang": "tr",
+   "text": "Ofis sandalyesi"
+  },
+  {
+   "lang": "tr",
+   "text": "Duşu tamir ettir"
+  },
+  {
+   "lang": "tr",
+   "text": "Pasaportu yenile"
+  },
+  {
+   "lang": "tr",
+   "text": "Anneannemin doğum günü"
+  },
+  {
+   "lang": "tr",
+   "text": "Kira makbuzu"
+  },
+  {
+   "lang": "tr",
+   "text": "Mutfak tadilatı teklifi"
+  },
+  {
+   "lang": "tr",
+   "text": "Müşteri teslimattan şikayetçi"
+  },
+  {
+   "lang": "tr",
+   "text": "Teslimat gecikti"
+  },
+  {
+   "lang": "tr",
+   "text": "Çok iyi, tavsiye ederim"
+  },
+  {
+   "lang": "tr",
+   "text": "Sipariş iptal edildi"
+  },
+  {
+   "lang": "tr",
+   "text": "İade talebi"
+  },
+  {
+   "lang": "tr",
+   "text": "Stok azaldı"
+  },
+  {
+   "lang": "tr",
+   "text": "Gider tablosu"
+  },
+  {
+   "lang": "tr",
+   "text": "Ödeme dekontu"
+  },
+  {
+   "lang": "tr",
+   "text": "Köpek maması"
+  },
+  {
+   "lang": "tr",
+   "text": "Yumuşak diş fırçası"
+  },
+  {
+   "lang": "tr",
+   "text": "Taze sıkılmış portakal suyu"
+  },
+  {
+   "lang": "tr",
+   "text": "Mercimek çorbası"
+  },
+  {
+   "lang": "tr",
+   "text": "Kablosuz kulaklık"
+  },
+  {
+   "lang": "tr",
+   "text": "Telefon şarj aleti"
+  },
+  {
+   "lang": "tr",
+   "text": "Çizgili defter"
+  },
+  {
+   "lang": "tr",
+   "text": "Kuru boya 24 renk"
+  },
+  {
+   "lang": "tr",
+   "text": "Dişçiden randevu al"
+  },
+  {
+   "lang": "tr",
+   "text": "Çocukları okuldan al"
+  },
+  {
+   "lang": "tr",
+   "text": "Otobüs bileti"
+  },
+  {
+   "lang": "tr",
+   "text": "Klima bakımı"
+  },
+  {
+   "lang": "tr",
+   "text": "Beyaz tişört M beden"
+  },
+  {
+   "lang": "tr",
+   "text": "Koşu ayakkabısı"
+  },
+  {
+   "lang": "tr",
+   "text": "Deri çanta"
+  },
+  {
+   "lang": "tr",
+   "text": "Şemsiyeyi unutma"
+  },
+  {
+   "lang": "tr",
+   "text": "Sabrınız için teşekkürler"
+  },
+  {
+   "lang": "tr",
+   "text": "Fatura adresi"
+  },
+  {
+   "lang": "tr",
+   "text": "iki cay lutfen"
+  },
+  {
+   "lang": "tr",
+   "text": "kahvalti tabagi"
+  },
+  {
+   "lang": "tr",
+   "text": "Çilekli dondurma"
+  },
+  {
+   "lang": "tr",
+   "text": "Günün çorbası"
+  },
+  {
+   "lang": "tr",
+   "text": "Ev yapımı kırmızı şarap"
+  },
+  {
+   "lang": "tr",
+   "text": "yarin tesisatciyi ara"
+  },
+  {
+   "lang": "tr",
+   "text": "Ürün ezik bir kutuyla geldi ama sorunsuz çalışıyor"
+  },
+  {
+   "lang": "tr",
+   "text": "Müşteri kargodan önce tişörtün bedenini değiştirmek istiyor"
+  },
+  {
+   "lang": "ru",
+   "text": "Термокружка"
+  },
+  {
+   "lang": "ru",
+   "text": "Кофе с молоком"
+  },
+  {
+   "lang": "ru",
+   "text": "Напоминание"
+  },
+  {
+   "lang": "ru",
+   "text": "Счёт"
+  },
+  {
+   "lang": "ru",
+   "text": "Полотенца"
+  },
+  {
+   "lang": "ru",
+   "text": "Холодильник"
+  },
+  {
+   "lang": "ru",
+   "text": "Обед"
+  },
+  {
+   "lang": "ru",
+   "text": "Спасибо"
+  },
+  {
+   "lang": "ru",
+   "text": "Покупки"
+  },
+  {
+   "lang": "ru",
+   "text": "Хлеб"
+  },
+  {
+   "lang": "ru",
+   "text": "Пылесос"
+  },
+  {
+   "lang": "ru",
+   "text": "Велосипед"
+  },
+  {
+   "lang": "ru",
+   "text": "Пельмени"
+  },
+  {
+   "lang": "ru",
+   "text": "Вода без газа"
+  },
+  {
+   "lang": "ru",
+   "text": "Хлеб для тостов"
+  },
+  {
+   "lang": "ru",
+   "text": "Позвонить бухгалтеру"
+  },
+  {
+   "lang": "ru",
+   "text": "Оплатить счёт за электричество"
+  },
+  {
+   "lang": "ru",
+   "text": "Встреча с поставщиками"
+  },
+  {
+   "lang": "ru",
+   "text": "Список покупок"
+  },
+  {
+   "lang": "ru",
+   "text": "Просроченный счёт"
+  },
+  {
+   "lang": "ru",
+   "text": "Тростниковый сахар"
+  },
+  {
+   "lang": "ru",
+   "text": "Банное полотенце"
+  },
+  {
+   "lang": "ru",
+   "text": "Офисное кресло"
+  },
+  {
+   "lang": "ru",
+   "text": "Починить душ"
+  },
+  {
+   "lang": "ru",
+   "text": "Продлить загранпаспорт"
+  },
+  {
+   "lang": "ru",
+   "text": "День рождения бабушки"
+  },
+  {
+   "lang": "ru",
+   "text": "Квитанция за аренду"
+  },
+  {
+   "lang": "ru",
+   "text": "Смета ремонта кухни"
+  },
+  {
+   "lang": "ru",
+   "text": "Клиент жаловался на доставку"
+  },
+  {
+   "lang": "ru",
+   "text": "Доставка задерживается"
+  },
+  {
+   "lang": "ru",
+   "text": "Всё отлично, рекомендую"
+  },
+  {
+   "lang": "ru",
+   "text": "Заказ отменён"
+  },
+  {
+   "lang": "ru",
+   "text": "Возврат товара"
+  },
+  {
+   "lang": "ru",
+   "text": "Мало на складе"
+  },
+  {
+   "lang": "ru",
+   "text": "Таблица расходов"
+  },
+  {
+   "lang": "ru",
+   "text": "Чек об оплате"
+  },
+  {
+   "lang": "ru",
+   "text": "Корм для собак"
+  },
+  {
+   "lang": "ru",
+   "text": "Мягкая зубная щётка"
+  },
+  {
+   "lang": "ru",
+   "text": "Свежевыжатый апельсиновый сок"
+  },
+  {
+   "lang": "ru",
+   "text": "Борщ со сметаной"
+  },
+  {
+   "lang": "ru",
+   "text": "Беспроводные наушники"
+  },
+  {
+   "lang": "ru",
+   "text": "Зарядка для телефона"
+  },
+  {
+   "lang": "ru",
+   "text": "Тетрадь в линейку"
+  },
+  {
+   "lang": "ru",
+   "text": "Цветные карандаши 24 шт."
+  },
+  {
+   "lang": "ru",
+   "text": "Записаться к стоматологу"
+  },
+  {
+   "lang": "ru",
+   "text": "Забрать детей из школы"
+  },
+  {
+   "lang": "ru",
+   "text": "Билет на автобус"
+  },
+  {
+   "lang": "ru",
+   "text": "Обслуживание кондиционера"
+  },
+  {
+   "lang": "ru",
+   "text": "Белая футболка размер M"
+  },
+  {
+   "lang": "ru",
+   "text": "Кроссовки для бега"
+  },
+  {
+   "lang": "ru",
+   "text": "Кожаная сумка"
+  },
+  {
+   "lang": "ru",
+   "text": "Не забыть зонт"
+  },
+  {
+   "lang": "ru",
+   "text": "Спасибо за терпение"
+  },
+  {
+   "lang": "ru",
+   "text": "холодильник сломался"
+  },
+  {
+   "lang": "ru",
+   "text": "стиралка"
+  },
+  {
+   "lang": "ru",
+   "text": "Клубничное мороженое"
+  },
+  {
+   "lang": "ru",
+   "text": "Суп дня"
+  },
+  {
+   "lang": "ru",
+   "text": "Домашнее красное вино"
+  },
+  {
+   "lang": "ru",
+   "text": "вызвать сантехника завтра"
+  },
+  {
+   "lang": "ru",
+   "text": "Товар пришёл в помятой коробке, но работает отлично"
+  },
+  {
+   "lang": "ru",
+   "text": "Клиентка просит поменять размер футболки до отправки"
+  },
+  {
+   "lang": "ar",
+   "text": "كوب حراري"
+  },
+  {
+   "lang": "ar",
+   "text": "قهوة بالحليب"
+  },
+  {
+   "lang": "ar",
+   "text": "تذكير"
+  },
+  {
+   "lang": "ar",
+   "text": "فاتورة"
+  },
+  {
+   "lang": "ar",
+   "text": "مناشف"
+  },
+  {
+   "lang": "ar",
+   "text": "ثلاجة"
+  },
+  {
+   "lang": "ar",
+   "text": "غداء"
+  },
+  {
+   "lang": "ar",
+   "text": "شكراً"
+  },
+  {
+   "lang": "ar",
+   "text": "مشتريات"
+  },
+  {
+   "lang": "ar",
+   "text": "خبز"
+  },
+  {
+   "lang": "ar",
+   "text": "دراجة"
+  },
+  {
+   "lang": "ar",
+   "text": "مياه معدنية"
+  },
+  {
+   "lang": "ar",
+   "text": "خبز توست"
+  },
+  {
+   "lang": "ar",
+   "text": "الاتصال بالمحاسب"
+  },
+  {
+   "lang": "ar",
+   "text": "دفع فاتورة الكهرباء"
+  },
+  {
+   "lang": "ar",
+   "text": "اجتماع مع الموردين"
+  },
+  {
+   "lang": "ar",
+   "text": "قائمة المشتريات"
+  },
+  {
+   "lang": "ar",
+   "text": "فاتورة متأخرة"
+  },
+  {
+   "lang": "ar",
+   "text": "سكر بني"
+  },
+  {
+   "lang": "ar",
+   "text": "منشفة حمام"
+  },
+  {
+   "lang": "ar",
+   "text": "كرسي مكتب"
+  },
+  {
+   "lang": "ar",
+   "text": "إصلاح الدش"
+  },
+  {
+   "lang": "ar",
+   "text": "تجديد جواز السفر"
+  },
+  {
+   "lang": "ar",
+   "text": "عيد ميلاد جدتي"
+  },
+  {
+   "lang": "ar",
+   "text": "إيصال الإيجار"
+  },
+  {
+   "lang": "ar",
+   "text": "عرض سعر لتجديد المطبخ"
+  },
+  {
+   "lang": "ar",
+   "text": "العميل اشتكى من التوصيل"
+  },
+  {
+   "lang": "ar",
+   "text": "تأخر التوصيل"
+  },
+  {
+   "lang": "ar",
+   "text": "ممتاز، أنصح به"
+  },
+  {
+   "lang": "ar",
+   "text": "تم إلغاء الطلب"
+  },
+  {
+   "lang": "ar",
+   "text": "إرجاع"
+  },
+  {
+   "lang": "ar",
+   "text": "المخزون منخفض"
+  },
+  {
+   "lang": "ar",
+   "text": "جدول المصاريف"
+  },
+  {
+   "lang": "ar",
+   "text": "إيصال الدفع"
+  },
+  {
+   "lang": "ar",
+   "text": "طعام للكلاب"
+  },
+  {
+   "lang": "ar",
+   "text": "فرشاة أسنان ناعمة"
+  },
+  {
+   "lang": "ar",
+   "text": "عصير برتقال طازج"
+  },
+  {
+   "lang": "ar",
+   "text": "حمص بالطحينة"
+  },
+  {
+   "lang": "ar",
+   "text": "سماعات لاسلكية"
+  },
+  {
+   "lang": "ar",
+   "text": "شاحن الهاتف"
+  },
+  {
+   "lang": "ar",
+   "text": "دفتر مسطر"
+  },
+  {
+   "lang": "ar",
+   "text": "أقلام تلوين 24 لون"
+  },
+  {
+   "lang": "ar",
+   "text": "حجز موعد عند طبيب الأسنان"
+  },
+  {
+   "lang": "ar",
+   "text": "إحضار الأطفال من المدرسة"
+  },
+  {
+   "lang": "ar",
+   "text": "تذكرة حافلة"
+  },
+  {
+   "lang": "ar",
+   "text": "تأمين السيارة"
+  },
+  {
+   "lang": "ar",
+   "text": "صيانة المكيف"
+  },
+  {
+   "lang": "ar",
+   "text": "تيشيرت أبيض مقاس M"
+  },
+  {
+   "lang": "ar",
+   "text": "حذاء جري"
+  },
+  {
+   "lang": "ar",
+   "text": "حقيبة جلدية"
+  },
+  {
+   "lang": "ar",
+   "text": "عروض رمضان"
+  },
+  {
+   "lang": "ar",
+   "text": "لا تنسَ المظلة"
+  },
+  {
+   "lang": "ar",
+   "text": "شكراً لصبركم"
+  },
+  {
+   "lang": "ar",
+   "text": "عنوان الفواتير"
+  },
+  {
+   "lang": "ar",
+   "text": "شاي"
+  },
+  {
+   "lang": "ar",
+   "text": "الثلاجة معطلة"
+  },
+  {
+   "lang": "ar",
+   "text": "غسالة"
+  },
+  {
+   "lang": "ar",
+   "text": "آيس كريم بالفراولة"
+  },
+  {
+   "lang": "ar",
+   "text": "شوربة اليوم"
+  },
+  {
+   "lang": "ar",
+   "text": "الاتصال بالسباك غداً"
+  },
+  {
+   "lang": "ar",
+   "text": "وصل المنتج في علبة مضغوطة لكنه يعمل بشكل ممتاز"
+  },
+  {
+   "lang": "ar",
+   "text": "طلبت العميلة تغيير مقاس القميص قبل الشحن"
+  },
+  {
+   "lang": "ja",
+   "text": "保温マグ"
+  },
+  {
+   "lang": "ja",
+   "text": "カフェオレ"
+  },
+  {
+   "lang": "ja",
+   "text": "リマインダー"
+  },
+  {
+   "lang": "ja",
+   "text": "請求書"
+  },
+  {
+   "lang": "ja",
+   "text": "タオル"
+  },
+  {
+   "lang": "ja",
+   "text": "冷蔵庫"
+  },
+  {
+   "lang": "ja",
+   "text": "昼ごはん"
+  },
+  {
+   "lang": "ja",
+   "text": "ありがとう"
+  },
+  {
+   "lang": "ja",
+   "text": "買い物"
+  },
+  {
+   "lang": "ja",
+   "text": "パン"
+  },
+  {
+   "lang": "ja",
+   "text": "掃除機"
+  },
+  {
+   "lang": "ja",
+   "text": "取扱説明書"
+  },
+  {
+   "lang": "ja",
+   "text": "領収書"
+  },
+  {
+   "lang": "ja",
+   "text": "会議室予約"
+  },
+  {
+   "lang": "ja",
+   "text": "経費精算"
+  },
+  {
+   "lang": "ja",
+   "text": "駐車場"
+  },
+  {
+   "lang": "ja",
+   "text": "定期券"
+  },
+  {
+   "lang": "ja",
+   "text": "メモ帳"
+  },
+  {
+   "lang": "ja",
+   "text": "社員食堂"
+  },
+  {
+   "lang": "ja",
+   "text": "宅配便"
+  },
+  {
+   "lang": "ja",
+   "text": "誕生日プレゼント"
+  },
+  {
+   "lang": "ja",
+   "text": "炭酸水"
+  },
+  {
+   "lang": "ja",
+   "text": "食パン"
+  },
+  {
+   "lang": "ja",
+   "text": "税理士に電話"
+  },
+  {
+   "lang": "ja",
+   "text": "電気代の支払い"
+  },
+  {
+   "lang": "ja",
+   "text": "仕入先との打ち合わせ"
+  },
+  {
+   "lang": "ja",
+   "text": "買い物リスト"
+  },
+  {
+   "lang": "ja",
+   "text": "支払期限切れの請求書"
+  },
+  {
+   "lang": "ja",
+   "text": "きび砂糖"
+  },
+  {
+   "lang": "ja",
+   "text": "バスタオル"
+  },
+  {
+   "lang": "ja",
+   "text": "オフィスチェア"
+  },
+  {
+   "lang": "ja",
+   "text": "シャワー修理"
+  },
+  {
+   "lang": "ja",
+   "text": "パスポート更新"
+  },
+  {
+   "lang": "ja",
+   "text": "おばあちゃんの誕生日"
+  },
+  {
+   "lang": "ja",
+   "text": "家賃の領収書"
+  },
+  {
+   "lang": "ja",
+   "text": "キッチン改装の見積もり"
+  },
+  {
+   "lang": "ja",
+   "text": "配送について苦情あり"
+  },
+  {
+   "lang": "ja",
+   "text": "配送が遅れています"
+  },
+  {
+   "lang": "ja",
+   "text": "とても良かったです"
+  },
+  {
+   "lang": "ja",
+   "text": "注文キャンセル"
+  },
+  {
+   "lang": "ja",
+   "text": "返品"
+  },
+  {
+   "lang": "ja",
+   "text": "在庫少なめ"
+  },
+  {
+   "lang": "ja",
+   "text": "ドッグフード"
+  },
+  {
+   "lang": "ja",
+   "text": "歯ブラシ やわらかめ"
+  },
+  {
+   "lang": "ja",
+   "text": "おにぎり 鮭"
+  },
+  {
+   "lang": "ja",
+   "text": "味噌汁"
+  },
+  {
+   "lang": "ja",
+   "text": "ワイヤレスイヤホン"
+  },
+  {
+   "lang": "ja",
+   "text": "スマホ充電器"
+  },
+  {
+   "lang": "ja",
+   "text": "色鉛筆24色"
+  },
+  {
+   "lang": "ja",
+   "text": "歯医者の予約"
+  },
+  {
+   "lang": "ja",
+   "text": "子どもを学校に迎えに行く"
+  },
+  {
+   "lang": "ja",
+   "text": "大阪出張"
+  },
+  {
+   "lang": "ja",
+   "text": "エアコン点検"
+  },
+  {
+   "lang": "ja",
+   "text": "白Tシャツ Mサイズ"
+  },
+  {
+   "lang": "ja",
+   "text": "ランニングシューズ"
+  },
+  {
+   "lang": "ja",
+   "text": "革のバッグ"
+  },
+  {
+   "lang": "ja",
+   "text": "傘を忘れずに"
+  },
+  {
+   "lang": "ja",
+   "text": "ご協力ありがとうございます"
+  },
+  {
+   "lang": "ja",
+   "text": "請求先住所"
+  },
+  {
+   "lang": "ja",
+   "text": "いちごアイス"
+  },
+  {
+   "lang": "ja",
+   "text": "本日のスープ"
+  },
+  {
+   "lang": "ja",
+   "text": "明日 水道屋さんに電話"
+  },
+  {
+   "lang": "ja",
+   "text": "商品の箱がつぶれていましたが、問題なく使えています"
+  },
+  {
+   "lang": "ja",
+   "text": "発送前にTシャツのサイズを変更してほしいとのこと"
+  },
+  {
+   "lang": "zh",
+   "text": "保温杯"
+  },
+  {
+   "lang": "zh",
+   "text": "拿铁咖啡"
+  },
+  {
+   "lang": "zh",
+   "text": "提醒"
+  },
+  {
+   "lang": "zh",
+   "text": "发票"
+  },
+  {
+   "lang": "zh",
+   "text": "毛巾"
+  },
+  {
+   "lang": "zh",
+   "text": "冰箱"
+  },
+  {
+   "lang": "zh",
+   "text": "生日蛋糕"
+  },
+  {
+   "lang": "zh",
+   "text": "午饭"
+  },
+  {
+   "lang": "zh",
+   "text": "谢谢"
+  },
+  {
+   "lang": "zh",
+   "text": "买菜"
+  },
+  {
+   "lang": "zh",
+   "text": "面包"
+  },
+  {
+   "lang": "zh",
+   "text": "吸尘器"
+  },
+  {
+   "lang": "zh",
+   "text": "自行车"
+  },
+  {
+   "lang": "zh",
+   "text": "會議記錄"
+  },
+  {
+   "lang": "zh",
+   "text": "珍珠奶茶"
+  },
+  {
+   "lang": "zh",
+   "text": "產品說明書"
+  },
+  {
+   "lang": "zh",
+   "text": "苏打水"
+  },
+  {
+   "lang": "zh",
+   "text": "吐司面包"
+  },
+  {
+   "lang": "zh",
+   "text": "给会计打电话"
+  },
+  {
+   "lang": "zh",
+   "text": "交电费"
+  },
+  {
+   "lang": "zh",
+   "text": "和供应商开会"
+  },
+  {
+   "lang": "zh",
+   "text": "购物清单"
+  },
+  {
+   "lang": "zh",
+   "text": "逾期发票"
+  },
+  {
+   "lang": "zh",
+   "text": "红糖"
+  },
+  {
+   "lang": "zh",
+   "text": "浴巾"
+  },
+  {
+   "lang": "zh",
+   "text": "办公椅"
+  },
+  {
+   "lang": "zh",
+   "text": "修淋浴"
+  },
+  {
+   "lang": "zh",
+   "text": "护照续签"
+  },
+  {
+   "lang": "zh",
+   "text": "奶奶生日"
+  },
+  {
+   "lang": "zh",
+   "text": "房租收据"
+  },
+  {
+   "lang": "zh",
+   "text": "厨房装修报价"
+  },
+  {
+   "lang": "zh",
+   "text": "客户投诉配送"
+  },
+  {
+   "lang": "zh",
+   "text": "配送延迟"
+  },
+  {
+   "lang": "zh",
+   "text": "非常好，推荐"
+  },
+  {
+   "lang": "zh",
+   "text": "订单已取消"
+  },
+  {
+   "lang": "zh",
+   "text": "退货"
+  },
+  {
+   "lang": "zh",
+   "text": "库存不足"
+  },
+  {
+   "lang": "zh",
+   "text": "支出明细"
+  },
+  {
+   "lang": "zh",
+   "text": "付款凭证"
+  },
+  {
+   "lang": "zh",
+   "text": "狗粮"
+  },
+  {
+   "lang": "zh",
+   "text": "软毛牙刷"
+  },
+  {
+   "lang": "zh",
+   "text": "鲜榨橙汁"
+  },
+  {
+   "lang": "zh",
+   "text": "小笼包"
+  },
+  {
+   "lang": "zh",
+   "text": "番茄炒蛋"
+  },
+  {
+   "lang": "zh",
+   "text": "无线耳机"
+  },
+  {
+   "lang": "zh",
+   "text": "手机充电器"
+  },
+  {
+   "lang": "zh",
+   "text": "彩色铅笔24色"
+  },
+  {
+   "lang": "zh",
+   "text": "预约牙医"
+  },
+  {
+   "lang": "zh",
+   "text": "去学校接孩子"
+  },
+  {
+   "lang": "zh",
+   "text": "上海出差"
+  },
+  {
+   "lang": "zh",
+   "text": "公交车票"
+  },
+  {
+   "lang": "zh",
+   "text": "空调保养"
+  },
+  {
+   "lang": "zh",
+   "text": "白色T恤 M码"
+  },
+  {
+   "lang": "zh",
+   "text": "跑步鞋"
+  },
+  {
+   "lang": "zh",
+   "text": "真皮包"
+  },
+  {
+   "lang": "zh",
+   "text": "双十一促销"
+  },
+  {
+   "lang": "zh",
+   "text": "别忘了带伞"
+  },
+  {
+   "lang": "zh",
+   "text": "感谢您的耐心"
+  },
+  {
+   "lang": "zh",
+   "text": "账单地址"
+  },
+  {
+   "lang": "zh",
+   "text": "草莓冰淇淋"
+  },
+  {
+   "lang": "zh",
+   "text": "今日例汤"
+  },
+  {
+   "lang": "zh",
+   "text": "明天给水管工打电话"
+  },
+  {
+   "lang": "zh",
+   "text": "收到的包装盒压坏了，不过东西能正常使用"
+  },
+  {
+   "lang": "zh",
+   "text": "客户希望发货前把T恤换成大一号"
+  },
+  {
+   "lang": "ko",
+   "text": "보온 머그컵"
+  },
+  {
+   "lang": "ko",
+   "text": "카페라떼"
+  },
+  {
+   "lang": "ko",
+   "text": "알림"
+  },
+  {
+   "lang": "ko",
+   "text": "청구서"
+  },
+  {
+   "lang": "ko",
+   "text": "수건"
+  },
+  {
+   "lang": "ko",
+   "text": "냉장고"
+  },
+  {
+   "lang": "ko",
+   "text": "생일"
+  },
+  {
+   "lang": "ko",
+   "text": "점심"
+  },
+  {
+   "lang": "ko",
+   "text": "감사합니다"
+  },
+  {
+   "lang": "ko",
+   "text": "장보기"
+  },
+  {
+   "lang": "ko",
+   "text": "빵"
+  },
+  {
+   "lang": "ko",
+   "text": "청소기"
+  },
+  {
+   "lang": "ko",
+   "text": "자전거"
+  },
+  {
+   "lang": "ko",
+   "text": "탄산수"
+  },
+  {
+   "lang": "ko",
+   "text": "식빵"
+  },
+  {
+   "lang": "ko",
+   "text": "세무사에게 전화하기"
+  },
+  {
+   "lang": "ko",
+   "text": "전기요금 납부"
+  },
+  {
+   "lang": "ko",
+   "text": "거래처 미팅"
+  },
+  {
+   "lang": "ko",
+   "text": "장보기 목록"
+  },
+  {
+   "lang": "ko",
+   "text": "연체된 청구서"
+  },
+  {
+   "lang": "ko",
+   "text": "황설탕"
+  },
+  {
+   "lang": "ko",
+   "text": "목욕 수건"
+  },
+  {
+   "lang": "ko",
+   "text": "사무용 의자"
+  },
+  {
+   "lang": "ko",
+   "text": "샤워기 수리"
+  },
+  {
+   "lang": "ko",
+   "text": "여권 갱신"
+  },
+  {
+   "lang": "ko",
+   "text": "할머니 생신"
+  },
+  {
+   "lang": "ko",
+   "text": "월세 영수증"
+  },
+  {
+   "lang": "ko",
+   "text": "주방 리모델링 견적"
+  },
+  {
+   "lang": "ko",
+   "text": "고객이 배송 불만 제기"
+  },
+  {
+   "lang": "ko",
+   "text": "배송 지연"
+  },
+  {
+   "lang": "ko",
+   "text": "아주 좋아요, 추천합니다"
+  },
+  {
+   "lang": "ko",
+   "text": "주문 취소됨"
+  },
+  {
+   "lang": "ko",
+   "text": "반품"
+  },
+  {
+   "lang": "ko",
+   "text": "재고 부족"
+  },
+  {
+   "lang": "ko",
+   "text": "지출 내역"
+  },
+  {
+   "lang": "ko",
+   "text": "입금 확인서"
+  },
+  {
+   "lang": "ko",
+   "text": "강아지 사료"
+  },
+  {
+   "lang": "ko",
+   "text": "부드러운 칫솔"
+  },
+  {
+   "lang": "ko",
+   "text": "생과일 오렌지 주스"
+  },
+  {
+   "lang": "ko",
+   "text": "김밥"
+  },
+  {
+   "lang": "ko",
+   "text": "된장찌개"
+  },
+  {
+   "lang": "ko",
+   "text": "무선 이어폰"
+  },
+  {
+   "lang": "ko",
+   "text": "휴대폰 충전기"
+  },
+  {
+   "lang": "ko",
+   "text": "줄노트"
+  },
+  {
+   "lang": "ko",
+   "text": "색연필 24색"
+  },
+  {
+   "lang": "ko",
+   "text": "치과 예약"
+  },
+  {
+   "lang": "ko",
+   "text": "아이들 학교에서 데려오기"
+  },
+  {
+   "lang": "ko",
+   "text": "부산 출장"
+  },
+  {
+   "lang": "ko",
+   "text": "버스표"
+  },
+  {
+   "lang": "ko",
+   "text": "자동차 보험"
+  },
+  {
+   "lang": "ko",
+   "text": "에어컨 점검"
+  },
+  {
+   "lang": "ko",
+   "text": "흰색 티셔츠 M 사이즈"
+  },
+  {
+   "lang": "ko",
+   "text": "러닝화"
+  },
+  {
+   "lang": "ko",
+   "text": "가죽 가방"
+  },
+  {
+   "lang": "ko",
+   "text": "연말 세일"
+  },
+  {
+   "lang": "ko",
+   "text": "우산 챙기기"
+  },
+  {
+   "lang": "ko",
+   "text": "기다려 주셔서 감사합니다"
+  },
+  {
+   "lang": "ko",
+   "text": "청구지 주소"
+  },
+  {
+   "lang": "ko",
+   "text": "냉장고 고장"
+  },
+  {
+   "lang": "ko",
+   "text": "세탁기"
+  },
+  {
+   "lang": "ko",
+   "text": "ㅋㅋ 좋아요"
+  },
+  {
+   "lang": "ko",
+   "text": "딸기 아이스크림"
+  },
+  {
+   "lang": "ko",
+   "text": "오늘의 수프"
+  },
+  {
+   "lang": "ko",
+   "text": "내일 배관공 부르기"
+  },
+  {
+   "lang": "ko",
+   "text": "상자가 찌그러진 채로 왔지만 제품은 잘 작동해요"
+  },
+  {
+   "lang": "ko",
+   "text": "고객이 발송 전에 티셔츠 사이즈 변경을 요청함"
+  },
+  {
+   "lang": "en",
+   "text": "Insulated travel mug"
+  },
+  {
+   "lang": "en",
+   "text": "Oat milk latte"
+  },
+  {
+   "lang": "en",
+   "text": "Reminder"
+  },
+  {
+   "lang": "en",
+   "text": "Invoice"
+  },
+  {
+   "lang": "en",
+   "text": "Towels"
+  },
+  {
+   "lang": "en",
+   "text": "Fridge"
+  },
+  {
+   "lang": "en",
+   "text": "Birthday"
+  },
+  {
+   "lang": "en",
+   "text": "Dinner"
+  },
+  {
+   "lang": "en",
+   "text": "Thanks"
+  },
+  {
+   "lang": "en",
+   "text": "Groceries"
+  },
+  {
+   "lang": "en",
+   "text": "Bread"
+  },
+  {
+   "lang": "en",
+   "text": "Vacuum"
+  },
+  {
+   "lang": "en",
+   "text": "Bike"
+  },
+  {
+   "lang": "en",
+   "text": "Sparkling water 12-pack"
+  },
+  {
+   "lang": "en",
+   "text": "Sourdough loaf"
+  },
+  {
+   "lang": "en",
+   "text": "Call the accountant"
+  },
+  {
+   "lang": "en",
+   "text": "pay electric bill"
+  },
+  {
+   "lang": "en",
+   "text": "Supplier meeting"
+  },
+  {
+   "lang": "en",
+   "text": "Grocery list"
+  },
+  {
+   "lang": "en",
+   "text": "Overdue invoice"
+  },
+  {
+   "lang": "en",
+   "text": "Brown sugar"
+  },
+  {
+   "lang": "en",
+   "text": "Bath towel"
+  },
+  {
+   "lang": "en",
+   "text": "Office chair"
+  },
+  {
+   "lang": "en",
+   "text": "Fix the shower"
+  },
+  {
+   "lang": "en",
+   "text": "Renew passport"
+  },
+  {
+   "lang": "en",
+   "text": "Grandma's birthday"
+  },
+  {
+   "lang": "en",
+   "text": "Rent receipt"
+  },
+  {
+   "lang": "en",
+   "text": "Kitchen remodel quote"
+  },
+  {
+   "lang": "en",
+   "text": "Customer complained about delivery"
+  },
+  {
+   "lang": "en",
+   "text": "delivery running late"
+  },
+  {
+   "lang": "en",
+   "text": "Great service, would recommend"
+  },
+  {
+   "lang": "en",
+   "text": "Order cancelled"
+  },
+  {
+   "lang": "en",
+   "text": "Return request"
+  },
+  {
+   "lang": "en",
+   "text": "Low stock"
+  },
+  {
+   "lang": "en",
+   "text": "Expense tracker"
+  },
+  {
+   "lang": "en",
+   "text": "Payment confirmation"
+  },
+  {
+   "lang": "en",
+   "text": "Dog food"
+  },
+  {
+   "lang": "en",
+   "text": "Soft toothbrush"
+  },
+  {
+   "lang": "en",
+   "text": "Fresh squeezed orange juice"
+  },
+  {
+   "lang": "en",
+   "text": "Blueberry muffin"
+  },
+  {
+   "lang": "en",
+   "text": "Chicken noodle soup"
+  },
+  {
+   "lang": "en",
+   "text": "Wireless earbuds"
+  },
+  {
+   "lang": "en",
+   "text": "Phone charger"
+  },
+  {
+   "lang": "en",
+   "text": "Ruled notebook"
+  },
+  {
+   "lang": "en",
+   "text": "Colored pencils 24 count"
+  },
+  {
+   "lang": "en",
+   "text": "Book dentist appointment"
+  },
+  {
+   "lang": "en",
+   "text": "pick up kids from school"
+  },
+  {
+   "lang": "en",
+   "text": "Bus ticket"
+  },
+  {
+   "lang": "en",
+   "text": "Car insurance renewal"
+  },
+  {
+   "lang": "en",
+   "text": "White tee size M"
+  },
+  {
+   "lang": "en",
+   "text": "Running shoes"
+  },
+  {
+   "lang": "en",
+   "text": "Leather handbag"
+  },
+  {
+   "lang": "en",
+   "text": "Holiday sale"
+  },
+  {
+   "lang": "en",
+   "text": "dont forget umbrella"
+  },
+  {
+   "lang": "en",
+   "text": "Thanks for your patience"
+  },
+  {
+   "lang": "en",
+   "text": "Billing address"
+  },
+  {
+   "lang": "en",
+   "text": "fridge broken"
+  },
+  {
+   "lang": "en",
+   "text": "recieve shipment from warehouse"
+  },
+  {
+   "lang": "en",
+   "text": "Strawberry ice cream"
+  },
+  {
+   "lang": "en",
+   "text": "Soup of the day"
+  },
+  {
+   "lang": "en",
+   "text": "House red wine"
+  },
+  {
+   "lang": "en",
+   "text": "call plumber tmrw"
+  },
+  {
+   "lang": "en",
+   "text": "Item arrived in a dented box but works perfectly fine"
+  },
+  {
+   "lang": "en",
+   "text": "Customer wants to swap the T-shirt size before it ships"
+  },
+  {
+   "lang": "und",
+   "text": "hotel"
+  },
+  {
+   "lang": "und",
+   "text": "Taxi"
+  },
+  {
+   "lang": "und",
+   "text": "piano"
+  },
+  {
+   "lang": "und",
+   "text": "menu"
+  },
+  {
+   "lang": "und",
+   "text": "chocolate"
+  },
+  {
+   "lang": "und",
+   "text": "pizza"
+  },
+  {
+   "lang": "und",
+   "text": "Pizza Margherita"
+  },
+  {
+   "lang": "und",
+   "text": "Hotel Ibis"
+  },
+  {
+   "lang": "und",
+   "text": "OK"
+  },
+  {
+   "lang": "und",
+   "text": "Ok!!"
+  },
+  {
+   "lang": "und",
+   "text": "???"
+  },
+  {
+   "lang": "und",
+   "text": ":)"
+  },
+  {
+   "lang": "und",
+   "text": "123"
+  },
+  {
+   "lang": "und",
+   "text": "SKU-48213-B"
+  },
+  {
+   "lang": "und",
+   "text": "#A1029"
+  },
+  {
+   "lang": "und",
+   "text": "4521-778"
+  },
+  {
+   "lang": "und",
+   "text": "PO-2291"
+  },
+  {
+   "lang": "und",
+   "text": "INV-00317"
+  },
+  {
+   "lang": "und",
+   "text": "2024-03-15"
+  },
+  {
+   "lang": "und",
+   "text": "14:30"
+  },
+  {
+   "lang": "und",
+   "text": "€ 12,50"
+  },
+  {
+   "lang": "und",
+   "text": "R$ 39,90"
+  },
+  {
+   "lang": "und",
+   "text": "555-0142"
+  },
+  {
+   "lang": "und",
+   "text": "m.ferreira@example.com"
+  },
+  {
+   "lang": "und",
+   "text": "https://example.com/shop"
+  },
+  {
+   "lang": "und",
+   "text": "www.example.org"
+  },
+  {
+   "lang": "und",
+   "text": "Maria Silva"
+  },
+  {
+   "lang": "und",
+   "text": "Kenji Tanaka"
+  },
+  {
+   "lang": "und",
+   "text": "Anna Kowalska"
+  },
+  {
+   "lang": "und",
+   "text": "Hans Becker"
+  },
+  {
+   "lang": "und",
+   "text": "Ahmed Haddad"
+  },
+  {
+   "lang": "und",
+   "text": "Li Wei"
+  },
+  {
+   "lang": "und",
+   "text": "Stanley"
+  },
+  {
+   "lang": "und",
+   "text": "Nike Air Max 90"
+  },
+  {
+   "lang": "und",
+   "text": "iPhone 15 Pro"
+  },
+  {
+   "lang": "und",
+   "text": "Coca-Cola 2L"
+  },
+  {
+   "lang": "und",
+   "text": "IKEA"
+  },
+  {
+   "lang": "und",
+   "text": "Netflix"
+  },
+  {
+   "lang": "und",
+   "text": "Spotify Premium"
+  },
+  {
+   "lang": "und",
+   "text": "Wi-Fi"
+  },
+  {
+   "lang": "und",
+   "text": "Bluetooth"
+  },
+  {
+   "lang": "und",
+   "text": "USB-C"
+  },
+  {
+   "lang": "und",
+   "text": "GPS"
+  },
+  {
+   "lang": "und",
+   "text": "PDF"
+  },
+  {
+   "lang": "und",
+   "text": "Excel"
+  },
+  {
+   "lang": "und",
+   "text": "Zoom"
+  },
+  {
+   "lang": "und",
+   "text": "Uber"
+  },
+  {
+   "lang": "und",
+   "text": "Instagram"
+  },
+  {
+   "lang": "und",
+   "text": "Mozzarella"
+  },
+  {
+   "lang": "und",
+   "text": "Tiramisu"
+  },
+  {
+   "lang": "und",
+   "text": "Sushi"
+  },
+  {
+   "lang": "und",
+   "text": "Kebab"
+  },
+  {
+   "lang": "und",
+   "text": "Croissant"
+  },
+  {
+   "lang": "und",
+   "text": "Cappuccino"
+  },
+  {
+   "lang": "und",
+   "text": "Espresso"
+  },
+  {
+   "lang": "und",
+   "text": "Yoga"
+  },
+  {
+   "lang": "und",
+   "text": "Pilates"
+  },
+  {
+   "lang": "und",
+   "text": "Radio"
+  },
+  {
+   "lang": "und",
+   "text": "Video"
+  },
+  {
+   "lang": "und",
+   "text": "Pasta"
+  },
+  {
+   "lang": "und",
+   "text": "Kiwi"
+  },
+  {
+   "lang": "und",
+   "text": "Banana"
+  },
+  {
+   "lang": "und",
+   "text": "Tomate"
+  },
+  {
+   "lang": "und",
+   "text": "Bier"
+  },
+  {
+   "lang": "und",
+   "text": "Restaurant"
+  },
+  {
+   "lang": "und",
+   "text": "Total"
+  },
+  {
+   "lang": "und",
+   "text": "Status"
+  },
+  {
+   "lang": "und",
+   "text": "Info"
+  },
+  {
+   "lang": "und",
+   "text": "A4"
+  },
+  {
+   "lang": "und",
+   "text": "XL"
+  },
+  {
+   "lang": "und",
+   "text": "DHL"
+  },
+  {
+   "lang": "und",
+   "text": "Q3"
+  },
+  {
+   "lang": "und",
+   "text": "Tofu"
+  },
+  {
+   "lang": "und",
+   "text": "Karaoke"
+  },
+  {
+   "lang": "und",
+   "text": "Ramen"
+  },
+  {
+   "lang": "und",
+   "text": "Taco"
+  },
+  {
+   "lang": "und",
+   "text": "東京"
+  },
+  {
+   "lang": "und",
+   "text": "大学"
+  },
+  {
+   "lang": "und",
+   "text": "電話"
+  },
+  {
+   "lang": "und",
+   "text": "自転車"
+  },
+  {
+   "lang": "und",
+   "text": "牛肉"
+  },
+  {
+   "lang": "und",
+   "text": "学生"
+  }
+ ],
+ "id": "language-bench-v1",
+ "retrieval": [
+  {
+   "collection": "c01",
+   "data_langs": [
+    "es"
+   ],
+   "items": [
+    {
+     "id": "c01-i01",
+     "text": "Café solo"
+    },
+    {
+     "id": "c01-i02",
+     "text": "Café con leche"
+    },
+    {
+     "id": "c01-i03",
+     "text": "Cortado"
+    },
+    {
+     "id": "c01-i04",
+     "text": "Té verde"
+    },
+    {
+     "id": "c01-i05",
+     "text": "Té negro con limón"
+    },
+    {
+     "id": "c01-i06",
+     "text": "Infusión de manzanilla"
+    },
+    {
+     "id": "c01-i07",
+     "text": "Chocolate caliente"
+    },
+    {
+     "id": "c01-i08",
+     "text": "Zumo de naranja natural"
+    },
+    {
+     "id": "c01-i09",
+     "text": "Tostada con tomate"
+    },
+    {
+     "id": "c01-i10",
+     "text": "Croissant a la plancha"
+    },
+    {
+     "id": "c01-i11",
+     "text": "Magdalenas caseras"
+    },
+    {
+     "id": "c01-i12",
+     "text": "Tarta de queso"
+    },
+    {
+     "id": "c01-i13",
+     "text": "Tetera de cerámica blanca"
+    },
+    {
+     "id": "c01-i14",
+     "text": "Taza de té con platillo"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c01-i04"
+     ],
+     "lang": "pt",
+     "text": "chá verde"
+    },
+    {
+     "gold": [
+      "c01-i12"
+     ],
+     "lang": "en",
+     "text": "cheesecake"
+    },
+    {
+     "gold": [
+      "c01-i13"
+     ],
+     "lang": "en",
+     "text": "teapot"
+    },
+    {
+     "gold": [
+      "c01-i08"
+     ],
+     "lang": "pt",
+     "text": "suco de laranja"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "bolo de chocolate"
+    },
+    {
+     "gold": [
+      "c01-i02"
+     ],
+     "lang": "es",
+     "text": "cafe con leche"
+    }
+   ]
+  },
+  {
+   "collection": "c02",
+   "data_langs": [
+    "es"
+   ],
+   "items": [
+    {
+     "id": "c02-i01",
+     "text": "Destornillador de estrella"
+    },
+    {
+     "id": "c02-i02",
+     "text": "Destornillador plano"
+    },
+    {
+     "id": "c02-i03",
+     "text": "Martillo de carpintero"
+    },
+    {
+     "id": "c02-i04",
+     "text": "Taladro percutor inalámbrico"
+    },
+    {
+     "id": "c02-i05",
+     "text": "Brocas para madera, juego de 10"
+    },
+    {
+     "id": "c02-i06",
+     "text": "Brocas para hormigón"
+    },
+    {
+     "id": "c02-i07",
+     "text": "Tornillos para madera 4x40"
+    },
+    {
+     "id": "c02-i08",
+     "text": "Tacos de nailon 8 mm"
+    },
+    {
+     "id": "c02-i09",
+     "text": "Cinta métrica 5 m"
+    },
+    {
+     "id": "c02-i10",
+     "text": "Nivel de burbuja"
+    },
+    {
+     "id": "c02-i11",
+     "text": "Llave inglesa ajustable"
+    },
+    {
+     "id": "c02-i12",
+     "text": "Alicates universales"
+    },
+    {
+     "id": "c02-i13",
+     "text": "Cinta aislante negra"
+    },
+    {
+     "id": "c02-i14",
+     "text": "Guantes de trabajo"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c02-i01",
+      "c02-i02"
+     ],
+     "lang": "en",
+     "text": "screwdriver"
+    },
+    {
+     "gold": [
+      "c02-i04"
+     ],
+     "lang": "pt",
+     "text": "furadeira"
+    },
+    {
+     "gold": [
+      "c02-i06"
+     ],
+     "lang": "en",
+     "text": "masonry drill bits"
+    },
+    {
+     "gold": [
+      "c02-i13"
+     ],
+     "lang": "pt",
+     "text": "fita isolante"
+    },
+    {
+     "gold": [
+      "c02-i11"
+     ],
+     "lang": "de",
+     "text": "Schraubenschlüssel"
+    },
+    {
+     "gold": [
+      "c02-i01",
+      "c02-i02"
+     ],
+     "lang": "ja",
+     "text": "ドライバー"
+    }
+   ]
+  },
+  {
+   "collection": "c03",
+   "data_langs": [
+    "es"
+   ],
+   "items": [
+    {
+     "id": "c03-i01",
+     "text": "Camisa de lino blanca"
+    },
+    {
+     "id": "c03-i02",
+     "text": "Camiseta básica negra"
+    },
+    {
+     "id": "c03-i03",
+     "text": "Pantalón chino beige"
+    },
+    {
+     "id": "c03-i04",
+     "text": "Vaqueros rectos azul oscuro"
+    },
+    {
+     "id": "c03-i05",
+     "text": "Falda plisada midi"
+    },
+    {
+     "id": "c03-i06",
+     "text": "Vestido de verano estampado"
+    },
+    {
+     "id": "c03-i07",
+     "text": "Chaqueta vaquera"
+    },
+    {
+     "id": "c03-i08",
+     "text": "Abrigo de lana gris"
+    },
+    {
+     "id": "c03-i09",
+     "text": "Bufanda de punto"
+    },
+    {
+     "id": "c03-i10",
+     "text": "Calcetines tobilleros, pack de 3"
+    },
+    {
+     "id": "c03-i11",
+     "text": "Zapatillas blancas de lona"
+    },
+    {
+     "id": "c03-i12",
+     "text": "Botines de piel marrón"
+    },
+    {
+     "id": "c03-i13",
+     "text": "Cinturón de cuero"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c03-i04"
+     ],
+     "lang": "en",
+     "text": "jeans"
+    },
+    {
+     "gold": [
+      "c03-i08"
+     ],
+     "lang": "en",
+     "text": "wool coat"
+    },
+    {
+     "gold": [
+      "c03-i10"
+     ],
+     "lang": "pt",
+     "text": "meias"
+    },
+    {
+     "gold": [
+      "c03-i05"
+     ],
+     "lang": "ja",
+     "text": "スカート"
+    },
+    {
+     "gold": [
+      "c03-i11",
+      "c03-i12"
+     ],
+     "lang": "pt",
+     "text": "calçados"
+    },
+    {
+     "gold": [
+      "c03-i01"
+     ],
+     "lang": "ja",
+     "text": "リネンシャツ"
+    }
+   ]
+  },
+  {
+   "collection": "c04",
+   "data_langs": [
+    "pt"
+   ],
+   "items": [
+    {
+     "id": "c04-i01",
+     "text": "Arroz branco tipo 1 5kg"
+    },
+    {
+     "id": "c04-i02",
+     "text": "Feijão carioca 1kg"
+    },
+    {
+     "id": "c04-i03",
+     "text": "Feijão preto 1kg"
+    },
+    {
+     "id": "c04-i04",
+     "text": "Macarrão espaguete"
+    },
+    {
+     "id": "c04-i05",
+     "text": "Molho de tomate em sachê"
+    },
+    {
+     "id": "c04-i06",
+     "text": "Azeite extravirgem 500 ml"
+    },
+    {
+     "id": "c04-i07",
+     "text": "Óleo de soja"
+    },
+    {
+     "id": "c04-i08",
+     "text": "Açúcar refinado"
+    },
+    {
+     "id": "c04-i09",
+     "text": "Café torrado e moído 500 g"
+    },
+    {
+     "id": "c04-i10",
+     "text": "Leite integral 1 L"
+    },
+    {
+     "id": "c04-i11",
+     "text": "Manteiga com sal"
+    },
+    {
+     "id": "c04-i12",
+     "text": "Pão de forma integral"
+    },
+    {
+     "id": "c04-i13",
+     "text": "Biscoito recheado de chocolate"
+    },
+    {
+     "id": "c04-i14",
+     "text": "Sabão em pó"
+    },
+    {
+     "id": "c04-i15",
+     "text": "Detergente líquido"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c04-i03"
+     ],
+     "lang": "es",
+     "text": "frijoles negros"
+    },
+    {
+     "gold": [
+      "c04-i06"
+     ],
+     "lang": "en",
+     "text": "olive oil"
+    },
+    {
+     "gold": [
+      "c04-i04"
+     ],
+     "lang": "es",
+     "text": "fideos"
+    },
+    {
+     "gold": [
+      "c04-i14"
+     ],
+     "lang": "en",
+     "text": "laundry detergent"
+    },
+    {
+     "gold": [
+      "c04-i13"
+     ],
+     "lang": "es",
+     "text": "galletas"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "leite desnatado"
+    }
+   ]
+  },
+  {
+   "collection": "c05",
+   "data_langs": [
+    "pt"
+   ],
+   "items": [
+    {
+     "id": "c05-i01",
+     "text": "Dipirona 500 mg 10 comprimidos"
+    },
+    {
+     "id": "c05-i02",
+     "text": "Paracetamol 750 mg"
+    },
+    {
+     "id": "c05-i03",
+     "text": "Ibuprofeno 400 mg"
+    },
+    {
+     "id": "c05-i04",
+     "text": "Protetor solar FPS 50"
+    },
+    {
+     "id": "c05-i05",
+     "text": "Hidratante corporal"
+    },
+    {
+     "id": "c05-i06",
+     "text": "Escova de dente macia"
+    },
+    {
+     "id": "c05-i07",
+     "text": "Creme dental com flúor"
+    },
+    {
+     "id": "c05-i08",
+     "text": "Fio dental"
+    },
+    {
+     "id": "c05-i09",
+     "text": "Enxaguante bucal"
+    },
+    {
+     "id": "c05-i10",
+     "text": "Curativo adesivo"
+    },
+    {
+     "id": "c05-i11",
+     "text": "Termômetro digital"
+    },
+    {
+     "id": "c05-i12",
+     "text": "Álcool em gel 70%"
+    },
+    {
+     "id": "c05-i13",
+     "text": "Fralda infantil tamanho G"
+    },
+    {
+     "id": "c05-i14",
+     "text": "Repelente de insetos"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c05-i04"
+     ],
+     "lang": "en",
+     "text": "sunscreen"
+    },
+    {
+     "gold": [
+      "c05-i07"
+     ],
+     "lang": "es",
+     "text": "pasta de dientes"
+    },
+    {
+     "gold": [
+      "c05-i10"
+     ],
+     "lang": "fr",
+     "text": "pansements"
+    },
+    {
+     "gold": [
+      "c05-i08"
+     ],
+     "lang": "es",
+     "text": "hilo dental"
+    },
+    {
+     "gold": [
+      "c05-i11"
+     ],
+     "lang": "ja",
+     "text": "体温計"
+    },
+    {
+     "gold": [
+      "c05-i01",
+      "c05-i02",
+      "c05-i03"
+     ],
+     "lang": "pt",
+     "text": "remédio para dor"
+    }
+   ]
+  },
+  {
+   "collection": "c06",
+   "data_langs": [
+    "pt"
+   ],
+   "items": [
+    {
+     "id": "c06-i01",
+     "text": "Enviar proposta para o cliente"
+    },
+    {
+     "id": "c06-i02",
+     "text": "Revisar contrato de prestação de serviços"
+    },
+    {
+     "id": "c06-i03",
+     "text": "Pagar boleto do aluguel"
+    },
+    {
+     "id": "c06-i04",
+     "text": "Agendar reunião com a equipe"
+    },
+    {
+     "id": "c06-i05",
+     "text": "Atualizar planilha de vendas"
+    },
+    {
+     "id": "c06-i06",
+     "text": "Renovar certificado digital"
+    },
+    {
+     "id": "c06-i07",
+     "text": "Responder e-mails pendentes"
+    },
+    {
+     "id": "c06-i08",
+     "text": "Fazer backup do servidor"
+    },
+    {
+     "id": "c06-i09",
+     "text": "Comprar toner para a impressora"
+    },
+    {
+     "id": "c06-i10",
+     "text": "Ligar para o contador"
+    },
+    {
+     "id": "c06-i11",
+     "text": "Emitir nota fiscal"
+    },
+    {
+     "id": "c06-i12",
+     "text": "Organizar arquivo morto"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c06-i11"
+     ],
+     "lang": "en",
+     "text": "invoice"
+    },
+    {
+     "gold": [
+      "c06-i03"
+     ],
+     "lang": "en",
+     "text": "pay rent"
+    },
+    {
+     "gold": [
+      "c06-i10"
+     ],
+     "lang": "es",
+     "text": "llamar al contador"
+    },
+    {
+     "gold": [
+      "c06-i08"
+     ],
+     "lang": "es",
+     "text": "copia de seguridad"
+    },
+    {
+     "gold": [
+      "c06-i02"
+     ],
+     "lang": "ar",
+     "text": "مراجعة العقد"
+    },
+    {
+     "gold": [
+      "c06-i09"
+     ],
+     "lang": "fr",
+     "text": "imprimante"
+    }
+   ]
+  },
+  {
+   "collection": "c07",
+   "data_langs": [
+    "fr"
+   ],
+   "items": [
+    {
+     "id": "c07-i01",
+     "text": "Baguette tradition"
+    },
+    {
+     "id": "c07-i02",
+     "text": "Pain de campagne"
+    },
+    {
+     "id": "c07-i03",
+     "text": "Pain complet aux céréales"
+    },
+    {
+     "id": "c07-i04",
+     "text": "Croissant au beurre"
+    },
+    {
+     "id": "c07-i05",
+     "text": "Pain au chocolat"
+    },
+    {
+     "id": "c07-i06",
+     "text": "Chausson aux pommes"
+    },
+    {
+     "id": "c07-i07",
+     "text": "Éclair au café"
+    },
+    {
+     "id": "c07-i08",
+     "text": "Tarte au citron meringuée"
+    },
+    {
+     "id": "c07-i09",
+     "text": "Flan pâtissier"
+    },
+    {
+     "id": "c07-i10",
+     "text": "Macarons assortis, boîte de 6"
+    },
+    {
+     "id": "c07-i11",
+     "text": "Quiche lorraine"
+    },
+    {
+     "id": "c07-i12",
+     "text": "Sandwich jambon-beurre"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c07-i03"
+     ],
+     "lang": "pt",
+     "text": "pão integral"
+    },
+    {
+     "gold": [
+      "c07-i06"
+     ],
+     "lang": "en",
+     "text": "apple turnover"
+    },
+    {
+     "gold": [
+      "c07-i08"
+     ],
+     "lang": "es",
+     "text": "torta de limón"
+    },
+    {
+     "gold": [
+      "c07-i05"
+     ],
+     "lang": "fr",
+     "text": "chocolatine"
+    },
+    {
+     "gold": [
+      "c07-i04"
+     ],
+     "lang": "ko",
+     "text": "크루아상"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "torta de morango"
+    }
+   ]
+  },
+  {
+   "collection": "c08",
+   "data_langs": [
+    "fr"
+   ],
+   "items": [
+    {
+     "id": "c08-i01",
+     "text": "Canapé d'angle en tissu gris"
+    },
+    {
+     "id": "c08-i02",
+     "text": "Fauteuil en velours"
+    },
+    {
+     "id": "c08-i03",
+     "text": "Table basse en chêne"
+    },
+    {
+     "id": "c08-i04",
+     "text": "Table à manger extensible"
+    },
+    {
+     "id": "c08-i05",
+     "text": "Chaises de cuisine (lot de 4)"
+    },
+    {
+     "id": "c08-i06",
+     "text": "Lit double 160x200"
+    },
+    {
+     "id": "c08-i07",
+     "text": "Matelas à mémoire de forme"
+    },
+    {
+     "id": "c08-i08",
+     "text": "Armoire trois portes"
+    },
+    {
+     "id": "c08-i09",
+     "text": "Commode en pin"
+    },
+    {
+     "id": "c08-i10",
+     "text": "Lampe de chevet"
+    },
+    {
+     "id": "c08-i11",
+     "text": "Lampadaire en laiton"
+    },
+    {
+     "id": "c08-i12",
+     "text": "Tapis berbère"
+    },
+    {
+     "id": "c08-i13",
+     "text": "Rideaux occultants"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c08-i01"
+     ],
+     "lang": "ar",
+     "text": "كنبة"
+    },
+    {
+     "gold": [
+      "c08-i07"
+     ],
+     "lang": "en",
+     "text": "mattress"
+    },
+    {
+     "gold": [
+      "c08-i10"
+     ],
+     "lang": "de",
+     "text": "nachttischlampe"
+    },
+    {
+     "gold": [],
+     "lang": "es",
+     "text": "estantería"
+    },
+    {
+     "gold": [
+      "c08-i10",
+      "c08-i11"
+     ],
+     "lang": "fr",
+     "text": "lampes"
+    },
+    {
+     "gold": [
+      "c08-i13"
+     ],
+     "lang": "es",
+     "text": "cortinas"
+    }
+   ]
+  },
+  {
+   "collection": "c09",
+   "data_langs": [
+    "de"
+   ],
+   "items": [
+    {
+     "id": "c09-i01",
+     "text": "Kabellose Kopfhörer mit Geräuschunterdrückung"
+    },
+    {
+     "id": "c09-i02",
+     "text": "In-Ear-Kopfhörer mit Kabel"
+    },
+    {
+     "id": "c09-i03",
+     "text": "Bluetooth-Lautsprecher wasserdicht"
+    },
+    {
+     "id": "c09-i04",
+     "text": "USB-C-Ladegerät 65 W"
+    },
+    {
+     "id": "c09-i05",
+     "text": "Ladekabel USB-C auf Lightning 1 m"
+    },
+    {
+     "id": "c09-i06",
+     "text": "Powerbank 20.000 mAh"
+    },
+    {
+     "id": "c09-i07",
+     "text": "Funkmaus ergonomisch"
+    },
+    {
+     "id": "c09-i08",
+     "text": "Mechanische Tastatur"
+    },
+    {
+     "id": "c09-i09",
+     "text": "Webcam Full HD"
+    },
+    {
+     "id": "c09-i10",
+     "text": "Monitor 27 Zoll"
+    },
+    {
+     "id": "c09-i11",
+     "text": "HDMI-Kabel 2 m"
+    },
+    {
+     "id": "c09-i12",
+     "text": "Mehrfachsteckdose mit Schalter"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c09-i01"
+     ],
+     "lang": "pt",
+     "text": "fone sem fio"
+    },
+    {
+     "gold": [
+      "c09-i08"
+     ],
+     "lang": "pl",
+     "text": "klawiatura"
+    },
+    {
+     "gold": [
+      "c09-i04"
+     ],
+     "lang": "fr",
+     "text": "chargeur secteur"
+    },
+    {
+     "gold": [
+      "c09-i12"
+     ],
+     "lang": "fr",
+     "text": "multiprise"
+    },
+    {
+     "gold": [],
+     "lang": "de",
+     "text": "Drucker"
+    },
+    {
+     "gold": [
+      "c09-i07"
+     ],
+     "lang": "ja",
+     "text": "ワイヤレスマウス"
+    }
+   ]
+  },
+  {
+   "collection": "c10",
+   "data_langs": [
+    "de"
+   ],
+   "items": [
+    {
+     "id": "c10-i01",
+     "text": "Ölwechsel inkl. Filter"
+    },
+    {
+     "id": "c10-i02",
+     "text": "Bremsbeläge vorne erneuern"
+    },
+    {
+     "id": "c10-i03",
+     "text": "Bremsscheiben hinten tauschen"
+    },
+    {
+     "id": "c10-i04",
+     "text": "Reifenwechsel Sommer auf Winter"
+    },
+    {
+     "id": "c10-i05",
+     "text": "Batterie ersetzen"
+    },
+    {
+     "id": "c10-i06",
+     "text": "Scheibenwischer erneuern"
+    },
+    {
+     "id": "c10-i07",
+     "text": "Klimaanlage befüllen"
+    },
+    {
+     "id": "c10-i08",
+     "text": "Hauptuntersuchung (TÜV)"
+    },
+    {
+     "id": "c10-i09",
+     "text": "Zahnriemen wechseln"
+    },
+    {
+     "id": "c10-i10",
+     "text": "Achsvermessung"
+    },
+    {
+     "id": "c10-i11",
+     "text": "Auspuff schweißen"
+    },
+    {
+     "id": "c10-i12",
+     "text": "Innenreinigung"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c10-i01"
+     ],
+     "lang": "pt",
+     "text": "troca de óleo"
+    },
+    {
+     "gold": [
+      "c10-i02"
+     ],
+     "lang": "en",
+     "text": "front brake pads"
+    },
+    {
+     "gold": [
+      "c10-i04"
+     ],
+     "lang": "fr",
+     "text": "changement de pneus"
+    },
+    {
+     "gold": [
+      "c10-i02",
+      "c10-i03"
+     ],
+     "lang": "de",
+     "text": "Bremsen"
+    },
+    {
+     "gold": [
+      "c10-i05"
+     ],
+     "lang": "ru",
+     "text": "аккумулятор"
+    },
+    {
+     "gold": [
+      "c10-i06"
+     ],
+     "lang": "en",
+     "text": "windshield wipers"
+    }
+   ]
+  },
+  {
+   "collection": "c11",
+   "data_langs": [
+    "it"
+   ],
+   "items": [
+    {
+     "id": "c11-i01",
+     "text": "Bruschetta al pomodoro"
+    },
+    {
+     "id": "c11-i02",
+     "text": "Antipasto misto"
+    },
+    {
+     "id": "c11-i03",
+     "text": "Spaghetti alle vongole"
+    },
+    {
+     "id": "c11-i04",
+     "text": "Penne all'arrabbiata"
+    },
+    {
+     "id": "c11-i05",
+     "text": "Risotto ai funghi porcini"
+    },
+    {
+     "id": "c11-i06",
+     "text": "Lasagne alla bolognese"
+    },
+    {
+     "id": "c11-i07",
+     "text": "Gnocchi al pesto"
+    },
+    {
+     "id": "c11-i08",
+     "text": "Tagliata di manzo con rucola"
+    },
+    {
+     "id": "c11-i09",
+     "text": "Pollo alla cacciatora"
+    },
+    {
+     "id": "c11-i10",
+     "text": "Branzino al forno"
+    },
+    {
+     "id": "c11-i11",
+     "text": "Insalata mista"
+    },
+    {
+     "id": "c11-i12",
+     "text": "Tiramisù della casa"
+    },
+    {
+     "id": "c11-i13",
+     "text": "Panna cotta ai frutti di bosco"
+    },
+    {
+     "id": "c11-i14",
+     "text": "Acqua minerale frizzante"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c11-i03"
+     ],
+     "lang": "pt",
+     "text": "frutos do mar"
+    },
+    {
+     "gold": [
+      "c11-i05"
+     ],
+     "lang": "en",
+     "text": "mushroom risotto"
+    },
+    {
+     "gold": [
+      "c11-i11"
+     ],
+     "lang": "pt",
+     "text": "salada"
+    },
+    {
+     "gold": [
+      "c11-i08"
+     ],
+     "lang": "es",
+     "text": "carne de res"
+    },
+    {
+     "gold": [],
+     "lang": "ja",
+     "text": "ピザ"
+    },
+    {
+     "gold": [
+      "c11-i12",
+      "c11-i13"
+     ],
+     "lang": "it",
+     "text": "dolci"
+    }
+   ]
+  },
+  {
+   "collection": "c12",
+   "data_langs": [
+    "it"
+   ],
+   "items": [
+    {
+     "id": "c12-i01",
+     "text": "Visita dal dermatologo"
+    },
+    {
+     "id": "c12-i02",
+     "text": "Rinnovo carta d'identità"
+    },
+    {
+     "id": "c12-i03",
+     "text": "Colloquio con la maestra"
+    },
+    {
+     "id": "c12-i04",
+     "text": "Cena da Giulia sabato"
+    },
+    {
+     "id": "c12-i05",
+     "text": "Cambio gomme auto"
+    },
+    {
+     "id": "c12-i06",
+     "text": "Pagare il bollo auto"
+    },
+    {
+     "id": "c12-i07",
+     "text": "Ritirare le analisi del sangue"
+    },
+    {
+     "id": "c12-i08",
+     "text": "Palestra martedì e giovedì"
+    },
+    {
+     "id": "c12-i09",
+     "text": "Compleanno di Marco"
+    },
+    {
+     "id": "c12-i10",
+     "text": "Portare il cane dal veterinario"
+    },
+    {
+     "id": "c12-i11",
+     "text": "Disdire l'abbonamento della TV"
+    },
+    {
+     "id": "c12-i12",
+     "text": "Riunione condominiale"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c12-i10"
+     ],
+     "lang": "pt",
+     "text": "veterinário"
+    },
+    {
+     "gold": [
+      "c12-i07"
+     ],
+     "lang": "en",
+     "text": "blood test results"
+    },
+    {
+     "gold": [
+      "c12-i02"
+     ],
+     "lang": "es",
+     "text": "documento de identidad"
+    },
+    {
+     "gold": [
+      "c12-i08"
+     ],
+     "lang": "en",
+     "text": "gym"
+    },
+    {
+     "gold": [
+      "c12-i05"
+     ],
+     "lang": "zh",
+     "text": "换轮胎"
+    },
+    {
+     "gold": [],
+     "lang": "fr",
+     "text": "rendez-vous dentiste"
+    }
+   ]
+  },
+  {
+   "collection": "c13",
+   "data_langs": [
+    "ja"
+   ],
+   "items": [
+    {
+     "id": "c13-i01",
+     "text": "おにぎり 鮭"
+    },
+    {
+     "id": "c13-i02",
+     "text": "おにぎり ツナマヨ"
+    },
+    {
+     "id": "c13-i03",
+     "text": "幕の内弁当"
+    },
+    {
+     "id": "c13-i04",
+     "text": "サンドイッチ たまご"
+    },
+    {
+     "id": "c13-i05",
+     "text": "カップラーメン しょうゆ味"
+    },
+    {
+     "id": "c13-i06",
+     "text": "緑茶 500ml"
+    },
+    {
+     "id": "c13-i07",
+     "text": "ほうじ茶 500ml"
+    },
+    {
+     "id": "c13-i08",
+     "text": "ブラックコーヒー 缶"
+    },
+    {
+     "id": "c13-i09",
+     "text": "カフェラテ"
+    },
+    {
+     "id": "c13-i10",
+     "text": "牛乳 1L"
+    },
+    {
+     "id": "c13-i11",
+     "text": "ヨーグルト プレーン"
+    },
+    {
+     "id": "c13-i12",
+     "text": "ポテトチップス うすしお"
+    },
+    {
+     "id": "c13-i13",
+     "text": "ミルクチョコレート"
+    },
+    {
+     "id": "c13-i14",
+     "text": "ビニール傘"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c13-i01",
+      "c13-i02"
+     ],
+     "lang": "en",
+     "text": "rice ball"
+    },
+    {
+     "gold": [
+      "c13-i06"
+     ],
+     "lang": "en",
+     "text": "green tea"
+    },
+    {
+     "gold": [
+      "c13-i14"
+     ],
+     "lang": "it",
+     "text": "ombrello"
+    },
+    {
+     "gold": [
+      "c13-i10"
+     ],
+     "lang": "pt",
+     "text": "leite"
+    },
+    {
+     "gold": [
+      "c13-i08"
+     ],
+     "lang": "pt",
+     "text": "café preto"
+    },
+    {
+     "gold": [],
+     "lang": "es",
+     "text": "cerveza"
+    }
+   ]
+  },
+  {
+   "collection": "c14",
+   "data_langs": [
+    "ja"
+   ],
+   "items": [
+    {
+     "id": "c14-i01",
+     "text": "2024年度 決算報告書"
+    },
+    {
+     "id": "c14-i02",
+     "text": "3月分 請求書"
+    },
+    {
+     "id": "c14-i03",
+     "text": "見積書 株式会社サクラ物産"
+    },
+    {
+     "id": "c14-i04",
+     "text": "雇用契約書 ひな形"
+    },
+    {
+     "id": "c14-i05",
+     "text": "就業規則"
+    },
+    {
+     "id": "c14-i06",
+     "text": "経費精算書 4月"
+    },
+    {
+     "id": "c14-i07",
+     "text": "定例会議 議事録"
+    },
+    {
+     "id": "c14-i08",
+     "text": "取引先リスト"
+    },
+    {
+     "id": "c14-i09",
+     "text": "社内研修 資料"
+    },
+    {
+     "id": "c14-i10",
+     "text": "新製品 カタログ"
+    },
+    {
+     "id": "c14-i11",
+     "text": "給与明細 5月"
+    },
+    {
+     "id": "c14-i12",
+     "text": "領収書 スキャン"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c14-i02"
+     ],
+     "lang": "en",
+     "text": "invoice"
+    },
+    {
+     "gold": [
+      "c14-i07"
+     ],
+     "lang": "en",
+     "text": "meeting minutes"
+    },
+    {
+     "gold": [
+      "c14-i04"
+     ],
+     "lang": "es",
+     "text": "contrato de trabajo"
+    },
+    {
+     "gold": [
+      "c14-i11"
+     ],
+     "lang": "pt",
+     "text": "contracheque"
+    },
+    {
+     "gold": [
+      "c14-i12"
+     ],
+     "lang": "ko",
+     "text": "영수증"
+    },
+    {
+     "gold": [],
+     "lang": "ja",
+     "text": "組織図"
+    }
+   ]
+  },
+  {
+   "collection": "c15",
+   "data_langs": [
+    "zh"
+   ],
+   "items": [
+    {
+     "id": "c15-i01",
+     "text": "不锈钢保温杯 500毫升"
+    },
+    {
+     "id": "c15-i02",
+     "text": "陶瓷马克杯"
+    },
+    {
+     "id": "c15-i03",
+     "text": "玻璃茶壶"
+    },
+    {
+     "id": "c15-i04",
+     "text": "竹筷子 10双"
+    },
+    {
+     "id": "c15-i05",
+     "text": "不粘锅 28厘米"
+    },
+    {
+     "id": "c15-i06",
+     "text": "电饭煲 3升"
+    },
+    {
+     "id": "c15-i07",
+     "text": "不锈钢菜刀"
+    },
+    {
+     "id": "c15-i08",
+     "text": "实木砧板"
+    },
+    {
+     "id": "c15-i09",
+     "text": "收纳盒 三件套"
+    },
+    {
+     "id": "c15-i10",
+     "text": "晾衣架"
+    },
+    {
+     "id": "c15-i11",
+     "text": "拖把"
+    },
+    {
+     "id": "c15-i12",
+     "text": "大号垃圾袋"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c15-i01"
+     ],
+     "lang": "en",
+     "text": "thermos"
+    },
+    {
+     "gold": [
+      "c15-i02"
+     ],
+     "lang": "pt",
+     "text": "caneca"
+    },
+    {
+     "gold": [
+      "c15-i03"
+     ],
+     "lang": "en",
+     "text": "teapot"
+    },
+    {
+     "gold": [
+      "c15-i05"
+     ],
+     "lang": "en",
+     "text": "frying pan"
+    },
+    {
+     "gold": [
+      "c15-i06"
+     ],
+     "lang": "en",
+     "text": "rice cooker"
+    },
+    {
+     "gold": [
+      "c15-i04"
+     ],
+     "lang": "es",
+     "text": "palillos"
+    }
+   ]
+  },
+  {
+   "collection": "c16",
+   "data_langs": [
+    "zh"
+   ],
+   "items": [
+    {
+     "id": "c16-i01",
+     "text": "牛肉麵"
+    },
+    {
+     "id": "c16-i02",
+     "text": "滷肉飯"
+    },
+    {
+     "id": "c16-i03",
+     "text": "雞排"
+    },
+    {
+     "id": "c16-i04",
+     "text": "蚵仔煎"
+    },
+    {
+     "id": "c16-i05",
+     "text": "小籠包"
+    },
+    {
+     "id": "c16-i06",
+     "text": "水餃 十顆"
+    },
+    {
+     "id": "c16-i07",
+     "text": "酸辣湯"
+    },
+    {
+     "id": "c16-i08",
+     "text": "燙青菜"
+    },
+    {
+     "id": "c16-i09",
+     "text": "珍珠奶茶"
+    },
+    {
+     "id": "c16-i10",
+     "text": "冬瓜茶"
+    },
+    {
+     "id": "c16-i11",
+     "text": "豆花"
+    },
+    {
+     "id": "c16-i12",
+     "text": "芒果冰"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c16-i01"
+     ],
+     "lang": "en",
+     "text": "beef noodle soup"
+    },
+    {
+     "gold": [
+      "c16-i05",
+      "c16-i06"
+     ],
+     "lang": "en",
+     "text": "dumplings"
+    },
+    {
+     "gold": [
+      "c16-i09"
+     ],
+     "lang": "es",
+     "text": "té con leche"
+    },
+    {
+     "gold": [
+      "c16-i03"
+     ],
+     "lang": "en",
+     "text": "fried chicken"
+    },
+    {
+     "gold": [
+      "c16-i01"
+     ],
+     "lang": "zh",
+     "text": "牛肉面"
+    },
+    {
+     "gold": [],
+     "lang": "ja",
+     "text": "寿司"
+    }
+   ]
+  },
+  {
+   "collection": "c17",
+   "data_langs": [
+    "ko"
+   ],
+   "items": [
+    {
+     "id": "c17-i01",
+     "text": "수분 크림"
+    },
+    {
+     "id": "c17-i02",
+     "text": "선크림 SPF50+"
+    },
+    {
+     "id": "c17-i03",
+     "text": "클렌징 폼"
+    },
+    {
+     "id": "c17-i04",
+     "text": "토너 패드"
+    },
+    {
+     "id": "c17-i05",
+     "text": "립밤"
+    },
+    {
+     "id": "c17-i06",
+     "text": "립스틱 레드"
+    },
+    {
+     "id": "c17-i07",
+     "text": "마스카라 워터프루프"
+    },
+    {
+     "id": "c17-i08",
+     "text": "시트 마스크 10매"
+    },
+    {
+     "id": "c17-i09",
+     "text": "핸드크림"
+    },
+    {
+     "id": "c17-i10",
+     "text": "바디로션"
+    },
+    {
+     "id": "c17-i11",
+     "text": "샴푸 500ml"
+    },
+    {
+     "id": "c17-i12",
+     "text": "린스"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c17-i02"
+     ],
+     "lang": "en",
+     "text": "sunscreen"
+    },
+    {
+     "gold": [
+      "c17-i01"
+     ],
+     "lang": "en",
+     "text": "face moisturizer"
+    },
+    {
+     "gold": [
+      "c17-i12"
+     ],
+     "lang": "es",
+     "text": "acondicionador"
+    },
+    {
+     "gold": [
+      "c17-i05"
+     ],
+     "lang": "en",
+     "text": "lip balm"
+    },
+    {
+     "gold": [
+      "c17-i06"
+     ],
+     "lang": "es",
+     "text": "pintalabios"
+    },
+    {
+     "gold": [
+      "c17-i11"
+     ],
+     "lang": "ja",
+     "text": "シャンプー"
+    }
+   ]
+  },
+  {
+   "collection": "c18",
+   "data_langs": [
+    "ko"
+   ],
+   "items": [
+    {
+     "id": "c18-i01",
+     "text": "관리비 9월"
+    },
+    {
+     "id": "c18-i02",
+     "text": "전기 요금"
+    },
+    {
+     "id": "c18-i03",
+     "text": "가스 요금"
+    },
+    {
+     "id": "c18-i04",
+     "text": "인터넷 요금"
+    },
+    {
+     "id": "c18-i05",
+     "text": "휴대폰 요금"
+    },
+    {
+     "id": "c18-i06",
+     "text": "마트 장보기"
+    },
+    {
+     "id": "c18-i07",
+     "text": "배달 음식"
+    },
+    {
+     "id": "c18-i08",
+     "text": "카페"
+    },
+    {
+     "id": "c18-i09",
+     "text": "택시비"
+    },
+    {
+     "id": "c18-i10",
+     "text": "교통카드 충전"
+    },
+    {
+     "id": "c18-i11",
+     "text": "병원비"
+    },
+    {
+     "id": "c18-i12",
+     "text": "아이 학원비"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c18-i02"
+     ],
+     "lang": "pt",
+     "text": "conta de luz"
+    },
+    {
+     "gold": [
+      "c18-i03"
+     ],
+     "lang": "en",
+     "text": "gas bill"
+    },
+    {
+     "gold": [
+      "c18-i07"
+     ],
+     "lang": "es",
+     "text": "comida a domicilio"
+    },
+    {
+     "gold": [
+      "c18-i10"
+     ],
+     "lang": "en",
+     "text": "public transport"
+    },
+    {
+     "gold": [
+      "c18-i12"
+     ],
+     "lang": "pt",
+     "text": "mensalidade escolar"
+    },
+    {
+     "gold": [
+      "c18-i05"
+     ],
+     "lang": "ko",
+     "text": "휴대폰비"
+    }
+   ]
+  },
+  {
+   "collection": "c19",
+   "data_langs": [
+    "ar"
+   ],
+   "items": [
+    {
+     "id": "c19-i01",
+     "text": "أرز بسمتي 5 كغ"
+    },
+    {
+     "id": "c19-i02",
+     "text": "عدس أحمر"
+    },
+    {
+     "id": "c19-i03",
+     "text": "حمص مجفف"
+    },
+    {
+     "id": "c19-i04",
+     "text": "زيت زيتون بكر"
+    },
+    {
+     "id": "c19-i05",
+     "text": "سكر أبيض"
+    },
+    {
+     "id": "c19-i06",
+     "text": "شاي أحمر"
+    },
+    {
+     "id": "c19-i07",
+     "text": "قهوة عربية بالهيل"
+    },
+    {
+     "id": "c19-i08",
+     "text": "تمر سكري"
+    },
+    {
+     "id": "c19-i09",
+     "text": "حليب طويل الأجل"
+    },
+    {
+     "id": "c19-i10",
+     "text": "جبنة بيضاء"
+    },
+    {
+     "id": "c19-i11",
+     "text": "لبنة"
+    },
+    {
+     "id": "c19-i12",
+     "text": "خبز عربي"
+    },
+    {
+     "id": "c19-i13",
+     "text": "معكرونة"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c19-i02"
+     ],
+     "lang": "fr",
+     "text": "lentilles"
+    },
+    {
+     "gold": [
+      "c19-i08"
+     ],
+     "lang": "en",
+     "text": "dates"
+    },
+    {
+     "gold": [
+      "c19-i03"
+     ],
+     "lang": "es",
+     "text": "garbanzos"
+    },
+    {
+     "gold": [
+      "c19-i04"
+     ],
+     "lang": "fr",
+     "text": "huile d'olive"
+    },
+    {
+     "gold": [
+      "c19-i07"
+     ],
+     "lang": "fr",
+     "text": "café à la cardamome"
+    },
+    {
+     "gold": [],
+     "lang": "ar",
+     "text": "زبدة"
+    }
+   ]
+  },
+  {
+   "collection": "c20",
+   "data_langs": [
+    "ar"
+   ],
+   "items": [
+    {
+     "id": "c20-i01",
+     "text": "تجديد الإقامة"
+    },
+    {
+     "id": "c20-i02",
+     "text": "دفع فاتورة الماء"
+    },
+    {
+     "id": "c20-i03",
+     "text": "حجز تذاكر الطيران"
+    },
+    {
+     "id": "c20-i04",
+     "text": "شراء هدية لعيد ميلاد سارة"
+    },
+    {
+     "id": "c20-i05",
+     "text": "صيانة السيارة"
+    },
+    {
+     "id": "c20-i06",
+     "text": "موعد طبيب العيون"
+    },
+    {
+     "id": "c20-i07",
+     "text": "إرسال التقرير الشهري"
+    },
+    {
+     "id": "c20-i08",
+     "text": "تحويل مبلغ للعائلة"
+    },
+    {
+     "id": "c20-i09",
+     "text": "تجديد اشتراك النادي"
+    },
+    {
+     "id": "c20-i10",
+     "text": "اجتماع أولياء الأمور"
+    },
+    {
+     "id": "c20-i11",
+     "text": "تنظيف المكيفات"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c20-i03"
+     ],
+     "lang": "fr",
+     "text": "billets d'avion"
+    },
+    {
+     "gold": [
+      "c20-i06"
+     ],
+     "lang": "fr",
+     "text": "ophtalmologiste"
+    },
+    {
+     "gold": [
+      "c20-i05"
+     ],
+     "lang": "en",
+     "text": "car service"
+    },
+    {
+     "gold": [
+      "c20-i02"
+     ],
+     "lang": "en",
+     "text": "water bill"
+    },
+    {
+     "gold": [
+      "c20-i06"
+     ],
+     "lang": "tr",
+     "text": "göz doktoru"
+    },
+    {
+     "gold": [
+      "c20-i10"
+     ],
+     "lang": "ar",
+     "text": "اجتماع"
+    }
+   ]
+  },
+  {
+   "collection": "c21",
+   "data_langs": [
+    "ru"
+   ],
+   "items": [
+    {
+     "id": "c21-i01",
+     "text": "Ручка шариковая синяя"
+    },
+    {
+     "id": "c21-i02",
+     "text": "Ручка гелевая чёрная"
+    },
+    {
+     "id": "c21-i03",
+     "text": "Карандаш простой"
+    },
+    {
+     "id": "c21-i04",
+     "text": "Ластик"
+    },
+    {
+     "id": "c21-i05",
+     "text": "Точилка с контейнером"
+    },
+    {
+     "id": "c21-i06",
+     "text": "Тетрадь в клетку 48 листов"
+    },
+    {
+     "id": "c21-i07",
+     "text": "Блокнот на спирали"
+    },
+    {
+     "id": "c21-i08",
+     "text": "Степлер"
+    },
+    {
+     "id": "c21-i09",
+     "text": "Скобы для степлера №10"
+    },
+    {
+     "id": "c21-i10",
+     "text": "Скотч прозрачный"
+    },
+    {
+     "id": "c21-i11",
+     "text": "Клей-карандаш"
+    },
+    {
+     "id": "c21-i12",
+     "text": "Папка-регистратор"
+    },
+    {
+     "id": "c21-i13",
+     "text": "Бумага А4, 500 листов"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c21-i08"
+     ],
+     "lang": "en",
+     "text": "stapler"
+    },
+    {
+     "gold": [
+      "c21-i04"
+     ],
+     "lang": "pt",
+     "text": "borracha"
+    },
+    {
+     "gold": [
+      "c21-i01"
+     ],
+     "lang": "pt",
+     "text": "caneta azul"
+    },
+    {
+     "gold": [
+      "c21-i11"
+     ],
+     "lang": "es",
+     "text": "pegamento"
+    },
+    {
+     "gold": [
+      "c21-i09"
+     ],
+     "lang": "ja",
+     "text": "ホッチキスの針"
+    },
+    {
+     "gold": [
+      "c21-i13"
+     ],
+     "lang": "de",
+     "text": "Druckerpapier"
+    }
+   ]
+  },
+  {
+   "collection": "c22",
+   "data_langs": [
+    "ru"
+   ],
+   "items": [
+    {
+     "id": "c22-i01",
+     "text": "Борщ со сметаной"
+    },
+    {
+     "id": "c22-i02",
+     "text": "Солянка мясная"
+    },
+    {
+     "id": "c22-i03",
+     "text": "Пельмени домашние"
+    },
+    {
+     "id": "c22-i04",
+     "text": "Вареники с картошкой"
+    },
+    {
+     "id": "c22-i05",
+     "text": "Блины с красной икрой"
+    },
+    {
+     "id": "c22-i06",
+     "text": "Сырники со сметаной"
+    },
+    {
+     "id": "c22-i07",
+     "text": "Салат Оливье"
+    },
+    {
+     "id": "c22-i08",
+     "text": "Котлета по-киевски"
+    },
+    {
+     "id": "c22-i09",
+     "text": "Гречка с грибами"
+    },
+    {
+     "id": "c22-i10",
+     "text": "Компот из сухофруктов"
+    },
+    {
+     "id": "c22-i11",
+     "text": "Морс клюквенный"
+    },
+    {
+     "id": "c22-i12",
+     "text": "Квас"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c22-i03",
+      "c22-i04"
+     ],
+     "lang": "en",
+     "text": "dumplings"
+    },
+    {
+     "gold": [
+      "c22-i05"
+     ],
+     "lang": "en",
+     "text": "pancakes"
+    },
+    {
+     "gold": [
+      "c22-i01",
+      "c22-i02"
+     ],
+     "lang": "es",
+     "text": "sopas"
+    },
+    {
+     "gold": [
+      "c22-i09"
+     ],
+     "lang": "en",
+     "text": "buckwheat"
+    },
+    {
+     "gold": [
+      "c22-i05"
+     ],
+     "lang": "fr",
+     "text": "blinis"
+    },
+    {
+     "gold": [
+      "c22-i03"
+     ],
+     "lang": "ru",
+     "text": "пельмени"
+    }
+   ]
+  },
+  {
+   "collection": "c23",
+   "data_langs": [
+    "tr"
+   ],
+   "items": [
+    {
+     "id": "c23-i01",
+     "text": "Türk kahvesi"
+    },
+    {
+     "id": "c23-i02",
+     "text": "Filtre kahve"
+    },
+    {
+     "id": "c23-i03",
+     "text": "İnce belli bardakta çay"
+    },
+    {
+     "id": "c23-i04",
+     "text": "Ihlamur"
+    },
+    {
+     "id": "c23-i05",
+     "text": "Sahlep"
+    },
+    {
+     "id": "c23-i06",
+     "text": "Taze sıkma portakal suyu"
+    },
+    {
+     "id": "c23-i07",
+     "text": "Ayran"
+    },
+    {
+     "id": "c23-i08",
+     "text": "Simit"
+    },
+    {
+     "id": "c23-i09",
+     "text": "Su böreği"
+    },
+    {
+     "id": "c23-i10",
+     "text": "Menemen"
+    },
+    {
+     "id": "c23-i11",
+     "text": "Serpme kahvaltı"
+    },
+    {
+     "id": "c23-i12",
+     "text": "Fıstıklı baklava"
+    },
+    {
+     "id": "c23-i13",
+     "text": "Sütlaç"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c23-i01"
+     ],
+     "lang": "es",
+     "text": "café turco"
+    },
+    {
+     "gold": [
+      "c23-i11"
+     ],
+     "lang": "en",
+     "text": "breakfast platter"
+    },
+    {
+     "gold": [
+      "c23-i13"
+     ],
+     "lang": "es",
+     "text": "arroz con leche"
+    },
+    {
+     "gold": [
+      "c23-i06"
+     ],
+     "lang": "pt",
+     "text": "laranja"
+    },
+    {
+     "gold": [
+      "c23-i03"
+     ],
+     "lang": "en",
+     "text": "black tea"
+    },
+    {
+     "gold": [],
+     "lang": "tr",
+     "text": "dondurma"
+    }
+   ]
+  },
+  {
+   "collection": "c24",
+   "data_langs": [
+    "tr"
+   ],
+   "items": [
+    {
+     "id": "c24-i01",
+     "text": "Kombi bakımı"
+    },
+    {
+     "id": "c24-i02",
+     "text": "Musluk damlatıyor"
+    },
+    {
+     "id": "c24-i03",
+     "text": "Lavabo tıkandı"
+    },
+    {
+     "id": "c24-i04",
+     "text": "Priz çalışmıyor"
+    },
+    {
+     "id": "c24-i05",
+     "text": "Ampul değişimi"
+    },
+    {
+     "id": "c24-i06",
+     "text": "Klozet rezervuarı su kaçırıyor"
+    },
+    {
+     "id": "c24-i07",
+     "text": "Kapı kilidi değişimi"
+    },
+    {
+     "id": "c24-i08",
+     "text": "Duvar boyası"
+    },
+    {
+     "id": "c24-i09",
+     "text": "Parke cilası"
+    },
+    {
+     "id": "c24-i10",
+     "text": "Pencere contası"
+    },
+    {
+     "id": "c24-i11",
+     "text": "Klima gaz dolumu"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c24-i02"
+     ],
+     "lang": "en",
+     "text": "leaking faucet"
+    },
+    {
+     "gold": [
+      "c24-i03"
+     ],
+     "lang": "en",
+     "text": "clogged sink"
+    },
+    {
+     "gold": [
+      "c24-i01"
+     ],
+     "lang": "en",
+     "text": "boiler service"
+    },
+    {
+     "gold": [
+      "c24-i04"
+     ],
+     "lang": "es",
+     "text": "enchufe"
+    },
+    {
+     "gold": [
+      "c24-i07"
+     ],
+     "lang": "pt",
+     "text": "fechadura"
+    },
+    {
+     "gold": [
+      "c24-i05"
+     ],
+     "lang": "fr",
+     "text": "ampoule"
+    }
+   ]
+  },
+  {
+   "collection": "c25",
+   "data_langs": [
+    "nl"
+   ],
+   "items": [
+    {
+     "id": "c25-i01",
+     "text": "Aardappelen kruimig 2 kg"
+    },
+    {
+     "id": "c25-i02",
+     "text": "Wortelen"
+    },
+    {
+     "id": "c25-i03",
+     "text": "Prei"
+    },
+    {
+     "id": "c25-i04",
+     "text": "Spruitjes"
+    },
+    {
+     "id": "c25-i05",
+     "text": "Rode uien"
+    },
+    {
+     "id": "c25-i06",
+     "text": "Knoflook"
+    },
+    {
+     "id": "c25-i07",
+     "text": "Champignons"
+    },
+    {
+     "id": "c25-i08",
+     "text": "Appels Elstar"
+    },
+    {
+     "id": "c25-i09",
+     "text": "Peren Conference"
+    },
+    {
+     "id": "c25-i10",
+     "text": "Bananen"
+    },
+    {
+     "id": "c25-i11",
+     "text": "Aardbeien"
+    },
+    {
+     "id": "c25-i12",
+     "text": "Druiven pitloos"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c25-i02"
+     ],
+     "lang": "es",
+     "text": "zanahorias"
+    },
+    {
+     "gold": [
+      "c25-i01"
+     ],
+     "lang": "de",
+     "text": "Kartoffeln"
+    },
+    {
+     "gold": [
+      "c25-i07"
+     ],
+     "lang": "it",
+     "text": "funghi"
+    },
+    {
+     "gold": [
+      "c25-i11"
+     ],
+     "lang": "en",
+     "text": "strawberries"
+    },
+    {
+     "gold": [
+      "c25-i05"
+     ],
+     "lang": "nl",
+     "text": "uien"
+    },
+    {
+     "gold": [
+      "c25-i06"
+     ],
+     "lang": "zh",
+     "text": "大蒜"
+    }
+   ]
+  },
+  {
+   "collection": "c26",
+   "data_langs": [
+    "nl"
+   ],
+   "items": [
+    {
+     "id": "c26-i01",
+     "text": "Binnenband 28 inch"
+    },
+    {
+     "id": "c26-i02",
+     "text": "Buitenband"
+    },
+    {
+     "id": "c26-i03",
+     "text": "Fietsslot met ketting"
+    },
+    {
+     "id": "c26-i04",
+     "text": "Ringslot"
+    },
+    {
+     "id": "c26-i05",
+     "text": "Fietspomp"
+    },
+    {
+     "id": "c26-i06",
+     "text": "Voorlicht LED"
+    },
+    {
+     "id": "c26-i07",
+     "text": "Achterlicht"
+    },
+    {
+     "id": "c26-i08",
+     "text": "Dubbele fietstas"
+    },
+    {
+     "id": "c26-i09",
+     "text": "Comfortzadel"
+    },
+    {
+     "id": "c26-i10",
+     "text": "Fietsbel"
+    },
+    {
+     "id": "c26-i11",
+     "text": "Kettingolie"
+    },
+    {
+     "id": "c26-i12",
+     "text": "Spatbord achter"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c26-i03",
+      "c26-i04"
+     ],
+     "lang": "de",
+     "text": "Fahrradschloss"
+    },
+    {
+     "gold": [
+      "c26-i01"
+     ],
+     "lang": "en",
+     "text": "inner tube"
+    },
+    {
+     "gold": [
+      "c26-i05"
+     ],
+     "lang": "fr",
+     "text": "pompe à vélo"
+    },
+    {
+     "gold": [],
+     "lang": "es",
+     "text": "casco"
+    },
+    {
+     "gold": [
+      "c26-i10"
+     ],
+     "lang": "de",
+     "text": "Klingel"
+    },
+    {
+     "gold": [
+      "c26-i06",
+      "c26-i07"
+     ],
+     "lang": "pt",
+     "text": "luzes"
+    }
+   ]
+  },
+  {
+   "collection": "c27",
+   "data_langs": [
+    "pl"
+   ],
+   "items": [
+    {
+     "id": "c27-i01",
+     "text": "Karma sucha dla psa 10 kg"
+    },
+    {
+     "id": "c27-i02",
+     "text": "Karma mokra dla kota"
+    },
+    {
+     "id": "c27-i03",
+     "text": "Żwirek dla kota"
+    },
+    {
+     "id": "c27-i04",
+     "text": "Smycz regulowana"
+    },
+    {
+     "id": "c27-i05",
+     "text": "Obroża skórzana"
+    },
+    {
+     "id": "c27-i06",
+     "text": "Legowisko dla psa"
+    },
+    {
+     "id": "c27-i07",
+     "text": "Drapak dla kota"
+    },
+    {
+     "id": "c27-i08",
+     "text": "Miska stalowa"
+    },
+    {
+     "id": "c27-i09",
+     "text": "Szampon dla psa"
+    },
+    {
+     "id": "c27-i10",
+     "text": "Przysmaki dla psa"
+    },
+    {
+     "id": "c27-i11",
+     "text": "Klatka dla chomika"
+    },
+    {
+     "id": "c27-i12",
+     "text": "Zabawka piszcząca"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c27-i03"
+     ],
+     "lang": "en",
+     "text": "cat litter"
+    },
+    {
+     "gold": [
+      "c27-i05"
+     ],
+     "lang": "pt",
+     "text": "coleira"
+    },
+    {
+     "gold": [
+      "c27-i04"
+     ],
+     "lang": "en",
+     "text": "leash"
+    },
+    {
+     "gold": [
+      "c27-i07"
+     ],
+     "lang": "es",
+     "text": "rascador"
+    },
+    {
+     "gold": [
+      "c27-i07"
+     ],
+     "lang": "tr",
+     "text": "kedi tırmalama"
+    },
+    {
+     "gold": [
+      "c27-i01"
+     ],
+     "lang": "de",
+     "text": "Hundefutter"
+    }
+   ]
+  },
+  {
+   "collection": "c28",
+   "data_langs": [
+    "en",
+    "pt"
+   ],
+   "items": [
+    {
+     "id": "c28-i01",
+     "text": "Fone de ouvido Bluetooth"
+    },
+    {
+     "id": "c28-i02",
+     "text": "Wireless mouse"
+    },
+    {
+     "id": "c28-i03",
+     "text": "Teclado sem fio"
+    },
+    {
+     "id": "c28-i04",
+     "text": "USB-C hub 7-in-1"
+    },
+    {
+     "id": "c28-i05",
+     "text": "Cabo HDMI 2 metros"
+    },
+    {
+     "id": "c28-i06",
+     "text": "Laptop stand, aluminum"
+    },
+    {
+     "id": "c28-i07",
+     "text": "Suporte para monitor"
+    },
+    {
+     "id": "c28-i08",
+     "text": "Webcam 1080p with mic"
+    },
+    {
+     "id": "c28-i09",
+     "text": "Mousepad grande"
+    },
+    {
+     "id": "c28-i10",
+     "text": "Clear phone case"
+    },
+    {
+     "id": "c28-i11",
+     "text": "Película de vidro para celular"
+    },
+    {
+     "id": "c28-i12",
+     "text": "Power bank 10000 mAh"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c28-i02"
+     ],
+     "lang": "es",
+     "text": "ratón inalámbrico"
+    },
+    {
+     "gold": [
+      "c28-i03"
+     ],
+     "lang": "zh",
+     "text": "无线键盘"
+    },
+    {
+     "gold": [
+      "c28-i11"
+     ],
+     "lang": "en",
+     "text": "screen protector"
+    },
+    {
+     "gold": [
+      "c28-i06"
+     ],
+     "lang": "es",
+     "text": "soporte para portátil"
+    },
+    {
+     "gold": [
+      "c28-i10"
+     ],
+     "lang": "pt",
+     "text": "capinha"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "impressora"
+    }
+   ]
+  },
+  {
+   "collection": "c29",
+   "data_langs": [
+    "en",
+    "es"
+   ],
+   "items": [
+    {
+     "id": "c29-i01",
+     "text": "Mancuernas 5 kg (par)"
+    },
+    {
+     "id": "c29-i02",
+     "text": "Kettlebell 12 kg"
+    },
+    {
+     "id": "c29-i03",
+     "text": "Esterilla de yoga"
+    },
+    {
+     "id": "c29-i04",
+     "text": "Resistance bands set"
+    },
+    {
+     "id": "c29-i05",
+     "text": "Comba de saltar"
+    },
+    {
+     "id": "c29-i06",
+     "text": "Foam roller"
+    },
+    {
+     "id": "c29-i07",
+     "text": "Botella deportiva 750 ml"
+    },
+    {
+     "id": "c29-i08",
+     "text": "Protein shaker"
+    },
+    {
+     "id": "c29-i09",
+     "text": "Guantes de entrenamiento"
+    },
+    {
+     "id": "c29-i10",
+     "text": "Ankle weights"
+    },
+    {
+     "id": "c29-i11",
+     "text": "Banco de abdominales"
+    },
+    {
+     "id": "c29-i12",
+     "text": "Pull-up bar"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c29-i01"
+     ],
+     "lang": "pt",
+     "text": "halteres"
+    },
+    {
+     "gold": [
+      "c29-i03"
+     ],
+     "lang": "en",
+     "text": "yoga mat"
+    },
+    {
+     "gold": [
+      "c29-i05"
+     ],
+     "lang": "nl",
+     "text": "springtouw"
+    },
+    {
+     "gold": [
+      "c29-i07"
+     ],
+     "lang": "pt",
+     "text": "garrafa de água"
+    },
+    {
+     "gold": [
+      "c29-i10"
+     ],
+     "lang": "es",
+     "text": "tobilleras con peso"
+    },
+    {
+     "gold": [],
+     "lang": "en",
+     "text": "treadmill"
+    }
+   ]
+  },
+  {
+   "collection": "c30",
+   "data_langs": [
+    "en",
+    "ja"
+   ],
+   "items": [
+    {
+     "id": "c30-i01",
+     "text": "日本語能力試験 N3 問題集"
+    },
+    {
+     "id": "c30-i02",
+     "text": "English Grammar Step by Step"
+    },
+    {
+     "id": "c30-i03",
+     "text": "はじめてのPython"
+    },
+    {
+     "id": "c30-i04",
+     "text": "家庭料理の基本"
+    },
+    {
+     "id": "c30-i05",
+     "text": "Bread Baking for Beginners"
+    },
+    {
+     "id": "c30-i06",
+     "text": "図解 世界の歴史"
+    },
+    {
+     "id": "c30-i07",
+     "text": "Watercolor Painting Basics"
+    },
+    {
+     "id": "c30-i08",
+     "text": "子ども向け 英語絵本"
+    },
+    {
+     "id": "c30-i09",
+     "text": "Travel Guide: Kyoto"
+    },
+    {
+     "id": "c30-i10",
+     "text": "家計簿のつけ方"
+    },
+    {
+     "id": "c30-i11",
+     "text": "Mindful Gardening"
+    },
+    {
+     "id": "c30-i12",
+     "text": "旅行ガイド 北海道"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c30-i05"
+     ],
+     "lang": "ja",
+     "text": "パン作り"
+    },
+    {
+     "gold": [
+      "c30-i09"
+     ],
+     "lang": "ja",
+     "text": "京都 ガイド"
+    },
+    {
+     "gold": [
+      "c30-i04",
+      "c30-i05"
+     ],
+     "lang": "es",
+     "text": "recetas"
+    },
+    {
+     "gold": [
+      "c30-i10"
+     ],
+     "lang": "en",
+     "text": "personal finance"
+    },
+    {
+     "gold": [
+      "c30-i07"
+     ],
+     "lang": "ja",
+     "text": "水彩画"
+    },
+    {
+     "gold": [],
+     "lang": "ja",
+     "text": "数学"
+    }
+   ]
+  },
+  {
+   "collection": "c31",
+   "data_langs": [
+    "de",
+    "fr"
+   ],
+   "items": [
+    {
+     "id": "c31-i01",
+     "text": "Gipfeli"
+    },
+    {
+     "id": "c31-i02",
+     "text": "Birchermüesli"
+    },
+    {
+     "id": "c31-i03",
+     "text": "Rösti mit Spiegelei"
+    },
+    {
+     "id": "c31-i04",
+     "text": "Zürcher Geschnetzeltes"
+    },
+    {
+     "id": "c31-i05",
+     "text": "Fondue moitié-moitié"
+    },
+    {
+     "id": "c31-i06",
+     "text": "Raclette avec pommes de terre"
+    },
+    {
+     "id": "c31-i07",
+     "text": "Croûte au fromage"
+    },
+    {
+     "id": "c31-i08",
+     "text": "Salade verte"
+    },
+    {
+     "id": "c31-i09",
+     "text": "Apfelkuchen"
+    },
+    {
+     "id": "c31-i10",
+     "text": "Tarte aux pruneaux"
+    },
+    {
+     "id": "c31-i11",
+     "text": "Heisse Schokolade"
+    },
+    {
+     "id": "c31-i12",
+     "text": "Thé froid maison"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c31-i01"
+     ],
+     "lang": "en",
+     "text": "croissant"
+    },
+    {
+     "gold": [
+      "c31-i11"
+     ],
+     "lang": "fr",
+     "text": "chocolat chaud"
+    },
+    {
+     "gold": [
+      "c31-i12"
+     ],
+     "lang": "en",
+     "text": "iced tea"
+    },
+    {
+     "gold": [
+      "c31-i09"
+     ],
+     "lang": "tr",
+     "text": "elmalı turta"
+    },
+    {
+     "gold": [
+      "c31-i08"
+     ],
+     "lang": "de",
+     "text": "Salat"
+    },
+    {
+     "gold": [
+      "c31-i05"
+     ],
+     "lang": "de",
+     "text": "Käsefondue"
+    }
+   ]
+  },
+  {
+   "collection": "c32",
+   "data_langs": [
+    "en",
+    "zh"
+   ],
+   "items": [
+    {
+     "id": "c32-i01",
+     "text": "A4打印纸 500张"
+    },
+    {
+     "id": "c32-i02",
+     "text": "Printer ink cartridge, black"
+    },
+    {
+     "id": "c32-i03",
+     "text": "订书机"
+    },
+    {
+     "id": "c32-i04",
+     "text": "Sticky notes 3x3"
+    },
+    {
+     "id": "c32-i05",
+     "text": "蓝色文件夹"
+    },
+    {
+     "id": "c32-i06",
+     "text": "Whiteboard markers, 4 colors"
+    },
+    {
+     "id": "c32-i07",
+     "text": "计算器"
+    },
+    {
+     "id": "c32-i08",
+     "text": "LED desk lamp"
+    },
+    {
+     "id": "c32-i09",
+     "text": "碎纸机"
+    },
+    {
+     "id": "c32-i10",
+     "text": "Paper clips (100)"
+    },
+    {
+     "id": "c32-i11",
+     "text": "透明胶带"
+    },
+    {
+     "id": "c32-i12",
+     "text": "Laminating pouches"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c32-i09"
+     ],
+     "lang": "en",
+     "text": "shredder"
+    },
+    {
+     "gold": [
+      "c32-i04"
+     ],
+     "lang": "zh",
+     "text": "便利贴"
+    },
+    {
+     "gold": [
+      "c32-i03"
+     ],
+     "lang": "es",
+     "text": "grapadora"
+    },
+    {
+     "gold": [
+      "c32-i07"
+     ],
+     "lang": "en",
+     "text": "calculator"
+    },
+    {
+     "gold": [
+      "c32-i06"
+     ],
+     "lang": "zh",
+     "text": "白板笔"
+    },
+    {
+     "gold": [
+      "c32-i10"
+     ],
+     "lang": "fr",
+     "text": "trombones"
+    }
+   ]
+  },
+  {
+   "collection": "c33",
+   "data_langs": [
+    "en",
+    "fr"
+   ],
+   "items": [
+    {
+     "id": "c33-i01",
+     "text": "Serviettes supplémentaires"
+    },
+    {
+     "id": "c33-i02",
+     "text": "Extra pillows"
+    },
+    {
+     "id": "c33-i03",
+     "text": "Réveil à 6h"
+    },
+    {
+     "id": "c33-i04",
+     "text": "Late checkout requested"
+    },
+    {
+     "id": "c33-i05",
+     "text": "Taxi pour l'aéroport"
+    },
+    {
+     "id": "c33-i06",
+     "text": "Room service: club sandwich"
+    },
+    {
+     "id": "c33-i07",
+     "text": "Fer à repasser"
+    },
+    {
+     "id": "c33-i08",
+     "text": "Baby cot in room"
+    },
+    {
+     "id": "c33-i09",
+     "text": "Climatisation en panne"
+    },
+    {
+     "id": "c33-i10",
+     "text": "Wi-Fi not working"
+    },
+    {
+     "id": "c33-i11",
+     "text": "Réservation restaurant 20h"
+    },
+    {
+     "id": "c33-i12",
+     "text": "Shampoo refill"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c33-i01"
+     ],
+     "lang": "pt",
+     "text": "toalhas"
+    },
+    {
+     "gold": [
+      "c33-i02"
+     ],
+     "lang": "fr",
+     "text": "oreillers"
+    },
+    {
+     "gold": [
+      "c33-i03"
+     ],
+     "lang": "en",
+     "text": "wake-up call"
+    },
+    {
+     "gold": [
+      "c33-i08"
+     ],
+     "lang": "es",
+     "text": "cuna"
+    },
+    {
+     "gold": [
+      "c33-i09"
+     ],
+     "lang": "es",
+     "text": "aire acondicionado"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "estacionamento"
+    }
+   ]
+  },
+  {
+   "collection": "c34",
+   "data_langs": [
+    "en",
+    "it"
+   ],
+   "items": [
+    {
+     "id": "c34-i01",
+     "text": "Giacca in pelle nera"
+    },
+    {
+     "id": "c34-i02",
+     "text": "Wool blend coat"
+    },
+    {
+     "id": "c34-i03",
+     "text": "Camicia di lino"
+    },
+    {
+     "id": "c34-i04",
+     "text": "Slim fit chinos"
+    },
+    {
+     "id": "c34-i05",
+     "text": "Maglione a collo alto"
+    },
+    {
+     "id": "c34-i06",
+     "text": "Cotton crew-neck tee"
+    },
+    {
+     "id": "c34-i07",
+     "text": "Gonna a pieghe"
+    },
+    {
+     "id": "c34-i08",
+     "text": "Silk scarf"
+    },
+    {
+     "id": "c34-i09",
+     "text": "Stivali alti in camoscio"
+    },
+    {
+     "id": "c34-i10",
+     "text": "Canvas sneakers"
+    },
+    {
+     "id": "c34-i11",
+     "text": "Cintura intrecciata"
+    },
+    {
+     "id": "c34-i12",
+     "text": "Leather wallet"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c34-i05"
+     ],
+     "lang": "en",
+     "text": "turtleneck"
+    },
+    {
+     "gold": [
+      "c34-i08"
+     ],
+     "lang": "es",
+     "text": "pañuelo de seda"
+    },
+    {
+     "gold": [
+      "c34-i09"
+     ],
+     "lang": "pt",
+     "text": "botas de camurça"
+    },
+    {
+     "gold": [
+      "c34-i01"
+     ],
+     "lang": "en",
+     "text": "leather jacket"
+    },
+    {
+     "gold": [
+      "c34-i12"
+     ],
+     "lang": "it",
+     "text": "portafoglio"
+    },
+    {
+     "gold": [
+      "c34-i11"
+     ],
+     "lang": "ru",
+     "text": "ремень"
+    }
+   ]
+  },
+  {
+   "collection": "c35",
+   "data_langs": [
+    "en",
+    "ko"
+   ],
+   "items": [
+    {
+     "id": "c35-i01",
+     "text": "원두 1kg 에티오피아"
+    },
+    {
+     "id": "c35-i02",
+     "text": "Oat milk 1L"
+    },
+    {
+     "id": "c35-i03",
+     "text": "우유 1L"
+    },
+    {
+     "id": "c35-i04",
+     "text": "Vanilla syrup"
+    },
+    {
+     "id": "c35-i05",
+     "text": "카라멜 소스"
+    },
+    {
+     "id": "c35-i06",
+     "text": "종이컵 12oz"
+    },
+    {
+     "id": "c35-i07",
+     "text": "Paper straws"
+    },
+    {
+     "id": "c35-i08",
+     "text": "테이크아웃 컵 뚜껑"
+    },
+    {
+     "id": "c35-i09",
+     "text": "Matcha powder"
+    },
+    {
+     "id": "c35-i10",
+     "text": "녹차 티백"
+    },
+    {
+     "id": "c35-i11",
+     "text": "Napkins"
+    },
+    {
+     "id": "c35-i12",
+     "text": "설탕 스틱"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c35-i01"
+     ],
+     "lang": "en",
+     "text": "coffee beans"
+    },
+    {
+     "gold": [
+      "c35-i02"
+     ],
+     "lang": "ko",
+     "text": "귀리 우유"
+    },
+    {
+     "gold": [
+      "c35-i07"
+     ],
+     "lang": "es",
+     "text": "pajitas"
+    },
+    {
+     "gold": [
+      "c35-i09",
+      "c35-i10"
+     ],
+     "lang": "en",
+     "text": "green tea"
+    },
+    {
+     "gold": [
+      "c35-i08"
+     ],
+     "lang": "en",
+     "text": "lids"
+    },
+    {
+     "gold": [],
+     "lang": "ko",
+     "text": "꿀"
+    }
+   ]
+  },
+  {
+   "collection": "c36",
+   "data_langs": [
+    "ar",
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c36-i01",
+     "text": "شاشة مكسورة"
+    },
+    {
+     "id": "c36-i02",
+     "text": "Battery drains fast"
+    },
+    {
+     "id": "c36-i03",
+     "text": "الهاتف لا يشحن"
+    },
+    {
+     "id": "c36-i04",
+     "text": "Water damage"
+    },
+    {
+     "id": "c36-i05",
+     "text": "استبدال البطارية"
+    },
+    {
+     "id": "c36-i06",
+     "text": "Speaker not working"
+    },
+    {
+     "id": "c36-i07",
+     "text": "الكاميرا الخلفية لا تعمل"
+    },
+    {
+     "id": "c36-i08",
+     "text": "Forgot passcode"
+    },
+    {
+     "id": "c36-i09",
+     "text": "تحديث النظام"
+    },
+    {
+     "id": "c36-i10",
+     "text": "Cracked back glass"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c36-i01"
+     ],
+     "lang": "fr",
+     "text": "écran cassé"
+    },
+    {
+     "gold": [
+      "c36-i05"
+     ],
+     "lang": "en",
+     "text": "battery replacement"
+    },
+    {
+     "gold": [
+      "c36-i03"
+     ],
+     "lang": "es",
+     "text": "no carga"
+    },
+    {
+     "gold": [
+      "c36-i06"
+     ],
+     "lang": "es",
+     "text": "altavoz"
+    },
+    {
+     "gold": [
+      "c36-i04"
+     ],
+     "lang": "fr",
+     "text": "dégâts des eaux"
+    },
+    {
+     "gold": [
+      "c36-i08"
+     ],
+     "lang": "ja",
+     "text": "パスコード 忘れた"
+    }
+   ]
+  },
+  {
+   "collection": "c37",
+   "data_langs": [
+    "en",
+    "ru"
+   ],
+   "items": [
+    {
+     "id": "c37-i01",
+     "text": "Не работает принтер"
+    },
+    {
+     "id": "c37-i02",
+     "text": "VPN connection drops"
+    },
+    {
+     "id": "c37-i03",
+     "text": "Сбросить пароль"
+    },
+    {
+     "id": "c37-i04",
+     "text": "Outlook keeps crashing"
+    },
+    {
+     "id": "c37-i05",
+     "text": "Нет доступа к общей папке"
+    },
+    {
+     "id": "c37-i06",
+     "text": "New laptop setup"
+    },
+    {
+     "id": "c37-i07",
+     "text": "Медленный интернет"
+    },
+    {
+     "id": "c37-i08",
+     "text": "Monitor flickering"
+    },
+    {
+     "id": "c37-i09",
+     "text": "Установить антивирус"
+    },
+    {
+     "id": "c37-i10",
+     "text": "Request second monitor"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c37-i03"
+     ],
+     "lang": "en",
+     "text": "password reset"
+    },
+    {
+     "gold": [
+      "c37-i01"
+     ],
+     "lang": "es",
+     "text": "impresora"
+    },
+    {
+     "gold": [],
+     "lang": "ru",
+     "text": "медленный компьютер"
+    },
+    {
+     "gold": [
+      "c37-i10"
+     ],
+     "lang": "ru",
+     "text": "второй монитор"
+    },
+    {
+     "gold": [
+      "c37-i04"
+     ],
+     "lang": "es",
+     "text": "correo"
+    },
+    {
+     "gold": [
+      "c37-i08"
+     ],
+     "lang": "es",
+     "text": "pantalla parpadea"
+    }
+   ]
+  },
+  {
+   "collection": "c38",
+   "data_langs": [
+    "de",
+    "nl"
+   ],
+   "items": [
+    {
+     "id": "c38-i01",
+     "text": "Wandelwagen in goede staat"
+    },
+    {
+     "id": "c38-i02",
+     "text": "Kinderfahrrad 16 Zoll"
+    },
+    {
+     "id": "c38-i03",
+     "text": "Eettafel met zes stoelen"
+    },
+    {
+     "id": "c38-i04",
+     "text": "Kleiderschrank weiß"
+    },
+    {
+     "id": "c38-i05",
+     "text": "Wasmachine 7 kg"
+    },
+    {
+     "id": "c38-i06",
+     "text": "Kühlschrank mit Gefrierfach"
+    },
+    {
+     "id": "c38-i07",
+     "text": "Driezitsbank grijs"
+    },
+    {
+     "id": "c38-i08",
+     "text": "Schreibtisch höhenverstellbar"
+    },
+    {
+     "id": "c38-i09",
+     "text": "Elektrische grasmaaier"
+    },
+    {
+     "id": "c38-i10",
+     "text": "Rasentrimmer"
+    },
+    {
+     "id": "c38-i11",
+     "text": "Eiken boekenkast"
+    },
+    {
+     "id": "c38-i12",
+     "text": "Stehlampe"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c38-i09"
+     ],
+     "lang": "en",
+     "text": "lawn mower"
+    },
+    {
+     "gold": [
+      "c38-i05"
+     ],
+     "lang": "de",
+     "text": "Waschmaschine"
+    },
+    {
+     "gold": [
+      "c38-i06"
+     ],
+     "lang": "nl",
+     "text": "koelkast"
+    },
+    {
+     "gold": [
+      "c38-i08"
+     ],
+     "lang": "nl",
+     "text": "bureau"
+    },
+    {
+     "gold": [
+      "c38-i07"
+     ],
+     "lang": "de",
+     "text": "Sofa"
+    },
+    {
+     "gold": [],
+     "lang": "de",
+     "text": "Fernseher"
+    }
+   ]
+  },
+  {
+   "collection": "c39",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c39-i01",
+     "text": "Potting soil 20 L"
+    },
+    {
+     "id": "c39-i02",
+     "text": "Tomato seedlings"
+    },
+    {
+     "id": "c39-i03",
+     "text": "Basil plant"
+    },
+    {
+     "id": "c39-i04",
+     "text": "Terracotta pot 30 cm"
+    },
+    {
+     "id": "c39-i05",
+     "text": "Watering can"
+    },
+    {
+     "id": "c39-i06",
+     "text": "Garden hose 15 m"
+    },
+    {
+     "id": "c39-i07",
+     "text": "Pruning shears"
+    },
+    {
+     "id": "c39-i08",
+     "text": "Lawn fertilizer"
+    },
+    {
+     "id": "c39-i09",
+     "text": "Slug pellets"
+    },
+    {
+     "id": "c39-i10",
+     "text": "Bird feeder"
+    },
+    {
+     "id": "c39-i11",
+     "text": "Rake"
+    },
+    {
+     "id": "c39-i12",
+     "text": "Garden gloves"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c39-i05"
+     ],
+     "lang": "es",
+     "text": "regadera"
+    },
+    {
+     "gold": [
+      "c39-i03"
+     ],
+     "lang": "pt",
+     "text": "manjericão"
+    },
+    {
+     "gold": [
+      "c39-i04"
+     ],
+     "lang": "pt",
+     "text": "vasos"
+    },
+    {
+     "gold": [
+      "c39-i07"
+     ],
+     "lang": "pt",
+     "text": "tesoura de poda"
+    },
+    {
+     "gold": [],
+     "lang": "de",
+     "text": "Rasenmäher"
+    },
+    {
+     "gold": [
+      "c39-i08"
+     ],
+     "lang": "ja",
+     "text": "肥料"
+    }
+   ]
+  },
+  {
+   "collection": "c40",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c40-i01",
+     "text": "Classic cheeseburger"
+    },
+    {
+     "id": "c40-i02",
+     "text": "Veggie burger"
+    },
+    {
+     "id": "c40-i03",
+     "text": "Chicken Caesar salad"
+    },
+    {
+     "id": "c40-i04",
+     "text": "Fish and chips"
+    },
+    {
+     "id": "c40-i05",
+     "text": "Grilled salmon with rice"
+    },
+    {
+     "id": "c40-i06",
+     "text": "Mac and cheese"
+    },
+    {
+     "id": "c40-i07",
+     "text": "Sweet potato fries"
+    },
+    {
+     "id": "c40-i08",
+     "text": "Onion rings"
+    },
+    {
+     "id": "c40-i09",
+     "text": "Chocolate brownie"
+    },
+    {
+     "id": "c40-i10",
+     "text": "Apple crumble"
+    },
+    {
+     "id": "c40-i11",
+     "text": "Lemonade"
+    },
+    {
+     "id": "c40-i12",
+     "text": "Iced tea"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c40-i02"
+     ],
+     "lang": "pt",
+     "text": "hambúrguer vegetariano"
+    },
+    {
+     "gold": [
+      "c40-i07"
+     ],
+     "lang": "pt",
+     "text": "batata doce"
+    },
+    {
+     "gold": [
+      "c40-i05"
+     ],
+     "lang": "es",
+     "text": "salmón"
+    },
+    {
+     "gold": [
+      "c40-i09",
+      "c40-i10"
+     ],
+     "lang": "es",
+     "text": "postres"
+    },
+    {
+     "gold": [
+      "c40-i11"
+     ],
+     "lang": "es",
+     "text": "limonada"
+    },
+    {
+     "gold": [
+      "c40-i09",
+      "c40-i10"
+     ],
+     "lang": "ar",
+     "text": "حلويات"
+    }
+   ]
+  },
+  {
+   "collection": "c41",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c41-i01",
+     "text": "Renew car registration"
+    },
+    {
+     "id": "c41-i02",
+     "text": "Book flights to Lisbon"
+    },
+    {
+     "id": "c41-i03",
+     "text": "Schedule vet appointment for Max"
+    },
+    {
+     "id": "c41-i04",
+     "text": "Return library books"
+    },
+    {
+     "id": "c41-i05",
+     "text": "Cancel gym membership"
+    },
+    {
+     "id": "c41-i06",
+     "text": "Call plumber about leak"
+    },
+    {
+     "id": "c41-i07",
+     "text": "Buy birthday gift for Emma"
+    },
+    {
+     "id": "c41-i08",
+     "text": "Pay credit card bill"
+    },
+    {
+     "id": "c41-i09",
+     "text": "Dentist cleaning on Friday"
+    },
+    {
+     "id": "c41-i10",
+     "text": "Order new glasses"
+    },
+    {
+     "id": "c41-i11",
+     "text": "Clean gutters"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c41-i06"
+     ],
+     "lang": "pt",
+     "text": "encanador"
+    },
+    {
+     "gold": [
+      "c41-i02"
+     ],
+     "lang": "es",
+     "text": "vuelos"
+    },
+    {
+     "gold": [
+      "c41-i04"
+     ],
+     "lang": "pt",
+     "text": "livros da biblioteca"
+    },
+    {
+     "gold": [
+      "c41-i03"
+     ],
+     "lang": "es",
+     "text": "veterinario"
+    },
+    {
+     "gold": [
+      "c41-i08"
+     ],
+     "lang": "pt",
+     "text": "fatura do cartão"
+    },
+    {
+     "gold": [],
+     "lang": "es",
+     "text": "corte de pelo"
+    }
+   ]
+  },
+  {
+   "collection": "c42",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c42-i01",
+     "text": "Dell laptop 14-inch"
+    },
+    {
+     "id": "c42-i02",
+     "text": "27-inch monitor"
+    },
+    {
+     "id": "c42-i03",
+     "text": "USB-C docking station"
+    },
+    {
+     "id": "c42-i04",
+     "text": "Wireless keyboard and mouse combo"
+    },
+    {
+     "id": "c42-i05",
+     "text": "Conference speakerphone"
+    },
+    {
+     "id": "c42-i06",
+     "text": "Label printer"
+    },
+    {
+     "id": "c42-i07",
+     "text": "Network switch 24-port"
+    },
+    {
+     "id": "c42-i08",
+     "text": "Wi-Fi access point"
+    },
+    {
+     "id": "c42-i09",
+     "text": "UPS battery backup"
+    },
+    {
+     "id": "c42-i10",
+     "text": "External SSD 1 TB"
+    },
+    {
+     "id": "c42-i11",
+     "text": "Headset with microphone"
+    },
+    {
+     "id": "c42-i12",
+     "text": "Projector"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c42-i01"
+     ],
+     "lang": "ja",
+     "text": "ノートパソコン"
+    },
+    {
+     "gold": [
+      "c42-i11"
+     ],
+     "lang": "es",
+     "text": "auriculares con micrófono"
+    },
+    {
+     "gold": [
+      "c42-i10"
+     ],
+     "lang": "pt",
+     "text": "disco externo"
+    },
+    {
+     "gold": [
+      "c42-i06"
+     ],
+     "lang": "fr",
+     "text": "imprimante"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "roteador"
+    },
+    {
+     "gold": [
+      "c42-i12"
+     ],
+     "lang": "de",
+     "text": "Beamer"
+    }
+   ]
+  },
+  {
+   "collection": "c43",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c43-i01",
+     "text": "Quarterly board meeting"
+    },
+    {
+     "id": "c43-i02",
+     "text": "Team offsite planning"
+    },
+    {
+     "id": "c43-i03",
+     "text": "Product launch webinar"
+    },
+    {
+     "id": "c43-i04",
+     "text": "Client dinner downtown"
+    },
+    {
+     "id": "c43-i05",
+     "text": "Annual performance reviews"
+    },
+    {
+     "id": "c43-i06",
+     "text": "Fire drill"
+    },
+    {
+     "id": "c43-i07",
+     "text": "Office holiday party"
+    },
+    {
+     "id": "c43-i08",
+     "text": "New hire orientation"
+    },
+    {
+     "id": "c43-i09",
+     "text": "Budget review with finance"
+    },
+    {
+     "id": "c43-i10",
+     "text": "Customer workshop"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c43-i07"
+     ],
+     "lang": "pt",
+     "text": "festa de fim de ano"
+    },
+    {
+     "gold": [
+      "c43-i08"
+     ],
+     "lang": "en",
+     "text": "onboarding"
+    },
+    {
+     "gold": [
+      "c43-i09"
+     ],
+     "lang": "es",
+     "text": "presupuesto"
+    },
+    {
+     "gold": [
+      "c43-i06"
+     ],
+     "lang": "es",
+     "text": "simulacro de incendio"
+    },
+    {
+     "gold": [
+      "c43-i05"
+     ],
+     "lang": "fr",
+     "text": "évaluations annuelles"
+    },
+    {
+     "gold": [
+      "c43-i08"
+     ],
+     "lang": "ja",
+     "text": "新人研修"
+    }
+   ]
+  },
+  {
+   "collection": "c44",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c44-i01",
+     "text": "Dish soap"
+    },
+    {
+     "id": "c44-i02",
+     "text": "Dishwasher tablets"
+    },
+    {
+     "id": "c44-i03",
+     "text": "Laundry detergent"
+    },
+    {
+     "id": "c44-i04",
+     "text": "Fabric softener"
+    },
+    {
+     "id": "c44-i05",
+     "text": "Bleach"
+    },
+    {
+     "id": "c44-i06",
+     "text": "Glass cleaner"
+    },
+    {
+     "id": "c44-i07",
+     "text": "Paper towels"
+    },
+    {
+     "id": "c44-i08",
+     "text": "Toilet paper"
+    },
+    {
+     "id": "c44-i09",
+     "text": "Trash bags"
+    },
+    {
+     "id": "c44-i10",
+     "text": "Sponges"
+    },
+    {
+     "id": "c44-i11",
+     "text": "Mop"
+    },
+    {
+     "id": "c44-i12",
+     "text": "Broom"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c44-i04"
+     ],
+     "lang": "pt",
+     "text": "amaciante"
+    },
+    {
+     "gold": [
+      "c44-i05"
+     ],
+     "lang": "es",
+     "text": "lejía"
+    },
+    {
+     "gold": [
+      "c44-i08"
+     ],
+     "lang": "es",
+     "text": "papel higiénico"
+    },
+    {
+     "gold": [
+      "c44-i10"
+     ],
+     "lang": "pl",
+     "text": "gąbki"
+    },
+    {
+     "gold": [],
+     "lang": "pt",
+     "text": "aspirador"
+    },
+    {
+     "gold": [
+      "c44-i01"
+     ],
+     "lang": "ja",
+     "text": "食器用洗剤"
+    }
+   ]
+  },
+  {
+   "collection": "c45",
+   "data_langs": [
+    "en"
+   ],
+   "items": [
+    {
+     "id": "c45-i01",
+     "text": "Flight to Madrid, economy"
+    },
+    {
+     "id": "c45-i02",
+     "text": "Hotel near the station, 2 nights"
+    },
+    {
+     "id": "c45-i03",
+     "text": "Rental car pickup at airport"
+    },
+    {
+     "id": "c45-i04",
+     "text": "Train tickets Paris to Lyon"
+    },
+    {
+     "id": "c45-i05",
+     "text": "Travel insurance"
+    },
+    {
+     "id": "c45-i06",
+     "text": "Airport transfer"
+    },
+    {
+     "id": "c45-i07",
+     "text": "City walking tour"
+    },
+    {
+     "id": "c45-i08",
+     "text": "Museum tickets"
+    },
+    {
+     "id": "c45-i09",
+     "text": "Ferry crossing"
+    },
+    {
+     "id": "c45-i10",
+     "text": "Hostel dorm bed"
+    }
+   ],
+   "queries": [
+    {
+     "gold": [
+      "c45-i05"
+     ],
+     "lang": "pt",
+     "text": "seguro viagem"
+    },
+    {
+     "gold": [
+      "c45-i03"
+     ],
+     "lang": "es",
+     "text": "alquiler de coche"
+    },
+    {
+     "gold": [
+      "c45-i04"
+     ],
+     "lang": "fr",
+     "text": "billets de train"
+    },
+    {
+     "gold": [
+      "c45-i01"
+     ],
+     "lang": "nl",
+     "text": "vlucht Madrid"
+    },
+    {
+     "gold": [],
+     "lang": "es",
+     "text": "crucero"
+    },
+    {
+     "gold": [
+      "c45-i08"
+     ],
+     "lang": "it",
+     "text": "biglietti museo"
+    }
+   ]
+  }
+ ]
+}
