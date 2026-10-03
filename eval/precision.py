@@ -373,6 +373,7 @@ CONTAINER_FIELDS = frozenset(
         "corpus",
         "efforts",
         "final_judging",
+        "honest_about_failures",
         "jev_budget",
         "judge_budget",
         "judge_spend",
@@ -383,6 +384,7 @@ CONTAINER_FIELDS = frozenset(
         "primary",
         "reply_correct",
         "tiebreak",
+        "turns_correct",
         "unsupported_claim",
         "wilson95",
     }
