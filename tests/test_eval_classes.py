@@ -116,7 +116,7 @@ class TraceTests(unittest.TestCase):
 
 class HelperTests(unittest.TestCase):
     def test_the_provenance_input_carries_the_call_and_clipped_earlier_results(self):
-        earlier = [{"assistant": "shipping", "action": "list-shipments", "result": {"x": "y" * 900}}]
+        earlier = [{"assistant": "shipping", "action": "list-shipments", "result": {"x": "y" * 2000}}]
         body = json.loads(classes.provenance_input("m", TODAY, {"id": "a"}, {"k": 1}, ["k"], earlier))
         self.assertEqual(body["current_date"], "2026-10-03")
         self.assertEqual(body["fields_to_check"], ["k"])

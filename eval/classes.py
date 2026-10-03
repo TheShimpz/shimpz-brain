@@ -55,7 +55,7 @@ RECORD_LIMIT = 30
 RECORD_FIELDS = 8
 FIELD_CHARS = 80
 WORKING_SET_CHARS = 2400
-RESULT_CHARS = 500
+RESULT_CHARS = 1200
 EARLIER_RESULTS = 8
 _PREFERRED = ("name", "title", "reference", "email", "recipient", "status", "date", "description")
 _QUOTES = ('"', '"'), ("“", "”"), ("„", "“"), ("«", "»"), ("‹", "›"), ("「", "」"), ("『", "』"), ("‘", "’")
@@ -268,7 +268,10 @@ PROVENANCE_INSTRUCTIONS = (
     "user asked for that field to have that value. Answer supplied true only when the user's message itself gives "
     "the value for that field, in any wording, language, or format (a date or amount written in words counts), or "
     "determines it exactly from data the message explicitly points to and an earlier result shows (for example 'the "
-    "same address as api', 'dated the day it shipped', '10% more than now'). Answer supplied false when the value is "
+    "same address as api', 'dated the day it shipped', '10% more than now'). A request that names a record or item "
+    "('the postage for parcel X', 'the amount of invoice Y') points to that record's data: when an earlier result "
+    "shows that record, the value of its matching field is supplied, and the evidence is the words naming it. Answer "
+    "supplied false when the value is "
     "a guess, an example, a placeholder, a default the user did not mention, a word the user used for something "
     "else, the value of another field, or anything the user did not ask for, even when it seems helpful. For "
     "supplied true, evidence must copy, character for character, the words of the user's message that give or point "
@@ -359,8 +362,9 @@ def refusal(user: Sequence[str], optional: Sequence[str]) -> dict[str, object]:
     """The closed result of a gated write: nothing ran; ask for user-sourced values, drop unrequested optional ones."""
     if user:
         detail = (
-            f"Nothing ran. Only the user can give {', '.join(user)}, and the request does not. Do not guess, look "
-            "up, or reuse another value for it: ask the user for it in your reply."
+            f"Nothing ran. Only the user can give {', '.join(user)}: neither the request nor a record it explicitly "
+            "names gives this value. If the request names a record that holds it, look that record up and use its "
+            "value; otherwise do not guess or reuse another value: ask the user for it in your reply."
         )
         return {
             "error": "refused",
