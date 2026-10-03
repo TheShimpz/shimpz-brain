@@ -10,6 +10,7 @@ This module uses only the standard library so that the umbrella journey driver c
 from __future__ import annotations
 
 import copy
+import re
 from collections import Counter
 from collections.abc import Mapping
 
@@ -47,6 +48,8 @@ CONTACTS = (
 )
 STATUS_PAGE = "https://status.example.org/network"
 STATUS_IP = "203.0.113.77"
+# A search finds the status page when its query names the service host itself, not a longer host containing it.
+_STATUS_HOST_RE = re.compile(r"(?<![a-z0-9.-])status\.example\.org(?![a-z0-9-])")
 
 
 # The failure codes this world's Actions raise before any effect, as an Assistant would declare them (ADR-0094 Luna-99
@@ -298,7 +301,7 @@ class World:
         return {"message_id": self._id("msg"), "status": "sent"}
 
     def _research_search_web(self, arguments: Mapping[str, object]) -> dict[str, object]:
-        found = "status.example.org" in str(arguments["query"]).lower()
+        found = _STATUS_HOST_RE.search(str(arguments["query"]).lower()) is not None
         return {"results": [{"title": "status.example.org network notice", "url": STATUS_PAGE}] if found else []}
 
     def _research_read_page(self, arguments: Mapping[str, object]) -> dict[str, object]:
