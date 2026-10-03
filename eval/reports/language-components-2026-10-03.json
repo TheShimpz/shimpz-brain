@@ -1,0 +1,550 @@
+{
+ "bench": "language-bench-v1",
+ "bench_counts": {
+  "collections": 45,
+  "detection": 985,
+  "items": 547,
+  "queries": 270
+ },
+ "bench_digest": "sha256:7ff5f9abacfd089f39979ebafad11d00f0e65e70a4299f8895a299bb984e41ce",
+ "detectors": {
+  "fasttext:bin": {
+   "accuracy": 0.54,
+   "coverage": 0.505,
+   "footprint": {
+    "load_s": 0.52,
+    "peak_rss_mib": 152.4
+   },
+   "latency_ms_p50": 0.005,
+   "latency_ms_p95": 0.009,
+   "macro_f1": 0.611,
+   "precision_target_met": true,
+   "recall_by_language": {
+    "ar": 0.823,
+    "de": 0.5,
+    "en": 0.109,
+    "es": 0.231,
+    "fr": 0.365,
+    "it": 0.484,
+    "ja": 0.781,
+    "ko": 0.939,
+    "nl": 0.303,
+    "pl": 0.554,
+    "pt": 0.377,
+    "ru": 0.705,
+    "tr": 0.469,
+    "und": 0.927,
+    "zh": 0.453
+   },
+   "registry_contains_stored": 0.978,
+   "registry_coverage": 0.749,
+   "registry_exact": 0.867,
+   "registry_spurious": 0.111,
+   "registry_tag_precision": 0.922,
+   "registry_threshold": 0.6,
+   "short_text_accuracy": 0.533,
+   "tag_precision": 0.97,
+   "threshold": 0.93,
+   "und_abstained": 0.927,
+   "untuned_accuracy": 0.804
+  },
+  "fasttext:ftz": {
+   "accuracy": 0.496,
+   "coverage": 0.454,
+   "footprint": {
+    "load_s": 0.021,
+    "peak_rss_mib": 23.3
+   },
+   "latency_ms_p50": 0.006,
+   "latency_ms_p95": 0.011,
+   "macro_f1": 0.57,
+   "precision_target_met": true,
+   "recall_by_language": {
+    "ar": 0.806,
+    "de": 0.409,
+    "en": 0.125,
+    "es": 0.262,
+    "fr": 0.429,
+    "it": 0.406,
+    "ja": 0.703,
+    "ko": 0.879,
+    "nl": 0.288,
+    "pl": 0.538,
+    "pt": 0.304,
+    "ru": 0.574,
+    "tr": 0.453,
+    "und": 0.963,
+    "zh": 0.203
+   },
+   "registry_contains_stored": 0.933,
+   "registry_coverage": 0.662,
+   "registry_exact": 0.844,
+   "registry_spurious": 0.111,
+   "registry_tag_precision": 0.898,
+   "registry_threshold": 0.55,
+   "short_text_accuracy": 0.479,
+   "tag_precision": 0.972,
+   "threshold": 0.89,
+   "und_abstained": 0.963,
+   "untuned_accuracy": 0.728
+  },
+  "langdetect:seeded": {
+   "accuracy": 0.651,
+   "coverage": 0.678,
+   "footprint": {
+    "load_s": 0.284,
+    "peak_rss_mib": 80.1
+   },
+   "latency_ms_p50": 1.466,
+   "latency_ms_p95": 10.312,
+   "macro_f1": 0.714,
+   "precision_target_met": false,
+   "recall_by_language": {
+    "ar": 0.887,
+    "de": 0.788,
+    "en": 0.438,
+    "es": 0.585,
+    "fr": 0.683,
+    "it": 0.781,
+    "ja": 0.641,
+    "ko": 1.0,
+    "nl": 0.348,
+    "pl": 0.785,
+    "pt": 0.681,
+    "ru": 0.672,
+    "tr": 0.672,
+    "und": 0.354,
+    "zh": 0.531
+   },
+   "registry_contains_stored": 0.956,
+   "registry_coverage": 0.703,
+   "registry_exact": 0.644,
+   "registry_spurious": 0.311,
+   "registry_tag_precision": 0.727,
+   "registry_threshold": 0.85,
+   "short_text_accuracy": 0.622,
+   "tag_precision": 0.752,
+   "threshold": 0.99,
+   "und_abstained": 0.354,
+   "untuned_accuracy": 0.685
+  },
+  "lingua:all-high": {
+   "accuracy": 0.517,
+   "coverage": 0.48,
+   "footprint": {
+    "load_s": 0.039,
+    "peak_rss_mib": 71.1
+   },
+   "latency_ms_p50": 0.439,
+   "latency_ms_p95": 1.612,
+   "macro_f1": 0.562,
+   "precision_target_met": false,
+   "recall_by_language": {
+    "ar": 0.774,
+    "de": 0.47,
+    "en": 0.016,
+    "es": 0.215,
+    "fr": 0.254,
+    "it": 0.25,
+    "ja": 0.734,
+    "ko": 1.0,
+    "nl": 0.197,
+    "pl": 0.585,
+    "pt": 0.29,
+    "ru": 0.393,
+    "tr": 0.547,
+    "und": 0.927,
+    "zh": 1.0
+   },
+   "registry_contains_stored": 0.978,
+   "registry_coverage": 0.849,
+   "registry_exact": 0.889,
+   "registry_spurious": 0.089,
+   "registry_tag_precision": 0.877,
+   "registry_threshold": 0.15,
+   "short_text_accuracy": 0.526,
+   "tag_precision": 0.95,
+   "threshold": 0.77,
+   "und_abstained": 0.927,
+   "untuned_accuracy": 0.81
+  },
+  "lingua:all-low": {
+   "accuracy": 0.574,
+   "coverage": 0.543,
+   "footprint": {
+    "load_s": 0.033,
+    "peak_rss_mib": 71.2
+   },
+   "latency_ms_p50": 0.312,
+   "latency_ms_p95": 0.896,
+   "macro_f1": 0.625,
+   "precision_target_met": false,
+   "recall_by_language": {
+    "ar": 0.919,
+    "de": 0.591,
+    "en": 0.156,
+    "es": 0.215,
+    "fr": 0.333,
+    "it": 0.328,
+    "ja": 0.734,
+    "ko": 1.0,
+    "nl": 0.242,
+    "pl": 0.754,
+    "pt": 0.406,
+    "ru": 0.393,
+    "tr": 0.531,
+    "und": 0.915,
+    "zh": 1.0
+   },
+   "registry_contains_stored": 0.778,
+   "registry_coverage": 0.602,
+   "registry_exact": 0.689,
+   "registry_spurious": 0.089,
+   "registry_tag_precision": 0.899,
+   "registry_threshold": 0.85,
+   "short_text_accuracy": 0.569,
+   "tag_precision": 0.939,
+   "threshold": 0.97,
+   "und_abstained": 0.915,
+   "untuned_accuracy": 0.689
+  },
+  "lingua:common-high": {
+   "accuracy": 0.655,
+   "coverage": 0.63,
+   "footprint": {
+    "load_s": 0.024,
+    "peak_rss_mib": 45.2
+   },
+   "latency_ms_p50": 0.179,
+   "latency_ms_p95": 0.658,
+   "macro_f1": 0.706,
+   "precision_target_met": false,
+   "recall_by_language": {
+    "ar": 0.823,
+    "de": 0.682,
+    "en": 0.141,
+    "es": 0.338,
+    "fr": 0.444,
+    "it": 0.516,
+    "ja": 0.734,
+    "ko": 1.0,
+    "nl": 0.47,
+    "pl": 0.8,
+    "pt": 0.42,
+    "ru": 0.721,
+    "tr": 0.75,
+    "und": 0.927,
+    "zh": 1.0
+   },
+   "registry_contains_stored": 0.978,
+   "registry_coverage": 0.85,
+   "registry_exact": 0.889,
+   "registry_spurious": 0.089,
+   "registry_tag_precision": 0.931,
+   "registry_threshold": 0.35,
+   "short_text_accuracy": 0.658,
+   "tag_precision": 0.96,
+   "threshold": 0.73,
+   "und_abstained": 0.927,
+   "untuned_accuracy": 0.854
+  },
+  "lingua:common-low": {
+   "accuracy": 0.64,
+   "coverage": 0.616,
+   "footprint": {
+    "load_s": 0.034,
+    "peak_rss_mib": 46.2
+   },
+   "latency_ms_p50": 0.136,
+   "latency_ms_p95": 0.393,
+   "macro_f1": 0.696,
+   "precision_target_met": false,
+   "recall_by_language": {
+    "ar": 0.887,
+    "de": 0.576,
+    "en": 0.234,
+    "es": 0.308,
+    "fr": 0.397,
+    "it": 0.438,
+    "ja": 0.734,
+    "ko": 1.0,
+    "nl": 0.455,
+    "pl": 0.785,
+    "pt": 0.522,
+    "ru": 0.59,
+    "tr": 0.703,
+    "und": 0.902,
+    "zh": 1.0
+   },
+   "registry_contains_stored": 0.8,
+   "registry_coverage": 0.685,
+   "registry_exact": 0.756,
+   "registry_spurious": 0.044,
+   "registry_tag_precision": 0.936,
+   "registry_threshold": 0.9,
+   "short_text_accuracy": 0.632,
+   "tag_precision": 0.955,
+   "threshold": 0.98,
+   "und_abstained": 0.902,
+   "untuned_accuracy": 0.772
+  },
+  "py3langid:all": {
+   "accuracy": 0.48,
+   "coverage": 0.434,
+   "footprint": {
+    "load_s": 0.523,
+    "peak_rss_mib": 138.0
+   },
+   "latency_ms_p50": 0.031,
+   "latency_ms_p95": 0.052,
+   "macro_f1": 0.553,
+   "precision_target_met": true,
+   "recall_by_language": {
+    "ar": 0.468,
+    "de": 0.364,
+    "en": 0.156,
+    "es": 0.185,
+    "fr": 0.492,
+    "it": 0.484,
+    "ja": 0.734,
+    "ko": 0.97,
+    "nl": 0.227,
+    "pl": 0.646,
+    "pt": 0.348,
+    "ru": 0.344,
+    "tr": 0.422,
+    "und": 0.988,
+    "zh": 0.234
+   },
+   "registry_contains_stored": 0.978,
+   "registry_coverage": 0.717,
+   "registry_exact": 0.667,
+   "registry_spurious": 0.311,
+   "registry_tag_precision": 0.781,
+   "registry_threshold": 0.1,
+   "short_text_accuracy": 0.444,
+   "tag_precision": 0.97,
+   "threshold": 0.55,
+   "und_abstained": 0.988,
+   "untuned_accuracy": 0.69
+  },
+  "py3langid:common": {
+   "accuracy": 0.716,
+   "coverage": 0.694,
+   "footprint": {
+    "load_s": 0.528,
+    "peak_rss_mib": 137.9
+   },
+   "latency_ms_p50": 0.026,
+   "latency_ms_p95": 0.042,
+   "macro_f1": 0.772,
+   "precision_target_met": true,
+   "recall_by_language": {
+    "ar": 0.903,
+    "de": 0.545,
+    "en": 0.359,
+    "es": 0.585,
+    "fr": 0.683,
+    "it": 0.688,
+    "ja": 0.734,
+    "ko": 0.985,
+    "nl": 0.53,
+    "pl": 0.754,
+    "pt": 0.681,
+    "ru": 0.639,
+    "tr": 0.703,
+    "und": 0.951,
+    "zh": 0.938
+   },
+   "registry_contains_stored": 0.956,
+   "registry_coverage": 0.795,
+   "registry_exact": 0.867,
+   "registry_spurious": 0.089,
+   "registry_tag_precision": 0.941,
+   "registry_threshold": 0.45,
+   "short_text_accuracy": 0.687,
+   "tag_precision": 0.972,
+   "threshold": 0.68,
+   "und_abstained": 0.951,
+   "untuned_accuracy": 0.817
+  }
+ },
+ "host": {
+  "memory": "peak MiB (VmHWM) of a fresh process",
+  "processors": 96
+ },
+ "hosted_embedders": {
+  "text-embedding-3-large": {
+   "hit_at_1": 0.869,
+   "hit_at_5": 0.996,
+   "hit_at_5_above_threshold": 0.98,
+   "mrr": 0.929,
+   "no_gold_candidate_rate_at_threshold": 0.92,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "request_ms_p50": 1123.2,
+   "threshold": 0.2
+  },
+  "text-embedding-3-small": {
+   "hit_at_1": 0.682,
+   "hit_at_5": 0.922,
+   "hit_at_5_above_threshold": 0.906,
+   "mrr": 0.786,
+   "no_gold_candidate_rate_at_threshold": 0.96,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "request_ms_p50": 960.9,
+   "threshold": 0.19
+  }
+ },
+ "local_embedders": {
+  "e5-base-int8": {
+   "footprint": {
+    "load_s": 6.185,
+    "peak_rss_mib": 815.4
+   },
+   "footprint_max_tokens": {
+    "load_s": 16.478,
+    "peak_rss_mib": 1262.5
+   },
+   "hit_at_1": 0.567,
+   "hit_at_5": 0.833,
+   "hit_at_5_above_threshold": 0.829,
+   "mrr": 0.684,
+   "no_gold_candidate_rate_at_threshold": 1.0,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "query_plus_200_items_ms_1_threads": 3556.6,
+   "query_plus_200_items_ms_2_threads": 1849.0,
+   "threshold": 0.75
+  },
+  "e5-small-fp32": {
+   "footprint": {
+    "load_s": 4.723,
+    "peak_rss_mib": 1163.7
+   },
+   "footprint_max_tokens": {
+    "load_s": 9.221,
+    "peak_rss_mib": 1174.4
+   },
+   "hit_at_1": 0.555,
+   "hit_at_5": 0.824,
+   "hit_at_5_above_threshold": 0.82,
+   "mrr": 0.675,
+   "no_gold_candidate_rate_at_threshold": 1.0,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "query_plus_200_items_ms_1_threads": 1439.4,
+   "query_plus_200_items_ms_2_threads": 745.8,
+   "threshold": 0.77
+  },
+  "e5-small-int8": {
+   "footprint": {
+    "load_s": 2.658,
+    "peak_rss_mib": 568.5
+   },
+   "footprint_max_tokens": {
+    "load_s": 5.787,
+    "peak_rss_mib": 789.2
+   },
+   "hit_at_1": 0.551,
+   "hit_at_5": 0.808,
+   "hit_at_5_above_threshold": 0.804,
+   "mrr": 0.671,
+   "no_gold_candidate_rate_at_threshold": 1.0,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "query_plus_200_items_ms_1_threads": 1150.8,
+   "query_plus_200_items_ms_2_threads": 612.6,
+   "threshold": 0.77
+  },
+  "e5-small-int8-qp": {
+   "footprint": {
+    "load_s": 2.513,
+    "peak_rss_mib": 570.8
+   },
+   "footprint_max_tokens": {
+    "load_s": 5.926,
+    "peak_rss_mib": 791.4
+   },
+   "hit_at_1": 0.547,
+   "hit_at_5": 0.829,
+   "hit_at_5_above_threshold": 0.816,
+   "mrr": 0.668,
+   "no_gold_candidate_rate_at_threshold": 1.0,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "query_plus_200_items_ms_1_threads": 1075.2,
+   "query_plus_200_items_ms_2_threads": 559.8,
+   "threshold": 0.76
+  },
+  "minilm-l12-int8": {
+   "footprint": {
+    "load_s": 2.778,
+    "peak_rss_mib": 555.9
+   },
+   "footprint_max_tokens": {
+    "load_s": 8.149,
+    "peak_rss_mib": 778.5
+   },
+   "hit_at_1": 0.506,
+   "hit_at_5": 0.767,
+   "hit_at_5_above_threshold": 0.755,
+   "mrr": 0.633,
+   "no_gold_candidate_rate_at_threshold": 1.0,
+   "queries_with_gold": 245,
+   "queries_without_gold": 25,
+   "query_plus_200_items_ms_1_threads": 1237.4,
+   "query_plus_200_items_ms_2_threads": 665.1,
+   "threshold": 0.19
+  }
+ },
+ "rules": {
+  "registry_min_count": 2,
+  "registry_min_share": 0.1,
+  "tag_precision_target": 0.97,
+  "threshold_keeps_share_of_hit_at_5": 0.98,
+  "top_k": 5
+ },
+ "schema": "shimpz.language-components.report/v1",
+ "spend": {
+  "cap_usd": 0.1,
+  "contention_waits": 0,
+  "failed": 0,
+  "refused": 0,
+  "requests": 624,
+  "reservations_exceeded": 0,
+  "spent_usd": 0.031768,
+  "unknown_settlements": 0,
+  "unreported": 0,
+  "unsupported": 0
+ },
+ "translation": {
+  "collections_by_planned_languages": {
+   "0": 1,
+   "1": 30,
+   "2": 14
+  },
+  "detect_threshold": 0.35,
+  "detector": "lingua:common-high",
+  "english": {
+   "admitted_variants": 345,
+   "helper_calls": 270,
+   "helper_ms_p50": 1552.0,
+   "helper_ms_p95": 2537.0,
+   "hit": 0.204,
+   "no_gold_false_match_rate": 0.0
+  },
+  "lexical_hit": 0.012,
+  "queries_with_gold": 245,
+  "queries_without_gold": 25,
+  "registry": {
+   "admitted_variants": 481,
+   "helper_calls": 264,
+   "helper_ms_p50": 1756.8,
+   "helper_ms_p95": 3073.9,
+   "hit": 0.657,
+   "no_gold_false_match_rate": 0.0
+  }
+ }
+}

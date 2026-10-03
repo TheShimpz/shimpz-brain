@@ -355,13 +355,14 @@ LANGUAGE_COUNTS = (
     "expanded",
     "candidates",
     "rank_eligible",
+    "embedding_calls",
     "ranked_calls",
     "ranked_candidates",
     "service_failures",
 )
 # The counts that mean a mechanism did work (a helper call, a Team read, or a ranking) and those that mean it returned
 # something (candidates), kept apart so work without a recovery stays visible.
-LANGUAGE_WORK = ("helper_calls", "variant_reads", "probes", "ranked_calls")
+LANGUAGE_WORK = ("helper_calls", "variant_reads", "probes", "embedding_calls", "ranked_calls")
 LANGUAGE_RECOVERY = ("candidates", "ranked_candidates")
 
 
