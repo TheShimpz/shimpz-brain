@@ -1,0 +1,811 @@
+{
+ "completions": [],
+ "corpora": [
+  {
+   "digest": "sha256:de5c8d19709297700c1cd40de87ad80b3b422e62a442e472ddafd0823cad42ab",
+   "id": "precision-v2.1",
+   "scenarios": 120
+  }
+ ],
+ "decision": {
+  "grade": "exploratory",
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "reasons": [
+   "no-blind-owner-labels",
+   "labelled-exploratory"
+  ]
+ },
+ "judge_calibration": {
+  "adjudication": "author",
+  "blind": false,
+  "judge_budget": {
+   "cap_usd": 0.35,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.153054,
+   "unknown_settlements": 0
+  },
+  "judge_identity": "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7",
+  "primary": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 29,
+    "rate": 0.90625,
+    "wilson95": [
+     0.7578,
+     0.9676
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 31,
+    "rate": 0.96875,
+    "wilson95": [
+     0.8426,
+     0.9945
+    ]
+   }
+  },
+  "tiebreak": {
+   "admitted": true,
+   "all_criteria": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "asks_for_missing_information": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "failed": 0,
+   "items": 32,
+   "language_matches": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "reply_correct": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   },
+   "unsupported_claim": {
+    "agree": 32,
+    "rate": 1.0,
+    "wilson95": [
+     0.8928,
+     1.0
+    ]
+   }
+  }
+ },
+ "judges": {
+  "final_unsupported_claims": 6,
+  "judged_attempts": 384,
+  "tiebreak_changed_reply_correct": 14,
+  "tiebreaks": 33,
+  "verdict_identities": [
+   "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7"
+  ]
+ },
+ "meta": {
+  "arms": [
+   "SOL",
+   "S"
+  ],
+  "baseline_arm": "S",
+  "budget": {
+   "cap_usd": 8.95,
+   "contention_waits": 0,
+   "failed": 0,
+   "max_output_tokens": 32000,
+   "max_reservation_usd": 0.428885,
+   "refused": 0,
+   "requests": 1097,
+   "reservations_exceeded": 0,
+   "spent_usd": 4.352164,
+   "unknown_settlements": 0,
+   "unreported": 0,
+   "unsupported": 0
+  },
+  "campaign": "eng-sol-precision-2026-10-02",
+  "canary": {
+   "budget": {
+    "cap_usd": 0.6,
+    "contention_waits": 10,
+    "failed": 0,
+    "max_output_tokens": 32000,
+    "max_reservation_usd": 0.367678,
+    "refused": 0,
+    "requests": 12,
+    "reservations_exceeded": 0,
+    "spent_usd": 0.043595,
+    "unknown_settlements": 0,
+    "unreported": 0,
+    "unsupported": 0
+   },
+   "campaign": "canary-sol",
+   "commits": {
+    "brain": "16932cea069e4d8dac773d67650a71de079fb84f",
+    "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+    "umbrella": "b1144a7a6c20a9a95592e081c512ea21d3744c3e"
+   },
+   "model": "gpt-6.1-sol",
+   "provider": "openai",
+   "repetitions": 1,
+   "scenarios": 4,
+   "seed": "canary-sol",
+   "workers": 4
+  },
+  "commits": {
+   "brain": "16932cea069e4d8dac773d67650a71de079fb84f",
+   "team": "86f53acf5bf5ee92a2a002c2b007321198f3a331",
+   "umbrella": "b1144a7a6c20a9a95592e081c512ea21d3744c3e"
+  },
+  "comparisons": [
+   [
+    "S",
+    "SOL"
+   ]
+  ],
+  "held_out_repetitions": 3,
+  "jev_budget": {
+   "cap_usd": 0.0,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.0,
+   "unknown_settlements": 0
+  },
+  "judge_budget": {
+   "cap_usd": 1.0,
+   "contention_waits": 0,
+   "reservations_exceeded": 0,
+   "spent_usd": 0.209899,
+   "unknown_settlements": 0
+  },
+  "label": "exploratory",
+  "max_output_tokens": 32000,
+  "namespaces_budget": null,
+  "reference_repetitions": 3,
+  "sdk_retries": 0,
+  "seconds": 531.7,
+  "seed": "c6d36d3a3db162b5",
+  "stopped_by_cap": false,
+  "stratum": "precision",
+  "tuning_repetitions": 0,
+  "workers": 6
+ },
+ "paired": [
+  {
+   "baseline": "S",
+   "baseline_model": "claude-sonnet-5-5",
+   "baseline_provider": "anthropic",
+   "campaign": "eng-sol-precision-2026-10-02",
+   "candidate": "SOL",
+   "candidate_model": "gpt-6.1-sol",
+   "candidate_provider": "openai",
+   "complete_pairs": 192,
+   "difference": {
+    "clusters": 8,
+    "high": 0.0625,
+    "items": 192,
+    "low": -0.3645833333333333,
+    "mean": -0.09375
+   },
+   "incomplete_pairs": 0,
+   "repetitions": [
+    0,
+    1,
+    2
+   ]
+  }
+ ],
+ "pooled_identical_arms": [],
+ "runs": [
+  {
+   "arm": "S",
+   "arm_signals": {
+    "dispatched_attempts": 192,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 192,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.765625,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 192,
+    "turn-failed": 0
+   },
+   "campaign": "eng-sol-precision-2026-10-02",
+   "clarifications": 22,
+   "conclusive": 192,
+   "cost": {
+    "attempts": 192,
+    "inconclusive_usd": 0,
+    "successes": 186,
+    "superseded": {
+     "attempts": 0,
+     "dispatched": 0,
+     "usd": 0,
+     "usd_known": true
+    },
+    "unknown_usage_attempts": 0,
+    "usd": 2.981837,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.01553,
+    "usd_per_successful_task": 0.016031
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 5.819881150498986,
+    "active_p95": 12.77948796749115,
+    "wall_p95": 12.786284500733018
+   },
+   "mean_rounds": 1.8958333333333333,
+   "model": "claude-sonnet-5-5",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 0,
+    "passed_completed": 192,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.9270833333333334,
+    "mean": 0.96875
+   },
+   "pass^3": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.890625,
+    "mean": 0.953125
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "anthropic",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.9166666666666666
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "refuse": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 0.8333333333333334
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "de": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.5,
+      "mean": 0.7916666666666666
+     },
+     "en": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "es": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "fr": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "ja": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "pt": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "zh": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.875,
+      "mean": 0.9583333333333334
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 0.8333333333333334,
+      "mean": 0.9166666666666666
+     },
+     "2": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "3": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 168,
+      "low": 0.9166666666666666,
+      "mean": 0.9642857142857143
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 60,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 63,
+      "low": 0.9047619047619048,
+      "mean": 0.9682539682539683
+     },
+     "needed": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 69,
+      "low": 0.8260869565217391,
+      "mean": 0.9420289855072463
+     }
+    }
+   },
+   "success": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 192,
+    "low": 0.9270833333333334,
+    "mean": 0.96875
+   },
+   "successes": 186,
+   "usage": {
+    "brain_operations": 556,
+    "cache_read_tokens": 4111609,
+    "cache_write_tokens": 571510,
+    "failed_calls": 0,
+    "fresh_input_tokens": 1500,
+    "input_tokens": 4684619,
+    "model_calls": 558,
+    "output_tokens": 72774,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  },
+  {
+   "arm": "SOL",
+   "arm_signals": {
+    "dispatched_attempts": 192,
+    "escalated": 0,
+    "escalation_blocked": 0,
+    "escalation_rate": 0.0,
+    "escalation_signals": {},
+    "exposure_attempts": 192,
+    "jev_calls": 0,
+    "jev_failures": 0,
+    "jev_usd": 0.0,
+    "jev_usd_known": true,
+    "mean_exposed_assistants": 6.765625,
+    "refusals": 0,
+    "selection_fallback_rate": 0.0,
+    "selection_fallbacks": 0,
+    "working_set_recall": 1.0
+   },
+   "attempts": {
+    "brain-error": 0,
+    "budget-stopped": 0,
+    "completed": 192,
+    "turn-failed": 0
+   },
+   "campaign": "eng-sol-precision-2026-10-02",
+   "clarifications": 24,
+   "conclusive": 192,
+   "cost": {
+    "attempts": 192,
+    "inconclusive_usd": 0,
+    "successes": 168,
+    "superseded": {
+     "attempts": 0,
+     "dispatched": 0,
+     "usd": 0,
+     "usd_known": true
+    },
+    "unknown_usage_attempts": 0,
+    "usd": 1.370328,
+    "usd_known": true,
+    "usd_per_attempted_task": 0.007137,
+    "usd_per_successful_task": 0.008157
+   },
+   "effort": [
+    "low"
+   ],
+   "inconclusive": 0,
+   "latency_seconds": {
+    "active_p50": 8.507103953510523,
+    "active_p95": 18.140004843473434,
+    "wall_p95": 18.146672511473298
+   },
+   "mean_rounds": 1.8072916666666667,
+   "model": "gpt-6.1-sol",
+   "oracle": {
+    "duplicates": 0,
+    "forbidden": 0,
+    "missing": 24,
+    "passed_completed": 168,
+    "wrong": 0,
+    "wrong_scope": 0
+   },
+   "pass^1": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.625,
+    "mean": 0.875
+   },
+   "pass^3": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 64,
+    "low": 0.625,
+    "mean": 0.875
+   },
+   "pass^5": {
+    "clusters": 0,
+    "high": null,
+    "items": 0,
+    "low": null,
+    "mean": null
+   },
+   "provider": "openai",
+   "strata": {
+    "behavior": {
+     "act": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "clarify": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "harmless-default": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "refuse": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     },
+     "safe-lookup": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 0.0,
+      "mean": 0.5
+     }
+    },
+    "language": {
+     "ar": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "de": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "en": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "es": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "fr": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "ja": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "pt": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     },
+     "zh": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 24,
+      "low": 0.625,
+      "mean": 0.875
+     }
+    },
+    "min_rounds": {
+     "1": {
+      "clusters": 3,
+      "high": 1.0,
+      "items": 72,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "2": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 0.0,
+      "mean": 0.5
+     },
+     "3": {
+      "clusters": 2,
+      "high": 1.0,
+      "items": 48,
+      "low": 1.0,
+      "mean": 1.0
+     },
+     "4": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "multi_assistant": {
+     "False": {
+      "clusters": 7,
+      "high": 1.0,
+      "items": 168,
+      "low": 0.5714285714285714,
+      "mean": 0.8571428571428571
+     },
+     "True": {
+      "clusters": 1,
+      "high": null,
+      "items": 24,
+      "low": null,
+      "mean": 1.0
+     }
+    },
+    "scope": {
+     "16": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 60,
+      "low": 0.6666666666666666,
+      "mean": 0.9
+     },
+     "4": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 63,
+      "low": 0.5714285714285714,
+      "mean": 0.8571428571428571
+     },
+     "needed": {
+      "clusters": 8,
+      "high": 1.0,
+      "items": 69,
+      "low": 0.6086956521739131,
+      "mean": 0.8695652173913043
+     }
+    }
+   },
+   "success": {
+    "clusters": 8,
+    "high": 1.0,
+    "items": 192,
+    "low": 0.625,
+    "mean": 0.875
+   },
+   "successes": 168,
+   "usage": {
+    "brain_operations": 539,
+    "cache_read_tokens": 2157588,
+    "cache_write_tokens": 284493,
+    "failed_calls": 0,
+    "fresh_input_tokens": 1617,
+    "input_tokens": 2443698,
+    "model_calls": 539,
+    "output_tokens": 36659,
+    "unknown_usage_attempts": 0,
+    "unreported_calls": 0
+   }
+  }
+ ],
+ "schema": "shimpz.precision-eval.report/v1",
+ "split": {
+  "digests": [
+   "sha256:dfffbd92f62c9ea5715b51b84c7cb1e02f6b1a2abb8db8fb4c2c8f49960a84df",
+   "sha256:2aa96f56ce9d9418710f0e1d5f287b4922eecb5c69a45e7edd204d31e693ac1f"
+  ],
+  "part": "held-out",
+  "templates": [
+   "cf-block-ip",
+   "cf-bucket-clarify",
+   "cf-devmode-purge",
+   "cf-purge-url",
+   "cf-ssl-strict",
+   "dns-bulk",
+   "dns-clarify",
+   "dns-update",
+   "event-create",
+   "message-direct",
+   "out-of-scope",
+   "status-migrate",
+   "task-complete"
+  ]
+ }
+}
