@@ -513,9 +513,13 @@ def compiler(
 def recompiler(
     model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
 ) -> Callable[[str], Compiled]:
-    """The compiler on a copy of the Team's model that bounds its billed output and never retries a call by itself."""
+    """The compiler on a copy of the Team's single-attempt model that bounds its billed output.
+
+    ``model`` builds a client that never retries a call by itself: a copy bounds the output, but it cannot change the
+    retries of an SDK client already built.
+    """
     return compiler(
-        lambda: model().model_copy(update={"max_tokens": MAX_RECOMPILE_OUTPUT_TOKENS, "max_retries": 0}),
+        lambda: model().model_copy(update={"max_tokens": MAX_RECOMPILE_OUTPUT_TOKENS}),
         provider,
         structured_output,
     )

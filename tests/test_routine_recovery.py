@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import agent_runtime
+import httpx
 import provider_client
 import routine_recovery
 from langchain_core.messages import AIMessage
@@ -30,8 +31,8 @@ class Decisions:
     def __call__(self, _config):
         raise AssertionError("recovery never runs an ordinary turn")
 
-    def decision(self, config):
-        self.decisions.append(config)
+    def single_attempt(self, config, *, decision=False):
+        self.decisions.append((config, decision))
         return self.model
 
 
@@ -48,7 +49,7 @@ class DecideTests(unittest.TestCase):
         factory = Decisions(json.dumps({"decision": "ask"}))
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=factory)
         self.assertEqual(runtime.routine_recovery(provider(), REQUEST), "ask")
-        self.assertEqual(factory.decisions, [provider()])
+        self.assertEqual(factory.decisions, [(provider(), True)])
         sent = "\n".join(str(message.content) for message in StructuredFakeModel.seen_messages[0])
         self.assertIn('"team_proof":"not_occurred"', sent)
         self.assertIn("untrusted", sent)
@@ -73,15 +74,27 @@ class DecideTests(unittest.TestCase):
         model = StructuredFakeModel(responses=[AIMessage(content=json.dumps({"decision": "pause"}))])
         self.assertEqual(routine_recovery.decide(lambda: model, "anthropic", english), "pause")
 
-    def test_both_providers_cap_the_output_and_retry_nothing(self):
+    def test_both_providers_send_one_capped_decision_request_and_retry_nothing(self):
         catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
         for entry in catalog["providers"]:
             config = agent_runtime.ProviderConfig(entry["id"], entry["models"][0]["id"], "secret-test-key")
-            capped = routine_recovery.capped(provider_client.provider_model(config, decision=True))
-            payload = capped._get_request_payload([("user", "hi")])
+            sent = []
+
+            def fail(request, sent=sent):
+                sent.append(json.loads(request.content))
+                return httpx.Response(500, json={"error": {"type": "api_error", "message": "transient"}})
+
+            pool = httpx.Client(transport=httpx.MockTransport(fail))
+            # The production factory over a pool whose provider always answers a retryable failure.
+            with mock.patch.object(provider_client.provider_cancel, "client", return_value=pool):
+                runtime = agent_runtime.AgentRuntime(
+                    InMemorySaver(), model_factory=provider_client.ProviderModelFactory()
+                )
+            key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
             with self.subTest(provider=entry["id"]):
-                key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
-                self.assertEqual((payload[key], capped.max_retries), (routine_recovery.MAX_OUTPUT_TOKENS, 0))
+                with self.assertRaises(agent_runtime.ProviderRequestError):
+                    runtime.routine_recovery(config, REQUEST)
+                self.assertEqual([body[key] for body in sent], [routine_recovery.MAX_OUTPUT_TOKENS])
 
 
 def _body(**changes) -> dict[str, object]:

@@ -68,8 +68,11 @@ def _prompt(request: RecoveryRequest) -> list[object]:
 
 
 def capped(model: BaseChatModel) -> BaseChatModel:
-    """The same provider client with its output bounded and no implicit provider retry."""
-    return model.model_copy(update={"max_tokens": MAX_OUTPUT_TOKENS, "max_retries": 0})
+    """The same single-attempt provider client with its output bounded.
+
+    ``model`` is built never to retry a call by itself; a copy cannot change the retries of an SDK client already built.
+    """
+    return model.model_copy(update={"max_tokens": MAX_OUTPUT_TOKENS})
 
 
 def decide(model: Callable[[], BaseChatModel], provider: str, request: RecoveryRequest) -> str:

@@ -811,6 +811,10 @@ class AgentRuntime:
         decision_factory = getattr(self._model_factory, "decision", None)
         return decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
 
+    def _single_attempt_model(self, provider: ProviderConfig, *, decision: bool = False) -> BaseChatModel:
+        """A model built for exactly one provider attempt per call, its SDK client making no hidden retry."""
+        return self._model_factory.single_attempt(provider, decision=decision)
+
     def action_purpose(self, provider: ProviderConfig, pending: action_purpose.PendingAction) -> str | None:
         """Write why a pending Action pauses for a person, from its exact interrupt and the turn's own message."""
         try:
@@ -823,13 +827,17 @@ class AgentRuntime:
 
     def routine_recovery(self, provider: ProviderConfig, request: routine_recovery.RecoveryRequest) -> str:
         """The one decision of a held Routine run's automatic recovery: retry, ask, or pause (ADR-0092)."""
-        return routine_recovery.decide(functools.partial(self._decision_model, provider), provider.provider, request)
+        return routine_recovery.decide(
+            functools.partial(self._single_attempt_model, provider, decision=True), provider.provider, request
+        )
 
     def routine_compile(
         self, provider: ProviderConfig, message: str, assistants: tuple[AssistantDefinition, ...], locale: str | None
     ) -> object:
         """Recompile a Routine from its Team-held creation message, with no turn, tools, or history (ADR-0092)."""
-        ask = team_routine.recompiler(lambda: self._model_factory(provider), provider.provider, structured_output)
+        ask = team_routine.recompiler(
+            functools.partial(self._single_attempt_model, provider), provider.provider, structured_output
+        )
         return team_routine.recompile(message, assistants, locale, ask)
 
     def capability_plan(

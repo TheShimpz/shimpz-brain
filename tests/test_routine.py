@@ -11,6 +11,7 @@ from unittest import mock
 
 import agent_runtime
 import clarification
+import httpx
 import memory
 import provider_client
 import runtime_api
@@ -639,12 +640,15 @@ class RecompileTests(unittest.TestCase):
     def test_the_runtime_compiles_once_with_no_provider_retry(self):
         seen = []
 
-        class Model:
-            def model_copy(self, update):
-                seen.append(update)
-                return "capped"
+        class Factory:
+            def __call__(self, _config):
+                raise AssertionError("a recompile never builds a retrying model")
 
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: Model())
+            def single_attempt(self, config, *, decision=False):
+                seen.append((config, decision))
+                return mock.Mock(model_copy=lambda update: seen.append(update))
+
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=Factory())
 
         def compiler(model, *_args):
             return lambda _prompt: (model(), _compiled())[1]
@@ -652,25 +656,31 @@ class RecompileTests(unittest.TestCase):
         with mock.patch.object(routine, "compiler", side_effect=compiler):
             outcome = runtime.routine_compile(context().provider, MESSAGE, context().assistants, None)
         self.assertEqual(
-            (outcome["routine"], seen), (WIRE, [{"max_tokens": routine.MAX_RECOMPILE_OUTPUT_TOKENS, "max_retries": 0}])
+            (outcome["routine"], seen),
+            (WIRE, [(context().provider, False), {"max_tokens": routine.MAX_RECOMPILE_OUTPUT_TOKENS}]),
         )
 
-    def test_both_providers_bound_the_recompile_output_and_retry_nothing(self):
+    def test_both_providers_send_one_bounded_recompile_request_and_retry_nothing(self):
         catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
         for entry in catalog["providers"]:
             config = agent_runtime.ProviderConfig(entry["id"], entry["models"][0]["id"], "secret-test-key")
-            models = []
+            sent = []
 
-            def capture(model, *_args, models=models):
-                models.append(model())
-                return lambda _prompt: _compiled()
+            def fail(request, sent=sent):
+                sent.append(json.loads(request.content))
+                return httpx.Response(500, json={"error": {"type": "api_error", "message": "transient"}})
 
-            with mock.patch.object(routine, "compiler", side_effect=capture):
-                routine.recompiler(lambda config=config: provider_client.provider_model(config), entry["id"], None)
-            payload = models[0]._get_request_payload([("user", "hi")])
+            pool = httpx.Client(transport=httpx.MockTransport(fail))
+            # The production factory over a pool whose provider always answers a retryable failure.
+            with mock.patch.object(provider_client.provider_cancel, "client", return_value=pool):
+                runtime = agent_runtime.AgentRuntime(
+                    InMemorySaver(), model_factory=provider_client.ProviderModelFactory()
+                )
+            outcome = runtime.routine_compile(config, MESSAGE, context().assistants, None)
+            key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
             with self.subTest(provider=entry["id"]):
-                key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
-                self.assertEqual((payload[key], models[0].max_retries), (routine.MAX_RECOMPILE_OUTPUT_TOKENS, 0))
+                self.assertEqual(outcome, "unavailable")
+                self.assertEqual([body[key] for body in sent], [routine.MAX_RECOMPILE_OUTPUT_TOKENS])
 
     def test_the_endpoint_is_authenticated_closed_and_metered(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}

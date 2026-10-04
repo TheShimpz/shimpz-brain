@@ -115,9 +115,14 @@ class ProviderModelFactory:
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
         return provider_model(config, http_client=self._http_client)
 
-    def single_attempt(self, config: ProviderConfig) -> BaseChatModel:
-        """A chat model without hidden SDK retries, for a turn whose retries reserve attachment budget (ADR-0093)."""
-        return provider_model(config, http_client=self._http_client, retries=0)
+    def single_attempt(self, config: ProviderConfig, *, decision: bool = False) -> BaseChatModel:
+        """A chat model whose SDK client never retries a call by itself.
+
+        An attachment turn retries explicitly, reserving its budget per attempt (ADR-0093); a Routine compile or
+        recovery decision is exactly one billed call (ADR-0092). The retry count is fixed when the SDK client is built,
+        so a copy of a retrying model cannot become a single-attempt one.
+        """
+        return provider_model(config, http_client=self._http_client, decision=decision, retries=0)
 
     def decision(self, config: ProviderConfig) -> BaseChatModel:
         """Build a short model with at most one retry for one structured routing decision."""
