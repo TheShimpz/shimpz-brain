@@ -10,14 +10,20 @@
    },
    "helper_calls": 0,
    "helper_usd": 0.0,
-   "judged_oracle_passing": 43,
-   "judged_oracle_passing_reply_failures": 6,
+   "judged_oracle_passing": 178,
+   "judged_oracle_passing_reply_failures": 30,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 0.7096774193548387,
-    "items": 70,
-    "low": 0.25316455696202533,
-    "mean": 0.4714285714285714
+    "high": 0.7065868263473054,
+    "items": 165,
+    "low": 0.25274725274725274,
+    "mean": 0.4727272727272727
+   },
+   "judged_success_bounds": {
+    "inconclusive": 0,
+    "optimistic": 0.514,
+    "pessimistic": 0.514,
+    "successes": 148
    },
    "language": null,
    "missing": 355,
@@ -75,14 +81,20 @@
    },
    "helper_calls": 239,
    "helper_usd": 0.023287,
-   "judged_oracle_passing": 40,
+   "judged_oracle_passing": 96,
    "judged_oracle_passing_reply_failures": 4,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 0.696969696969697,
-    "items": 70,
-    "low": 0.3076923076923077,
-    "mean": 0.5
+    "high": 0.756578947368421,
+    "items": 165,
+    "low": 0.3125,
+    "mean": 0.5333333333333333
+   },
+   "judged_success_bounds": {
+    "inconclusive": 93,
+    "optimistic": 0.642,
+    "pessimistic": 0.319,
+    "successes": 92
    },
    "language": {
     "candidates": 117,
@@ -158,14 +170,20 @@
    },
    "helper_calls": 0,
    "helper_usd": 0.0,
-   "judged_oracle_passing": 42,
+   "judged_oracle_passing": 106,
    "judged_oracle_passing_reply_failures": 3,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 0.7868852459016393,
-    "items": 70,
-    "low": 0.30303030303030304,
-    "mean": 0.5428571428571428
+    "high": 0.8048780487804879,
+    "items": 165,
+    "low": 0.3563218390804598,
+    "mean": 0.5757575757575758
+   },
+   "judged_success_bounds": {
+    "inconclusive": 83,
+    "optimistic": 0.646,
+    "pessimistic": 0.358,
+    "successes": 103
    },
    "language": {
     "candidates": 0,
@@ -241,14 +259,20 @@
    },
    "helper_calls": 188,
    "helper_usd": 0.0193,
-   "judged_oracle_passing": 48,
+   "judged_oracle_passing": 110,
    "judged_oracle_passing_reply_failures": 2,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 0.84375,
-    "items": 70,
-    "low": 0.42028985507246375,
-    "mean": 0.6285714285714286
+    "high": 0.8333333333333334,
+    "items": 165,
+    "low": 0.38235294117647056,
+    "mean": 0.6
+   },
+   "judged_success_bounds": {
+    "inconclusive": 89,
+    "optimistic": 0.684,
+    "pessimistic": 0.375,
+    "successes": 108
    },
    "language": {
     "candidates": 329,
@@ -324,14 +348,20 @@
    },
    "helper_calls": 203,
    "helper_usd": 0.020605,
-   "judged_oracle_passing": 41,
-   "judged_oracle_passing_reply_failures": 1,
+   "judged_oracle_passing": 195,
+   "judged_oracle_passing_reply_failures": 10,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 0.8333333333333334,
-    "items": 70,
-    "low": 0.2987012987012987,
-    "mean": 0.5571428571428572
+    "high": 0.8243243243243243,
+    "items": 165,
+    "low": 0.38164251207729466,
+    "mean": 0.6
+   },
+   "judged_success_bounds": {
+    "inconclusive": 0,
+    "optimistic": 0.642,
+    "pessimistic": 0.642,
+    "successes": 185
    },
    "language": {
     "candidates": 365,
@@ -407,14 +437,20 @@
    },
    "helper_calls": 0,
    "helper_usd": 0.0,
-   "judged_oracle_passing": 62,
-   "judged_oracle_passing_reply_failures": 1,
+   "judged_oracle_passing": 255,
+   "judged_oracle_passing_reply_failures": 9,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 1.0,
-    "items": 70,
-    "low": 0.6410256410256411,
-    "mean": 0.8285714285714286
+    "high": 0.9696969696969697,
+    "items": 165,
+    "low": 0.7248322147651006,
+    "mean": 0.8666666666666667
+   },
+   "judged_success_bounds": {
+    "inconclusive": 0,
+    "optimistic": 0.854,
+    "pessimistic": 0.854,
+    "successes": 246
    },
    "language": null,
    "missing": 62,
@@ -470,14 +506,20 @@
    },
    "helper_calls": 172,
    "helper_usd": 0.011255,
-   "judged_oracle_passing": 53,
-   "judged_oracle_passing_reply_failures": 2,
+   "judged_oracle_passing": 225,
+   "judged_oracle_passing_reply_failures": 8,
    "judged_subset_success": {
     "clusters": 12,
-    "high": 0.875,
-    "items": 70,
-    "low": 0.4647887323943662,
-    "mean": 0.6714285714285714
+    "high": 0.8709677419354839,
+    "items": 165,
+    "low": 0.5080213903743316,
+    "mean": 0.696969696969697
+   },
+   "judged_success_bounds": {
+    "inconclusive": 2,
+    "optimistic": 0.76,
+    "pessimistic": 0.753,
+    "successes": 217
    },
    "language": {
     "candidates": 0,
@@ -545,108 +587,217 @@
   }
  },
  "attempts": 2016,
- "costs_are": "inference only (Brain plus helper and embedding calls); per oracle pass, not per judged success",
- "judged_attempts": 473,
- "judged_subset_tasks": 70,
+ "costs_are": "inference only (Brain plus helper and embedding calls)",
+ "judged_attempts": 1620,
+ "judged_subset_tasks": 165,
  "judging": {
-  "fully_judged_tasks": 64,
-  "judged_attempts": 473,
-  "status": "partial: the OpenAI judge account ran out of credits (429 insufficient_quota)",
-  "subset_is": "outcome-selected and descriptive (post hoc), not an unbiased judged sample",
-  "subset_tasks_all_arms_conclusive": 70,
-  "subset_tasks_where_every_arm_failed_the_oracle": 6,
-  "unjudged_completed_attempts": 1542
+  "judged_attempts": 1620,
+  "nv_note": "NV comparisons use 286 pairs; 2 NV attempts unjudged",
+  "order": "pre-registered priority: N and NLW, then NR and NV, then NE, NH, NLC",
+  "primary": "NLW - N judged success over complete pairs (all 288 complete)",
+  "status": "second pass after the owner added credit; the program judge cap (US$1.5) ended it before every attempt was judged",
+  "tasks_every_arm_conclusive": 165,
+  "tasks_fully_judged": 144,
+  "unjudged_by_arm": {
+   "NE": 131,
+   "NH": 131,
+   "NLC": 131,
+   "NV": 2
+  },
+  "unjudged_completed_attempts": 395
  },
  "paired_judged_subset": [
   {
    "baseline": "N",
    "candidate": "NLW",
    "clusters": 12,
-   "high": 0.19736842105263158,
-   "items": 70,
-   "low": 0.0,
-   "mean": 0.08571428571428572
+   "high": 0.21818181818181817,
+   "items": 165,
+   "low": 0.05,
+   "mean": 0.12727272727272726
   },
   {
    "baseline": "NE",
    "candidate": "NLW",
    "clusters": 12,
-   "high": 0.20967741935483872,
-   "items": 70,
-   "low": -0.09836065573770492,
-   "mean": 0.05714285714285714
+   "high": 0.17482517482517482,
+   "items": 165,
+   "low": -0.054878048780487805,
+   "mean": 0.06666666666666667
   },
   {
    "baseline": "NLW",
    "candidate": "NLC",
    "clusters": 12,
-   "high": 0.1411764705882353,
-   "items": 70,
-   "low": -0.015151515151515152,
-   "mean": 0.07142857142857142
+   "high": 0.040697674418604654,
+   "items": 165,
+   "low": -0.03409090909090909,
+   "mean": 0.0
   },
   {
    "baseline": "N",
    "candidate": "NH",
    "clusters": 12,
-   "high": 0.18309859154929578,
-   "items": 70,
-   "low": -0.05555555555555555,
-   "mean": 0.07142857142857142
+   "high": 0.17261904761904762,
+   "items": 165,
+   "low": 0.038461538461538464,
+   "mean": 0.10303030303030303
   },
   {
    "baseline": "NH",
    "candidate": "NLW",
    "clusters": 12,
-   "high": 0.15625,
-   "items": 70,
-   "low": -0.08974358974358974,
-   "mean": 0.014285714285714285
+   "high": 0.10493827160493827,
+   "items": 165,
+   "low": -0.04046242774566474,
+   "mean": 0.024242424242424242
   },
   {
    "baseline": "N",
    "candidate": "NV",
    "clusters": 12,
-   "high": 0.38181818181818183,
-   "items": 70,
-   "low": 0.043478260869565216,
-   "mean": 0.2
+   "high": 0.37777777777777777,
+   "items": 165,
+   "low": 0.08484848484848485,
+   "mean": 0.22424242424242424
   },
   {
    "baseline": "N",
    "candidate": "NR",
    "clusters": 12,
-   "high": 0.582089552238806,
-   "items": 70,
-   "low": 0.15714285714285714,
-   "mean": 0.35714285714285715
+   "high": 0.6368715083798883,
+   "items": 165,
+   "low": 0.16233766233766234,
+   "mean": 0.3939393939393939
   },
   {
    "baseline": "N",
    "candidate": "NE",
    "clusters": 12,
-   "high": 0.16417910447761194,
-   "items": 70,
-   "low": -0.08450704225352113,
-   "mean": 0.02857142857142857
+   "high": 0.19883040935672514,
+   "items": 165,
+   "low": -0.03225806451612903,
+   "mean": 0.06060606060606061
   },
   {
    "baseline": "NR",
    "candidate": "NV",
    "clusters": 12,
-   "high": 0.0,
-   "items": 70,
-   "low": -0.32857142857142857,
-   "mean": -0.15714285714285714
+   "high": -0.006329113924050633,
+   "items": 165,
+   "low": -0.34831460674157305,
+   "mean": -0.1696969696969697
   },
   {
    "baseline": "NR",
    "candidate": "NLW",
    "clusters": 12,
-   "high": -0.07692307692307693,
-   "items": 70,
-   "low": -0.5138888888888888,
-   "mean": -0.2714285714285714
+   "high": -0.05844155844155844,
+   "items": 165,
+   "low": -0.48677248677248675,
+   "mean": -0.26666666666666666
+  }
+ ],
+ "paired_judged_success": [
+  {
+   "baseline": "N",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.2361111111111111,
+   "incomplete_pairs": 0,
+   "items": 288,
+   "low": 0.04513888888888889,
+   "mean": 0.1284722222222222
+  },
+  {
+   "baseline": "NE",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.24870466321243523,
+   "incomplete_pairs": 93,
+   "items": 195,
+   "low": -0.005235602094240838,
+   "mean": 0.1282051282051282
+  },
+  {
+   "baseline": "NLW",
+   "candidate": "NLC",
+   "clusters": 12,
+   "high": 0.0,
+   "incomplete_pairs": 89,
+   "items": 199,
+   "low": -0.07106598984771574,
+   "mean": -0.035175879396984924
+  },
+  {
+   "baseline": "N",
+   "candidate": "NH",
+   "clusters": 12,
+   "high": 0.10572687224669604,
+   "incomplete_pairs": 83,
+   "items": 205,
+   "low": -0.0048543689320388345,
+   "mean": 0.04878048780487805
+  },
+  {
+   "baseline": "NH",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": 0.23076923076923078,
+   "incomplete_pairs": 83,
+   "items": 205,
+   "low": 0.009389671361502348,
+   "mean": 0.1024390243902439
+  },
+  {
+   "baseline": "N",
+   "candidate": "NV",
+   "clusters": 12,
+   "high": 0.4169611307420495,
+   "incomplete_pairs": 2,
+   "items": 286,
+   "low": 0.0912280701754386,
+   "mean": 0.24125874125874125
+  },
+  {
+   "baseline": "N",
+   "candidate": "NR",
+   "clusters": 12,
+   "high": 0.5625,
+   "incomplete_pairs": 0,
+   "items": 288,
+   "low": 0.14583333333333334,
+   "mean": 0.3402777777777778
+  },
+  {
+   "baseline": "N",
+   "candidate": "NE",
+   "clusters": 12,
+   "high": 0.14358974358974358,
+   "incomplete_pairs": 93,
+   "items": 195,
+   "low": -0.09644670050761421,
+   "mean": 0.010256410256410256
+  },
+  {
+   "baseline": "NR",
+   "candidate": "NV",
+   "clusters": 12,
+   "high": 0.01048951048951049,
+   "incomplete_pairs": 2,
+   "items": 286,
+   "low": -0.24305555555555555,
+   "mean": -0.0979020979020979
+  },
+  {
+   "baseline": "NR",
+   "candidate": "NLW",
+   "clusters": 12,
+   "high": -0.052083333333333336,
+   "incomplete_pairs": 0,
+   "items": 288,
+   "low": -0.3958333333333333,
+   "mean": -0.21180555555555555
   }
  ],
  "paired_oracle": [
@@ -752,5 +903,6 @@
   ]
  ],
  "schema": "shimpz.language-retrieval.analysis/v1",
+ "subset_note": "judged_subset_* fields are the earlier outcome-selected descriptive subset, now on 165 tasks; superseded by paired_judged_success",
  "tasks": 288
 }
