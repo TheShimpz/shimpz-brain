@@ -112,6 +112,16 @@ def build(records: Iterable[Mapping[str, object]], seed: str) -> tuple[list[dict
     return packets, keys, labels
 
 
+def generate(transcript: Path, seed: str, out: Path) -> int:
+    """Write the packets, key, and labels of ``transcript`` owner-only into ``out``; the number of packets."""
+    records = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line]
+    packets, keys, labels = build(records, seed)
+    out.mkdir(mode=0o700, exist_ok=True)
+    for name, body in (("packets.json", packets), ("key.json", keys), ("labels.json", labels)):
+        private.write_private(out / name, json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True))
+    return len(packets)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--transcript", type=Path, required=True)
@@ -119,15 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        records = [json.loads(line) for line in args.transcript.read_text(encoding="utf-8").splitlines() if line]
-        packets, keys, labels = build(records, args.seed)
-        args.out.mkdir(mode=0o700, exist_ok=True)
-        for name, body in (("packets.json", packets), ("key.json", keys), ("labels.json", labels)):
-            private.write_private(args.out / name, json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True))
+        count = generate(args.transcript, args.seed, args.out)
     except OSError, ValueError, KeyError, TypeError:
         print("packet generation failed", file=sys.stderr)
         return 2
-    print(json.dumps({"packets": len(packets), "templates": len(TEMPLATES)}))
+    print(json.dumps({"packets": count, "templates": len(TEMPLATES)}))
     return 0
 
 

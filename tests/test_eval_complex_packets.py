@@ -76,16 +76,26 @@ class PacketTests(unittest.TestCase):
             transcript = Path(directory, "t.jsonl")
             transcript.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
             out = Path(directory, "packets")
-            with redirect_stdout(io.StringIO()) as printed:
-                self.assertEqual(packets.main(["--transcript", str(transcript), "--seed", "s", "--out", str(out)]), 0)
-            self.assertEqual(json.loads(printed.getvalue())["packets"], 2)
+            # Generation is called directly on valid input, so a failure keeps its traceback.
+            self.assertEqual(packets.generate(transcript, "s", out), 2)
             for name in ("packets.json", "key.json", "labels.json"):
                 self.assertEqual(Path(out, name).stat().st_mode & 0o077, 0)
+            argv = ["--transcript", str(transcript), "--seed", "s", "--out", str(out)]
+            with (
+                mock.patch.object(packets, "generate", return_value=2) as generate,
+                redirect_stdout(io.StringIO()) as printed,
+            ):
+                self.assertEqual(packets.main(argv), 0)
+            generate.assert_called_once_with(transcript, "s", out)
+            self.assertEqual(json.loads(printed.getvalue()), {"packets": 2, "templates": len(TEMPLATES)})
             transcript.write_text("{not json\n", encoding="utf-8")
             with redirect_stderr(io.StringIO()):
-                self.assertEqual(packets.main(["--transcript", str(transcript), "--seed", "s", "--out", str(out)]), 2)
-            argv = ["packets", "--transcript", str(transcript), "--seed", "s", "--out", str(out)]
-            with mock.patch.object(sys, "argv", argv), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.assertEqual(packets.main(argv), 2)
+            with (
+                mock.patch.object(sys, "argv", ["packets", *argv]),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
                 runpy.run_module("eval.complex.packets", run_name="__main__")
 
 
