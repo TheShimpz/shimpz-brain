@@ -731,7 +731,7 @@ class AgentRuntime:
         return bridge
 
     def _attachment_charge(self, context: TurnContext) -> int:
-        """Count the attachments once per logical turn with the provider, bounded, and admit their token charge."""
+        """Charge the attachments once per logical turn, provider-counting readable ones, and admit the charge."""
         if not context.attachments:
             return 0
         counter = turn_attachments.provider_counter(self._model_factory(context.provider), context.provider.provider)

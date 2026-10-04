@@ -235,6 +235,7 @@ def charges(
 ) -> tuple[int, ...]:
     """Each attachment's token charge, counted by the provider within one overall deadline or estimated otherwise.
 
+    An opaque file carries only its bounded metadata and a fixed marker, so its sound estimate stands without a count.
     Counting runs on a worker inside a scope nested in the turn's (ADR-0079): Stop or a Team disconnect wakes its
     provider socket and ends the turn, and at the deadline the turn stops waiting, estimates, and on leaving cancels
     the scope, so a slow count's I/O is terminated and its worker has finished before this returns.
@@ -248,7 +249,7 @@ def charges(
         for attachment in attachments:
             remaining = deadline - time.monotonic()
             value = None
-            if count is not None and remaining > 0:
+            if count is not None and remaining > 0 and attachment.content["type"] != "opaque":
                 work = functools.partial(count, blocks(attachment), remaining)
                 future = worker.submit(contextvars.copy_context().run, scope.run, work)
                 try:

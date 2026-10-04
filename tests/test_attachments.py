@@ -487,6 +487,34 @@ class ChargeTests(unittest.TestCase):
         with self.assertRaises(turn_attachments.AttachmentContractError):
             turn_attachments.charges((image,), None)
 
+    def test_opaque_files_are_estimated_without_any_provider_count(self) -> None:
+        # The largest metadata the contract admits: every quote in the name is escaped twice in the estimate.
+        widest = []
+        for index in range(turn_attachments.MAX_ATTACHMENTS):
+            item = _attachment("opaque", f"{index:032x}")
+            item.update(name='"' * 255, media_type="application/" + "x" * 115, size=25 * 1024 * 1024)
+            widest.append(item)
+        provider = _Provider("openai")
+        result = provider.runtime(InMemorySaver()).start(
+            _context("openai", "gpt-6.1-sol", *widest), '{"files":[],"message":"Store them"}'
+        )
+        self.assertEqual(result.reply, "Read it.")
+        self.assertEqual(provider.counts(), [])
+        self.assertEqual(len(provider.turns()), 1)
+        admitted = turn_attachments.admit(widest)
+        charged = turn_attachments.charges(admitted, lambda _blocks, _timeout: self.fail("an opaque file was counted"))
+        self.assertEqual(charged, tuple(turn_attachments.estimated_charge(item) for item in admitted))
+        self.assertEqual(turn_attachments.admit_charges(charged), sum(charged))
+        turn_attachments.admit_call(sum(charged), 3)
+
+        counted: list[list[dict[str, object]]] = []
+        mixed = turn_attachments.admit([_attachment("opaque"), _attachment("text", "b" * 32)])
+        self.assertEqual(
+            turn_attachments.charges(mixed, lambda blocks, _timeout: counted.append(blocks) or 42),
+            (turn_attachments.estimated_charge(mixed[0]), 42),
+        )
+        self.assertEqual(counted, [turn_attachments.blocks(mixed[1])])
+
     def test_the_text_fallback_never_undercounts_a_byte_level_tokenizer(self) -> None:
         # 16,000 characters across scripts: a byte-level BPE such as o200k_base emits at most one token per byte.
         mixed = ("Relatório 東京 ⚙ 𝔘 " * 1_000)[:16_000]
