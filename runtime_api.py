@@ -103,9 +103,15 @@ class ProviderInput(ClosedInput):
     model: str = Field(min_length=1, max_length=128)
     api_key: SecretStr = Field(min_length=1, max_length=16 * 1024)
 
+    def runtime(self) -> agent_runtime.ProviderConfig:
+        return agent_runtime.ProviderConfig(self.provider, self.model, self.api_key.get_secret_value())
+
 
 class ChatProviderInput(ProviderInput):
     effort: Literal["low", "medium", "high"]
+
+    def runtime(self) -> agent_runtime.ProviderConfig:
+        return replace(super().runtime(), effort=self.effort)
 
 
 class ActionInput(ClosedInput):
@@ -157,12 +163,7 @@ class TurnContextInput(ClosedInput):
             thread_id=self.thread_id,
             team_name=self.team_name,
             assistants=_assistants(self.assistants),
-            provider=agent_runtime.ProviderConfig(
-                provider=self.provider.provider,
-                model=self.provider.model,
-                api_key=self.provider.api_key.get_secret_value(),
-                effort=self.provider.effort,
-            ),
+            provider=self.provider.runtime(),
             memories=_memories(self.memories),
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
@@ -250,13 +251,6 @@ class ActionPurposeInput(ClosedInput):
     action_summary: str = Field(min_length=1, max_length=action_purpose.MAX_ACTION_SUMMARY_CHARS)
     provider: ProviderInput
 
-    def runtime_provider(self) -> agent_runtime.ProviderConfig:
-        return agent_runtime.ProviderConfig(
-            provider=self.provider.provider,
-            model=self.provider.model,
-            api_key=self.provider.api_key.get_secret_value(),
-        )
-
     def pending_action(self) -> action_purpose.PendingAction:
         return action_purpose.PendingAction(
             thread_id=self.thread_id,
@@ -293,13 +287,6 @@ class ActionLabelsInput(ClosedInput):
             raise ValueError("invalid Action label ids")
         return value
 
-    def runtime_provider(self) -> agent_runtime.ProviderConfig:
-        return agent_runtime.ProviderConfig(
-            provider=self.provider.provider,
-            model=self.provider.model,
-            api_key=self.provider.api_key.get_secret_value(),
-        )
-
 
 class RoutineInput(ClosedInput):
     name: str = Field(min_length=1, max_length=80)
@@ -320,13 +307,6 @@ class RoutineRecoveryInput(ClosedInput):
     step: RoutineStepInput
     proof: Literal["not_occurred", "no_effect"]
     diagnostics: list[dict[str, Any]] = Field(max_length=routine_recovery.MAX_DIAGNOSTICS)
-
-    def runtime_provider(self) -> agent_runtime.ProviderConfig:
-        return agent_runtime.ProviderConfig(
-            provider=self.provider.provider,
-            model=self.provider.model,
-            api_key=self.provider.api_key.get_secret_value(),
-        )
 
     def runtime_request(self) -> routine_recovery.RecoveryRequest:
         return routine_recovery.RecoveryRequest(
@@ -356,13 +336,6 @@ class RoutineCompileInput(ClosedInput):
         if len({assistant.id for assistant in value}) != len(value):
             raise ValueError("duplicate Assistant id")
         return value
-
-    def runtime_provider(self) -> agent_runtime.ProviderConfig:
-        return agent_runtime.ProviderConfig(
-            provider=self.provider.provider,
-            model=self.provider.model,
-            api_key=self.provider.api_key.get_secret_value(),
-        )
 
 
 class CapabilityIntegrationInput(ClosedInput):
@@ -396,13 +369,6 @@ class CapabilityPlanInput(ClosedInput):
         min_length=1,
         max_length=capability_plan.MAX_CANDIDATES,
     )
-
-    def runtime_provider(self) -> agent_runtime.ProviderConfig:
-        return agent_runtime.ProviderConfig(
-            provider=self.provider.provider,
-            model=self.provider.model,
-            api_key=self.provider.api_key.get_secret_value(),
-        )
 
     def runtime_candidates(self) -> tuple[capability_plan.CapabilityCandidate, ...]:
         return tuple(item.runtime_candidate() for item in self.candidates)
@@ -452,13 +418,6 @@ class IntentRouteInput(ClosedInput):
         if sum(len(entry.text) for entry in self.conversation) > intent_route.MAX_CONVERSATION_CHARS:
             raise ValueError("conversation window is too large")
         return self
-
-    def runtime_provider(self) -> agent_runtime.ProviderConfig:
-        return agent_runtime.ProviderConfig(
-            provider=self.provider.provider,
-            model=self.provider.model,
-            api_key=self.provider.api_key.get_secret_value(),
-        )
 
     def runtime_candidates(self) -> tuple[intent_route.DirectoryCandidate, ...]:
         return tuple(item.runtime_candidate() for item in self.candidates)
@@ -745,7 +704,7 @@ def _run_capability_plan(
     try:
         plan, usage = model_usage.measure(
             lambda: runtime.capability_plan(
-                body.runtime_provider(),
+                body.provider.runtime(),
                 body.objective,
                 body.runtime_candidates(),
             )
@@ -766,7 +725,7 @@ def _run_intent_route(
         decision = body.decision_provider
         route, usage = model_usage.measure(
             lambda: runtime.intent_route(
-                body.runtime_provider(),
+                body.provider.runtime(),
                 body.objective,
                 body.expected_intent,
                 body.runtime_candidates(),
@@ -806,7 +765,7 @@ def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], Runti
         # Team's Stop or recovery deadline closes its request; that cancels only this decision's provider I/O.
         decision, usage = await _cancellable(
             request,
-            lambda: current_runtime().routine_recovery(body.runtime_provider(), body.runtime_request()),
+            lambda: current_runtime().routine_recovery(body.provider.runtime(), body.runtime_request()),
             "Routine recovery cancelled",
         )
         return {"decision": decision, "usage": usage}
@@ -833,7 +792,7 @@ def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], Runtim
         outcome, usage = await _cancellable(
             request,
             lambda: current_runtime().routine_compile(
-                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale, tuple(body.draft)
+                body.provider.runtime(), body.message, _assistants(body.assistants), body.locale, tuple(body.draft)
             ),
             "Routine compile cancelled",
         )
@@ -952,7 +911,7 @@ def create_app(
     async def action_purpose(request: Request, body: ActionPurposeInput) -> dict[str, object]:
         purpose, usage = await _cancellable(
             request,
-            lambda: current_runtime().action_purpose(body.runtime_provider(), body.pending_action()),
+            lambda: current_runtime().action_purpose(body.provider.runtime(), body.pending_action()),
             "Action purpose cancelled",
         )
         return {"purpose": purpose, "usage": usage}
@@ -970,7 +929,7 @@ def create_app(
     def action_labels(body: ActionLabelsInput) -> dict[str, object]:
         labels, usage = model_usage.measure(
             lambda: current_runtime().action_labels(
-                body.runtime_provider(),
+                body.provider.runtime(),
                 body.locale,
                 tuple(body.actions),
             )
