@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -12,10 +13,30 @@ class StaticBrainImageContractTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn(f"FROM {UV_IMAGE} AS uv", dockerfile)
-        self.assertIn("COPY --from=uv /uv /usr/local/bin/uv", dockerfile)
+        self.assertIn("--mount=type=bind,from=uv,source=/uv,target=/tmp/uv", dockerfile)
         self.assertNotIn("uv-install.sh", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
         self.assertNotIn("curl", dockerfile)
+
+    def test_static_runtime_derives_from_an_epoch_free_dependency_layer(self):
+        # Shimpz ADR-0098: no commit-time input reaches the dependency layer, so an unchanged lock reuses its bytes.
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("\nFROM dependencies AS runtime\n", dockerfile)
+        stages = dict(re.findall(r"(?ms)^FROM \S+ AS (\w+)\n(.*?)(?=^FROM |\Z)", dockerfile))
+        self.assertEqual(["dependencies", "runtime", "uv"], sorted(stages))
+        for stage in ("uv", "dependencies"):
+            with self.subTest(stage=stage):
+                self.assertNotRegex(stages[stage], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR|COPY|ADD)\b")
+        dependencies = re.sub(r"\\\n\s*", " ", stages["dependencies"])
+        for mount in (
+            "--mount=type=tmpfs,target=/tmp",
+            "--mount=type=bind,source=pyproject.toml,target=/tmp/project/pyproject.toml",
+            "--mount=type=bind,source=uv.lock,target=/tmp/project/uv.lock",
+        ):
+            self.assertIn(mount, dependencies)
+        self.assertIn("uv sync --frozen --no-install-project --no-dev --python 3.14", dependencies)
+        self.assertIn("compileall -q -f --invalidation-mode checked-hash /opt/venv", dependencies)
+        self.assertTrue(dependencies.rstrip().endswith("find /opt -depth -exec touch -h -d @0 {} +"))
 
     def test_static_image_runs_only_the_non_root_http_runtime(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
