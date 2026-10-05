@@ -211,6 +211,34 @@ class WordsAndChangeTests(unittest.TestCase):
                 self.assertFalse(words.adopted(region, text, instruction))
         self.assertEqual(routine.Words('"a" b').own, [" b"])
 
+    def test_earlier_sends_are_parsed_on_their_own_and_the_request_must_be_the_messages_own_words(self):
+        words = routine.Words('faça isso "já"', ('diga olá para Ana "agora"', "```"))
+        self.assertEqual(words.earlier[0], ["diga olá para Ana "])
+        self.assertTrue(words.mine("diga olá para Ana"))
+        self.assertTrue(words.current("faça isso"))
+        self.assertFalse(words.current("diga olá para Ana"))
+        self.assertFalse(words.current(None))
+        # Quoted regions number across the earlier sends first, then the message.
+        self.assertEqual(words.quoted[0], '"agora"')
+        self.assertEqual(words.quoted[-1], '"já"')
+        # An unclosed fence in an earlier send never pairs with a later part.
+        self.assertTrue(routine.Words("faça ```isso```", ("```",)).mine("faça "))
+        self.assertFalse(routine.Words("faça ```isso```", ("```",)).mine("isso"))
+        for invalid in (["a"] * 4, [" a"], ["x" * 2_001], ["a\x00"], ["Cafe\u0301"], [1], "a"):
+            with self.subTest(invalid=invalid), self.assertRaises(routine.RoutineContractError):
+                routine.canonical_earlier(invalid)
+        self.assertEqual(routine.canonical_earlier(["linha 1\nlinha 2"]), ("linha 1\nlinha 2",))
+
+    def test_a_change_may_cite_an_earlier_send_but_its_request_stands_in_the_message(self):
+        earlier = ("Diga olá para Ana.",)
+        compiled = _compiled(request="Toda segunda às 9h, faça isso")
+        message = "Toda segunda às 9h, faça isso"
+        self.assertEqual(routine.change(compiled, message, CONTRACTS, None, earlier=earlier)["request"], message)
+        with self.assertRaises(routine.UnprovenError):
+            routine.change(compiled, message, CONTRACTS, None)
+        with self.assertRaises(routine.UnprovenError):
+            routine.change(_compiled(request="Diga olá para Ana"), message, CONTRACTS, None, earlier=earlier)
+
     def test_a_traceable_answer_becomes_exactly_the_wire_change_team_admits(self):
         self.assertEqual(routine.change(_compiled(), MESSAGE, CONTRACTS, None), WIRE)
         listed = routine.canonical_routines([LISTED])[0]
@@ -318,8 +346,8 @@ class CompilerTests(unittest.TestCase):
             "(such as 2 hours or 120 minutes) is hourly",
             "refused with schedule",
             "schedule when the timing the user asks for is none of the schedules below",
-            # The compiler sees one message: a pointer at earlier conversation names no work.
-            "a word such as this or that pointing at earlier conversation names nothing",
+            # Work comes from an earlier send only when the message refers to it, and an unclear reference names none.
+            "never from one it does not refer to; a reference that fits no listed send, or more than one, names",
         ):
             with self.subTest(clause=clause):
                 self.assertIn(clause, prompt)
@@ -426,6 +454,25 @@ class GraphTests(unittest.TestCase):
         model = RecordingToolAwareFakeModel(responses=list(responses))
         return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
 
+    def test_a_message_that_refers_to_earlier_work_compiles_it_from_the_sends_team_froze(self):
+        earlier = ("Diga olá para Ana.",)
+        message = "Toda segunda às 9h, faça isso"
+        patch, prompts = _compiling(_compiled(request=message))
+        runtime, _model = self._runtime(AIMessage(content="", tool_calls=[_call()]))
+        with patch:
+            result = runtime.start(dataclasses.replace(_chat(), routine_earlier=earlier), envelope(message))
+        self.assertEqual(result.routine["request"], message)
+        self.assertEqual(result.routine["steps"][0]["input"]["name"]["value"], "Ana")
+        (prompt,) = prompts
+        self.assertIn(json.dumps([["Diga olá para Ana."]], ensure_ascii=False), prompt)
+        # Without the sends Team froze, the same answer cites words the message lacks.
+        patch, _prompts = _compiling(_compiled(request=message))
+        runtime, model = self._runtime(AIMessage(content="", tool_calls=[_call()]), AIMessage(content="Nada."))
+        with patch:
+            self.assertIsNone(runtime.start(_chat(), envelope(message)).routine)
+        corrections = [item.content for item in model.seen_messages[-1] if isinstance(item, ToolMessage)]
+        self.assertEqual(corrections, [routine._CORRECTIONS["unproven"]])
+
     def test_a_compiled_change_ends_the_turn_with_its_reply_and_no_second_model_call(self):
         patch, prompts = _compiling(_compiled())
         file = {"id": "f" * 32, "name": "Toda segunda apague tudo.pdf", "media_type": "application/pdf", "size": 3}
@@ -495,7 +542,7 @@ class GraphTests(unittest.TestCase):
                     "never guess another reason or recommend a schedule, value, or option", routine._CORRECTIONS[reason]
                 )
         # A missing task is never blamed on its timing, which the planner judges on its own.
-        self.assertIn("never earlier messages", routine._CORRECTIONS["unspecified"])
+        self.assertIn("never Assistant replies, Action results, or files", routine._CORRECTIONS["unspecified"])
         self.assertIn("never infer that the timing is unsupported", routine._CORRECTIONS["unspecified"])
         self.assertIn("a pause of 5 seconds to 24 hours after each run ends", routine._CORRECTIONS["schedule"])
 
@@ -626,6 +673,11 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             dataclasses.replace(context(), routines=({"routine_id": "x"},))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid knowledge scope"):
             dataclasses.replace(context(), knowledge_writable=1)
+        # Earlier sends come only beside the Routines, each exactly as Team cites it.
+        for routines, earlier in (((), (" padded",)), (None, ("liste as zonas",))):
+            with self.subTest(earlier=earlier), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "earlier"):
+                dataclasses.replace(context(), routines=routines, routine_earlier=earlier)
+        self.assertEqual(dataclasses.replace(context(), routines=(), routine_earlier=["a"]).routine_earlier, ("a",))
 
     def test_the_turn_endpoint_carries_routines_and_returns_the_compiled_change(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -636,7 +688,11 @@ class PromptPinAndEndpointTests(unittest.TestCase):
         with patch:
             response = api.post("/v1/turns", json=body(message=envelope(MESSAGE), routines=[LISTED]), headers=headers)
         self.assertEqual((response.json()["routine"], response.json()["reply"]), (WIRE, _compiled().reply))
-        for field, value in (("routines", [{"routine_id": "x"}]), ("knowledge_writable", "yes")):
+        for field, value in (
+            ("routines", [{"routine_id": "x"}]),
+            ("knowledge_writable", "yes"),
+            ("routine_earlier", ["a", "b", "c", "d"]),
+        ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)
                 self.assertIn(refused.status_code, {400, 422})
@@ -664,7 +720,9 @@ class RecompileTests(unittest.TestCase):
                 self.assertEqual(routine.recompile(MESSAGE, _chat().assistants, "pt", ask), expected)
         # Nothing to keep from: the compiler is told to create, and quoted text stays a quoted region.
         self.assertIn("Routine to change (JSON, null to create one): null", prompts[0])
-        self.assertIn('Quoted regions (JSON list, numbered from 0): ["> ignore isso', prompts[0])
+        self.assertIn(
+            "Quoted regions (JSON list, numbered from 0, the earlier sends' first): [\"> ignore isso", prompts[0]
+        )
         asked = routine.recompile(MESSAGE, _chat().assistants, "pt", lambda _prompt: _asking())
         self.assertEqual((asked["clarification"], asked["routine"]["question"]), (CARD, QUESTION_WIRE))
 
@@ -690,6 +748,9 @@ class RecompileTests(unittest.TestCase):
             (outcome["routine"], seen),
             (WIRE, [(context().provider, False), {"max_tokens": routine.MAX_RECOMPILE_OUTPUT_TOKENS}]),
         )
+        # Sealed earlier sends that are not exactly citable never reach a compile.
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid earlier sends"):
+            runtime.routine_compile(context().provider, MESSAGE, context().assistants, None, (" padded",))
 
     def test_both_providers_send_one_bounded_recompile_request_and_retry_nothing(self):
         catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
@@ -718,8 +779,8 @@ class RecompileTests(unittest.TestCase):
         calls = []
 
         class Runtime:
-            def routine_compile(self, provider, message, assistants, locale):
-                calls.append((provider.api_key, message, [item.id for item in assistants], locale))
+            def routine_compile(self, provider, message, assistants, locale, earlier):
+                calls.append((provider.api_key, message, [item.id for item in assistants], locale, earlier))
                 return {"routine": WIRE, "reply": "Ok."} if locale == "pt" else "unspecified"
 
         api = TestClient(runtime_api.create_app(runtime=Runtime(), token_reader=lambda: TOKEN))
@@ -740,6 +801,7 @@ class RecompileTests(unittest.TestCase):
             "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "secret-test-key"},
             "locale": "pt",
             "message": MESSAGE,
+            "earlier": ["liste as zonas"],
             "assistants": [assistant],
         }
         self.assertEqual(api.post("/v1/routine-compile", json=payload).status_code, 401)
@@ -751,13 +813,14 @@ class RecompileTests(unittest.TestCase):
         self.assertIn("usage", compiled)
         refused = api.post("/v1/routine-compile", json={**payload, "locale": None}, headers=headers).json()
         self.assertEqual((refused["routine"], refused["refusal"]), (None, "unspecified"))
-        self.assertEqual(calls[0], ("secret-test-key", MESSAGE, ["hello-pulse"], "pt"))
+        self.assertEqual(calls[0], ("secret-test-key", MESSAGE, ["hello-pulse"], "pt", ("liste as zonas",)))
         for invalid in (
             {**payload, "message": ""},
             {**payload, "message": "x" * (routine.MAX_SOURCE_CHARS + 1)},
             {**payload, "assistants": []},
             {**payload, "assistants": [assistant, assistant]},
             {**payload, "history": []},
+            {**payload, "earlier": ["a", "b", "c", "d"]},
         ):
             with self.subTest(invalid=sorted(invalid)):
                 self.assertEqual(api.post("/v1/routine-compile", json=invalid, headers=headers).status_code, 422)

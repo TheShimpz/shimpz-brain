@@ -133,6 +133,8 @@ class TurnContextInput(ClosedInput):
     skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
     # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
+    # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092), only beside routines.
+    routine_earlier: list[str] = Field(max_length=team_routine.MAX_EARLIER)
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
@@ -159,6 +161,7 @@ class TurnContextInput(ClosedInput):
             memories=_memories(self.memories),
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
+            routine_earlier=tuple(self.routine_earlier),
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
         )
@@ -336,6 +339,8 @@ class RoutineCompileInput(ClosedInput):
     provider: ProviderInput
     locale: interface_language.Locale | None
     message: str = Field(min_length=1, max_length=team_routine.MAX_SOURCE_CHARS)
+    # The sealed earlier sends the creation message cited, oldest first (ADR-0092, 2026-10-04).
+    earlier: list[str] = Field(max_length=team_routine.MAX_EARLIER)
     assistants: list[AssistantInput] = Field(min_length=1, max_length=agent_runtime.MAX_ASSISTANTS)
 
     @field_validator("assistants")
@@ -502,6 +507,7 @@ class RuntimeLike:
         message: str,
         assistants: tuple[agent_runtime.AssistantDefinition, ...],
         locale: str | None,
+        earlier: tuple[str, ...] = (),
     ) -> object: ...
 
     def intent_route(
@@ -820,7 +826,7 @@ def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], Runtim
         outcome, usage = await _cancellable(
             request,
             lambda: current_runtime().routine_compile(
-                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale
+                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale, tuple(body.earlier)
             ),
             "Routine compile cancelled",
         )

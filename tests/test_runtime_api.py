@@ -68,6 +68,7 @@ def body(**updates):
         "memories": [],
         "skills": [],
         "routines": [],
+        "routine_earlier": [],
         "knowledge_writable": True,
         "attachments": [],
         "message": "Hello",

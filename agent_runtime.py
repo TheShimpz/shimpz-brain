@@ -197,6 +197,9 @@ class TurnContext:
     skills: tuple[dict[str, object], ...] | None = None
     # The Team's Routines as data (ADR-0086), pinned like memories; None withholds the Routine tool.
     routines: tuple[dict[str, object], ...] | None = None
+    # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092, 2026-10-04), only beside
+    # ``routines``; only a start compiles, so a resume never reads them.
+    routine_earlier: tuple[str, ...] = ()
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
@@ -249,6 +252,12 @@ def _admit_knowledge(context: TurnContext) -> None:
             object.__setattr__(context, "routines", team_routine.canonical_routines(context.routines))
         except team_routine.RoutineContractError as exc:
             raise RuntimeContractError("invalid routines") from exc
+    try:
+        object.__setattr__(context, "routine_earlier", team_routine.canonical_earlier(context.routine_earlier))
+    except team_routine.RoutineContractError as exc:
+        raise RuntimeContractError("invalid earlier sends") from exc
+    if context.routine_earlier and context.routines is None:
+        raise RuntimeContractError("invalid earlier sends")
     if type(context.knowledge_writable) is not bool:
         raise RuntimeContractError("invalid knowledge scope")
 
@@ -832,13 +841,22 @@ class AgentRuntime:
         )
 
     def routine_compile(
-        self, provider: ProviderConfig, message: str, assistants: tuple[AssistantDefinition, ...], locale: str | None
+        self,
+        provider: ProviderConfig,
+        message: str,
+        assistants: tuple[AssistantDefinition, ...],
+        locale: str | None,
+        earlier: tuple[str, ...] = (),
     ) -> object:
-        """Recompile a Routine from its Team-held creation message, with no turn, tools, or history (ADR-0092)."""
+        """Recompile a Routine from its Team-held creation source, with no turn, tools, or history (ADR-0092)."""
+        try:
+            earlier = team_routine.canonical_earlier(earlier)
+        except team_routine.RoutineContractError as exc:
+            raise RuntimeContractError("invalid earlier sends") from exc
         ask = team_routine.recompiler(
             functools.partial(self._single_attempt_model, provider), provider.provider, structured_output
         )
-        return team_routine.recompile(message, assistants, locale, ask)
+        return team_routine.recompile(message, assistants, locale, ask, earlier)
 
     def capability_plan(
         self,
