@@ -92,7 +92,28 @@ def _need_answer(continues: bool = False) -> routine.Compiled:
     )
 
 
-def _compiled_answer(schedule: dict[str, object], *, continues: bool) -> routine.Compiled:
+def _said(member: str, digits: str) -> routine.Source:
+    """A literal member whose value the person stated, cited from their own words."""
+    origin = routine.Origin(at="", source="message", text=digits, region=None, instruction=None)
+    return routine.Source(
+        member=member,
+        kind="literal",
+        value_json=digits,
+        origins=[origin],
+        clock=None,
+        step=None,
+        pointer=None,
+        instruction=None,
+    )
+
+
+# The paging the person states when asked, which list-zones requires and declares no default for.
+PAGING = [_said("page", "1"), _said("per_page", "50")]
+
+
+def _compiled_answer(
+    schedule: dict[str, object], *, continues: bool, inputs: list[routine.Source] | None = None
+) -> routine.Compiled:
     fields = dict.fromkeys(("every", "time", "weekday", "day", "gap", "cap")) | {
         key: value for key, value in schedule.items() if key != "kind"
     }
@@ -104,7 +125,11 @@ def _compiled_answer(schedule: dict[str, object], *, continues: bool) -> routine
         request="cria uma rotina que faz isso a cada 30 segundos",
         schedule=routine.Schedule(kind=schedule["kind"], **fields),
         timezone=None,
-        steps=[routine.Step(id="zones", assistant="cloudflare", action="list-zones", inputs=[])],
+        steps=[
+            routine.Step(
+                id="zones", assistant="cloudflare", action="list-zones", inputs=PAGING if inputs is None else inputs
+            )
+        ],
         question=None,
         reply="Pronto.",
     )
@@ -209,7 +234,7 @@ class RoutineEvalTests(unittest.TestCase):
     def test_a_journey_keeps_the_draft_between_turns_and_scores_its_last_turn(self):
         journey = next(item for item in routines.JOURNEYS if item.id == "answers-pt")
         created = _compiled_answer({"kind": "continuous", "gap": 30, "cap": 100}, continues=True)
-        answers = iter([_need_answer(), _need_answer(continues=True), created])
+        answers = iter([_need_answer(), _need_answer(continues=True), _need_answer(continues=True), created])
         compiling = mock.patch.object(
             agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: next(answers)
         )
@@ -221,12 +246,15 @@ class RoutineEvalTests(unittest.TestCase):
             return real(runtime, context, message)
 
         with compiling, mock.patch.object(routines, "_turn", side_effect=turn):
-            self.assertTrue(routines.run_journey(_runtime(_created(), _created(), _created()), PROVIDER, journey, 0))
+            self.assertTrue(
+                routines.run_journey(_runtime(_created(), _created(), _created(), _created()), PROVIDER, journey, 0)
+            )
         first = journey.steps[0].text
         self.assertEqual(seen[0][:3], ((), None, ()))
         self.assertEqual(seen[1][:2], ((("said", first),), "Listar os domínios do Cloudflare"))
         self.assertTrue(seen[1][3].startswith(f"{first}\n\nPergunta: Qual trabalho?\nResposta: "))
         self.assertEqual(seen[2][0], (("said", first), ("said", "Listar os domínios do Cloudflare")))
+        self.assertEqual(seen[3][1], "Até 100 execuções por dia")
         # A turn that refuses, or a journey that answers before any question, misses.
         refusing = mock.patch.object(routines, "_turn", return_value=mock.Mock(status="completed", routine=None))
         with refusing:
@@ -235,6 +263,45 @@ class RoutineEvalTests(unittest.TestCase):
         self.assertFalse(routines.run_journey(_runtime(), PROVIDER, early, 0))
         with self.assertRaises(ValueError), mock.patch.object(routines, "JOURNEYS", (early,)):
             routines.validate_corpus()
+
+    def test_a_change_missing_a_required_input_or_holding_other_paging_misses(self):
+        # The owner's journey reaches the cap question only with the paging the person stated; a candidate that leaves
+        # list-zones' required paging out, or holds other values, could never run and misses.
+        journey = next(item for item in routines.JOURNEYS if item.id == "answers-pt")
+        missing = [PAGING[0]]
+        other = [PAGING[0], _said("per_page", "5")]
+        for inputs in (missing, other):
+            created = _compiled_answer({"kind": "continuous", "gap": 30, "cap": 100}, continues=True, inputs=inputs)
+            answers = iter([_need_answer(), _need_answer(continues=True), _need_answer(continues=True), created])
+            compiling = mock.patch.object(
+                agent_runtime.AgentRuntime,
+                "_routine_compiler",
+                lambda _self, _context, answers=answers: lambda _prompt: next(answers),
+            )
+            with self.subTest(inputs=[item.member for item in inputs]), compiling:
+                runtime = _runtime(_created(), _created(), _created(), _created())
+                self.assertFalse(routines.run_journey(runtime, PROVIDER, journey, 0))
+        cloudflare = (routines.CLOUDFLARE,)
+        page = {"kind": "literal", "value": 1}
+        zones = {"id": "zones", "assistant": "cloudflare", "action": "list-zones", "input": {"page": page}}
+        required = {"steps": [zones]}
+        self.assertFalse(routines._complete(required, cloudflare))
+        too_many = {"kind": "literal", "value": 500}
+        invalid = {"steps": [{**required["steps"][0], "input": {"page": page, "per_page": too_many}}]}
+        self.assertFalse(routines._complete(invalid, cloudflare))
+        # A legitimate input question leaves exactly its open member out; each option's value completes it.
+        text = {"kind": "literal", "value": "good morning"}
+        send = {"id": "send", "assistant": "messages", "action": "send-message", "input": {"text": text}}
+        field = {"kind": "input", "step": "send", "member": "to"}
+        asked = {"steps": [send], "question": {"field": field, "values": ["ana", "bruno"]}}
+        self.assertTrue(routines._complete(asked, (routines.MESSAGES,)))
+        wrong = {**asked, "question": {"field": {**field, "member": "cc"}, "values": ["ana"]}}
+        self.assertFalse(routines._complete(wrong, (routines.MESSAGES,)))
+        schedule = {"steps": [send], "question": {"field": {"kind": "schedule"}, "values": []}}
+        self.assertFalse(routines._complete(schedule, (routines.MESSAGES,)))
+        unknown = {"steps": [{"assistant": "cloudflare", "action": "purge-all", "input": {}}]}
+        self.assertFalse(routines._complete(unknown, (routines.CLOUDFLARE,)))
+        self.assertTrue(routines._complete({"op": "need"}, (routines.CLOUDFLARE,)))
 
     def test_evaluate_counts_attempts_and_a_provider_failure_is_a_miss(self):
         runtime = mock.Mock()

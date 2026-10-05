@@ -7,6 +7,7 @@ import dataclasses
 import json
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest import mock
 
 import agent_runtime
@@ -279,6 +280,56 @@ class WordsAndChangeTests(unittest.TestCase):
         for compiled in cases:
             with self.subTest(compiled=compiled), self.assertRaises(routine.UnprovenError):
                 routine.change(compiled, _said(MESSAGE), CONTRACTS, None)
+
+
+class PagingTests(unittest.TestCase):
+    """The owner's 2026-10-05 transcript against the published list-zones Action, whose SDK declares no default."""
+
+    LIST_ZONES: ClassVar[dict] = {
+        ("shimpz-cloudflare", "list-zones"): {
+            "type": "object",
+            "properties": {
+                "page": {"type": "integer", "minimum": 1, "maximum": 100_000},
+                "per_page": {"type": "integer", "minimum": 5, "maximum": 50},
+            },
+            "required": ["page", "per_page"],
+            "additionalProperties": False,
+        }
+    }
+    DRAFT = (("said", "Cria uma nova rotina pra mim"), ("said", "Listar zonas"), ("said", "a cada 25 segundos"))
+
+    def compiled(self, *origins: routine.Origin) -> routine.Compiled:
+        page, per_page = origins
+        return _compiled(
+            continues=True,
+            request="Cria uma nova rotina pra mim",
+            schedule=routine.Schedule(
+                kind="continuous", every=None, time=None, weekday=None, day=None, gap=25, cap=100
+            ),
+            steps=[
+                routine.Step(
+                    id="zones",
+                    assistant="shimpz-cloudflare",
+                    action="list-zones",
+                    inputs=[
+                        _source("page", value_json="1", origins=[page]),
+                        _source("per_page", value_json="50", origins=[per_page]),
+                    ],
+                )
+            ],
+        )
+
+    def test_paging_the_person_never_stated_is_never_a_default_but_their_answer_proves_it(self):
+        invented = self.compiled(_origin(None, "default"), _origin(None, "default"))
+        with self.assertRaises(routine.UnprovenError):
+            routine.change(invented, self.DRAFT, self.LIST_ZONES, None)
+        answered = (*self.DRAFT, ("said", "Página 1, 50 zonas"))
+        wire = routine.change(self.compiled(_origin("1"), _origin("50")), answered, self.LIST_ZONES, None)
+        self.assertEqual(
+            {name: source["value"] for name, source in wire["steps"][0]["input"].items()}, {"page": 1, "per_page": 50}
+        )
+        with self.assertRaises(routine.UnprovenError):
+            routine.change(self.compiled(_origin("1"), _origin("50")), self.DRAFT, self.LIST_ZONES, None)
 
 
 class CompilerTests(unittest.TestCase):

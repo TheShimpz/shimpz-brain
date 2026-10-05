@@ -37,6 +37,7 @@ import model_usage
 from eval import cost as eval_cost
 from eval.intent_route import _key
 from eval.turns import DNS, FLOOR_MODELS, MESSAGES, TURN_EFFORT
+from jsonschema import Draft202012Validator
 from langgraph.checkpoint.memory import InMemorySaver
 
 ATTEMPTS = 3
@@ -49,10 +50,29 @@ CLOUDFLARE = agent_runtime.AssistantDefinition(
     id="cloudflare",
     genesis="Cloudflare manages the user's Cloudflare account: their domains, which Cloudflare calls zones, and DNS.",
     actions=(
+        # The published Assistant's exact paging inputs: its SDK makes every input required and declares no default.
         agent_runtime.ActionDefinition(
             "list-zones",
             "List the domains (zones) in the user's Cloudflare account.",
-            {"type": "object", "additionalProperties": False, "properties": {}},
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "page": {
+                        "type": "integer",
+                        "description": "Cloudflare result page, starting at 1.",
+                        "minimum": 1,
+                        "maximum": 100_000,
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "description": "Number of zones to return, from 5 to 50.",
+                        "minimum": 5,
+                        "maximum": 50,
+                    },
+                },
+                "required": ["page", "per_page"],
+            },
         ),
         agent_runtime.ActionDefinition(
             "purge-cache",
@@ -280,10 +300,13 @@ class Journey:
 # The labels Admin composes an answer with, per interface language.
 _COMPOSED = {"pt": ("Pergunta", "Resposta"), "en": ("Question", "Answer"), "de": ("Frage", "Antwort")}
 _CLOUDFLARE_ZONES = [["cloudflare", "list-zones"]]
+# The paging values the person states when asked, which the Routine's one step then holds exactly.
+_PAGING = [{"page": 1, "per_page": 50}]
+_PAGED = {"pt": "Página 1, 50 zonas", "en": "Page 1, 50 zones", "de": "Seite 1, 50 Zonen"}
 
 
 def _cap_question_of(gap: int) -> dict[str, object]:
-    return {**_cap_question(gap), "actions": _CLOUDFLARE_ZONES}
+    return {**_cap_question(gap), "actions": _CLOUDFLARE_ZONES, "inputs": _PAGING}
 
 
 JOURNEYS = (
@@ -294,6 +317,7 @@ JOURNEYS = (
             Step("cria uma rotina que faz isso a cada 30 segundos"),
             Step("Uma rotina para listas os dominios do Cloudflare, como solicitei anteriormente"),
             Step("A cada 30 segundos"),
+            Step(_PAGED["pt"], answer=True),
         ),
         _cap_question_of(30),
         "pt",
@@ -305,6 +329,7 @@ JOURNEYS = (
             Step("create a routine that does this every 30 seconds"),
             Step("A routine to list my Cloudflare domains, as I asked before"),
             Step("Every 30 seconds"),
+            Step(_PAGED["en"], answer=True),
         ),
         _cap_question_of(30),
         "en",
@@ -316,6 +341,7 @@ JOURNEYS = (
             Step("Erstelle eine Routine, die das alle 30 Sekunden macht"),
             Step("Eine Routine, die meine Cloudflare-Domains auflistet, wie ich vorhin gesagt habe"),
             Step("Alle 30 Sekunden"),
+            Step(_PAGED["de"], answer=True),
         ),
         _cap_question_of(30),
         "de",
@@ -326,9 +352,24 @@ JOURNEYS = (
         (
             Step("cria uma rotina que faz isso a cada 30 segundos"),
             Step("Listar os domínios do Cloudflare", answer=True),
+            Step(_PAGED["pt"], answer=True),
             Step("Até 100 execuções por dia", answer=True),
         ),
-        {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "timezone": None},
+        {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "inputs": _PAGING},
+        "pt",
+    ),
+    Journey(
+        "owner-answers-pt",
+        "the owner's 2026-10-05 transcript: a bare request and free-text answers naming the work and an interval in "
+        "seconds; the paging the Action requires and declares no default for is asked once, never invented, and the "
+        "last answer leaves only the daily cap",
+        (
+            Step("Cria uma nova rotina pra mim"),
+            Step("Listar zonas", answer=True),
+            Step("a cada 25 segundos", answer=True),
+            Step(_PAGED["pt"], answer=True),
+        ),
+        _cap_question_of(25),
         "pt",
     ),
     Journey(
@@ -354,6 +395,52 @@ def _scored(change: Mapping[str, object]) -> dict[str, object]:
         "timezone": change["timezone"],
         "actions": [[step["assistant"], step["action"]] for step in change["steps"]],
     }
+
+
+def _complete(change: Mapping[str, object], assistants: tuple[agent_runtime.AssistantDefinition, ...]) -> bool:
+    """Whether every compiled step, with each option of an input question filled in, could be admitted and run.
+
+    An input question leaves exactly its open member out of the candidate: each option's value completes it. Every step
+    must then give each member its Action requires, and every literal must satisfy that member's schema.
+    """
+    schemas = {
+        (assistant.id, action.id): action.input_schema for assistant in assistants for action in assistant.actions
+    }
+    steps = list(change.get("steps", ()))
+    question = change.get("question")
+    candidates = [steps]
+    if question is not None and question["field"]["kind"] == "input":
+        field = question["field"]
+        candidates = [
+            [
+                {**step, "input": {**step["input"], field["member"]: {"kind": "literal", "value": value}}}
+                if step["id"] == field["step"]
+                else step
+                for step in steps
+            ]
+            for value in question["values"]
+        ]
+    return all(_runnable(step, schemas) for candidate in candidates for step in candidate)
+
+
+def _runnable(step: Mapping[str, object], schemas: Mapping[tuple[str, str], Mapping[str, object]]) -> bool:
+    schema = schemas.get((step["assistant"], step["action"]))
+    if schema is None or not set(schema.get("required", ())) <= set(step["input"]):
+        return False
+    properties = schema.get("properties", {})
+    return all(
+        source["kind"] != "literal"
+        or (name in properties and Draft202012Validator(properties[name]).is_valid(source["value"]))
+        for name, source in step["input"].items()
+    )
+
+
+def _inputs(change: Mapping[str, object]) -> list[dict[str, object]]:
+    """Each step's literal input values, in step order."""
+    return [
+        {name: source["value"] for name, source in step["input"].items() if source["kind"] == "literal"}
+        for step in change["steps"]
+    ]
 
 
 def _asks_neutrally(result) -> bool:
@@ -387,7 +474,11 @@ def run_case(
         return result.routine is None and not (_CREATED_CLAIMS.search(reply) or blamed or _STEERING.search(reply))
     if case.expected == NEED:
         return result.routine is not None and _scored(result.routine) == NEED and _asks_neutrally(result)
-    return result.routine is not None and _scored(result.routine) == dict(case.expected)
+    return (
+        result.routine is not None
+        and _complete(result.routine, context.assistants)
+        and _scored(result.routine) == dict(case.expected)
+    )
 
 
 @dataclass(slots=True)
@@ -442,9 +533,13 @@ def run_journey(
         if result.clarification is not None and not _asks_neutrally(result):
             return False
         team.admit(step, message, words, result)
+    if not _complete(result.routine, context.assistants):
+        return False
     scored = _scored(result.routine)
     if "question" in result.routine:
         scored["actions"] = [[step["assistant"], step["action"]] for step in result.routine["steps"]]
+    if "inputs" in journey.expected:
+        scored["inputs"] = _inputs(result.routine)
     return scored == dict(journey.expected)
 
 
