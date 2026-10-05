@@ -260,6 +260,12 @@ CASES = (
         "Every Monday at 8am, send either ana or bruno a message saying good morning.",
         {"op": "ask", "field": ["input", "to"], "values": ['"ana"', '"bruno"']},
     ),
+    RoutineCase(
+        "ask-and-cap-en",
+        "an open recipient beside an unstated daily cap leaves two fields open, so the recipient is asked as a piece",
+        "Every 30 seconds, send either ana or bruno a message saying good morning.",
+        NEED,
+    ),
     RoutineCase("one-off-pt", "a one-off request creates nothing", "Liste minhas zonas DNS agora.", None),
     RoutineCase(
         "question-en", "a question about scheduling creates nothing", "Can you run tasks on a schedule for me?", None
@@ -427,10 +433,11 @@ def _runnable(step: Mapping[str, object], schemas: Mapping[tuple[str, str], Mapp
     schema = schemas.get((step["assistant"], step["action"]))
     if schema is None or not set(schema.get("required", ())) <= set(step["input"]):
         return False
+    # Every member, whatever its source, must be one the Action declares; a literal must also satisfy its schema.
     properties = schema.get("properties", {})
     return all(
-        source["kind"] != "literal"
-        or (name in properties and Draft202012Validator(properties[name]).is_valid(source["value"]))
+        name in properties
+        and (source["kind"] != "literal" or Draft202012Validator(properties[name]).is_valid(source["value"]))
         for name, source in step["input"].items()
     )
 
@@ -439,7 +446,7 @@ def _inputs(change: Mapping[str, object]) -> list[dict[str, object]]:
     """Each step's literal input values, in step order."""
     return [
         {name: source["value"] for name, source in step["input"].items() if source["kind"] == "literal"}
-        for step in change["steps"]
+        for step in change.get("steps", ())
     ]
 
 

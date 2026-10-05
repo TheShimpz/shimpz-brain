@@ -496,12 +496,7 @@ def _missing_rules(language: str, chat: bool) -> str:
         "a Routine supports it, then common intervals such as every 30 seconds, every 5 minutes, every hour, or "
         "every day at 09:00. Never suggest work that deletes, changes, creates, publishes, or sends anything unless a "
         "said part already asks for that work. Never recommend, rank, or prefer one suggestion. With need, compile "
-        "nothing: name and request empty, schedule and timezone null, steps empty. A required input member the "
-        "user's words leave open whose schema declares no default is such a missing piece: never choose its value "
-        "yourself. The open input members of one step are one piece, asked in one need question whose every "
-        "suggestion is one complete choice giving one value for each of them, in words a person uses (such as page "
-        "1, 50 per page); only when a single input member is open and the user's words narrow it to two to five "
-        "values, decide ask for that member instead. "
+        "nothing: name and request empty, schedule and timezone null, steps empty. "
     )
 
 
@@ -557,7 +552,11 @@ def _prompt(
         "copied exactly from the user's own words, a number written as its digits; source quote with region, the "
         "0-based index of a quoted region, the exact text inside it, and instruction copying the user's own words "
         "that adopt it; or source default, at empty, only when the member's schema declares a default and the whole "
-        "value equals it), "
+        "value equals it; a required member the user's words leave open whose schema declares no default is never "
+        "given a value you choose: it is a missing piece, and one step's open members are one piece whose every "
+        "suggestion is one complete choice giving one value for each, such as page 1, 50 per page, unless it is the "
+        "only open field of the whole Routine and the user's words narrow it to two to five values, which is a "
+        "question about that member), "
         "run_clock with clock date, time, datetime, or epoch_seconds of each run, step_output with the earlier step "
         "id, an RFC 6901 pointer into that step's output, and instruction copying the user's own words that relate "
         "the two, or kept (only when changing the listed Routine) to keep that member exactly. Never invent a value, "

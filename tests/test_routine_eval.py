@@ -299,6 +299,20 @@ class RoutineEvalTests(unittest.TestCase):
         self.assertFalse(routines._complete(wrong, (routines.MESSAGES,)))
         schedule = {"steps": [send], "question": {"field": {"kind": "schedule"}, "values": []}}
         self.assertFalse(routines._complete(schedule, (routines.MESSAGES,)))
+        clock = {"kind": "run_clock", "format": "date"}
+        fifty = {"kind": "literal", "value": 50}
+        paged = {"steps": [{**zones, "input": {"page": page, "per_page": fifty}}]}
+        self.assertTrue(routines._complete(paged, cloudflare))
+        # An undeclared member never stands, whatever its source.
+        ghost = {"steps": [{**zones, "input": {"page": page, "per_page": fifty, "ghost": clock}}]}
+        self.assertFalse(routines._complete(ghost, cloudflare))
+        self.assertEqual(routines._inputs({"op": "need"}), [])
+        owner = next(item for item in routines.JOURNEYS if item.id == "owner-answers-pt")
+        asking = mock.patch.object(
+            agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: _need_answer()
+        )
+        with asking:
+            self.assertFalse(routines.run_journey(_runtime(*(_created() for _ in owner.steps)), PROVIDER, owner, 0))
         unknown = {"steps": [{"assistant": "cloudflare", "action": "purge-all", "input": {}}]}
         self.assertFalse(routines._complete(unknown, (routines.CLOUDFLARE,)))
         self.assertTrue(routines._complete({"op": "need"}, (routines.CLOUDFLARE,)))
