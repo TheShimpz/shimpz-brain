@@ -9,6 +9,7 @@ validation.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -88,6 +89,31 @@ def _node_problem(node: Mapping[str, Any], *, nested: bool) -> str | None:
             _compiled_pattern(pattern)
     except PatternError:
         return "must use only patterns the linear-time matcher admits"
+    return None
+
+
+def bound_problem(schema: object, max_nodes: int, max_bytes: int) -> str | None:
+    """Why an Action schema is outside its value or byte bound or is no valid Draft 2020-12 schema, else None.
+
+    The value bound is checked first, before the schema is encoded or checked against the metaschema.
+    """
+    if not isinstance(schema, Mapping):
+        return "invalid"
+    if json_nodes(schema, max_nodes) > max_nodes:
+        return "too large"
+    try:
+        encoded = json.dumps(schema, separators=(",", ":"), sort_keys=True).encode()
+    except TypeError, ValueError:
+        return "not JSON"
+    if len(encoded) > max_bytes:
+        return "too large"
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import SchemaError
+
+    try:
+        Draft202012Validator.check_schema(dict(schema))
+    except SchemaError:
+        return "invalid"
     return None
 
 

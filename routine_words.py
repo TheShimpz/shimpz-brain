@@ -14,6 +14,7 @@ import re
 import unicodedata
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import memory as team_memory
 
@@ -48,6 +49,10 @@ _COUNT_RE = re.compile(
     r"(?:[0-9]{1,3}(?:[.,][0-9]{3}){1,2}|[0-9]{1,7})"
     rf"(?!\d|[{_MARKS}]\d|[eE][{_SIGNS}]?\d)"
 )
+
+
+class UnprovenError(ValueError):
+    """A compiled Routine part the user's words do not prove."""
 
 
 class RoutineWordsError(ValueError):
@@ -244,8 +249,7 @@ def narrowed(source: dict[str, object], words: Words) -> dict[str, object]:
     for origin in source["origins"]:
         target, text = leaves.get(origin["at"]), origin["text"]
         if (
-            origin["from"] == "default"
-            or isinstance(target, bool)
+            isinstance(target, bool)
             or not isinstance(target, int | float)
             or not isinstance(text, str)
             or _NUMBER_RE.fullmatch(text) is not None
@@ -272,26 +276,19 @@ def _cited_text(origin: Mapping[str, object], words: Words) -> bool:
     return words.adopted(origin["region"], origin["text"], origin["instruction"])
 
 
-def proven(source: Mapping[str, object], member: object, words: Words) -> bool:
-    """Whether every scalar of a literal has exactly one cited origin, or the whole value is its member's default."""
+def proven(source: Mapping[str, object], words: Words) -> bool:
+    """Whether every scalar of a literal has exactly one cited origin in the person's words, never a schema default.
+
+    A required member the person's words leave open is asked; an optional one stays absent (ADR-0092 amendment,
+    2026-10-05, scale).
+    """
     leaves = dict(_leaves(source["value"]))
     covered: list[str] = []
     for origin in source["origins"]:
-        if origin["from"] == "default":
-            default = isinstance(member, dict) and "default" in member and _same(member["default"], source["value"])
-            if not default or origin["at"] != "":
-                return False
-            covered.extend(leaves)
-        elif origin["at"] not in leaves or not _cited(origin, leaves[origin["at"]], words):
+        if origin["at"] not in leaves or not _cited(origin, leaves[origin["at"]], words):
             return False
-        else:
-            covered.append(origin["at"])
+        covered.append(origin["at"])
     return sorted(covered) == sorted(leaves)
-
-
-def _same(left: object, right: object) -> bool:
-    """JSON equality, so a boolean never equals a number."""
-    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
 def origin_shape(origin: Mapping[str, object]) -> bool:
@@ -300,6 +297,38 @@ def origin_shape(origin: Mapping[str, object]) -> bool:
         return False
     if kind == "message":
         return bool(text) and region is None and instruction is None
-    if kind == "quote":
-        return bool(text) and region is not None and bool(instruction)
-    return text is None and region is None and instruction is None
+    return kind == "quote" and bool(text) and region is not None and bool(instruction)
+
+
+def cap_proven(schedule: Mapping[str, object], words: Words, target: Mapping[str, object] | None) -> bool:
+    """Whether a continuous Routine's daily cap is the person's own, exactly as Team admits it.
+
+    The cap is never a safe default: it is a whole count the person's own words write in digits, or the cap the listed
+    Routine an update changes already has.
+    """
+    if schedule["kind"] != "continuous":
+        return True
+    kept = target["schedule"] if target is not None else None
+    if kept is not None and kept["kind"] == "continuous" and kept["cap"] == schedule["cap"]:
+        return True
+    return schedule["cap"] in words.counts()
+
+
+def renumbered(compiled: Any, skipped: int) -> Any:
+    """The compiled answer with every quote origin's region counted past ``skipped`` regions, or UnprovenError."""
+    if not skipped:
+        return compiled
+    steps = []
+    for step in compiled.steps:
+        inputs = []
+        for item in step.inputs:
+            origins = []
+            for origin in item.origins:
+                if origin.region is not None:
+                    if origin.region < skipped:
+                        raise UnprovenError
+                    origin = origin.model_copy(update={"region": origin.region - skipped})
+                origins.append(origin)
+            inputs.append(item.model_copy(update={"origins": origins}))
+        steps.append(step.model_copy(update={"inputs": inputs}))
+    return compiled.model_copy(update={"steps": steps})

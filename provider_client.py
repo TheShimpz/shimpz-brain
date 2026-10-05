@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from agent_runtime import ProviderConfig
 
 DECISION_TIMEOUT_SECONDS = 10.0
+# One Routine compile may write a plan of hundreds of steps (ADR-0092 amendment, 2026-10-05, scale); Team waits for its
+# turn up to 300 seconds, so the provider is given 240.
+COMPILE_TIMEOUT_SECONDS = 240.0
 # One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
 DECISION_MAX_RETRIES = 1
 
@@ -30,13 +33,14 @@ def provider_model(
     http_client: httpx.Client | None = None,
     decision: bool = False,
     retries: int | None = None,
+    timeout: float | None = None,
 ) -> BaseChatModel:
     """Create one direct provider client; the API key is never put in graph state."""
     secret = SecretStr(config.api_key)
     common = {
         "model": config.model,
         "api_key": secret,
-        "timeout": DECISION_TIMEOUT_SECONDS if decision else 60.0,
+        "timeout": timeout or (DECISION_TIMEOUT_SECONDS if decision else 60.0),
         "max_retries": retries if retries is not None else DECISION_MAX_RETRIES if decision else 2,
     }
     if config.provider == "openai":
@@ -123,6 +127,10 @@ class ProviderModelFactory:
         so a copy of a retrying model cannot become a single-attempt one.
         """
         return provider_model(config, http_client=self._http_client, decision=decision, retries=0)
+
+    def compile(self, config: ProviderConfig) -> BaseChatModel:
+        """A single-attempt model for one Routine compile, given the longer time a plan of hundreds of steps needs."""
+        return provider_model(config, http_client=self._http_client, retries=0, timeout=COMPILE_TIMEOUT_SECONDS)
 
     def decision(self, config: ProviderConfig) -> BaseChatModel:
         """Build a short model with at most one retry for one structured routing decision."""

@@ -98,7 +98,9 @@ def _sent_tools(provider: str) -> list[dict]:
             InMemorySaver(), model_factory=lambda config: provider_client.provider_model(config, http_client=client)
         )
         config = agent_runtime.ProviderConfig(provider, MODELS[provider], "sk-test-0123456789abcdef", "low")
-        context = agent_runtime.TurnContext(f"binding-{provider}", "DNS Team", (DNS,), config, memories=(), routines=())
+        context = agent_runtime.TurnContext(
+            f"binding-{provider}", "DNS Team", (DNS,), config, memories=(), routines=(), routine_capacity=20_000
+        )
         result = runtime.start(context, "List the records of example.com.")
     finally:
         client.close()

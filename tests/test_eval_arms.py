@@ -27,7 +27,9 @@ class ContractTests(unittest.TestCase):
             for a in contracts.ASSISTANTS_B.values()
             if a.relevant
         )
-        agent_runtime.TurnContext("t", "T", definitions, provider, memories=(), skills=(), routines=())
+        agent_runtime.TurnContext(
+            "t", "T", definitions, provider, memories=(), skills=(), routines=(), routine_capacity=20_000
+        )
         self.assertEqual(set(contracts.SEARCH_TERMS), set(contracts.ASSISTANTS_B))
         self.assertTrue(all(set(terms) == set(corpus.LOCALES) for terms in contracts.SEARCH_TERMS.values()))
         self.assertEqual(_action("dns", "list-records").filters, ("name", "content"))

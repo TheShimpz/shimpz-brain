@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import gc
 import json
 import sqlite3
@@ -913,7 +914,7 @@ class AgentRuntimeTests(unittest.TestCase):
             dense("action", limit + 1)
         # The value bound is checked before the schema is encoded or checked against the metaschema.
         with (
-            mock.patch.object(agent_runtime.json, "dumps") as dumps,
+            mock.patch.object(action_schema.json, "dumps") as dumps,
             self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too large"),
         ):
             agent_runtime.ActionDefinition(
@@ -923,13 +924,28 @@ class AgentRuntimeTests(unittest.TestCase):
             )
         dumps.assert_not_called()
 
-        # Team's whole-contract bound caps the input schemas one Assistant carries together.
+        # Team's whole-contract bound caps the input and output schemas one Assistant carries together.
         total = 32_768
-        actions = [dense(f"action-{index}", limit - 1) for index in range(total // limit)]
-        last = total - (limit - 1) * len(actions)
+        # Each Action here also carries an empty output schema, one value.
+        actions = [dense(f"action-{index}", limit - 1) for index in range(total // limit - 1)]
+        last = total - limit * len(actions) - 1
         self.assertEqual(len(assistant("dense-helper", *actions, dense("last", last)).actions), len(actions) + 1)
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action input schemas are too large"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action schemas are too large"):
             assistant("dense-helper", *actions, dense("last", last + 1))
+        returning = dataclasses.replace(dense("last", last), output_schema={"type": "object"})
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action schemas are too large"):
+            assistant("dense-helper", *actions, returning)
+        for output, message in (
+            ([], "invalid Action output schema"),
+            ({"type": 1}, "invalid Action output schema"),
+            ({"const": object()}, "output schema is not JSON"),
+            ({"const": "x" * agent_runtime.MAX_SCHEMA_BYTES}, "output schema is too large"),
+            (schema(limit + 1), "output schema is too large"),
+        ):
+            with self.subTest(output=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
+                agent_runtime.ActionDefinition(
+                    id="action", summary="Summary", input_schema=schema(5), output_schema=output
+                )
 
     def test_provider_failures_do_not_expose_the_secret(self):
         class FailedModelFactory:

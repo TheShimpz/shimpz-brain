@@ -166,7 +166,7 @@ class DraftTests(unittest.TestCase):
     """A missing piece is asked with suggestions, and the user's draft is continued (ADR-0092, 2026-10-05)."""
 
     def answer(self, compiled: routine.Compiled, words: routine.UserWords, target=None, *, chat=True) -> object:
-        return routine._answer(compiled, words, _chat().assistants, target, chat=chat)
+        return routine._answer(compiled, words, _chat().assistants, target, routine.MAX_DAILY_STEPS, chat=chat)
 
     def test_a_missing_piece_is_asked_with_suggestions_and_no_candidate(self):
         asked = self.answer(_needing(), routine.UserWords("cria uma rotina a cada 30 segundos"))

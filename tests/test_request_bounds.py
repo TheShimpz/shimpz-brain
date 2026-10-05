@@ -137,14 +137,19 @@ def _largest_uncounted() -> dict[str, object]:
                 "schedule": {"kind": "monthly", "day": 28, "time": "23:59"},
                 "timezone": "/".join(letter * 32 for letter in "ABC"),
                 "revision": 2**31 - 1,
-                "steps": [
-                    {"id": f"s{step}" + "x" * 30, "assistant": "a" * 64, "action": "b" * 64, "inputs": ["c" * 64] * 64}
-                    for step in range(team_routine.MAX_STEPS)
-                ],
+                "daily_steps": team_routine.MAX_DAILY_STEPS,
+                "steps": _listed_steps(team_routine.MAX_LISTING_STEPS_BYTES // team_routine.MAX_ROUTINES),
             }
             for index in range(team_routine.MAX_ROUTINES)
         ],
     }
+
+
+def _listed_steps(size: int) -> list[dict[str, object]]:
+    """One listed Routine's steps encoded in exactly ``size`` bytes: the listing bound counts bytes, not steps."""
+    step = {"id": "s" + "x" * 31, "assistant": "a" * 64, "action": "b" * 64, "inputs": [""]}
+    empty = len(_encoded([step]))
+    return [{**step, "inputs": ["c" * (size - empty)]}]
 
 
 def _serve(peer: _Peer, scope: dict[str, Any], runtime: FakeRuntime | None = None) -> FakeRuntime:

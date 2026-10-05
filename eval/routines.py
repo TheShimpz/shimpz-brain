@@ -40,12 +40,14 @@ from eval.turns import DNS, FLOOR_MODELS, MESSAGES, TURN_EFFORT
 from jsonschema import Draft202012Validator
 from langgraph.checkpoint.memory import InMemorySaver
 
+import routine as team_routine
+
 ATTEMPTS = 3
 ROUTINE_ID = "a" * 32
 BUDGET_USD = 0.30
 # A conservative bound for one turn: the chat call, its correction, and the compile, at their largest prompts.
 TURN_INPUT_TOKENS = 3 * 24_000
-TURN_OUTPUT_TOKENS = 3 * 4_096
+TURN_OUTPUT_TOKENS = 2 * 4_096 + team_routine.MAX_COMPILE_OUTPUT_TOKENS
 CLOUDFLARE = agent_runtime.AssistantDefinition(
     id="cloudflare",
     genesis="Cloudflare manages the user's Cloudflare account: their domains, which Cloudflare calls zones, and DNS.",
@@ -94,6 +96,7 @@ EXISTING = (
         "schedule": {"kind": "daily", "time": "08:00"},
         "timezone": "America/Sao_Paulo",
         "revision": 1,
+        "daily_steps": 1,
         "steps": [{"id": "zones", "assistant": "dns", "action": "list-zones", "inputs": []}],
     },
 )
@@ -344,6 +347,27 @@ _SHOWN = {
 _CAPPED = {"pt": "Até 100 execuções por dia", "en": "Up to 100 runs a day"}
 
 
+# Twelve domains a person may name at once, each its own step of the one purge Action.
+_ZONES = [
+    {"zone": zone}
+    for zone in (
+        "loja.com",
+        "blog.com",
+        "api.com",
+        "docs.com",
+        "app.com",
+        "mail.com",
+        "shop.net",
+        "news.net",
+        "cdn.net",
+        "status.org",
+        "help.org",
+        "wiki.org",
+    )
+]
+_PURGED = [["cloudflare", "purge-cache"]] * len(_ZONES)
+
+
 def _cap_question_of(gap: int) -> dict[str, object]:
     return {**_cap_question(gap), "actions": _CLOUDFLARE_ZONES, "inputs": _PAGING}
 
@@ -451,6 +475,47 @@ JOURNEYS = (
         ),
         {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "inputs": _PAGING},
         "pt",
+    ),
+    Journey(
+        "repeat-pt",
+        "one Action once per value the person names, each step with its own value, in their order (ADR-0092 "
+        "amendment, 2026-10-05, scale)",
+        (Step("Todo dia às 3h, limpe o cache de loja.com, blog.com e api.com. Não preciso ver nada."),),
+        {**_create({"kind": "daily", "time": "03:00"}, _PURGED[:3], output="none"), "inputs": _ZONES[:3]},
+        "pt",
+    ),
+    Journey(
+        "repeat-en",
+        "the same in English",
+        (Step("Every day at 3am, purge the cache of loja.com, blog.com and api.com. I don't need to see anything."),),
+        {**_create({"kind": "daily", "time": "03:00"}, _PURGED[:3], output="none"), "inputs": _ZONES[:3]},
+        "en",
+    ),
+    Journey(
+        "many-pt",
+        "a request naming twelve domains compiles twelve steps of the one Action, none dropped or merged",
+        (
+            Step(
+                "Toda segunda às 6h, limpe o cache destes domínios: "
+                + ", ".join(zone["zone"] for zone in _ZONES)
+                + ". Não precisa me mostrar nada."
+            ),
+        ),
+        {**_create({"kind": "weekly", "weekday": 0, "time": "06:00"}, _PURGED, output="none"), "inputs": _ZONES},
+        "pt",
+    ),
+    Journey(
+        "many-en",
+        "the same in English",
+        (
+            Step(
+                "Every Monday at 6am, purge the cache of these domains: "
+                + ", ".join(zone["zone"] for zone in _ZONES)
+                + ". No need to show me anything."
+            ),
+        ),
+        {**_create({"kind": "weekly", "weekday": 0, "time": "06:00"}, _PURGED, output="none"), "inputs": _ZONES},
+        "en",
     ),
     Journey(
         "discard-pt",
@@ -571,6 +636,7 @@ def run_case(
         (DNS, MESSAGES),
         provider,
         routines=case.routines,
+        routine_capacity=_capacity(case.routines),
         locale=case.locale,
     )
     for earlier in case.earlier:
@@ -646,7 +712,13 @@ def run_journey(
 ) -> Outcome:
     """Replay one conversation turn by turn with Team's draft; no turn may refuse, and the last ends as expected."""
     context = agent_runtime.TurnContext(
-        f"eval:journey:{journey.id}:{index}", "Eval Team", (CLOUDFLARE,), provider, routines=(), locale=journey.locale
+        f"eval:journey:{journey.id}:{index}",
+        "Eval Team",
+        (CLOUDFLARE,),
+        provider,
+        routines=(),
+        routine_capacity=_capacity(()),
+        locale=journey.locale,
     )
     team = _Team()
     result = None
@@ -698,10 +770,17 @@ def validate_corpus() -> None:
     if len(ids) != len(set(ids)) or not all(ids):
         raise ValueError("duplicate or empty Routine case id")
     for case in CASES:
-        agent_runtime.TurnContext("eval", "Eval Team", (DNS,), _offline_provider(), routines=case.routines)
+        agent_runtime.TurnContext(
+            "eval", "Eval Team", (DNS,), _offline_provider(), routines=case.routines, routine_capacity=_capacity(())
+        )
     for journey in JOURNEYS:
         if not journey.steps or journey.steps[0].answer or journey.locale not in _COMPOSED:
             raise ValueError("a journey starts with a message in a composable language")
+
+
+def _capacity(listed: tuple[dict[str, object], ...]) -> int:
+    """The daily Action steps an eval Team leaves a new Routine, exactly as Team counts them."""
+    return max(0, team_routine.MAX_DAILY_STEPS - sum(item["daily_steps"] for item in listed))
 
 
 def _offline_provider() -> agent_runtime.ProviderConfig:

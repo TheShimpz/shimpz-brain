@@ -102,6 +102,18 @@ def _memory_section(memories: tuple | None, writable: bool) -> str:
     )
 
 
+def _runs(steps: list[dict[str, object]]) -> list[list[object]]:
+    """A Routine's steps in order as [Assistant, Action], with the count appended when one Action repeats in a row."""
+    runs: list[list[object]] = []
+    for step in steps:
+        pair = [step["assistant"], step["action"]]
+        if runs and runs[-1][:2] == pair:
+            runs[-1][2:] = [runs[-1][2] + 1 if len(runs[-1]) == 3 else 2]
+        else:
+            runs.append(pair)
+    return runs
+
+
 def _routines_section(routines: tuple | None, writable: bool, draft: tuple = ()) -> str:
     """The Routine policy and the Team's Routines as data in a chat turn; a note instead in a Routine run."""
     if not writable:
@@ -121,7 +133,7 @@ def _routines_section(routines: tuple | None, writable: bool, draft: tuple = ())
             "request": item["quote"],
             "schedule": item["schedule"],
             "timezone": item["timezone"],
-            "steps": [[step["assistant"], step["action"]] for step in item["steps"]],
+            "steps": _runs(item["steps"]),
         }
         for item in routines
     ]

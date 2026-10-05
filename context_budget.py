@@ -112,6 +112,17 @@ def ensure_window(fixed_tokens: int, conversation_tokens: int) -> None:
         raise ContextWindowError("conversation context exceeds the model window")
 
 
+def fits(prompt: str, schema: Mapping[str, object], max_bytes: int) -> bool:
+    """Whether a one-shot prompt is at most ``max_bytes`` in UTF-8 and fits the window with its schema and reserve."""
+    if len(prompt.encode("utf-8")) > max_bytes:
+        return False
+    try:
+        ensure_window(estimated_tokens(prompt) + estimated_tokens(schema), 0)
+    except ContextWindowError:
+        return False
+    return True
+
+
 def history_to_drop(
     history: Sequence[BaseMessage],
     fixed_tokens: int,

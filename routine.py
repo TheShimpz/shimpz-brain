@@ -24,24 +24,39 @@ from collections.abc import Callable, Mapping
 from typing import Any, Literal
 
 import clarification
+import context_budget
 import memory as team_memory
 import routine_words
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict
-from routine_words import CITED, SAID, UserWords, Words
+from routine_words import CITED, SAID, UnprovenError, UserWords, Words
 
 TOOL_NAME = "shimpz_routine"
 MAX_ROUTINES = 8
-MAX_STEPS = 8
+# A plan of up to 256 steps, one Action as often as the person asks (ADR-0092 amendment, 2026-10-05, scale).
+MAX_STEPS = 256
+# A listed Routine's steps, encoded, at most: each projects a Team plan of at most 256 KiB, and the Team's plans
+# together hold at most 1 MiB, so the listing never outgrows what Team admits (ADR-0092 amendment, 2026-10-05, scale).
+MAX_LISTED_STEPS_BYTES = 256 * 1024
+MAX_LISTING_STEPS_BYTES = 1024 * 1024
 MAX_NAME_CHARS = 80
 MAX_QUOTE_CHARS = 500
 MAX_REPLY_CHARS = 280
-MAX_COMPILE_CHARS = 96 * 1024
+MAX_COMPILE_CHARS = 512 * 1024
+# The whole Routine outcome a turn ends with, its change or question, reply, and clarification, in UTF-8: Team's turn
+# response holds it with room for its envelope.
+MAX_OUTCOME_BYTES = 768 * 1024
+# The compiler's prompt at most: the person's words, every listed Action's input and output schema, and a listed
+# Routine's skeleton; it must also fit the model's window with its output reserve.
+MAX_COMPILE_PROMPT_BYTES = 3 * 1024 * 1024
+# The Team's daily Action steps across its Routines, which Team enforces; the compiler only keeps within it.
+MAX_DAILY_STEPS = 20_000
 # A Team-held creation message, at most as long as one message.
 MAX_SOURCE_CHARS = 16_000
-# The billed output of one Recriar compile, reasoning included: room for the largest compiled change, never unbounded.
-MAX_RECOMPILE_OUTPUT_TOKENS = 16_384
+# The billed output of one compile, in chat or Recriar, reasoning included: room for the largest compiled change, never
+# unbounded.
+MAX_COMPILE_OUTPUT_TOKENS = 65_536
 MAX_ORIGINS = 64
 ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 STEP_ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
@@ -73,13 +88,13 @@ SCHEMA = {
 }
 DESCRIPTION = (
     "Create a Routine, work this Team repeats on a schedule, or update a listed one. Use it only when the user's "
-    "current message itself asks for work to recur, changes a listed Routine, or continues or abandons the Routine the "
-    "user is setting up; never suggest one yourself. Call it alone and before any Action, with op create, or op update "
-    "and the routine_id. An independent planner then compiles the Routine from the user's own words; when it succeeds "
-    "the turn ends and the Team creates or changes it. Call it even when a value is open or missing: the planner "
-    "itself asks the user when it must, so never ask about a Routine with shimpz_clarify. The planner reads the "
-    "current message, the user's Routine draft, and the user's own recent messages it refers to, and alone judges the "
-    "timing, from seconds to months."
+    "current message itself asks for work to recur, changes a listed Routine, or continues or abandons the Routine "
+    "the user is setting up; never suggest one yourself. Call it alone and before any Action, with op create, or op "
+    "update and the routine_id. An independent planner then compiles the Routine from the user's own words; when it "
+    "succeeds the turn ends and the Team creates or changes it. Call it even when a value is open or missing: the "
+    "planner itself asks the user when it must, so never ask about a Routine with shimpz_clarify. The planner reads "
+    "the current message, the user's Routine draft, and the user's own recent messages it refers to, and alone judges "
+    "the timing, from seconds to months."
 )
 # How every refused compile ends: its one reason as fact, with no guessed cause and no steering toward a choice.
 _FACT_ONLY = " State only this reason, as fact; never guess another reason or recommend a schedule, value, or option."
@@ -111,6 +126,11 @@ _CORRECTIONS = {
     "the user to ask again stating the values." + _FACT_ONLY,
     "no-draft": "Not done: no Routine is being set up, so there is nothing to discard. Nothing was created or changed; "
     "tell the user that, as fact." + _FACT_ONLY,
+    "budget": "Not done: the Team runs at most a set number of Action steps a day across all its Routines, and this "
+    "Routine's runs a day times its {steps} steps exceed what is left: with {steps} steps it can run at most {most} "
+    "times a day. Nothing was created or changed; tell the user these facts." + _FACT_ONLY,
+    "too-large": "Not done: this Routine is larger than one Routine can hold. Nothing was created or changed; tell the "
+    "user that, as fact." + _FACT_ONLY,
     "unavailable": "Not done: the Routine planner is unavailable. Nothing was created, so never say it was; tell the "
     "user to try again." + _FACT_ONLY,
 }
@@ -126,6 +146,21 @@ class CompileUnavailableError(RuntimeError):
 
 def _whole(value: object, low: int, high: int) -> bool:
     return type(value) is int and low <= value <= high
+
+
+def valid_capacity(value: object) -> bool:
+    """Whether a Team's daily Action steps left for a Routine is a whole count within the Team's own bound."""
+    return _whole(value, 0, MAX_DAILY_STEPS)
+
+
+def daily_cap(schedule: Mapping[str, object]) -> int:
+    """The runs a canonical schedule may start in any 24 hours, exactly as Team counts them."""
+    kind = schedule["kind"]
+    if kind == "continuous":
+        return schedule["cap"]
+    if kind == "hourly":
+        return -(-24 // schedule["every"])
+    return 1
 
 
 def canonical_schedule(value: object) -> dict[str, object] | None:
@@ -163,8 +198,8 @@ def _routine_step(value: object) -> dict[str, object]:
 
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
-    """The Team's Routines as data (at most 8): id, name, request, schedule, zone, revision, and step skeletons."""
-    fields = {"routine_id", "name", "quote", "schedule", "timezone", "revision", "steps"}
+    """The Team's Routines as data (at most 8): id, name, request, schedule, zone, revision, daily steps, and steps."""
+    fields = {"routine_id", "name", "quote", "schedule", "timezone", "revision", "daily_steps", "steps"}
     if not isinstance(value, (list, tuple)) or len(value) > MAX_ROUTINES:
         raise RoutineContractError("invalid routines")
     routines = []
@@ -184,12 +219,18 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
             or not isinstance(entry["timezone"], str)
             or TIMEZONE_RE.fullmatch(entry["timezone"]) is None
             or not _whole(entry["revision"], 1, 2**31 - 1)
+            or not valid_capacity(entry["daily_steps"])
             or not isinstance(steps, list)
             or not 0 < len(steps) <= MAX_STEPS
         ):
             raise RoutineContractError("invalid routines")
         routines.append({**entry, "schedule": schedule, "steps": [_routine_step(step) for step in steps]})
-    if len({item["routine_id"] for item in routines}) != len(routines):
+    sizes = [len(json.dumps(item["steps"], ensure_ascii=False, separators=(",", ":")).encode()) for item in routines]
+    if (
+        len({item["routine_id"] for item in routines}) != len(routines)
+        or any(size > MAX_LISTED_STEPS_BYTES for size in sizes)
+        or sum(sizes) > MAX_LISTING_STEPS_BYTES
+    ):
         raise RoutineContractError("invalid routines")
     return tuple(routines)
 
@@ -200,7 +241,7 @@ class Origin(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     at: str
-    source: Literal["message", "quote", "default"]
+    source: Literal["message", "quote"]
     text: str | None
     region: int | None
     instruction: str | None
@@ -303,10 +344,6 @@ class Compiled(BaseModel):
     reply: str
 
 
-class UnprovenError(ValueError):
-    pass
-
-
 def _source(item: Source) -> dict[str, object]:
     if item.kind == "literal":
         try:
@@ -333,7 +370,6 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
     schema = contracts.get((step.assistant, step.action))
     if schema is None or STEP_ID_RE.fullmatch(step.id) is None:
         raise UnprovenError
-    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     inputs: dict[str, object] = {}
     for item in step.inputs:
         source = _source(item)
@@ -344,27 +380,13 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
         literal_valid = item.kind != "literal" or (
             0 < len(source["origins"]) <= MAX_ORIGINS
             and all(map(routine_words.origin_shape, source["origins"]))
-            and routine_words.proven(source, properties.get(item.member), words)
+            and routine_words.proven(source, words)
         )
         relation_valid = item.kind not in _BINDINGS or words.said(item.instruction)
         if not literal_valid or not relation_valid:
             raise UnprovenError
         inputs[item.member] = source
     return {"id": step.id, "assistant": step.assistant, "action": step.action, "input": inputs}
-
-
-def cap_proven(schedule: Mapping[str, object], words: Words, target: Mapping[str, object] | None) -> bool:
-    """Whether a continuous Routine's daily cap is the person's own, exactly as Team admits it.
-
-    The cap is never a safe default: it is a whole count the person's own words write in digits, or the cap the listed
-    Routine an update changes already has.
-    """
-    if schedule["kind"] != "continuous":
-        return True
-    kept = target["schedule"] if target is not None else None
-    if kept is not None and kept["kind"] == "continuous" and kept["cap"] == schedule["cap"]:
-        return True
-    return schedule["cap"] in words.counts()
 
 
 def change(
@@ -382,7 +404,7 @@ def change(
     is how many quoted regions the prompt numbered before these parts (a draft the change does not continue): every
     quote origin is renumbered past them, and one inside them is unproven.
     """
-    compiled = _renumbered(compiled, skipped)
+    compiled = routine_words.renumbered(compiled, skipped)
     words = Words(parts)
     schedule = None if compiled.schedule is None else canonical_schedule(_present(compiled.schedule.model_dump()))
     name = team_memory._line(compiled.name, MAX_NAME_CHARS)
@@ -394,7 +416,7 @@ def change(
         or not words.said(request)
         or (compiled.timezone is not None and TIMEZONE_RE.fullmatch(compiled.timezone) is None)
         or not 0 < len(compiled.steps) <= MAX_STEPS
-        or (schedule is not None and not cap_proven(schedule, words, target))
+        or (schedule is not None and not routine_words.cap_proven(schedule, words, target))
     ):
         raise UnprovenError
     steps = [_step(step, contracts, words, target is not None) for step in compiled.steps]
@@ -437,27 +459,7 @@ def _output(output: Output | None, steps: list[dict], words: Words, update: bool
     return {"mode": output.mode, "step": output.step, "instruction": output.instruction}
 
 
-def _renumbered(compiled: Compiled, skipped: int) -> Compiled:
-    """The compiled answer with every quote origin's region counted past ``skipped`` regions, or UnprovenError."""
-    if not skipped:
-        return compiled
-    steps = []
-    for step in compiled.steps:
-        inputs = []
-        for item in step.inputs:
-            origins = []
-            for origin in item.origins:
-                if origin.region is not None:
-                    if origin.region < skipped:
-                        raise UnprovenError
-                    origin = origin.model_copy(update={"region": origin.region - skipped})
-                origins.append(origin)
-            inputs.append(item.model_copy(update={"origins": origins}))
-        steps.append(step.model_copy(update={"inputs": inputs}))
-    return compiled.model_copy(update={"steps": steps})
-
-
-def _timing_rules(language: str) -> str:
+def _timing_rules(language: str, capacity: int) -> str:
     return (
         "schedule is hourly every 1-24 hours, daily at HH:MM, weekly on weekday 0-6 (0 is Monday) at HH:MM, monthly "
         "on day 1-28 at HH:MM, or continuous, with gap the whole seconds between the end of one run and the start of "
@@ -466,14 +468,18 @@ def _timing_rules(language: str) -> str:
         "of hours from 1 to 24 (such as 2 hours or 120 minutes) is hourly with that every, unless the user asks for "
         "the pause to follow the end of each run or states a daily limit, which makes it continuous; any other "
         f"interval of whole seconds from {MIN_CONTINUOUS_GAP_SECONDS} seconds to 24 hours (such as 30 seconds, 10 "
-        "minutes, or 90 minutes) is continuous with gap that interval in seconds; work to repeat again and again "
-        f"with no interval is continuous with gap {MIN_CONTINUOUS_GAP_SECONDS}; an interval under "
+        "minutes, or 90 minutes) is continuous with gap that interval in seconds; work to repeat again and again with "
+        f"no interval is continuous with gap {MIN_CONTINUOUS_GAP_SECONDS}; an interval under "
         f"{MIN_CONTINUOUS_GAP_SECONDS} seconds, over 24 hours other than daily, weekly, or monthly, or not a whole "
         "number of seconds is never rounded. A continuous request uses the daily limit the user states in digits as "
         "its cap, never one the user did not state; one that states none in digits is a schedule to ask, whose "
         f"options are that continuous schedule with cap {', '.join(map(str, CONTINUOUS_CAP_OPTIONS[:-1]))}, or "
         f"{CONTINUOUS_CAP_OPTIONS[-1]}, each labelled with its daily cap in digits in {language} (such as up to 100 "
-        "runs a day) and with an empty description; every schedule has its other fields null"
+        "runs a day) and with an empty description; every schedule has its other fields null. The Team runs at most "
+        f"{capacity} Action steps a day across its Routines for this one: its runs a day (a continuous cap, or 24 "
+        "divided by an hourly every, or 1) times its number of steps must not exceed that, so offer only the cap "
+        f"options above that fit, and when none fits, up to three smaller whole counts that do (at most {capacity} "
+        "divided by the number of steps, rounded down)"
     )
 
 
@@ -485,12 +491,12 @@ def _missing_rules(language: str, chat: bool) -> str:
             "the timing is missing or is none of the schedules below. "
         )
     return (
-        "Never refuse for a missing or unclear piece: when the work to repeat, a target, content, criterion, or amount "
-        "it needs, what each run does with its result, or the timing is missing, unclear, or not one of the schedules "
-        "below, and has no safe default, decide need and ask for exactly that one piece. Its question text is one "
-        f"short question in {language} that states only facts (when the timing asked for is outside what a Routine "
-        "supports, it says what a Routine supports); field missing, step and member null; options are one to five "
-        "suggestions, each with a short label in the user's words or language naming exactly one choice, never "
+        "Never refuse for a missing or unclear piece: when the work to repeat, a target, content, criterion, or "
+        "amount it needs, what each run does with its result, or the timing is missing, unclear, or not one of the "
+        "schedules below, and has no safe default, decide need and ask for exactly that one piece. Its question text "
+        f"is one short question in {language} that states only facts (when the timing asked for is outside what a "
+        "Routine supports, it says what a Routine supports); field missing, step and member null; options are one to "
+        "five suggestions, each with a short label in the user's words or language naming exactly one choice, never "
         "joining alternatives or unrelated work, an empty description, value_json null, and an empty reply. For "
         "missing work, suggest first the user's own requests in the draft and earlier sends, then other work the "
         "listed Actions do; for missing timing, the interval the user stated when a Routine supports it, then common "
@@ -510,22 +516,29 @@ def _prompt(
     locale: str | None,
     *,
     chat: bool = True,
+    capacity: int = MAX_DAILY_STEPS,
 ) -> str:
     draft = Words(source.draft)
     earlier = Words(tuple((CITED, text) for text in source.earlier))
     current = Words(((SAID, source.message),))
     actions = [
-        {"assistant": assistant.id, "action": action.id, "summary": action.summary, "input_schema": action.input_schema}
+        {
+            "assistant": assistant.id,
+            "action": action.id,
+            "summary": action.summary,
+            "input_schema": action.input_schema,
+            "output_schema": action.output_schema,
+        }
         for assistant in assistants
         for action in assistant.actions
     ]
     language = locale or "the language of the user's message"
     listed = [{"kind": kind, "own_words": own} for kind, own in draft.parts]
     discard = (
-        "Decide first whether to discard: when a draft is listed and the current message cancels it, in any "
-        "language and words (such as forget it, cancel, never mind, or I no longer want it), decide discard, never "
-        "need or a refusal; reply is then one short sentence in "
-        f"{language} saying nothing was created. Decide discard only when a draft is listed. "
+        "Decide first whether to discard: when a draft is listed and the current message cancels it, in any language "
+        "and words (such as forget it, cancel, never mind, or I no longer want it), decide discard, never need or a "
+        f"refusal; reply is then one short sentence in {language} saying nothing was created. Decide discard only "
+        "when a draft is listed. "
         if chat
         else ""
     )
@@ -541,65 +554,62 @@ def _prompt(
         "for a different Routine on its own, and then ignore the draft entirely. Take work, a target, or a value from "
         "a cited part or an earlier send only where a said part refers to it, such as with this, that, or the same, "
         "never from one nothing refers to; a reference that fits no listed send, or more than one, names nothing. "
-        f"{discard}"
-        "Refuse with not-recurring when the current message neither continues nor cancels a listed draft and its own "
-        "words do not ask for work to recur; quoted when the recurring words are only quoted or forwarded text; "
-        "secret when the words hold a password, token, key, or payment detail; unsupported when no listed Action can "
-        f"do the work. {_missing_rules(language, chat)}"
-        "Otherwise compile: name is a short title of the work alone, stating no timing or value; request copies word "
-        "for word one single line of a said part's own words that asks for the recurrence; "
-        f"{_timing_rules(language)}; timezone is an IANA zone only when the user names a place or zone, or when "
-        "changing the listed Routine its own zone unless the user names another, else "
-        "null; steps are at most 8 listed Actions in order, ids lowercase, filling required input members and only "
-        "members the user asked for. A member is a literal (value_json holds its JSON value; each scalar of it has "
-        "one origin: at is its JSON Pointer inside the value, empty for the whole value; source message with text "
-        "copied exactly from the user's own words, a number written as its digits; source quote with region, the "
-        "0-based index of a quoted region, the exact text inside it, and instruction copying the user's own words "
-        "that adopt it; or source default, at empty, only when the member's schema declares a default and the whole "
-        "value equals it; a required member the user's words leave open whose schema declares no default is never "
-        "given a value you choose: it is a missing piece, and one step's open members are one piece whose every "
-        "suggestion is one complete choice giving one value for each, such as page 1, 50 per page, unless it is the "
-        "only open field of the whole Routine and the user's words narrow it to two to five values, which is a "
-        "question about that member), "
-        "run_clock with clock date, time, datetime, or epoch_seconds of each run, step_output with the earlier step "
-        "id, an RFC 6901 pointer into that step's output, and instruction copying a said part's own words that "
-        "relate the two, step_text like step_output but passing that value as plain text, only for a member that "
-        "takes text and only when the user asks to pass the result on as text or formatted, or kept (only when "
-        "changing the "
-        "listed Routine) to keep that member exactly. output is what each run does with its result: mode show when "
-        "the user asks to see, get, or be told the result (such as show me the zones, e me mostra), with step the id "
-        "of the step whose result they want; changes when they want it only when it changes or something is new, with "
-        "that step; chain when their words hand the result to a later step through a step_output or step_text input "
-        "and ask nothing about seeing it, step null; none only when they say they want nothing shown, step null; kept "
-        "only when changing the listed Routine and the user says nothing about its result, step and instruction null. "
-        "instruction copies word for word the said words that choose it, never a cited send's (a selected suggestion "
-        "is its whole label). Words that only name the work, its timing, or its values (such as list my zones, every "
-        "30 seconds, or page 1) never choose it: a request to list, check, or fetch something says nothing about "
-        "showing the result. When no said words choose it, the result's use is a missing piece, never one you "
-        "choose, and the Routine is never compiled or asked about another field until it is answered. Never invent a "
-        "value, "
-        "never take one from a quoted region the user does not adopt, and never put a secret in a literal. Prefer "
-        "a safe reasonable default to asking, and never ask about the timezone; only when exactly one field, the "
-        "schedule or one step input member, has no safe default and the user's words leave two to five plausible "
-        "values, decide ask: compile everything else, give that field no value (schedule null, or that member left "
-        "out of its step's inputs), and fill question with text, one short question in "
-        f"{language}; field schedule or input, with step and member for an input, else null; options, two to five "
-        "distinct choices each with a short label naming exactly one choice, a description that may be empty, "
-        "value_json, the JSON value the field then holds (a schedule object as above, or the member's value), and "
-        f"reply, one short sentence in {language} saying in the past tense that the Routine was created (or changed), "
-        "since it is shown only once the user has picked that option. Never recommend one option. Otherwise question "
-        f"is null. reply is empty with ask or need; with compiled it is one short sentence in {language} saying in the "
-        "past tense that the Routine was created or changed. Every reply names only the Routine's work, never its "
-        "timing, count, or any other value, which the Routine's own notice shows, and never says that anything is "
-        "still to be chosen, answered, or set up.\n\n"
-        f"Routine draft, oldest first (JSON list): {json.dumps(listed, ensure_ascii=False)}\n"
-        "User's earlier sends the current message may refer to, oldest first (JSON list of each send's own words): "
-        f"{json.dumps([own for _kind, own in earlier.parts], ensure_ascii=False)}\n"
-        f"User's own words of the current message (JSON list): {json.dumps(current.parts[0][1], ensure_ascii=False)}\n"
-        "Quoted regions (JSON list, numbered from 0: the draft's first, then the earlier sends', then the current "
-        f"message's): {json.dumps(draft.quoted + earlier.quoted + current.quoted, ensure_ascii=False)}\n"
-        f"Actions (JSON): {json.dumps(actions, ensure_ascii=False)}\n"
-        f"Routine to change (JSON, null to create one): {json.dumps(target, ensure_ascii=False)}"
+        f"{discard}Refuse with not-recurring when the current message neither continues nor cancels a listed draft "
+        "and its own words do not ask for work to recur; quoted when the recurring words are only quoted or forwarded "
+        "text; secret when the words hold a password, token, key, or payment detail; unsupported when no listed "
+        f"Action can do the work. {_missing_rules(language, chat)}Otherwise compile: name is a short title of the "
+        "work alone, stating no timing or value; request copies word for word one single line of a said part's own "
+        f"words that asks for the recurrence; {_timing_rules(language, capacity)}; timezone is an IANA zone only when "
+        "the user names a place or zone, or when changing the listed Routine its own zone unless the user names "
+        f"another, else null; steps are at most {MAX_STEPS} listed Actions in order, one Action as many times as the "
+        "user asks, each step with its own inputs (such as one step per zone or page the user names), ids lowercase "
+        "and unique; every required input member is filled, and an optional member only when the user's words set it, "
+        "never otherwise. A member is a literal (value_json holds its JSON text, a string in its quotes (such as "
+        '"Ana"); each scalar of it has one origin: '
+        "at is its JSON Pointer inside the value, empty for the whole value; source message with text copied exactly "
+        "from the user's own words, a number written as its digits; or source quote with region, the 0-based index of "
+        "a quoted region, the exact text inside it, and instruction copying the user's own words that adopt it; a "
+        "schema default is never a value: a required member the user's words leave open is never given a value you "
+        "choose, even its schema's default: it is a missing piece, and one step's open members are one piece whose "
+        "every suggestion is one complete choice giving one value for each, such as page 1, 50 per page, unless it is "
+        "the only open field of the whole Routine and the user's words narrow it to two to five values, which is a "
+        "question about that member), run_clock with clock date, time, datetime, or epoch_seconds of each run, "
+        "step_output with the earlier step id, an RFC 6901 pointer into that step's output (a member its Action's "
+        "output_schema declares), and instruction copying a said part's own words that relate the two, step_text like "
+        "step_output but passing that value as plain text, only for a member that takes text and only when the user "
+        "asks to pass the result on as text or formatted, or kept (only when changing the listed Routine) to keep "
+        "that member exactly. output is what each run does with its result: mode show when the user asks to see, get, "
+        "or be told the result (such as show me the zones, e me mostra), with step the id of the step whose result "
+        "they want; changes when they want it only when it changes or something is new, with that step; chain when "
+        "their words hand the result to a later step through a step_output or step_text input and ask nothing about "
+        "seeing it, step null; none only when they say they want nothing shown, step null; kept only when changing "
+        "the listed Routine and the user says nothing about its result, step and instruction null. instruction copies "
+        "word for word the said words that choose it, never a cited send's (a selected suggestion is its whole "
+        "label). Words that only name the work, its timing, or its values (such as list my zones, every 30 seconds, "
+        "or page 1) never choose it: a request to list, check, or fetch something says nothing about showing the "
+        "result. When no said words choose it, the result's use is a missing piece, never one you choose, and the "
+        "Routine is never compiled or asked about another field until it is answered. Never invent a value, never "
+        "take one from a quoted region the user does not adopt, and never put a secret in a literal. Prefer a safe "
+        "reasonable default to asking, and never ask about the timezone; only when exactly one field, the schedule or "
+        "one step input member, has no safe default and the user's words leave two to five plausible values, decide "
+        "ask: compile everything else, give that field no value (schedule null, or that member left out of its step's "
+        f"inputs), and fill question with text, one short question in {language}; field schedule or input, with step "
+        "and member for an input, else null; options, two to five distinct choices each with a short label naming "
+        "exactly one choice, a description that may be empty, value_json, the JSON value the field then holds (a "
+        f"schedule object as above, or the member's value), and reply, one short sentence in {language} saying in the "
+        "past tense that the Routine was created (or changed), since it is shown only once the user has picked that "
+        "option. Never recommend one option. Otherwise question is null. reply is empty with ask or need; with "
+        f"compiled it is one short sentence in {language} saying in the past tense that the Routine was created or "
+        "changed. Every reply names only the Routine's work, never its timing, count, or any other value, which the "
+        "Routine's own notice shows, and never says that anything is still to be chosen, answered, or set "
+        f"up.\n\nRoutine draft, oldest first (JSON list): {json.dumps(listed, ensure_ascii=False)}\nUser's earlier "
+        "sends the current message may refer to, oldest first (JSON list of each send's own words): "
+        f"{json.dumps([own for _kind, own in earlier.parts], ensure_ascii=False)}\nUser's own words of the current "
+        f"message (JSON list): {json.dumps(current.parts[0][1], ensure_ascii=False)}\nQuoted regions (JSON list, "
+        "numbered from 0: the draft's first, then the earlier sends', then the current message's): "
+        f"{json.dumps(draft.quoted + earlier.quoted + current.quoted, ensure_ascii=False)}\nActions (JSON): "
+        f"{json.dumps(actions, ensure_ascii=False)}\nRoutine to change (JSON, null to create one): "
+        f"{json.dumps(target, ensure_ascii=False)}"
     )
 
 
@@ -619,7 +629,7 @@ def compiler(
     return ask
 
 
-def recompiler(
+def bounded_compiler(
     model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
 ) -> Callable[[str], Compiled]:
     """The compiler on a copy of the Team's single-attempt model that bounds its billed output.
@@ -628,7 +638,7 @@ def recompiler(
     retries of an SDK client already built.
     """
     return compiler(
-        lambda: model().model_copy(update={"max_tokens": MAX_RECOMPILE_OUTPUT_TOKENS}),
+        lambda: model().model_copy(update={"max_tokens": MAX_COMPILE_OUTPUT_TOKENS}),
         provider,
         structured_output,
     )
@@ -677,7 +687,7 @@ def _clarification(question: Question) -> clarification.Clarification | None:
     )
 
 
-def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: dict | None) -> object:
+def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: dict | None, capacity: int) -> object:
     """A candidate change with exactly its one open field, and the question whose options each fill it.
 
     Each option carries its own reply, written for the Routine it completes: a reply shown once the person picks an
@@ -705,8 +715,23 @@ def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: di
     capped = question.field != "schedule" or _caps_labelled(question, values, Words(parts), target)
     if asked is None or not open_input or not capped or not all(replies):
         return "unproven"
+    refused = _budget_refusal(
+        len(wire["steps"]), values if question.field == "schedule" else [wire["schedule"]], capacity
+    )
+    if refused is not None:
+        return refused
     wire["question"] = {"field": field, "values": values, "replies": replies}
     return {"routine": wire, "reply": asked.render(), "clarification": asked.to_dict()}
+
+
+def _budget_refusal(steps: int, schedules: list[Mapping[str, object]], capacity: int) -> tuple[str, int, int] | None:
+    """The budget correction when any schedule's runs a day times the steps exceed the capacity left, else None.
+
+    Team rechecks at commit; this only keeps the compiler from proposing a Routine Team would refuse.
+    """
+    if any(daily_cap(schedule) * steps > capacity for schedule in schedules):
+        return ("budget", steps, capacity // steps)
+    return None
 
 
 def _caps_labelled(question: Question, values: list[Any], words: Words, target: dict | None) -> bool:
@@ -717,7 +742,7 @@ def _caps_labelled(question: Question, values: list[Any], words: Words, target: 
     """
     caps = {value.get("cap") for value in values}
     if len(caps) == 1:
-        return all(cap_proven(value, words, target) for value in values)
+        return all(routine_words.cap_proven(value, words, target) for value in values)
     return all(
         value["kind"] != "continuous" or value["cap"] in Words(((SAID, item.label),)).counts()
         for item, value in zip(question.options, values, strict=True)
@@ -752,10 +777,14 @@ def _answer(
     source: UserWords,
     assistants: tuple[Any, ...],
     target: dict[str, object] | None,
+    capacity: int,
     *,
     chat: bool = True,
 ) -> object:
-    """The wire outcome and reply of one compiled answer, or the closed reason it cannot be one."""
+    """The wire outcome and reply of one compiled answer, or the closed reason it cannot be one.
+
+    ``capacity`` is the Team's daily Action steps left for this Routine (an update has its target's own back).
+    """
     refusal = _refusal(compiled, chat)
     if refusal is not None:
         return refusal
@@ -765,11 +794,25 @@ def _answer(
     if compiled.decision == "need":
         # Its reply is the question itself.
         return _needed(compiled, target)
-    return _decided(compiled, source, assistants, target)
+    return _bounded(_decided(compiled, source, assistants, target, capacity))
+
+
+def _bounded(outcome: object) -> object:
+    """An outcome Team's turn response can hold whole; a larger one is refused as too large, never cut."""
+    if isinstance(outcome, dict):
+        encoded = json.dumps(outcome, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > MAX_OUTCOME_BYTES:
+            return "too-large"
+    return outcome
+
+
+def _fits(prompt: str) -> bool:
+    """Whether a compiler prompt fits its byte bound and the model's window with its schema and output reserve."""
+    return context_budget.fits(prompt, Compiled.model_json_schema(), MAX_COMPILE_PROMPT_BYTES)
 
 
 def _decided(
-    compiled: Compiled, source: UserWords, assistants: tuple[Any, ...], target: dict[str, object] | None
+    compiled: Compiled, source: UserWords, assistants: tuple[Any, ...], target: dict[str, object] | None, capacity: int
 ) -> object:
     """A change with one open field and its question, a discarded draft, or a compiled change."""
     contracts = {
@@ -777,19 +820,20 @@ def _decided(
     }
     if compiled.decision == "ask":
         # Each option carries the reply of the Routine it completes.
-        return _asked(compiled, source, contracts, target)
+        return _asked(compiled, source, contracts, target, capacity)
     reply = team_memory._line(compiled.reply, MAX_REPLY_CHARS)
     if not reply:
         return "unproven"
     if compiled.decision == "discard":
         return {"routine": {"op": "discard"}, "reply": reply} if source.draft else "no-draft"
-    return _settled(compiled, source, contracts, target, reply)
+    return _settled(compiled, source, contracts, target, (reply, capacity))
 
 
 def _settled(
-    compiled: Compiled, source: UserWords, contracts: Mapping, target: dict[str, object] | None, reply: str
+    compiled: Compiled, source: UserWords, contracts: Mapping, target: dict[str, object] | None, ending: tuple[str, int]
 ) -> object:
-    """A compiled change with no open field."""
+    """A compiled change with no open field, its reply, within the Team's daily steps left (``ending``)."""
+    reply, capacity = ending
     if compiled.question is not None:
         return "unproven"
     skipped = 0 if compiled.continues else source.skipped
@@ -797,7 +841,8 @@ def _settled(
         wire = change(compiled, source.parts(compiled.continues), contracts, target, skipped=skipped)
     except UnprovenError:
         return "unproven"
-    return {"routine": wire, "reply": reply}
+    refused = _budget_refusal(len(wire["steps"]), [wire["schedule"]], capacity)
+    return refused if refused is not None else {"routine": wire, "reply": reply}
 
 
 def _compile(call: Mapping[str, Any], messages: list[Any], context: Any, ask: Callable[[str], Compiled]) -> object:
@@ -807,11 +852,16 @@ def _compile(call: Mapping[str, Any], messages: list[Any], context: Any, ask: Ca
     if current is None or not valid:
         return "invalid"
     source = UserWords(current, context.routine_earlier, context.routine_draft)
+    # An update has its target's own daily steps back (ADR-0092 amendment, 2026-10-05, scale).
+    capacity = context.routine_capacity + (0 if target is None else target["daily_steps"])
+    prompt = _prompt(source, context.assistants, target, context.locale, capacity=capacity)
+    if not _fits(prompt):
+        return "too-large"
     try:
-        compiled = ask(_prompt(source, context.assistants, target, context.locale))
+        compiled = ask(prompt)
     except CompileUnavailableError:
         return "unavailable"
-    return _answer(compiled, source, context.assistants, target)
+    return _answer(compiled, source, context.assistants, target, capacity)
 
 
 def recompile(
@@ -819,7 +869,8 @@ def recompile(
     assistants: tuple[Any, ...],
     locale: str | None,
     ask: Callable[[str], Compiled],
-    draft: tuple[tuple[str, str], ...] = (),
+    draft: tuple[tuple[str, str], ...],
+    capacity: int,
 ) -> object:
     """Compile a Routine from scratch from its Team-held words, outside any chat turn (ADR-0092).
 
@@ -829,13 +880,18 @@ def recompile(
     the compiler asks, or the closed reason it cannot be one.
     """
     source = UserWords(message, (), draft)
+    prompt = _prompt(source, assistants, None, locale, chat=False, capacity=capacity)
+    if not _fits(prompt):
+        return "too-large"
     try:
-        compiled = ask(_prompt(source, assistants, None, locale, chat=False))
+        compiled = ask(prompt)
     except CompileUnavailableError:
         return "unavailable"
     # Every sealed word granted the Routine, so all of them count, numbered exactly as Team admits them.
     compiled = compiled.model_copy(update={"continues": bool(draft)})
-    return _answer(compiled, source, assistants, None, chat=False)
+    outcome = _answer(compiled, source, assistants, None, capacity, chat=False)
+    # Outside a chat a budget refusal is its closed reason alone.
+    return outcome[0] if isinstance(outcome, tuple) else outcome
 
 
 def _review(messages: list[Any], context: Any, ask: Callable[[str], Compiled], *, allowed: bool) -> object:
@@ -884,13 +940,21 @@ def _guard_class():
                 }
             return {
                 "messages": [
-                    ToolMessage(content=_CORRECTIONS[outcome], tool_call_id=call["id"], name=call["name"])
+                    ToolMessage(content=_correction(outcome), tool_call_id=call["id"], name=call["name"])
                     for call in calls
                 ],
                 "jump_to": "model",
             }
 
     return RoutineGuard
+
+
+def _correction(outcome: str | tuple[str, int, int]) -> str:
+    """One closed correction; the budget one states this Routine's steps and the most runs a day they allow."""
+    if isinstance(outcome, tuple):
+        key, steps, most = outcome
+        return _CORRECTIONS[key].format(steps=steps, most=most)
+    return _CORRECTIONS[outcome]
 
 
 def guard(context: Any, ask: Callable[[str], Compiled], *, allowed: bool):

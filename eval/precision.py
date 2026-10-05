@@ -806,6 +806,7 @@ def validate() -> dict[str, object]:
             memories=(),
             skills=(),
             routines=(),
+            routine_capacity=20_000,
         )
     return {
         "status": "corpus-valid",

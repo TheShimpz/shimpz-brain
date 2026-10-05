@@ -32,7 +32,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, field_validator, model_validator
 
 import routine as team_routine
 
@@ -118,6 +118,7 @@ class ActionInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     summary: str = Field(min_length=1, max_length=2_000)
     input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
     # Whether the Action declares an authorization capability, and which input properties take a file (ADR-0093).
     authorization: StrictBool
     input_files: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(max_length=1)
@@ -138,8 +139,10 @@ class TurnContextInput(ClosedInput):
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
     # The procedures the Team learned (ADR-0085); null where learning is unavailable.
     skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
-    # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
+    # The Team's Routines as data (ADR-0086) and the daily Action steps it leaves a new one (ADR-0092, 2026-10-05,
+    # scale); null withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
+    routine_capacity: StrictInt | None
     # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092), only beside routines.
     routine_earlier: list[str] = Field(max_length=routine_words.MAX_EARLIER)
     # The user's Routine draft as Team froze it, and the answer a composed reply gave to its question (ADR-0092,
@@ -170,6 +173,7 @@ class TurnContextInput(ClosedInput):
             routine_earlier=tuple(self.routine_earlier),
             routine_draft=tuple(self.routine_draft),
             routine_answer=self.routine_answer,
+            routine_capacity=self.routine_capacity,
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
         )
@@ -185,6 +189,7 @@ def _assistants(value: list[AssistantInput]) -> tuple[agent_runtime.AssistantDef
                     id=action.id,
                     summary=action.summary,
                     input_schema=action.input_schema,
+                    output_schema=action.output_schema,
                     authorization=action.authorization,
                     input_files=tuple(action.input_files),
                 )
@@ -328,6 +333,8 @@ class RoutineCompileInput(ClosedInput):
     message: str = Field(min_length=1, max_length=team_routine.MAX_SOURCE_CHARS)
     # Every sealed part before the message, kinded and oldest first (ADR-0092 amendments, 2026-10-04 and 2026-10-05).
     draft: list[dict[str, Any]] = Field(max_length=routine_words.MAX_PARTS - 1)
+    # The daily Action steps the Team leaves the recreated Routine, advisory to the compiler.
+    capacity: StrictInt
     assistants: list[AssistantInput] = Field(min_length=1, max_length=agent_runtime.MAX_ASSISTANTS)
 
     @field_validator("assistants")
@@ -473,7 +480,8 @@ class RuntimeLike:
         message: str,
         assistants: tuple[agent_runtime.AssistantDefinition, ...],
         locale: str | None,
-        earlier: tuple[str, ...] = (),
+        earlier: tuple[str, ...],
+        capacity: int,
     ) -> object: ...
 
     def intent_route(
@@ -789,10 +797,11 @@ def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], Runtim
     @app.post("/v1/routine-compile", dependencies=[Depends(require_auth)])
     async def routine_compile(request: Request, body: RoutineCompileInput) -> dict[str, object]:
         # Team's Stop or deletion closes its request; that cancels only this compile's provider I/O.
+        draft, capacity = tuple(body.draft), body.capacity
         outcome, usage = await _cancellable(
             request,
             lambda: current_runtime().routine_compile(
-                body.provider.runtime(), body.message, _assistants(body.assistants), body.locale, tuple(body.draft)
+                body.provider.runtime(), body.message, _assistants(body.assistants), body.locale, draft, capacity
             ),
             "Routine compile cancelled",
         )
@@ -815,16 +824,10 @@ def _register_intent_route(
         )
 
 
-async def _cancel_on_disconnect(request: Request, scope: provider_cancel.CancelScope) -> None:
-    while (await request.receive())["type"] != "http.disconnect":
-        pass
-    scope.cancel()
-
-
 async def _cancellable[T](request: Request, work: Callable[[], T], cancelled: str) -> tuple[T, dict[str, object]]:
     """Run one synchronous operation to completion; a Team disconnect cancels only its provider I/O (ADR-0079)."""
     scope = provider_cancel.CancelScope()
-    watcher = asyncio.create_task(_cancel_on_disconnect(request, scope))
+    watcher = asyncio.create_task(scope.cancel_on_disconnect(request.receive))
     try:
         return await run_in_threadpool(scope.run, lambda: model_usage.measure(work))
     except provider_cancel.ProviderCallCancelled:

@@ -6,15 +6,13 @@ import copy
 import dataclasses
 import json
 import unittest
-from pathlib import Path
 from typing import ClassVar
 from unittest import mock
 
 import agent_runtime
 import clarification
-import httpx
 import memory
-import provider_client
+import pydantic
 import routine_words
 import runtime_api
 import turn_pins
@@ -39,6 +37,7 @@ LISTED = {
     "schedule": {"kind": "daily", "time": "08:00"},
     "timezone": "America/Sao_Paulo",
     "revision": 2,
+    "daily_steps": 1,
     "steps": [{"id": "greet", "assistant": "hello-pulse", "action": "hello", "inputs": ["name"]}],
 }
 
@@ -144,7 +143,7 @@ def _system(messages: list) -> str:
 
 
 def _chat(routines=()):
-    return dataclasses.replace(context(), memories=(), routines=tuple(routines), locale="pt")
+    return dataclasses.replace(context(), memories=(), routines=tuple(routines), routine_capacity=20_000, locale="pt")
 
 
 class ContractTests(unittest.TestCase):
@@ -195,7 +194,11 @@ class ContractTests(unittest.TestCase):
             [{**LISTED, "timezone": "../etc"}],
             [{**LISTED, "revision": 0}],
             [{**LISTED, "steps": []}],
-            [{**LISTED, "steps": [step] * 9}],
+            [{**LISTED, "steps": [step] * (routine.MAX_STEPS + 1)}],
+            [{**LISTED, "daily_steps": -1}],
+            [{**LISTED, "daily_steps": routine.MAX_DAILY_STEPS + 1}],
+            [{**LISTED, "daily_steps": True}],
+            [{**LISTED, "steps": [{**step, "inputs": ["x" * 1000] * 263}]}],
             [{**LISTED, "steps": [{**step, "id": "Bad"}]}],
             [{**LISTED, "steps": [{**step, "inputs": [1]}]}],
             [{**LISTED, "steps": [{**step, "extra": 1}]}],
@@ -221,7 +224,6 @@ class WordsAndChangeTests(unittest.TestCase):
         )
         quoted = _source(value_json='"olá Bob"', origins=[_origin("olá Bob", "quote", region=0, instruction="diga")])
         others = [
-            _source("count", value_json="1", origins=[_origin(None, "default")]),
             _source("count", value_json="9", origins=[_origin("9")]),
             _source(kind="run_clock", clock="date"),
             _source(kind="step_output", step="greet", pointer="/id", instruction="diga olá"),
@@ -267,13 +269,9 @@ class WordsAndChangeTests(unittest.TestCase):
             with_inputs(_source(origins=[_origin("Ana", at="x")])),
             with_inputs(_source(origins=[_origin("Ana", region=0)])),
             with_inputs(_source(origins=[_origin("Ana", "quote", region=0)])),
-            with_inputs(_source(origins=[_origin("Ana", "default")])),
             with_inputs(_source(origins=[_origin("Ana", "quote", region=0, instruction="ignore isso")])),
             with_inputs(_source(origins=[_origin("Ana"), _origin("Ana")])),
             with_inputs(_source(origins=[_origin("Ana", at="/0")])),
-            with_inputs(_source("count", value_json="2", origins=[_origin(None, "default")])),
-            with_inputs(_source("count", value_json="true", origins=[_origin(None, "default")])),
-            with_inputs(_source("count", value_json="1", origins=[_origin(None, "default", at="/x")])),
             with_inputs(_source("count", value_json="9", origins=[_origin("9.0")])),
             with_inputs(_source("count", value_json="true", origins=[_origin("true")])),
             with_inputs(_source("count", value_json="null", origins=[_origin("Ana")])),
@@ -329,9 +327,9 @@ class PagingTests(unittest.TestCase):
         )
 
     def test_paging_the_person_never_stated_is_never_a_default_but_their_answer_proves_it(self):
-        invented = self.compiled(_origin(None, "default"), _origin(None, "default"))
-        with self.assertRaises(routine.UnprovenError):
-            routine.change(invented, self.DRAFT, self.LIST_ZONES, None)
+        # A schema default is no origin at all: the compiler's answer schema has no such source.
+        with self.assertRaises(pydantic.ValidationError):
+            _origin(None, "default")
         answered = (*self.DRAFT, ("said", "Página 1, 50 zonas"))
         wire = routine.change(self.compiled(_origin("1"), _origin("50")), answered, self.LIST_ZONES, None)
         self.assertEqual(
@@ -412,22 +410,28 @@ class CapTests(unittest.TestCase):
 
         source = routine.UserWords("Página 1, 5 zonas", (), draft)
         labelled = [option(cap, f"Até {cap} execuções por dia") for cap in caps]
-        asked = routine._answer(asking(*labelled), source, _chat().assistants, None)
+        asked = routine._answer(asking(*labelled), source, _chat().assistants, None, routine.MAX_DAILY_STEPS)
         self.assertEqual([value["cap"] for value in asked["routine"]["question"]["values"]], list(caps))
         self.assertEqual(asked["routine"]["question"]["replies"], [item.reply for item in labelled])
         self.assertNotIn("escolher", json.dumps(asked["routine"], ensure_ascii=False))
         # An option whose label, the person's answer once picked, never states its cap would grant the compiler's.
         mislabelled = [option(1000, "Até 100 execuções por dia"), *labelled[1:]]
-        self.assertEqual(routine._answer(asking(*mislabelled), source, _chat().assistants, None), "unproven")
+        self.assertEqual(
+            routine._answer(asking(*mislabelled), source, _chat().assistants, None, routine.MAX_DAILY_STEPS), "unproven"
+        )
         # Options that differ in their cap prove each by its own label alone: never by a count the person wrote
         # elsewhere, and never by the cap of the listed Routine an update changes.
         swapped = [option(100, "Até 500 execuções por dia"), option(500, "Até 100 execuções por dia")]
         counted = routine.UserWords("Página 1, 5 zonas, até 100 ou 500 por dia", (), draft)
-        self.assertEqual(routine._answer(asking(*swapped), counted, _chat().assistants, None), "unproven")
+        self.assertEqual(
+            routine._answer(asking(*swapped), counted, _chat().assistants, None, routine.MAX_DAILY_STEPS), "unproven"
+        )
         listed = {**LISTED, "schedule": {"kind": "continuous", "gap": 30, "cap": 100}}
         kept = [option(100, "Até 500 execuções por dia"), labelled[1]]
         update = asking(*kept).model_copy(update={"continues": False, "request": "Página 1, 5 zonas"})
-        self.assertEqual(routine._answer(update, source, _chat().assistants, listed), "unproven")
+        self.assertEqual(
+            routine._answer(update, source, _chat().assistants, listed, routine.MAX_DAILY_STEPS), "unproven"
+        )
 
 
 class CompilerTests(unittest.TestCase):
@@ -538,7 +542,7 @@ def _asking(**changes) -> routine.Compiled:
 
 class QuestionTests(unittest.TestCase):
     def answer(self, compiled: routine.Compiled) -> object:
-        return routine._answer(compiled, routine.UserWords(MESSAGE), _chat().assistants, None)
+        return routine._answer(compiled, routine.UserWords(MESSAGE), _chat().assistants, None, routine.MAX_DAILY_STEPS)
 
     def test_a_question_leaves_exactly_its_field_open_with_one_value_per_option(self):
         asked = self.answer(_asking())
@@ -776,6 +780,7 @@ class GraphTests(unittest.TestCase):
             memories=(memory.Memory("language", "responda em português"),),
             skills=(skill,),
             routines=(LISTED,),
+            routine_capacity=20_000,
             knowledge_writable=False,
         )
         result = runtime.start(run, REQUEST)
@@ -813,7 +818,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
 
     def test_the_context_refuses_invalid_routines_or_scope(self):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid routines"):
-            dataclasses.replace(context(), routines=({"routine_id": "x"},))
+            dataclasses.replace(context(), routines=({"routine_id": "x"},), routine_capacity=20_000)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid knowledge scope"):
             dataclasses.replace(context(), knowledge_writable=1)
         # Earlier sends, the draft, and an answer come only beside the Routines, each exactly as Team froze it.
@@ -826,9 +831,10 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             (None, {"routine_answer": "x"}),
         ):
             with self.subTest(words=words), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Routine words"):
-                dataclasses.replace(context(), routines=routines, **words)
-        self.assertEqual(dataclasses.replace(context(), routines=(), routine_earlier=["a"]).routine_earlier, ("a",))
-        drafted = dataclasses.replace(context(), routines=(), routine_draft=[{"kind": "said", "text": "a"}])
+                dataclasses.replace(context(), routines=routines, routine_capacity=20_000, **words)
+        chat = {"routines": (), "routine_capacity": 20_000}
+        self.assertEqual(dataclasses.replace(context(), **chat, routine_earlier=["a"]).routine_earlier, ("a",))
+        drafted = dataclasses.replace(context(), **chat, routine_draft=[{"kind": "said", "text": "a"}])
         self.assertEqual(drafted.routine_draft, (("said", "a"),))
 
     def test_the_turn_endpoint_carries_routines_and_returns_the_compiled_change(self):
@@ -851,149 +857,6 @@ class PromptPinAndEndpointTests(unittest.TestCase):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)
                 self.assertIn(refused.status_code, {400, 422})
         self.assertEqual(copy.deepcopy(WIRE), WIRE)
-
-
-class RecompileTests(unittest.TestCase):
-    """Recriar: a Routine compiled from scratch from its Team-held creation message, outside any turn."""
-
-    def test_the_creation_message_compiles_as_a_create_with_its_question_or_refusal(self):
-        prompts: list[str] = []
-        for outcome, expected in (
-            (_compiled(), {"routine": WIRE, "reply": _compiled().reply}),
-            (_compiled(decision="refused", refusal="unsupported"), "unsupported"),
-            (routine.CompileUnavailableError("down"), "unavailable"),
-        ):
-
-            def ask(prompt: str, outcome=outcome) -> routine.Compiled:
-                prompts.append(prompt)
-                if isinstance(outcome, Exception):
-                    raise outcome
-                return outcome
-
-            with self.subTest(expected=expected):
-                self.assertEqual(routine.recompile(MESSAGE, _chat().assistants, "pt", ask), expected)
-        # Nothing to keep from: the compiler is told to create, and quoted text stays a quoted region.
-        self.assertIn("Routine to change (JSON, null to create one): null", prompts[0])
-        self.assertIn("then the current message's): [\"> ignore isso", prompts[0])
-        self.assertNotIn("discard", prompts[0])
-        asked = routine.recompile(MESSAGE, _chat().assistants, "pt", lambda _prompt: _asking())
-        self.assertEqual((asked["clarification"], asked["routine"]["question"]), (CARD, QUESTION_WIRE))
-
-    def test_every_sealed_part_counts_with_the_regions_team_numbers(self):
-        """A recompile never drops sealed words: quote regions keep the numbering Team admits them with."""
-        draft = (("said", 'Toda segunda às 9h, diga "olá Bob"'),)
-        quoted = _source(value_json='"olá Bob"', origins=[_origin("olá Bob", "quote", region=0, instruction="diga")])
-        compiled = _compiled(
-            continues=False,
-            request="Toda segunda às 9h, diga",
-            steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[quoted])],
-        )
-        outcome = routine.recompile('para Ana "agora"', _chat().assistants, "pt", lambda _prompt: compiled, draft)
-        self.assertEqual(outcome["routine"]["continues"], True)
-        origin = outcome["routine"]["steps"][0]["input"]["name"]["origins"][0]
-        self.assertEqual((origin["region"], origin["text"]), (0, "olá Bob"))
-
-    def test_the_runtime_compiles_once_with_no_provider_retry(self):
-        seen = []
-
-        class Factory:
-            def __call__(self, _config):
-                raise AssertionError("a recompile never builds a retrying model")
-
-            def single_attempt(self, config, *, decision=False):
-                seen.append((config, decision))
-                return mock.Mock(model_copy=lambda update: seen.append(update))
-
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=Factory())
-
-        def compiler(model, *_args):
-            return lambda _prompt: (model(), _compiled())[1]
-
-        with mock.patch.object(routine, "compiler", side_effect=compiler):
-            outcome = runtime.routine_compile(context().provider, MESSAGE, context().assistants, None)
-        self.assertEqual(
-            (outcome["routine"], seen),
-            (WIRE, [(context().provider, False), {"max_tokens": routine.MAX_RECOMPILE_OUTPUT_TOKENS}]),
-        )
-        # Sealed words that are not kinded texts of at most a message never reach a compile.
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine words"):
-            runtime.routine_compile(context().provider, MESSAGE, context().assistants, None, (("said", "a\x00"),))
-
-    def test_both_providers_send_one_bounded_recompile_request_and_retry_nothing(self):
-        catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
-        for entry in catalog["providers"]:
-            config = agent_runtime.ProviderConfig(entry["id"], entry["models"][0]["id"], "secret-test-key")
-            sent = []
-
-            def fail(request, sent=sent):
-                sent.append(json.loads(request.content))
-                return httpx.Response(500, json={"error": {"type": "api_error", "message": "transient"}})
-
-            pool = httpx.Client(transport=httpx.MockTransport(fail))
-            # The production factory over a pool whose provider always answers a retryable failure.
-            with mock.patch.object(provider_client.provider_cancel, "client", return_value=pool):
-                runtime = agent_runtime.AgentRuntime(
-                    InMemorySaver(), model_factory=provider_client.ProviderModelFactory()
-                )
-            outcome = runtime.routine_compile(config, MESSAGE, context().assistants, None)
-            key = "max_output_tokens" if entry["id"] == "openai" else "max_tokens"
-            with self.subTest(provider=entry["id"]):
-                self.assertEqual(outcome, "unavailable")
-                self.assertEqual([body[key] for body in sent], [routine.MAX_RECOMPILE_OUTPUT_TOKENS])
-
-    def test_the_endpoint_is_authenticated_closed_and_metered(self):
-        headers = {"Authorization": f"Bearer {TOKEN}"}
-        calls = []
-
-        class Runtime:
-            def routine_compile(self, provider, message, assistants, locale, draft):
-                calls.append((provider.api_key, message, [item.id for item in assistants], locale, draft))
-                return {"routine": WIRE, "reply": "Ok."} if locale == "pt" else "unspecified"
-
-        api = TestClient(runtime_api.create_app(runtime=Runtime(), token_reader=lambda: TOKEN))
-        assistant = {
-            "id": "hello-pulse",
-            "genesis": "Greets people.",
-            "actions": [
-                {
-                    "id": "hello",
-                    "summary": "Say hello.",
-                    "input_schema": CONTRACTS[("hello-pulse", "hello")],
-                    "authorization": False,
-                    "input_files": [],
-                }
-            ],
-        }
-        payload = {
-            "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "secret-test-key"},
-            "locale": "pt",
-            "message": MESSAGE,
-            "draft": [{"kind": "cited", "text": "liste as zonas"}],
-            "assistants": [assistant],
-        }
-        self.assertEqual(api.post("/v1/routine-compile", json=payload).status_code, 401)
-        compiled = api.post("/v1/routine-compile", json=payload, headers=headers).json()
-        self.assertEqual(
-            {key: compiled[key] for key in ("routine", "reply", "clarification", "refusal")},
-            {"routine": WIRE, "reply": "Ok.", "clarification": None, "refusal": None},
-        )
-        self.assertIn("usage", compiled)
-        refused = api.post("/v1/routine-compile", json={**payload, "locale": None}, headers=headers).json()
-        self.assertEqual((refused["routine"], refused["refusal"]), (None, "unspecified"))
-        draft = ({"kind": "cited", "text": "liste as zonas"},)
-        self.assertEqual(calls[0], ("secret-test-key", MESSAGE, ["hello-pulse"], "pt", draft))
-        for invalid in (
-            {**payload, "message": ""},
-            {**payload, "message": "x" * (routine.MAX_SOURCE_CHARS + 1)},
-            {**payload, "assistants": []},
-            {**payload, "assistants": [assistant, assistant]},
-            {**payload, "history": []},
-            {**payload, "draft": [{"kind": "said", "text": "a"}] * 13},
-            {**payload, "earlier": []},
-        ):
-            with self.subTest(invalid=sorted(invalid)):
-                self.assertEqual(api.post("/v1/routine-compile", json=invalid, headers=headers).status_code, 422)
-        self.assertEqual(len(calls), 2)
 
 
 if __name__ == "__main__":

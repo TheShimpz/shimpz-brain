@@ -65,9 +65,9 @@ MAX_GENESIS_BYTES = 128 * 1024
 MAX_MESSAGE_CHARS = 64 * 1024
 MAX_SCHEMA_BYTES = 128 * 1024
 # Team admits at most 4,096 JSON values in one Action schema and 32,768 in one whole machine contract, so the input
-# schemas of one Assistant together hold at most 32,768. Dense annotation or literal data costs far more decoded memory
-# than its encoded bytes, so only these value counts together with the byte bounds limit the schema data a request
-# retains.
+# and output schemas of one Assistant together hold at most 32,768. Dense annotation or literal data costs far more
+# decoded memory than its encoded bytes, so only these value counts together with the byte bounds limit the schema data
+# a request retains.
 MAX_SCHEMA_NODES = 4096
 MAX_ASSISTANT_SCHEMA_NODES = 32_768
 MAX_REPLY_CHARS = 60_000
@@ -105,6 +105,14 @@ class ProviderConfig:
             raise RuntimeContractError("invalid model provider credential")
 
 
+def _check_schema(schema: Mapping[str, Any], kind: str) -> None:
+    """One Action schema within its value and byte bounds, and a valid JSON Schema."""
+    problem = action_schema.bound_problem(schema, MAX_SCHEMA_NODES, MAX_SCHEMA_BYTES)
+    if problem is not None:
+        message = f"invalid Action {kind} schema" if problem == "invalid" else f"Action {kind} schema is {problem}"
+        raise RuntimeContractError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class ActionDefinition:
     id: str
@@ -115,6 +123,8 @@ class ActionDefinition:
     authorization: bool = False
     # The input properties that take one attached file's id (ADR-0093).
     input_files: tuple[str, ...] = ()
+    # The reviewed output schema: only the Routine compiler reads it, never a chat tool (ADR-0092, 2026-10-05, scale).
+    output_schema: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if ACTION_ID_RE.fullmatch(self.id) is None:
@@ -130,21 +140,8 @@ class ActionDefinition:
             raise RuntimeContractError("invalid Action summary")
         if self.input_schema.get("type") != "object":
             raise RuntimeContractError("Action input schema must describe an object")
-        if action_schema.json_nodes(self.input_schema, MAX_SCHEMA_NODES) > MAX_SCHEMA_NODES:
-            raise RuntimeContractError("Action input schema is too large")
-        try:
-            encoded = json.dumps(self.input_schema, separators=(",", ":"), sort_keys=True).encode()
-        except (TypeError, ValueError) as exc:
-            raise RuntimeContractError("Action input schema is not JSON") from exc
-        if len(encoded) > MAX_SCHEMA_BYTES:
-            raise RuntimeContractError("Action input schema is too large")
-        from jsonschema import Draft202012Validator
-        from jsonschema.exceptions import SchemaError
-
-        try:
-            Draft202012Validator.check_schema(dict(self.input_schema))
-        except SchemaError as exc:
-            raise RuntimeContractError("invalid Action input schema") from exc
+        _check_schema(self.input_schema, "input")
+        _check_schema(self.output_schema, "output")
         problem = action_schema.schema_problem(self.input_schema)
         if problem is not None:
             raise RuntimeContractError(f"Action input schema {problem}")
@@ -177,9 +174,10 @@ class AssistantDefinition:
             raise RuntimeContractError("duplicate Action id within Assistant")
         remaining = MAX_ASSISTANT_SCHEMA_NODES
         for action in self.actions:
-            remaining -= action_schema.json_nodes(action.input_schema, remaining)
-            if remaining < 0:
-                raise RuntimeContractError("Assistant Action input schemas are too large")
+            for schema in (action.input_schema, action.output_schema):
+                remaining -= action_schema.json_nodes(schema, remaining)
+                if remaining < 0:
+                    raise RuntimeContractError("Assistant Action schemas are too large")
         object.__setattr__(self, "actions", tuple(sorted(self.actions, key=lambda item: item.id)))
 
 
@@ -205,6 +203,8 @@ class TurnContext:
     # gave to its last question (ADR-0092, 2026-10-05); only beside ``routines``, and only a start reads them.
     routine_draft: tuple[tuple[str, str], ...] = ()
     routine_answer: str | None = None
+    # The daily Action steps the Team leaves a new Routine, advisory to its compiler (ADR-0092, 2026-10-05, scale).
+    routine_capacity: int | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
@@ -266,6 +266,10 @@ def _admit_knowledge(context: TurnContext) -> None:
     cited = context.routine_earlier or context.routine_draft or context.routine_answer is not None
     if cited and context.routines is None:
         raise RuntimeContractError("invalid Routine words")
+    if (context.routines is None) != (context.routine_capacity is None) or not (
+        context.routine_capacity is None or team_routine.valid_capacity(context.routine_capacity)
+    ):
+        raise RuntimeContractError("invalid Routine capacity")
     if type(context.knowledge_writable) is not bool:
         raise RuntimeContractError("invalid knowledge scope")
 
@@ -792,8 +796,9 @@ class AgentRuntime:
         )
 
     def _routine_compiler(self, context: TurnContext):
-        return team_routine.compiler(
-            lambda: self._model_factory(context.provider), context.provider.provider, structured_output
+        # One billed call with no hidden provider retry, given the time and output a plan of hundreds of steps needs.
+        return team_routine.bounded_compiler(
+            lambda: self._model_factory.compile(context.provider), context.provider.provider, structured_output
         )
 
     def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
@@ -854,20 +859,24 @@ class AgentRuntime:
         message: str,
         assistants: tuple[AssistantDefinition, ...],
         locale: str | None,
-        draft: tuple[tuple[str, str], ...] = (),
+        draft: tuple[tuple[str, str], ...],
+        capacity: int,
     ) -> object:
         """Recompile a Routine from its Team-held words, with no turn, tools, or history (ADR-0092).
 
-        ``message`` is the sealed words' last part and ``draft`` every part before it.
+        ``message`` is the sealed words' last part and ``draft`` every part before it; ``capacity`` is the daily
+        business steps the Team leaves the recreated Routine.
         """
         try:
             draft = routine_words.canonical_sealed(draft)
         except routine_words.RoutineWordsError as exc:
             raise RuntimeContractError("invalid Routine words") from exc
-        ask = team_routine.recompiler(
-            functools.partial(self._single_attempt_model, provider), provider.provider, structured_output
+        if not team_routine.valid_capacity(capacity):
+            raise RuntimeContractError("invalid Routine capacity")
+        ask = team_routine.bounded_compiler(
+            functools.partial(self._model_factory.compile, provider), provider.provider, structured_output
         )
-        return team_routine.recompile(message, assistants, locale, ask, draft)
+        return team_routine.recompile(message, assistants, locale, ask, draft, capacity)
 
     def capability_plan(
         self,

@@ -41,6 +41,7 @@ def body(**updates):
                             "properties": {"name": {"type": "string"}},
                             "additionalProperties": False,
                         },
+                        "output_schema": {},
                         "authorization": False,
                         "input_files": [],
                     }
@@ -58,6 +59,7 @@ def body(**updates):
                             "properties": {"name": {"type": "string"}},
                             "additionalProperties": False,
                         },
+                        "output_schema": {},
                         "authorization": False,
                         "input_files": [],
                     }
@@ -71,6 +73,7 @@ def body(**updates):
         "routine_earlier": [],
         "routine_draft": [],
         "routine_answer": None,
+        "routine_capacity": 20_000,
         "knowledge_writable": True,
         "attachments": [],
         "message": "Hello",

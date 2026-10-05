@@ -16,7 +16,7 @@ import contextvars
 import os
 import socket
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 
 import httpcore
@@ -105,6 +105,12 @@ class CancelScope:
             with self._lock:
                 self._sockets.discard(sock)
         self.check()
+
+    async def cancel_on_disconnect(self, receive: Callable[[], Awaitable[Mapping[str, object]]]) -> None:
+        """Cancel this scope once the requester's connection closes."""
+        while (await receive())["type"] != "http.disconnect":
+            pass
+        self.cancel()
 
 
 _SCOPE: contextvars.ContextVar[CancelScope | None] = contextvars.ContextVar("provider_cancel_scope", default=None)

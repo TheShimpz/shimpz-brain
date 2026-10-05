@@ -89,6 +89,7 @@ def _context(provider: str, model: str, *items: dict[str, object]) -> agent_runt
         memories=(),
         skills=(),
         routines=(),
+        routine_capacity=20_000,
         attachments=turn_attachments.admit(list(items)),
     )
 
