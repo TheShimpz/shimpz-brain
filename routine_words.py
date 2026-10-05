@@ -9,8 +9,10 @@ own words ever crosses into another; Team admits the same structure, so this is 
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 import memory as team_memory
@@ -30,6 +32,10 @@ CITED = "cited"
 SAID = "said"
 _KINDS = frozenset({CITED, SAID})
 _LAYOUT = frozenset({"\n", "\r", "\t"})
+_NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z")
+# A complete number as a person may write it, so a fragment of one ("1" of "1e3", "5" of ".5") is never a token.
+_NUMBER_TOKEN_RE = re.compile(r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")
+_POINTER_RE = re.compile(r"(?:/(?:[^/~]|~[01])*)*\Z")
 # A whole count as a person writes it ("1000", "1.000", "1,000"), at most seven digits or 999,999,999, and only a
 # complete one, exactly as Team reads it: never a fragment of a longer number, a decimal, a signed number, or an
 # exponent.
@@ -196,3 +202,104 @@ class UserWords:
     def skipped(self) -> int:
         """How many quoted regions the draft holds, numbered before every other part's."""
         return len(Words(self.draft).quoted)
+
+
+# A literal's provenance: whether each of its scalars is cited from the person's own words, exactly as Team proves it.
+
+
+def _leaves(value: object, at: str = "") -> Iterator[tuple[str, object]]:
+    if isinstance(value, dict) and value:
+        for key, item in value.items():
+            yield from _leaves(item, f"{at}/{key.replace('~', '~0').replace('/', '~1')}")
+    elif isinstance(value, list) and value:
+        for index, item in enumerate(value):
+            yield from _leaves(item, f"{at}/{index}")
+    else:
+        yield at, value
+
+
+def _cited(origin: Mapping[str, object], target: object, words: Words) -> bool:
+    text = origin["text"]
+    if not _cited_text(origin, words) or isinstance(target, bool) or target is None:
+        return False
+    if isinstance(target, str):
+        return target == text
+    return (
+        isinstance(target, int | float)
+        and _NUMBER_RE.fullmatch(text) is not None
+        and type(parsed := json.loads(text)) is type(target)
+        and parsed == target
+    )
+
+
+def narrowed(source: dict[str, object], words: Words) -> dict[str, object]:
+    """The literal with each number its compiler cited together with the person's words narrowed to its own digits.
+
+    A compiler may cite "page 1" for the number 1. When that whole citation stands in the person's own words (or, for a
+    quote, in the adopted region) and holds exactly one complete number, which is that scalar with its JSON type, the
+    origin cites that number instead: a part of the very text it cited, so it proves nothing the person's words did not
+    already hold. Anything else is left exactly as cited for the check to refuse.
+    """
+    leaves = dict(_leaves(source["value"]))
+    for origin in source["origins"]:
+        target, text = leaves.get(origin["at"]), origin["text"]
+        if (
+            origin["from"] == "default"
+            or isinstance(target, bool)
+            or not isinstance(target, int | float)
+            or not isinstance(text, str)
+            or _NUMBER_RE.fullmatch(text) is not None
+            or not _cited_text(origin, words)
+        ):
+            continue
+        tokens = set(_NUMBER_TOKEN_RE.findall(text))
+        token = tokens.pop() if len(tokens) == 1 else ""
+        if _NUMBER_RE.fullmatch(token) is None:
+            continue
+        try:
+            parsed = json.loads(token)
+        except ValueError:
+            continue
+        if type(parsed) is type(target) and parsed == target:
+            origin["text"] = token
+    return source
+
+
+def _cited_text(origin: Mapping[str, object], words: Words) -> bool:
+    """Whether the whole cited text stands in the person's own words, or in the region their own words adopt."""
+    if origin["from"] == "message":
+        return words.mine(origin["text"])
+    return words.adopted(origin["region"], origin["text"], origin["instruction"])
+
+
+def proven(source: Mapping[str, object], member: object, words: Words) -> bool:
+    """Whether every scalar of a literal has exactly one cited origin, or the whole value is its member's default."""
+    leaves = dict(_leaves(source["value"]))
+    covered: list[str] = []
+    for origin in source["origins"]:
+        if origin["from"] == "default":
+            default = isinstance(member, dict) and "default" in member and _same(member["default"], source["value"])
+            if not default or origin["at"] != "":
+                return False
+            covered.extend(leaves)
+        elif origin["at"] not in leaves or not _cited(origin, leaves[origin["at"]], words):
+            return False
+        else:
+            covered.append(origin["at"])
+    return sorted(covered) == sorted(leaves)
+
+
+def _same(left: object, right: object) -> bool:
+    """JSON equality, so a boolean never equals a number."""
+    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
+
+
+def origin_shape(origin: Mapping[str, object]) -> bool:
+    kind, text, region, instruction = origin["from"], origin["text"], origin["region"], origin["instruction"]
+    if not isinstance(origin["at"], str) or _POINTER_RE.fullmatch(origin["at"]) is None:
+        return False
+    if kind == "message":
+        return bool(text) and region is None and instruction is None
+    if kind == "quote":
+        return bool(text) and region is not None and bool(instruction)
+    return text is None and region is None and instruction is None

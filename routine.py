@@ -20,11 +20,12 @@ from __future__ import annotations
 import functools
 import json
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, Literal
 
 import clarification
 import memory as team_memory
+import routine_words
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict
@@ -47,10 +48,6 @@ STEP_ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
 # Mirrors the Team protocol's schedule and timezone grammar exactly; Team canonicalizes again before any commit.
 TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}\Z")
 _TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
-_NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z")
-_POINTER_RE = re.compile(r"(?:/(?:[^/~]|~[01])*)*\Z")
-# A complete number as a person may write it, so a fragment of one ("1" of "1e3", "5" of ".5") is never a token.
-_NUMBER_TOKEN_RE = re.compile(r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")
 # Sources that copy a value an earlier step of the same run returned: as it is, or as plain text.
 _BINDINGS = frozenset({"step_output", "step_text"})
 _SCHEDULE_FIELDS = {
@@ -197,93 +194,6 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
     return tuple(routines)
 
 
-def _leaves(value: object, at: str = "") -> Iterator[tuple[str, object]]:
-    if isinstance(value, dict) and value:
-        for key, item in value.items():
-            yield from _leaves(item, f"{at}/{key.replace('~', '~0').replace('/', '~1')}")
-    elif isinstance(value, list) and value:
-        for index, item in enumerate(value):
-            yield from _leaves(item, f"{at}/{index}")
-    else:
-        yield at, value
-
-
-def _cited(origin: Mapping[str, object], target: object, words: Words) -> bool:
-    text = origin["text"]
-    if not _cited_text(origin, words) or isinstance(target, bool) or target is None:
-        return False
-    if isinstance(target, str):
-        return target == text
-    return (
-        isinstance(target, int | float)
-        and _NUMBER_RE.fullmatch(text) is not None
-        and type(parsed := json.loads(text)) is type(target)
-        and parsed == target
-    )
-
-
-def _narrowed(source: dict[str, object], words: Words) -> dict[str, object]:
-    """The literal with each number its compiler cited together with the person's words narrowed to its own digits.
-
-    A compiler may cite "page 1" for the number 1. When that whole citation stands in the person's own words (or, for a
-    quote, in the adopted region) and holds exactly one complete number, which is that scalar with its JSON type, the
-    origin cites that number instead: a part of the very text it cited, so it proves nothing the person's words did not
-    already hold. Anything else is left exactly as cited for the check to refuse.
-    """
-    leaves = dict(_leaves(source["value"]))
-    for origin in source["origins"]:
-        target, text = leaves.get(origin["at"]), origin["text"]
-        if (
-            origin["from"] == "default"
-            or isinstance(target, bool)
-            or not isinstance(target, int | float)
-            or not isinstance(text, str)
-            or _NUMBER_RE.fullmatch(text) is not None
-            or not _cited_text(origin, words)
-        ):
-            continue
-        tokens = set(_NUMBER_TOKEN_RE.findall(text))
-        token = tokens.pop() if len(tokens) == 1 else ""
-        if _NUMBER_RE.fullmatch(token) is None:
-            continue
-        try:
-            parsed = json.loads(token)
-        except ValueError:
-            continue
-        if type(parsed) is type(target) and parsed == target:
-            origin["text"] = token
-    return source
-
-
-def _cited_text(origin: Mapping[str, object], words: Words) -> bool:
-    """Whether the whole cited text stands in the person's own words, or in the region their own words adopt."""
-    if origin["from"] == "message":
-        return words.mine(origin["text"])
-    return words.adopted(origin["region"], origin["text"], origin["instruction"])
-
-
-def _proven(source: Mapping[str, object], member: object, words: Words) -> bool:
-    """Whether every scalar of a literal has exactly one cited origin, or the whole value is its member's default."""
-    leaves = dict(_leaves(source["value"]))
-    covered: list[str] = []
-    for origin in source["origins"]:
-        if origin["from"] == "default":
-            default = isinstance(member, dict) and "default" in member and _same(member["default"], source["value"])
-            if not default or origin["at"] != "":
-                return False
-            covered.extend(leaves)
-        elif origin["at"] not in leaves or not _cited(origin, leaves[origin["at"]], words):
-            return False
-        else:
-            covered.append(origin["at"])
-    return sorted(covered) == sorted(leaves)
-
-
-def _same(left: object, right: object) -> bool:
-    """JSON equality, so a boolean never equals a number."""
-    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
-
-
 class Origin(BaseModel):
     """Where one scalar of a literal came from."""
 
@@ -419,17 +329,6 @@ def _constant(_value: str) -> None:
     raise ValueError("non-finite JSON number")
 
 
-def _origin_shape(origin: Mapping[str, object]) -> bool:
-    kind, text, region, instruction = origin["from"], origin["text"], origin["region"], origin["instruction"]
-    if not isinstance(origin["at"], str) or _POINTER_RE.fullmatch(origin["at"]) is None:
-        return False
-    if kind == "message":
-        return bool(text) and region is None and instruction is None
-    if kind == "quote":
-        return bool(text) and region is not None and bool(instruction)
-    return text is None and region is None and instruction is None
-
-
 def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], words: Words, update: bool) -> dict:
     schema = contracts.get((step.assistant, step.action))
     if schema is None or STEP_ID_RE.fullmatch(step.id) is None:
@@ -439,13 +338,13 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
     for item in step.inputs:
         source = _source(item)
         if item.kind == "literal":
-            source = _narrowed(source, words)
+            source = routine_words.narrowed(source, words)
         if item.member in inputs or (item.kind == "kept" and not update):
             raise UnprovenError
         literal_valid = item.kind != "literal" or (
             0 < len(source["origins"]) <= MAX_ORIGINS
-            and all(map(_origin_shape, source["origins"]))
-            and _proven(source, properties.get(item.member), words)
+            and all(map(routine_words.origin_shape, source["origins"]))
+            and routine_words.proven(source, properties.get(item.member), words)
         )
         relation_valid = item.kind not in _BINDINGS or words.said(item.instruction)
         if not literal_valid or not relation_valid:
@@ -664,8 +563,9 @@ def _prompt(
         "question about that member), "
         "run_clock with clock date, time, datetime, or epoch_seconds of each run, step_output with the earlier step "
         "id, an RFC 6901 pointer into that step's output, and instruction copying a said part's own words that "
-        "relate the two, step_text like step_output but passing that value as plain text, only for a member that takes text "
-        "and only when the user asks to pass the result on as text or formatted, or kept (only when changing the "
+        "relate the two, step_text like step_output but passing that value as plain text, only for a member that "
+        "takes text and only when the user asks to pass the result on as text or formatted, or kept (only when "
+        "changing the "
         "listed Routine) to keep that member exactly. output is what each run does with its result: mode show when "
         "the user asks to see, get, or be told the result (such as show me the zones, e me mostra), with step the id "
         "of the step whose result they want; changes when they want it only when it changes or something is new, with "
