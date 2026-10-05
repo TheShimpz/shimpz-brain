@@ -209,6 +209,15 @@ class StratumTests(unittest.TestCase):
             ):
                 fresh_classes.validate()
 
+    def test_validation_reports_duplicate_ids_before_user_sourced_metadata(self):
+        duplicated = (*fresh_classes.TEMPLATES, fresh_classes.TEMPLATES[0])
+        with (
+            mock.patch.object(fresh_classes, "TEMPLATES", duplicated),
+            mock.patch.object(fresh_classes, "USER_SOURCED", {}),
+            self.assertRaisesRegex(ValueError, "duplicate corpus id"),
+        ):
+            fresh_classes.validate()
+
     def test_validation_refuses_invalid_scenarios(self):
         first, *rest = fresh_classes.SCENARIOS
         short = dataclasses.replace(first, assistants=first.assistants[:1])

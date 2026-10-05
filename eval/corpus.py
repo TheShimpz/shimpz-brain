@@ -509,6 +509,13 @@ def validate_scopes(templates: Sequence[Template], scenarios: Sequence[Scenario]
             raise ValueError(f"{group} misses an Assistant scope")
 
 
+def validate_ids(templates: Sequence[Template], scenarios: Sequence[Scenario]) -> None:
+    """Every template id is unique, and every template meets every locale once."""
+    template_ids = {t.id for t in templates}
+    if len({s.id for s in scenarios}) != len(templates) * len(LOCALES) or len(template_ids) != len(templates):
+        raise ValueError("duplicate corpus id")
+
+
 def validate_stratum(
     templates: Sequence[Template],
     scenarios: Sequence[Scenario],
@@ -516,9 +523,7 @@ def validate_stratum(
     initial: Mapping[str, object],
 ) -> None:
     """Fail on any structural defect of one stratum's templates and scenarios."""
-    template_ids = {t.id for t in templates}
-    if len({s.id for s in scenarios}) != len(templates) * len(LOCALES) or len(template_ids) != len(templates):
-        raise ValueError("duplicate corpus id")
+    validate_ids(templates, scenarios)
     relevant_ids = {assistant.id for assistant in relevant}
     for template in templates:
         if not _valid_template(template, relevant_ids, initial):

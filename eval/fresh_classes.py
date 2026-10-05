@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
-from eval.corpus import fingerprint, scenarios, validate_stratum
+from eval.corpus import fingerprint, scenarios, validate_ids, validate_stratum
 from eval.fixtures import _DATE, _STRING, Action, Assistant, _schema
 from eval.fresh_classes_templates import TEMPLATES
 
@@ -685,6 +685,7 @@ def _valid_user_sourced() -> bool:
 
 def validate() -> None:
     """Fail on any structural defect; Brain and Team schema admission are checked by their own adapters."""
+    validate_ids(TEMPLATES, SCENARIOS)
     if not _valid_user_sourced():
         raise ValueError("invalid user-sourced contract metadata")
     validate_stratum(TEMPLATES, SCENARIOS, RELEVANT, INITIAL)
