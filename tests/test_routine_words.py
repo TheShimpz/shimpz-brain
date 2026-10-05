@@ -104,13 +104,16 @@ class WordsTests(unittest.TestCase):
 
     def test_a_change_may_cite_an_earlier_send_but_its_request_stands_in_a_said_part(self):
         earlier = ("Diga olá para Ana.",)
-        compiled = _compiled(request="Toda segunda às 9h, faça isso")
+        output = routine.Output(mode="show", step="greet", instruction="faça isso")
+        compiled = _compiled(request="Toda segunda às 9h, faça isso", output=output)
         message = "Toda segunda às 9h, faça isso"
         self.assertEqual(routine.change(compiled, _said(message, earlier), CONTRACTS, None)["request"], message)
         with self.assertRaises(routine.UnprovenError):
             routine.change(compiled, _said(message), CONTRACTS, None)
         with self.assertRaises(routine.UnprovenError):
-            routine.change(_compiled(request="Diga olá para Ana"), _said(message, earlier), CONTRACTS, None)
+            routine.change(
+                _compiled(request="Diga olá para Ana", output=output), _said(message, earlier), CONTRACTS, None
+            )
 
     def test_quote_regions_are_renumbered_past_a_draft_the_change_does_not_continue(self):
         quoted = _source(value_json='"olá Bob"', origins=[_origin("olá Bob", "quote", region=1, instruction="diga")])
@@ -200,14 +203,15 @@ class DraftTests(unittest.TestCase):
 
     def test_a_change_that_continues_the_draft_cites_its_said_parts(self):
         drafted = routine.UserWords("Diga olá para Ana", (), DRAFT)
-        continued = _compiled(continues=True, request="cria uma rotina que faz isso toda segunda às 9h")
+        output = routine.Output(mode="show", step="greet", instruction="faz isso")
+        continued = _compiled(continues=True, request="cria uma rotina que faz isso toda segunda às 9h", output=output)
         wire = self.answer(continued, drafted)["routine"]
         self.assertEqual((wire["continues"], wire["request"]), (True, continued.request))
         # Without continuing, the draft's words are not the user's request for this change.
         self.assertEqual(self.answer(continued.model_copy(update={"continues": False}), drafted), "unproven")
         self.assertEqual(self.answer(continued, drafted, LISTED), "unproven")
         # A question may continue the draft too.
-        asked = _asking(continues=True, request="cria uma rotina que faz isso toda segunda às 9h")
+        asked = _asking(continues=True, request="cria uma rotina que faz isso toda segunda às 9h", output=output)
         question = self.answer(asked, drafted)
         self.assertEqual((question["routine"]["continues"], question["clarification"]), (True, CARD))
 

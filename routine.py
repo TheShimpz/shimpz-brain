@@ -5,11 +5,12 @@ or to change a listed Routine, or continues the Routine the user is setting up, 
 operation. Before anything runs, the guard asks an isolated compiler, which sees only the user's own words: the current
 message (or the answer it gave to the Routine's last question), the user's Routine draft, and the earlier sends Team
 froze for the request; the Team's Assistant Action contracts; and for an update the listed Routine; never history,
-memory, Skills, files, or Action results. The compiled change names its steps, input sources, and the provenance of
-every literal; the guard checks that provenance against the user's own words exactly as Team will, and either ends the
-turn with the change and a one-line reply or corrects the model. When the compiler is unsure of exactly one field, it
-asks one multiple-choice question whose options each carry one value of that field; when the user's words leave a piece
-missing, it asks for it with suggestions instead of refusing (ADR-0092 amendment, 2026-10-05), and Team keeps the
+memory, Skills, files, or Action results. The compiled change names its steps, input sources, the provenance of every
+literal, and what each run does with its result with the user's own said words that chose it (ADR-0092 amendment,
+2026-10-05, output); the guard checks that provenance against the user's own words exactly as Team will, and either ends
+the turn with the change and a one-line reply or corrects the model. When the compiler is unsure of exactly one field,
+it asks one multiple-choice question whose options each carry one value of that field; when the user's words leave a
+piece missing, it asks for it with suggestions instead of refusing (ADR-0092 amendment, 2026-10-05), and Team keeps the
 user's words as their draft so the answer continues it. A Routine question never recommends an option. Team re-admits
 everything, pins every Action, and commits it with the reply; nothing here schedules, approves, or authorizes anything.
 """
@@ -50,6 +51,8 @@ _NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z
 _POINTER_RE = re.compile(r"(?:/(?:[^/~]|~[01])*)*\Z")
 # A complete number as a person may write it, so a fragment of one ("1" of "1e3", "5" of ".5") is never a token.
 _NUMBER_TOKEN_RE = re.compile(r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")
+# Sources that copy a value an earlier step of the same run returned: as it is, or as plain text.
+_BINDINGS = frozenset({"step_output", "step_text"})
 _SCHEDULE_FIELDS = {
     "hourly": frozenset({"kind", "every"}),
     "daily": frozenset({"kind", "time"}),
@@ -299,7 +302,7 @@ class Source(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     member: str
-    kind: Literal["literal", "run_clock", "step_output", "kept"]
+    kind: Literal["literal", "run_clock", "step_output", "step_text", "kept"]
     value_json: str | None
     origins: list[Origin]
     clock: Literal["date", "time", "datetime", "epoch_seconds"] | None
@@ -357,6 +360,20 @@ class Question(BaseModel):
     options: list[Choice]
 
 
+class Output(BaseModel):
+    """What each run does with its result (ADR-0092 amendment, 2026-10-05, output), with the user's words that chose it.
+
+    ``show`` shows the named step's result after every run, ``changes`` only when it changed, ``chain`` hands it to a
+    later step, ``none`` shows nothing, and ``kept`` keeps a listed Routine's own when it is changed.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    mode: Literal["show", "changes", "chain", "none", "kept"]
+    step: str | None
+    instruction: str | None
+
+
 class Compiled(BaseModel):
     """The isolated compiler's whole answer: a refusal, a compiled Routine, a question, or a discarded draft."""
 
@@ -371,6 +388,7 @@ class Compiled(BaseModel):
     schedule: Schedule | None
     timezone: str | None
     steps: list[Step]
+    output: Output | None
     question: Question | None
     reply: str
 
@@ -392,8 +410,8 @@ def _source(item: Source) -> dict[str, object]:
         return {"kind": "literal", "value": value, "origins": origins}
     if item.kind == "run_clock":
         return {"kind": "run_clock", "format": item.clock}
-    if item.kind == "step_output":
-        return {"kind": "step_output", "step": item.step, "pointer": item.pointer, "instruction": item.instruction}
+    if item.kind in _BINDINGS:
+        return {"kind": item.kind, "step": item.step, "pointer": item.pointer, "instruction": item.instruction}
     return {"kind": "kept"}
 
 
@@ -429,7 +447,7 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
             and all(map(_origin_shape, source["origins"]))
             and _proven(source, properties.get(item.member), words)
         )
-        relation_valid = item.kind != "step_output" or words.mine(item.instruction)
+        relation_valid = item.kind not in _BINDINGS or words.mine(item.instruction)
         if not literal_valid or not relation_valid:
             raise UnprovenError
         inputs[item.member] = source
@@ -481,6 +499,7 @@ def change(
     ):
         raise UnprovenError
     steps = [_step(step, contracts, words, target is not None) for step in compiled.steps]
+    output = _output(compiled.output, steps, words, target is not None)
     return {
         "op": "create" if target is None else "update",
         "routine_id": None if target is None else target["routine_id"],
@@ -491,7 +510,32 @@ def change(
         "schedule": schedule,
         "timezone": compiled.timezone,
         "steps": steps,
+        "output": output,
     }
+
+
+def _output(output: Output | None, steps: list[dict], words: Words, update: bool) -> dict[str, object]:
+    """The disposition Team admits, or UnprovenError: new words must be the user's own said words.
+
+    A shown step must be one of the plan's; handing the result on needs a step that takes an earlier one's value; only a
+    change of a listed Routine may keep its disposition.
+    """
+    if output is None:
+        raise UnprovenError
+    if output.mode == "kept":
+        if not update:
+            raise UnprovenError
+        return {"mode": "kept"}
+    shown = output.mode in ("show", "changes")
+    bound = any(source["kind"] in _BINDINGS for step in steps for source in step["input"].values())
+    if (
+        not words.said(output.instruction)
+        or (shown and output.step not in [step["id"] for step in steps])
+        or (not shown and output.step is not None)
+        or (output.mode == "chain" and not bound)
+    ):
+        raise UnprovenError
+    return {"mode": output.mode, "step": output.step, "instruction": output.instruction}
 
 
 def _renumbered(compiled: Compiled, skipped: int) -> Compiled:
@@ -537,24 +581,26 @@ def _timing_rules(language: str) -> str:
 def _missing_rules(language: str, chat: bool) -> str:
     if not chat:
         return (
-            "Refuse with unspecified when the work to repeat, or a target, content, criterion, or amount it needs, is "
-            "neither in the user's own words nor a safe default; schedule when the timing is missing or is none of "
-            "the schedules below. "
+            "Refuse with unspecified when the work to repeat, or a target, content, criterion, or amount it needs, or "
+            "what each run does with its result, is neither in the user's own words nor a safe default; schedule when "
+            "the timing is missing or is none of the schedules below. "
         )
     return (
         "Never refuse for a missing or unclear piece: when the work to repeat, a target, content, criterion, or amount "
-        "it needs, or the timing is missing, unclear, or not one of the schedules below, and has no safe default, "
-        "decide need and ask for exactly that one piece. Its question text is one short question in "
-        f"{language} that states only facts (when the timing asked for is outside what a Routine supports, it says "
-        "what a Routine supports); field missing, step and member null; options are one to five suggestions, each "
-        "with a short label in the user's words or language naming exactly one choice, never joining alternatives or "
-        "unrelated work, an empty description, value_json null, and an empty reply. For missing work, suggest first "
-        "the user's own requests in the draft and earlier sends, then other work the listed Actions do; for missing "
-        "timing, the interval the user stated when a Routine supports it, then common intervals such as every 30 "
-        "seconds, every 5 minutes, every hour, or "
-        "every day at 09:00. Never suggest work that deletes, changes, creates, publishes, or sends anything unless a "
-        "said part already asks for that work. Never recommend, rank, or prefer one suggestion. With need, compile "
-        "nothing: name and request empty, schedule and timezone null, steps empty. "
+        "it needs, what each run does with its result, or the timing is missing, unclear, or not one of the schedules "
+        "below, and has no safe default, decide need and ask for exactly that one piece. Its question text is one "
+        f"short question in {language} that states only facts (when the timing asked for is outside what a Routine "
+        "supports, it says what a Routine supports); field missing, step and member null; options are one to five "
+        "suggestions, each with a short label in the user's words or language naming exactly one choice, never "
+        "joining alternatives or unrelated work, an empty description, value_json null, and an empty reply. For "
+        "missing work, suggest first the user's own requests in the draft and earlier sends, then other work the "
+        "listed Actions do; for missing timing, the interval the user stated when a Routine supports it, then common "
+        "intervals such as every 30 seconds, every 5 minutes, every hour, or every day at 09:00; for what to do with "
+        f"the result, a question such as what to do with each run's result, in {language}, with exactly these three "
+        f"suggestions in {language}: show the result after every run, show it only when it changes, show nothing. "
+        "Never suggest work that deletes, changes, creates, publishes, or sends anything unless a said part already "
+        "asks for that work. Never recommend, rank, or prefer one suggestion. With need, compile nothing: name and "
+        "request empty, schedule and timezone null, steps empty, output null. "
     )
 
 
@@ -618,7 +664,18 @@ def _prompt(
         "question about that member), "
         "run_clock with clock date, time, datetime, or epoch_seconds of each run, step_output with the earlier step "
         "id, an RFC 6901 pointer into that step's output, and instruction copying the user's own words that relate "
-        "the two, or kept (only when changing the listed Routine) to keep that member exactly. Never invent a value, "
+        "the two, step_text like step_output but passing that value as plain text, only for a member that takes text "
+        "and only when the user asks to pass the result on as text or formatted, or kept (only when changing the "
+        "listed Routine) to keep that member exactly. output is what each run does with its result: mode show when "
+        "the user asks to see, get, or be told the result (such as show me the zones, e me mostra), with step the id "
+        "of the step whose result they want; changes when they want it only when it changes or something is new, with "
+        "that step; chain when their words hand the result to a later step through a step_output or step_text input "
+        "and ask nothing about seeing it, step null; none only when they say they want nothing shown, step null; kept "
+        "only when changing the listed Routine and the user says nothing about its result, step and instruction null. "
+        "instruction copies word for word the said words that choose it, never a cited send's (a selected suggestion "
+        "is its whole label). When no said words choose it, the result's use is a missing piece, never one you "
+        "choose, and the Routine is never compiled or asked about another field until it is answered. Never invent a "
+        "value, "
         "never take one from a quoted region the user does not adopt, and never put a secret in a literal. Prefer "
         "a safe reasonable default to asking, and never ask about the timezone; only when exactly one field, the "
         "schedule or one step input member, has no safe default and the user's words leave two to five plausible "

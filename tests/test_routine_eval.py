@@ -59,6 +59,7 @@ def _compiling(schedule: dict[str, object], action: str = "list-zones"):
         schedule=routine.Schedule(kind=schedule["kind"], **fields),
         timezone=None,
         steps=[routine.Step(id="zones", assistant="dns", action=action, inputs=[])],
+        output=routine.Output(mode="show", step="zones", instruction="me mostre"),
         question=None,
         reply="Pronto.",
     )
@@ -87,6 +88,7 @@ def _need_answer(continues: bool = False) -> routine.Compiled:
         schedule=None,
         timezone=None,
         steps=[],
+        output=None,
         question=question,
         reply="Pergunto.",
     )
@@ -107,6 +109,8 @@ def _said(member: str, digits: str) -> routine.Source:
     )
 
 
+# The suggestion the person selects when asked what to do with each run's result.
+SHOWN = routines._SHOWN["pt"]
 # The paging the person states when asked, which list-zones requires and declares no default for.
 PAGING = [_said("page", "1"), _said("per_page", "50")]
 
@@ -130,6 +134,7 @@ def _compiled_answer(
                 id="zones", assistant="cloudflare", action="list-zones", inputs=PAGING if inputs is None else inputs
             )
         ],
+        output=routine.Output(mode="show", step="zones", instruction=SHOWN),
         question=None,
         reply="Pronto.",
     )
@@ -184,6 +189,7 @@ class RoutineEvalTests(unittest.TestCase):
             schedule=None,
             timezone=None,
             steps=[],
+            output=None,
             question=None,
             reply="Não ficou claro.",
         )
@@ -242,7 +248,8 @@ class RoutineEvalTests(unittest.TestCase):
     def test_a_journey_keeps_the_draft_between_turns_and_scores_its_last_turn(self):
         journey = next(item for item in routines.JOURNEYS if item.id == "answers-pt")
         created = _compiled_answer({"kind": "continuous", "gap": 30, "cap": 100}, continues=True)
-        answers = iter([_need_answer(), _need_answer(continues=True), _need_answer(continues=True), created])
+        needs = [_need_answer(), *(_need_answer(continues=True) for _ in range(3))]
+        answers = iter([*needs, created])
         compiling = mock.patch.object(
             agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: next(answers)
         )
@@ -254,15 +261,14 @@ class RoutineEvalTests(unittest.TestCase):
             return real(runtime, context, message)
 
         with compiling, mock.patch.object(routines, "_turn", side_effect=turn):
-            self.assertTrue(
-                routines.run_journey(_runtime(_created(), _created(), _created(), _created()), PROVIDER, journey, 0)
-            )
+            self.assertTrue(routines.run_journey(_runtime(*(_created() for _ in journey.steps)), PROVIDER, journey, 0))
         first = journey.steps[0].text
         self.assertEqual(seen[0][:3], ((), None, ()))
         self.assertEqual(seen[1][:2], ((("said", first),), "Listar os domínios do Cloudflare"))
         self.assertTrue(seen[1][3].startswith(f"{first}\n\nPergunta: Qual trabalho?\nResposta: "))
         self.assertEqual(seen[2][0], (("said", first), ("said", "Listar os domínios do Cloudflare")))
-        self.assertEqual(seen[3][1], "Até 100 execuções por dia")
+        self.assertEqual(seen[3][1], SHOWN)
+        self.assertEqual(seen[4][1], "Até 100 execuções por dia")
         # A turn that refuses, or a journey that answers before any question, misses.
         refusing = mock.patch.object(routines, "_turn", return_value=mock.Mock(status="completed", routine=None))
         with refusing:
@@ -285,12 +291,13 @@ class RoutineEvalTests(unittest.TestCase):
         missing = [PAGING[0]]
         other = [PAGING[0], _said("per_page", "5")]
         reasons = {
-            "page": "turn 4: ended with create missing a required or valid input",
-            "page,per_page": "turn 4: ended with create, differing in inputs",
+            "page": "turn 5: ended with create missing a required or valid input",
+            "page,per_page": "turn 5: ended with create, differing in inputs",
         }
         for inputs in (missing, other):
             created = _compiled_answer({"kind": "continuous", "gap": 30, "cap": 100}, continues=True, inputs=inputs)
-            answers = iter([_need_answer(), _need_answer(continues=True), _need_answer(continues=True), created])
+            needs = [_need_answer(), *(_need_answer(continues=True) for _ in range(3))]
+            answers = iter([*needs, created])
             compiling = mock.patch.object(
                 agent_runtime.AgentRuntime,
                 "_routine_compiler",
@@ -298,7 +305,7 @@ class RoutineEvalTests(unittest.TestCase):
             )
             members = ",".join(item.member for item in inputs)
             with self.subTest(inputs=members), compiling:
-                runtime = _runtime(_created(), _created(), _created(), _created())
+                runtime = _runtime(*(_created() for _ in journey.steps))
                 self.assertEqual(routines.run_journey(runtime, PROVIDER, journey, 0).reason, reasons[members])
         cloudflare = (routines.CLOUDFLARE,)
         page = {"kind": "literal", "value": 1}

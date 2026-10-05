@@ -5,11 +5,11 @@ provider. Add ``--key-file`` (and optionally ``--provider``/``--model``) for thr
 real ``AgentRuntime`` and its isolated compiler with an in-memory checkpoint. Output contains only case identifiers,
 pass counts, and each miss's closed reason: the turn that missed and the shape of what it ended with, never any text.
 
-Exact checks score whether the turn compiled a Routine change, and its operation, schedule, timezone, and ordered
-Actions, or asked exactly one open field with one value per option, or asked for a missing piece with suggestions and
-no recommendation (ADR-0092 amendment, 2026-10-05); every literal's provenance was already proven against the user's own
-words by the guard. A turn that compiled nothing must not claim a Routine, blame a timing the contract admits, or steer
-the person toward one schedule.
+Exact checks score whether the turn compiled a Routine change, and its operation, schedule, timezone, ordered Actions,
+and what each run does with its result (ADR-0092 amendment, 2026-10-05, output), or asked exactly one open field with
+one value per option, or asked for a missing piece with suggestions and no recommendation (ADR-0092 amendment,
+2026-10-05); every literal's provenance was already proven against the user's own words by the guard. A turn that
+compiled nothing must not claim a Routine, blame a timing the contract admits, or steer the person toward one schedule.
 
 Journeys replay a conversation turn by turn, keeping the person's Routine draft exactly as Team does: a turn that asks
 keeps the words it compiled from, the next send or composed answer continues them, and no turn may refuse. The owner's
@@ -127,8 +127,11 @@ class RoutineCase:
     locale: str | None = None
 
 
-def _create(schedule: dict[str, object], actions: list[list[str]], timezone: str | None = None) -> dict[str, object]:
-    return {"op": "create", "schedule": schedule, "timezone": timezone, "actions": actions}
+def _create(
+    schedule: dict[str, object], actions: list[list[str]], timezone: str | None = None, output: str = "show"
+) -> dict[str, object]:
+    """A compiled create: its schedule, zone, ordered Actions, and what each run does with its result."""
+    return {"op": "create", "schedule": schedule, "timezone": timezone, "actions": actions, "output": output}
 
 
 # A question for a missing piece: suggestions, none recommended, and no candidate change.
@@ -139,6 +142,7 @@ def _cap_question(gap: int) -> dict[str, object]:
     """A continuous request that names no daily limit asks it, each option that pause with one cap."""
     return {
         "op": "ask",
+        "output": "show",
         "field": ["schedule", None],
         "values": sorted(
             json.dumps({"kind": "continuous", "gap": gap, "cap": cap}, sort_keys=True) for cap in (100, 500, 1000)
@@ -149,80 +153,101 @@ def _cap_question(gap: int) -> dict[str, object]:
 CASES = (
     RoutineCase(
         "daily-pt",
-        "an explicit daily request is created with its time",
-        "Todo dia às 9h, liste minhas zonas DNS.",
+        "an explicit daily request is created with its time and shows each run's result",
+        "Todo dia às 9h, liste minhas zonas DNS e me mostre.",
         _create({"kind": "daily", "time": "09:00"}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
         "weekly-en",
-        "an explicit weekly request is created with its weekday, time, and the user's literal values",
-        "Every Monday at 8am, send a message to ana saying good morning.",
-        _create({"kind": "weekly", "weekday": 0, "time": "08:00"}, [["messages", "send-message"]]),
+        "an explicit weekly request is created with its weekday, time, the user's literal values, and nothing shown",
+        "Every Monday at 8am, send a message to ana saying good morning. I don't need to see anything.",
+        _create({"kind": "weekly", "weekday": 0, "time": "08:00"}, [["messages", "send-message"]], output="none"),
     ),
     RoutineCase(
         "hourly-pt",
-        "an explicit hourly request is created with its period",
-        "A cada 6 horas, liste minhas zonas DNS.",
-        _create({"kind": "hourly", "every": 6}, [["dns", "list-zones"]]),
+        "an explicit hourly request is created with its period and shows the result only when it changes",
+        "A cada 6 horas, liste minhas zonas DNS e me avise só quando mudar.",
+        _create({"kind": "hourly", "every": 6}, [["dns", "list-zones"]], output="changes"),
     ),
     RoutineCase(
         "monthly-timezone-en",
         "a named timezone is kept with the schedule",
-        "On the 1st of every month at 10:00 Lisbon time, list my DNS zones.",
+        "On the 1st of every month at 10:00 Lisbon time, list my DNS zones and show them to me.",
         _create({"kind": "monthly", "day": 1, "time": "10:00"}, [["dns", "list-zones"]], "Europe/Lisbon"),
     ),
     RoutineCase(
         "continuous-en",
         "an explicit continuous request is created with its pause and daily cap",
-        "Keep listing my DNS zones continuously, waiting 10 seconds after each run, at most 500 times a day.",
+        "Keep listing my DNS zones continuously, waiting 10 seconds after each run, at most 500 times a day, and "
+        "show me the zones each time.",
         _create({"kind": "continuous", "gap": 10, "cap": 500}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
         "continuous-cap-pt",
         "a continuous request that names no cap asks for the daily cap, with the shortest pause",
-        "Liste minhas zonas DNS continuamente, repetindo sem parar.",
+        "Liste minhas zonas DNS continuamente, repetindo sem parar, e me mostre as zonas.",
         _cap_question(5),
     ),
     RoutineCase(
         "seconds-pt",
         "an interval in seconds is a continuous pause of those seconds, asking only the daily limit",
-        "A cada 30 segundos, liste minhas zonas DNS.",
+        "A cada 30 segundos, liste minhas zonas DNS e me mostre.",
         _cap_question(30),
     ),
     RoutineCase(
         "seconds-de",
         "an interval in seconds maps the same way in another interface language",
-        "Liste alle 45 Sekunden meine DNS-Zonen auf.",
+        "Liste alle 45 Sekunden meine DNS-Zonen auf und zeig sie mir.",
         _cap_question(45),
     ),
     RoutineCase(
         "minutes-en",
         "an interval in minutes is a continuous pause in seconds",
-        "List my DNS zones every 10 minutes.",
+        "List my DNS zones every 10 minutes and show them to me.",
         _cap_question(600),
     ),
     RoutineCase(
         "whole-hours-pt",
         "an interval of whole hours in minutes is hourly",
-        "A cada 120 minutos, liste minhas zonas DNS.",
+        "A cada 120 minutos, liste minhas zonas DNS e me mostre.",
         _create({"kind": "hourly", "every": 2}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
         "after-end-en",
         "a pause after each run with a daily limit stays continuous even in whole hours",
-        "List my DNS zones, waiting 2 hours after each run ends, at most 12 times a day.",
+        "List my DNS zones, waiting 2 hours after each run ends, at most 12 times a day, and show me the zones.",
         _create({"kind": "continuous", "gap": 7200, "cap": 12}, [["dns", "list-zones"]]),
     ),
     RoutineCase(
         "too-frequent-en",
         "an interval under five seconds creates nothing and asks for a supported one",
-        "List my DNS zones every 2 seconds.",
+        "List my DNS zones every 2 seconds and show them to me.",
         NEED,
+    ),
+    RoutineCase(
+        "output-missing-pt",
+        "a complete request that says nothing about the result asks what to do with it, never choosing for the person",
+        "Todo dia às 9h, liste minhas zonas DNS.",
+        NEED,
+    ),
+    RoutineCase(
+        "output-missing-en",
+        "the same in English",
+        "Every day at 9am, list my DNS zones.",
+        NEED,
+    ),
+    RoutineCase(
+        "chain-en",
+        "the result handed to a second Action as text chains two steps and shows nothing more",
+        "Every day at 9am, list my DNS zones and send them as a text message to ana.",
+        _create(
+            {"kind": "daily", "time": "09:00"}, [["dns", "list-zones"], ["messages", "send-message"]], output="chain"
+        ),
     ),
     RoutineCase(
         "earlier-work-pt",
         "work named only by pointing at the earlier send compiles that work, asking only the daily limit",
-        "cria uma rotina que faz isso a cada 30 segundos",
+        "cria uma rotina que faz isso a cada 30 segundos e me mostra o resultado",
         _cap_question(30),
         earlier=("lista minhas zonas dns",),
         locale="pt",
@@ -230,7 +255,7 @@ CASES = (
     RoutineCase(
         "earlier-unrelated-pt",
         "an earlier send the message does not refer to lends it nothing",
-        "A cada 6 horas, liste minhas zonas DNS.",
+        "A cada 6 horas, liste minhas zonas DNS e me mostre.",
         _create({"kind": "hourly", "every": 6}, [["dns", "list-zones"]]),
         earlier=("Mande uma mensagem para a ana dizendo bom dia.",),
         locale="pt",
@@ -244,26 +269,27 @@ CASES = (
     ),
     RoutineCase(
         "update-pt",
-        "changing a listed Routine's time updates it",
+        "changing a listed Routine's time updates it and keeps what it does with its result",
         "Mude a listagem diária das zonas DNS para as 7h.",
         {
             "op": "update",
             "schedule": {"kind": "daily", "time": "07:00"},
             "timezone": "America/Sao_Paulo",
             "actions": [["dns", "list-zones"]],
+            "output": "kept",
         },
         EXISTING,
     ),
     RoutineCase(
         "ask-en",
         "a genuinely open recipient is asked once, with one value per option, and nothing else is",
-        "Every Monday at 8am, send either ana or bruno a message saying good morning.",
-        {"op": "ask", "field": ["input", "to"], "values": ['"ana"', '"bruno"']},
+        "Every Monday at 8am, send either ana or bruno a message saying good morning, and show me the result.",
+        {"op": "ask", "output": "show", "field": ["input", "to"], "values": ['"ana"', '"bruno"']},
     ),
     RoutineCase(
         "ask-and-cap-en",
         "an open recipient beside an unstated daily cap leaves two fields open, so the recipient is asked as a piece",
-        "Every 30 seconds, send either ana or bruno a message saying good morning.",
+        "Every 30 seconds, send either ana or bruno a message saying good morning, and show me the result.",
         NEED,
     ),
     RoutineCase("one-off-pt", "a one-off request creates nothing", "Liste minhas zonas DNS agora.", None),
@@ -309,6 +335,13 @@ _CLOUDFLARE_ZONES = [["cloudflare", "list-zones"]]
 # The paging values the person states when asked, which the Routine's one step then holds exactly.
 _PAGING = [{"page": 1, "per_page": 50}]
 _PAGED = {"pt": "Página 1, 50 zonas", "en": "Page 1, 50 zones", "de": "Seite 1, 50 Zonen"}
+# The suggestion a person selects when asked what to do with each run's result, sent as typed.
+_SHOWN = {
+    "pt": "Mostrar o resultado a cada execução",
+    "en": "Show the result after every run",
+    "de": "Das Ergebnis nach jeder Ausführung zeigen",
+}
+_CAPPED = {"pt": "Até 100 execuções por dia", "en": "Up to 100 runs a day"}
 
 
 def _cap_question_of(gap: int) -> dict[str, object]:
@@ -324,6 +357,7 @@ JOURNEYS = (
             Step("Uma rotina para listas os dominios do Cloudflare, como solicitei anteriormente"),
             Step("A cada 30 segundos"),
             Step(_PAGED["pt"], answer=True),
+            Step(_SHOWN["pt"], answer=True),
         ),
         _cap_question_of(30),
         "pt",
@@ -336,6 +370,7 @@ JOURNEYS = (
             Step("A routine to list my Cloudflare domains, as I asked before"),
             Step("Every 30 seconds"),
             Step(_PAGED["en"], answer=True),
+            Step(_SHOWN["en"], answer=True),
         ),
         _cap_question_of(30),
         "en",
@@ -348,6 +383,7 @@ JOURNEYS = (
             Step("Eine Routine, die meine Cloudflare-Domains auflistet, wie ich vorhin gesagt habe"),
             Step("Alle 30 Sekunden"),
             Step(_PAGED["de"], answer=True),
+            Step(_SHOWN["de"], answer=True),
         ),
         _cap_question_of(30),
         "de",
@@ -359,7 +395,8 @@ JOURNEYS = (
             Step("cria uma rotina que faz isso a cada 30 segundos"),
             Step("Listar os domínios do Cloudflare", answer=True),
             Step(_PAGED["pt"], answer=True),
-            Step("Até 100 execuções por dia", answer=True),
+            Step(_SHOWN["pt"], answer=True),
+            Step(_CAPPED["pt"], answer=True),
         ),
         {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "inputs": _PAGING},
         "pt",
@@ -374,8 +411,45 @@ JOURNEYS = (
             Step("Listar zonas", answer=True),
             Step("a cada 25 segundos", answer=True),
             Step(_PAGED["pt"], answer=True),
+            Step(_SHOWN["pt"], answer=True),
         ),
         _cap_question_of(25),
+        "pt",
+    ),
+    Journey(
+        "shown-pt",
+        "a request that already says to show the result asks only the paging and the daily cap, then shows each run's "
+        "zones",
+        (
+            Step("lista minhas zonas do Cloudflare a cada 30 segundos e me mostra"),
+            Step(_PAGED["pt"], answer=True),
+            Step(_CAPPED["pt"], answer=True),
+        ),
+        {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "inputs": _PAGING},
+        "pt",
+    ),
+    Journey(
+        "shown-en",
+        "the same in English",
+        (
+            Step("list my Cloudflare zones every 30 seconds and show them to me"),
+            Step(_PAGED["en"], answer=True),
+            Step(_CAPPED["en"], answer=True),
+        ),
+        {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "inputs": _PAGING},
+        "en",
+    ),
+    Journey(
+        "output-asked-pt",
+        "the owner's 2026-10-05 complaint: a request that says nothing about the result asks what to do with it, and "
+        "the selected answer makes each run show its zones",
+        (
+            Step("lista minhas zonas do Cloudflare a cada 30 segundos"),
+            Step(_PAGED["pt"], answer=True),
+            Step(_SHOWN["pt"], answer=True),
+            Step(_CAPPED["pt"], answer=True),
+        ),
+        {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "inputs": _PAGING},
         "pt",
     ),
     Journey(
@@ -391,15 +465,17 @@ JOURNEYS = (
 def _scored(change: Mapping[str, object]) -> dict[str, object]:
     if change.get("op") in {"need", "discard"}:
         return {"op": change["op"]}
+    output = change["output"]["mode"]
     if "question" in change:
         field = change["question"]["field"]
         values = sorted(json.dumps(value, sort_keys=True) for value in change["question"]["values"])
-        return {"op": "ask", "field": [field["kind"], field.get("member")], "values": values}
+        return {"op": "ask", "output": output, "field": [field["kind"], field.get("member")], "values": values}
     return {
         "op": change["op"],
         "schedule": change["schedule"],
         "timezone": change["timezone"],
         "actions": [[step["assistant"], step["action"]] for step in change["steps"]],
+        "output": output,
     }
 
 
