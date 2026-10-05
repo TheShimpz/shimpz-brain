@@ -16,6 +16,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
+import tool_refusal
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 
@@ -203,38 +204,9 @@ def _review(messages: list[Any], *, allowed: bool) -> str | None:
     return None
 
 
-@functools.cache
-def _guard_class():
-    # The agent middleware stack loads with the graph, never when the runtime API module is imported.
-    from langchain.agents.middleware import AgentMiddleware, hook_config
-
-    class ClarificationGuard(AgentMiddleware):
-        """Refuse unsafe or malformed clarification calls before any tool of that model response runs."""
-
-        def __init__(self, *, allowed: bool) -> None:
-            super().__init__()
-            self.allowed = allowed
-
-        @hook_config(can_jump_to=["model"])
-        def after_model(self, state, runtime) -> dict[str, Any] | None:
-            messages = list(state["messages"])
-            reason = _review(messages, allowed=self.allowed)
-            if reason is None:
-                return None
-            return {
-                "messages": [
-                    ToolMessage(content=_CORRECTIONS[reason], tool_call_id=call["id"], name=call["name"])
-                    for call in messages[-1].tool_calls
-                ],
-                "jump_to": "model",
-            }
-
-    return ClarificationGuard
-
-
 def guard(*, allowed: bool):
     """The middleware that reviews every model response before its tools run."""
-    return _guard_class()(allowed=allowed)
+    return tool_refusal.guard("ClarificationGuard", functools.partial(_review, allowed=allowed), _CORRECTIONS)
 
 
 def recorded(messages: list[Any]) -> Clarification | None:
