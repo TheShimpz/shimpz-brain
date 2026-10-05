@@ -358,6 +358,12 @@ class CapTests(unittest.TestCase):
             ("A cada 30 segundos, diga olá para Ana", 100),
             ("A cada 30 segundos, diga olá para Ana, até 1000 vezes por dia", 100),
             ('A cada 30 segundos, diga olá para Ana, "até 250 por dia"', 250),
+            # Only a complete count: never a decimal, signed, exponent, or overlong fragment, nor a bad group.
+            ("A cada 30 segundos, diga olá para Ana, até 100.25 vezes por dia", 100),
+            ("A cada 30 segundos, diga olá para Ana, até -100 vezes por dia", 100),
+            ("A cada 30 segundos, diga olá para Ana, até 1e3 vezes por dia", 3),
+            ("A cada 30 segundos, diga olá para Ana, até 1,0000 vezes por dia", 1000),
+            ("A cada 30 segundos, diga olá para Ana, até " + "9" * 5000 + " vezes por dia", 999),
         ):
             with self.subTest(words=words), self.assertRaises(routine.UnprovenError):
                 routine.change(
@@ -405,6 +411,15 @@ class CapTests(unittest.TestCase):
         # An option whose label, the person's answer once picked, never states its cap would grant the compiler's.
         mislabelled = [option(1000, "Até 100 execuções por dia"), *labelled[1:]]
         self.assertEqual(routine._answer(asking(*mislabelled), source, _chat().assistants, None), "unproven")
+        # Options that differ in their cap prove each by its own label alone: never by a count the person wrote
+        # elsewhere, and never by the cap of the listed Routine an update changes.
+        swapped = [option(100, "Até 500 execuções por dia"), option(500, "Até 100 execuções por dia")]
+        counted = routine.UserWords("Página 1, 5 zonas, até 100 ou 500 por dia", (), draft)
+        self.assertEqual(routine._answer(asking(*swapped), counted, _chat().assistants, None), "unproven")
+        listed = {**LISTED, "schedule": {"kind": "continuous", "gap": 30, "cap": 100}}
+        kept = [option(100, "Até 500 execuções por dia"), labelled[1]]
+        update = asking(*kept).model_copy(update={"continues": False, "request": "Página 1, 5 zonas"})
+        self.assertEqual(routine._answer(update, source, _chat().assistants, listed), "unproven")
 
 
 class CompilerTests(unittest.TestCase):

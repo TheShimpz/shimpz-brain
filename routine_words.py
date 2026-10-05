@@ -30,8 +30,13 @@ CITED = "cited"
 SAID = "said"
 _KINDS = frozenset({CITED, SAID})
 _LAYOUT = frozenset({"\n", "\r", "\t"})
-# A whole count as a person writes it, digits with any thousands groups ("1000", "1.000", "1,000"), as Team reads it.
-_COUNT_RE = re.compile(r"[0-9]+(?:[.,][0-9]{3})*")
+# A whole count as a person writes it ("1000", "1.000", "1,000"), at most seven digits or 999,999,999, and only a
+# complete one, exactly as Team reads it: never a fragment of a longer number, a decimal, a signed number, or an
+# exponent.
+_COUNT_RE = re.compile(
+    r"(?<![0-9.,+-])(?<![0-9][eE])(?<![0-9][eE][+-])(?:[0-9]{1,3}(?:[.,][0-9]{3}){1,2}|[0-9]{1,7})"
+    r"(?![0-9]|[.,][0-9]|[eE][+-]?[0-9])"
+)
 
 
 class RoutineWordsError(ValueError):

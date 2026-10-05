@@ -703,15 +703,26 @@ def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: di
     open_input = question.field != "input" or (
         step is not None and bool(question.member) and question.member not in step["input"]
     )
-    # A picked label is the person's answer, so each schedule option's cap must stand in its own label's words.
-    capped = question.field != "schedule" or all(
-        cap_proven(value, Words((*parts, (SAID, item.label))), target)
-        for item, value in zip(question.options, values, strict=True)
-    )
+    capped = question.field != "schedule" or _caps_labelled(question, values, Words(parts), target)
     if asked is None or not open_input or not capped or not all(replies):
         return "unproven"
     wire["question"] = {"field": field, "values": values, "replies": replies}
     return {"routine": wire, "reply": asked.render(), "clarification": asked.to_dict()}
+
+
+def _caps_labelled(question: Question, values: list[Any], words: Words, target: dict | None) -> bool:
+    """Whether every option of a schedule question has a proven daily cap, exactly as Team admits it.
+
+    A picked label is the person's answer to the open field: when the options differ in their cap, each option's cap
+    must be a count its own label writes, and nothing else proves it; a cap every option shares is proven as any cap.
+    """
+    caps = {value.get("cap") for value in values}
+    if len(caps) == 1:
+        return all(cap_proven(value, words, target) for value in values)
+    return all(
+        value["kind"] != "continuous" or value["cap"] in Words(((SAID, item.label),)).counts()
+        for item, value in zip(question.options, values, strict=True)
+    )
 
 
 def _needed(compiled: Compiled, target: dict | None) -> object:
