@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from urllib.parse import urlsplit
 
-from eval.fixtures import ASSISTANTS
+from eval.fixtures import ASSISTANTS, Action
 
 # The simulated starting state every scenario shares.
 ZONES = {"zn-7f3a": "example.com", "zn-91c2": "example.org"}
@@ -81,6 +81,27 @@ class ActionFailedError(RuntimeError):
         self.code = code
 
 
+def ledgered(
+    ledger: list[dict[str, object]],
+    assistant_id: str,
+    action_id: str,
+    arguments: Mapping[str, object],
+    run: Callable[[], tuple[dict[str, object], str | None]],
+) -> dict[str, object]:
+    """Record one simulated invocation: its input first, then its failure code, or its result and any effect."""
+    entry: dict[str, object] = {"assistant": assistant_id, "action": action_id, "input": copy.deepcopy(dict(arguments))}
+    ledger.append(entry)
+    try:
+        result, effect = run()
+    except ActionFailedError as exc:
+        entry["failed"] = exc.code
+        raise
+    entry["result"] = copy.deepcopy(result)
+    if effect is not None:
+        entry["effect"] = effect
+    return result
+
+
 def title(value: object) -> str:
     """A title the user quoted is exact: the oracle compares it literally, case, spacing, and characters included."""
     return str(value)
@@ -123,6 +144,18 @@ class World:
     def _id(self, prefix: str) -> str:
         self._next += 1
         return f"{prefix}-new-{self._next}"
+
+    def _invoke_handler(
+        self, actions: Iterable[Action], assistant_id: str, action_id: str, arguments: Mapping[str, object]
+    ) -> dict[str, object]:
+        """Record and run a declared Action through this world's ``_<assistant>_<action>`` handler."""
+
+        def run() -> tuple[dict[str, object], str | None]:
+            if action_id not in {action.id for action in actions}:
+                raise ActionFailedError("undeclared-action")
+            return getattr(self, "_" + f"{assistant_id}_{action_id}".replace("-", "_"))(arguments)
+
+        return ledgered(self.ledger, assistant_id, action_id, arguments, run)
 
     def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
         entry: dict[str, object] = {

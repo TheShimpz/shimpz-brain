@@ -9,7 +9,6 @@ SIMULATION. This module uses only the standard library so that the umbrella jour
 
 from __future__ import annotations
 
-import copy
 import json
 import re
 from collections import Counter
@@ -206,25 +205,7 @@ class FreshWorld(World):
     def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
         if assistant_id not in FRESH:
             return super().invoke(assistant_id, action_id, arguments)
-        entry: dict[str, object] = {
-            "assistant": assistant_id,
-            "action": action_id,
-            "input": copy.deepcopy(dict(arguments)),
-        }
-        self.ledger.append(entry)
-        declared = {action.id for action in FRESH[assistant_id].actions}
-        try:
-            if action_id not in declared:
-                raise ActionFailedError("undeclared-action")
-            handler = getattr(self, "_" + f"{assistant_id}_{action_id}".replace("-", "_"))
-            result, effect = handler(arguments)
-        except ActionFailedError as exc:
-            entry["failed"] = exc.code
-            raise
-        entry["result"] = copy.deepcopy(result)
-        if effect is not None:
-            entry["effect"] = effect
-        return result
+        return self._invoke_handler(FRESH[assistant_id].actions, assistant_id, action_id, arguments)
 
     def _product(self, arguments: Mapping[str, object]) -> str:
         product_id = str(arguments.get("product_id"))

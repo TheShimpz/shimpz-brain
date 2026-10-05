@@ -15,7 +15,6 @@ This module uses only the standard library.
 
 from __future__ import annotations
 
-import copy
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping
@@ -402,23 +401,7 @@ class FreshWorld(world.World):
     def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
         if assistant_id not in NEW_IDS:
             return super().invoke(assistant_id, action_id, arguments)
-        entry: dict[str, object] = {
-            "assistant": assistant_id,
-            "action": action_id,
-            "input": copy.deepcopy(dict(arguments)),
-        }
-        self.ledger.append(entry)
-        try:
-            if action_id not in {action.id for action in ASSISTANTS[assistant_id].actions}:
-                raise world.ActionFailedError("undeclared-action")
-            result, effect = getattr(self, "_" + f"{assistant_id}_{action_id}".replace("-", "_"))(arguments)
-        except world.ActionFailedError as exc:
-            entry["failed"] = exc.code
-            raise
-        entry["result"] = copy.deepcopy(result)
-        if effect is not None:
-            entry["effect"] = effect
-        return result
+        return self._invoke_handler(ASSISTANTS[assistant_id].actions, assistant_id, action_id, arguments)
 
     def _new(self, prefix: str) -> str:
         self._serial[prefix] += 1

@@ -10,14 +10,13 @@ write is a recorded effect that the oracle counts as forbidden. This module uses
 
 from __future__ import annotations
 
-import copy
 from collections import Counter
 from collections.abc import Mapping
 
 from eval.corpus import LOCALES, Template, expected_state, fingerprint, scenarios, validate_scopes
 from eval.fixtures import Action, Assistant
 from eval.large_api_contract import ASSISTANT_ID, ASSISTANTS, EDGE, GROUPS
-from eval.world import ActionFailedError
+from eval.world import ActionFailedError, ledgered
 
 CORPUS_ID = "large-api-v1"
 
@@ -59,25 +58,15 @@ class EdgeWorld:
         self._next = 0
 
     def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
-        entry: dict[str, object] = {
-            "assistant": assistant_id,
-            "action": action_id,
-            "input": copy.deepcopy(dict(arguments)),
-        }
-        self.ledger.append(entry)
         assistant = ASSISTANTS.get(assistant_id)
         action = None if assistant is None else next((a for a in assistant.actions if a.id == action_id), None)
-        try:
+
+        def run() -> tuple[dict[str, object], str | None]:
             if action is None:
                 raise ActionFailedError("undeclared-action")
-            result, effect = self._run(assistant, action, arguments)
-        except ActionFailedError as exc:
-            entry["failed"] = exc.code
-            raise
-        entry["result"] = copy.deepcopy(result)
-        if effect is not None:
-            entry["effect"] = effect
-        return result
+            return self._run(assistant, action, arguments)
+
+        return ledgered(self.ledger, assistant_id, action_id, arguments, run)
 
     def _zone(self, arguments: Mapping[str, object]) -> str:
         if arguments.get("zone_id") not in ZONES:
