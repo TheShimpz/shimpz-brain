@@ -95,7 +95,7 @@ class RoutineEvalTests(unittest.TestCase):
         self.assertFalse(routines.run_case(_runtime(AIMessage(content="Rotina criada para isso.")), PROVIDER, case, 1))
 
     def test_a_refusal_that_blames_an_admissible_timing_or_steers_misses(self):
-        case = _case("earlier-work-pt")
+        case = _case("earlier-missing-pt")
         refused = routine.Compiled(
             decision="refused",
             refusal="unspecified",
@@ -121,17 +121,22 @@ class RoutineEvalTests(unittest.TestCase):
             "No Routine was created. You can ask again for every hour.",
         )
         with compiling:
-            # The earlier turn completes first in the same conversation; then the Routine turn is scored.
             for reply, passed in ((factual, True), (owner_seen, False), *((text, False) for text in steering)):
                 with self.subTest(reply=reply):
-                    runtime = _runtime(AIMessage(content="Suas zonas."), _created(), AIMessage(content=reply))
+                    runtime = _runtime(_created(), AIMessage(content=reply))
                     self.assertEqual(routines.run_case(runtime, PROVIDER, case, 0), passed)
-            # An earlier turn that never completes misses the case before its Routine turn.
-            with mock.patch.object(routines, "_turn", return_value=mock.Mock(status="action-required")) as turn:
-                self.assertFalse(routines.run_case(_runtime(), PROVIDER, case, 0))
-            self.assertEqual(turn.call_args.args[2], case.earlier)
-            # The incident turn runs in the interface language the owner's chat sent.
-            self.assertEqual(turn.call_args.args[1].locale, "pt")
+        # Each earlier send is its own turn first; one that never completes misses the case before its Routine turn.
+        incident = _case("earlier-work-pt")
+        with mock.patch.object(routines, "_turn", return_value=mock.Mock(status="action-required")) as turn:
+            self.assertFalse(routines.run_case(_runtime(), PROVIDER, incident, 0))
+        self.assertEqual(turn.call_args.args[2], incident.earlier[0])
+        # The incident turn runs in the interface language the owner's chat sent, with Team's frozen earlier send.
+        self.assertEqual(turn.call_args.args[1].locale, "pt")
+        with mock.patch.object(routines, "_turn", return_value=mock.Mock(status="completed", routine=None)) as turn:
+            routines.run_case(_runtime(), PROVIDER, incident, 0)
+        self.assertEqual(
+            [call.args[1].routine_earlier for call in turn.call_args_list], [(), ("lista minhas zonas dns",)]
+        )
         # A timing outside the contract may be named as the reason, but never steered.
         too_frequent = _case("too-frequent-en")
         named = "Nothing was created: a Routine repeats at most every 5 seconds, so that interval is not supported."

@@ -65,8 +65,9 @@ class RoutineCase:
     # None expects no Routine change; otherwise the exact op, schedule, timezone, and ordered Actions.
     expected: Mapping[str, object] | None
     routines: tuple[dict[str, object], ...] = ()
-    # A message of an earlier turn in the same conversation, which the Routine compiler never sees.
-    earlier: str | None = None
+    # The person's earlier sends in the same conversation, each its own turn first; Team freezes them for the Routine
+    # turn, which the eval passes on exactly as Team would (ADR-0092 amendment, 2026-10-04).
+    earlier: tuple[str, ...] = ()
     # Whether the timing itself is outside the Routine contract, so a refusal may name it.
     timing_refused: bool = False
     # The interface language a real chat sends; None leaves the reply in the message's language.
@@ -164,10 +165,25 @@ CASES = (
     ),
     RoutineCase(
         "earlier-work-pt",
-        "work named only by pointing at an earlier turn creates nothing, and its admissible timing is never blamed",
+        "work named only by pointing at the earlier send compiles that work, asking only the daily limit",
+        "cria uma rotina que faz isso a cada 30 segundos",
+        _cap_question(30),
+        earlier=("lista minhas zonas dns",),
+        locale="pt",
+    ),
+    RoutineCase(
+        "earlier-unrelated-pt",
+        "an earlier send the message does not refer to lends it nothing",
+        "A cada 6 horas, liste minhas zonas DNS.",
+        _create({"kind": "hourly", "every": 6}, [["dns", "list-zones"]]),
+        earlier=("Mande uma mensagem para a ana dizendo bom dia.",),
+        locale="pt",
+    ),
+    RoutineCase(
+        "earlier-missing-pt",
+        "a reference with no earlier send names no work, and its admissible timing is never blamed",
         "cria uma rotina que faz isso a cada 30 segundos",
         None,
-        earlier="Liste minhas zonas DNS.",
         locale="pt",
     ),
     RoutineCase(
@@ -232,9 +248,11 @@ def run_case(
         routines=case.routines,
         locale=case.locale,
     )
-    if case.earlier is not None and _turn(runtime, context, case.earlier).status != "completed":
-        return False
-    result = _turn(runtime, context, case.message)
+    for earlier in case.earlier:
+        if _turn(runtime, context, earlier).status != "completed":
+            return False
+    # Team offers the Routine turn exactly the earlier sends it froze for it.
+    result = _turn(runtime, dataclasses.replace(context, routine_earlier=case.earlier), case.message)
     if result.status != "completed":
         return False
     if case.expected is None:
