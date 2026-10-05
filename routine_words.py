@@ -9,6 +9,7 @@ own words ever crosses into another; Team admits the same structure, so this is 
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -29,6 +30,8 @@ CITED = "cited"
 SAID = "said"
 _KINDS = frozenset({CITED, SAID})
 _LAYOUT = frozenset({"\n", "\r", "\t"})
+# A whole count as a person writes it, digits with any thousands groups ("1000", "1.000", "1,000"), as Team reads it.
+_COUNT_RE = re.compile(r"[0-9]+(?:[.,][0-9]{3})*")
 
 
 class RoutineWordsError(ValueError):
@@ -140,6 +143,15 @@ class Words:
         """Whether the text stands inside one stretch of any part's own words."""
         segments = [segment for _kind, own in self.parts for segment in own]
         return isinstance(text, str) and bool(text) and any(text in segment for segment in segments)
+
+    def counts(self) -> frozenset[int]:
+        """Every whole count any part's own words write in digits."""
+        return frozenset(
+            int(re.sub(r"[.,]", "", match.group()))
+            for _kind, own in self.parts
+            for segment in own
+            for match in _COUNT_RE.finditer(segment)
+        )
 
     def adopted(self, region: object, text: object, instruction: object) -> bool:
         return (

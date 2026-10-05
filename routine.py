@@ -393,6 +393,20 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
     return {"id": step.id, "assistant": step.assistant, "action": step.action, "input": inputs}
 
 
+def cap_proven(schedule: Mapping[str, object], words: Words, target: Mapping[str, object] | None) -> bool:
+    """Whether a continuous Routine's daily cap is the person's own, exactly as Team admits it.
+
+    The cap is never a safe default: it is a whole count the person's own words write in digits, or the cap the listed
+    Routine an update changes already has.
+    """
+    if schedule["kind"] != "continuous":
+        return True
+    kept = target["schedule"] if target is not None else None
+    if kept is not None and kept["kind"] == "continuous" and kept["cap"] == schedule["cap"]:
+        return True
+    return schedule["cap"] in words.counts()
+
+
 def change(
     compiled: Compiled,
     parts: tuple[tuple[str, str], ...],
@@ -420,6 +434,7 @@ def change(
         or not words.said(request)
         or (compiled.timezone is not None and TIMEZONE_RE.fullmatch(compiled.timezone) is None)
         or not 0 < len(compiled.steps) <= MAX_STEPS
+        or (schedule is not None and not cap_proven(schedule, words, target))
     ):
         raise UnprovenError
     steps = [_step(step, contracts, words, target is not None) for step in compiled.steps]
@@ -468,11 +483,11 @@ def _timing_rules(language: str) -> str:
         "minutes, or 90 minutes) is continuous with gap that interval in seconds; work to repeat again and again "
         f"with no interval is continuous with gap {MIN_CONTINUOUS_GAP_SECONDS}; an interval under "
         f"{MIN_CONTINUOUS_GAP_SECONDS} seconds, over 24 hours other than daily, weekly, or monthly, or not a whole "
-        "number of seconds is never rounded. A continuous request uses the daily limit the user states as its cap; "
-        "one that names no limit is a schedule to ask, whose options are that continuous schedule with cap "
-        f"{', '.join(map(str, CONTINUOUS_CAP_OPTIONS[:-1]))}, or {CONTINUOUS_CAP_OPTIONS[-1]}, each labelled with its "
-        f"daily cap in {language} (such as up to 100 runs a day) and with an empty description; every schedule has "
-        "its other fields null"
+        "number of seconds is never rounded. A continuous request uses the daily limit the user states in digits as "
+        "its cap, never one the user did not state; one that states none in digits is a schedule to ask, whose "
+        f"options are that continuous schedule with cap {', '.join(map(str, CONTINUOUS_CAP_OPTIONS[:-1]))}, or "
+        f"{CONTINUOUS_CAP_OPTIONS[-1]}, each labelled with its daily cap in digits in {language} (such as up to 100 "
+        "runs a day) and with an empty description; every schedule has its other fields null"
     )
 
 
@@ -665,23 +680,22 @@ def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: di
     field: dict[str, object] = {"kind": question.field}
     if question.field == "input":
         field.update(step=question.step, member=question.member)
+    parts = source.parts(compiled.continues)
     try:
         values = [_value(item, question) for item in question.options]
-        wire = change(
-            compiled,
-            source.parts(compiled.continues),
-            contracts,
-            target,
-            question.field,
-            0 if compiled.continues else source.skipped,
-        )
+        wire = change(compiled, parts, contracts, target, question.field, 0 if compiled.continues else source.skipped)
     except UnprovenError:
         return "unproven"
     step = next((item for item in wire["steps"] if item["id"] == question.step), None)
     open_input = question.field != "input" or (
         step is not None and bool(question.member) and question.member not in step["input"]
     )
-    if asked is None or not open_input:
+    # A picked label is the person's answer, so each schedule option's cap must stand in its own label's words.
+    capped = question.field != "schedule" or all(
+        cap_proven(value, Words((*parts, (SAID, item.label))), target)
+        for item, value in zip(question.options, values, strict=True)
+    )
+    if asked is None or not open_input or not capped:
         return "unproven"
     wire["question"] = {"field": field, "values": values, "reply": reply}
     return {"routine": wire, "reply": asked.render(), "clarification": asked.to_dict()}

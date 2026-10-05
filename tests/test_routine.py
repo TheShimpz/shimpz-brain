@@ -296,7 +296,13 @@ class PagingTests(unittest.TestCase):
             "additionalProperties": False,
         }
     }
-    DRAFT = (("said", "Cria uma nova rotina pra mim"), ("said", "Listar zonas"), ("said", "a cada 25 segundos"))
+    # The person states the daily cap too, which no compiler may choose for them.
+    DRAFT = (
+        ("said", "Cria uma nova rotina pra mim"),
+        ("said", "Listar zonas"),
+        ("said", "a cada 25 segundos"),
+        ("said", "Até 300 execuções por dia"),
+    )
 
     def compiled(self, *origins: routine.Origin) -> routine.Compiled:
         page, per_page = origins
@@ -304,7 +310,7 @@ class PagingTests(unittest.TestCase):
             continues=True,
             request="Cria uma nova rotina pra mim",
             schedule=routine.Schedule(
-                kind="continuous", every=None, time=None, weekday=None, day=None, gap=25, cap=100
+                kind="continuous", every=None, time=None, weekday=None, day=None, gap=25, cap=300
             ),
             steps=[
                 routine.Step(
@@ -330,6 +336,69 @@ class PagingTests(unittest.TestCase):
         )
         with self.assertRaises(routine.UnprovenError):
             routine.change(self.compiled(_origin("1"), _origin("50")), self.DRAFT, self.LIST_ZONES, None)
+
+
+def _continuous(cap: int | None, gap: int = 30) -> routine.Schedule:
+    return routine.Schedule(kind="continuous", every=None, time=None, weekday=None, day=None, gap=gap, cap=cap)
+
+
+class CapTests(unittest.TestCase):
+    """A continuous Routine's daily cap is never the compiler's choice, exactly as Team admits it (ADR-0092 sec. 9)."""
+
+    def test_a_cap_the_persons_own_words_never_wrote_is_unproven(self):
+        for words, cap in (
+            ("A cada 30 segundos, diga olá para Ana, até 500 vezes por dia", 500),
+            ("A cada 30 segundos, diga olá para Ana, até 1.000 vezes por dia", 1000),
+        ):
+            with self.subTest(words=words):
+                compiled = _compiled(request=words, schedule=_continuous(cap))
+                self.assertEqual(routine.change(compiled, _said(words), CONTRACTS, None)["schedule"]["cap"], cap)
+        for words, cap in (
+            # The owner's shape: an interval with no daily limit, which a compiler must ask rather than fill.
+            ("A cada 30 segundos, diga olá para Ana", 100),
+            ("A cada 30 segundos, diga olá para Ana, até 1000 vezes por dia", 100),
+            ('A cada 30 segundos, diga olá para Ana, "até 250 por dia"', 250),
+        ):
+            with self.subTest(words=words), self.assertRaises(routine.UnprovenError):
+                routine.change(
+                    _compiled(request=words.split(",")[0], schedule=_continuous(cap)), _said(words), CONTRACTS, None
+                )
+
+    def test_an_update_keeps_the_listed_cap_but_never_chooses_another(self):
+        listed = {**LISTED, "schedule": {"kind": "continuous", "gap": 60, "cap": 500}}
+        words = "Mude o resumo para a cada 30 segundos, diga olá para Ana"
+        kept = _compiled(request=words, schedule=_continuous(500))
+        self.assertEqual(routine.change(kept, _said(words), CONTRACTS, listed)["schedule"]["cap"], 500)
+        for target in (listed, LISTED):
+            with self.subTest(target=target["schedule"]), self.assertRaises(routine.UnprovenError):
+                routine.change(_compiled(request=words, schedule=_continuous(1000)), _said(words), CONTRACTS, target)
+
+    def test_each_cap_options_label_states_its_cap(self):
+        """A picked label is the person's answer: an option whose label never states its cap grants the compiler's."""
+        draft = (("said", "cria uma rotina listando minhas zonas dns"), ("said", "A cada 30 segundos"))
+
+        def option(cap: int, label: str) -> routine.Choice:
+            return routine.Choice(
+                label=label, description="", value_json=json.dumps({"kind": "continuous", "gap": 30, "cap": cap})
+            )
+
+        def asking(*options: routine.Choice) -> routine.Compiled:
+            question = {"text": "Qual limite diário?", "field": "schedule", "step": None, "member": None}
+            return _compiled(
+                decision="ask",
+                continues=True,
+                request="cria uma rotina listando minhas zonas dns",
+                schedule=None,
+                steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[])],
+                question=routine.Question(**question, options=list(options)),
+            )
+
+        source = routine.UserWords("Página 1, 5 zonas", (), draft)
+        labelled = [option(cap, f"Até {cap} execuções por dia") for cap in (100, 500, 1000)]
+        asked = routine._answer(asking(*labelled), source, _chat().assistants, None)
+        self.assertEqual([value["cap"] for value in asked["routine"]["question"]["values"]], [100, 500, 1000])
+        mislabelled = [option(1000, "Até 100 execuções por dia"), *labelled[1:]]
+        self.assertEqual(routine._answer(asking(*mislabelled), source, _chat().assistants, None), "unproven")
 
 
 class CompilerTests(unittest.TestCase):
