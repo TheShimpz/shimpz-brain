@@ -310,6 +310,21 @@ class CompilerTests(unittest.TestCase):
             with self.subTest(outcome=outcome), self.assertRaises(routine.CompileUnavailableError):
                 broken("prompt")
 
+    def test_the_compiler_maps_any_stated_interval_and_refuses_an_inadmissible_timing(self):
+        prompt = routine._prompt("cria uma rotina que faz isso a cada 30 segundos", _chat().assistants, None, "pt")
+        # Seconds and minutes are continuous gaps, whole hours are hourly, and a timing outside the contract refuses.
+        for clause in (
+            "such as 30 seconds, 10 minutes, or 90 minutes) is continuous with gap that interval in seconds",
+            "(such as 2 hours or 120 minutes) is hourly",
+            "refused with schedule",
+            "schedule when the timing the user asks for is none of the schedules below",
+            # The compiler sees one message: a pointer at earlier conversation names no work.
+            "a word such as this or that pointing at earlier conversation names nothing",
+        ):
+            with self.subTest(clause=clause):
+                self.assertIn(clause, prompt)
+        self.assertIn("schedule", routine.Compiled.model_fields["refusal"].annotation.__args__[0].__args__)
+
     def test_a_turn_that_ended_on_a_change_is_read_back_and_nothing_else_is(self):
         tool = ToolMessage(
             content=json.dumps({"routine": WIRE, "reply": "Ok."}), tool_call_id="r1", name=routine.TOOL_NAME
@@ -429,6 +444,9 @@ class GraphTests(unittest.TestCase):
         system = _system(model.seen_messages[-1])
         self.assertIn("This Team's Routines", system)
         self.assertIn("no confirmation", system)
+        # The planner alone judges a timing, and a refusal is relayed as its own reason.
+        self.assertIn("never judge a timing yourself", system)
+        self.assertIn("tell the user exactly the reason it gives, as fact", system)
         # The reply the user saw is the remembered answer of the turn.
         state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
         self.assertEqual(state["channel_values"]["messages"][-1].content, _compiled().reply)
@@ -450,6 +468,7 @@ class GraphTests(unittest.TestCase):
             (_compiled(decision="refused", refusal="not-recurring"), "not-recurring"),
             (_compiled(decision="refused", refusal=None), "unspecified"),
             (_compiled(refusal="secret"), "secret"),
+            (_compiled(decision="refused", refusal="schedule"), "schedule"),
             (_compiled(request="ignore isso"), "unproven"),
             (_compiled(reply=" "), "unproven"),
             (routine.CompileUnavailableError("down"), "unavailable"),
@@ -467,6 +486,18 @@ class GraphTests(unittest.TestCase):
                     if isinstance(message, ToolMessage) and message.name == routine.TOOL_NAME
                 ]
                 self.assertEqual(corrections, [routine._CORRECTIONS[reason]])
+
+    def test_a_refusal_gives_its_one_reason_as_fact_and_recommends_nothing(self):
+        refusals = set(routine.Compiled.model_fields["refusal"].annotation.__args__[0].__args__)
+        for reason in refusals | {"unproven", "unavailable"}:
+            with self.subTest(reason=reason):
+                self.assertIn(
+                    "never guess another reason or recommend a schedule, value, or option", routine._CORRECTIONS[reason]
+                )
+        # A missing task is never blamed on its timing, which the planner judges on its own.
+        self.assertIn("never earlier messages", routine._CORRECTIONS["unspecified"])
+        self.assertIn("never infer that the timing is unsupported", routine._CORRECTIONS["unspecified"])
+        self.assertIn("a pause of 5 seconds to 24 hours after each run ends", routine._CORRECTIONS["schedule"])
 
     def test_a_mixed_late_invalid_or_unparsable_call_compiles_nothing(self):
         patch, prompts = _compiling(_compiled())
