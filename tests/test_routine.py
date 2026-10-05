@@ -361,6 +361,10 @@ class CapTests(unittest.TestCase):
             # Only a complete count: never a decimal, signed, exponent, or overlong fragment, nor a bad group.
             ("A cada 30 segundos, diga olá para Ana, até 100.25 vezes por dia", 100),
             ("A cada 30 segundos, diga olá para Ana, até -100 vezes por dia", 100),
+            ("A cada 30 segundos, diga olá para Ana, até \u2212100 vezes por dia", 100),
+            ("A cada 30 segundos, diga olá para Ana, até \uff0d100 vezes por dia", 100),
+            ("A cada 30 segundos, diga olá para Ana, até 100\u066b25 vezes por dia", 100),
+            ("A cada 30 segundos, diga olá para Ana, até \u0661100 vezes por dia", 100),
             ("A cada 30 segundos, diga olá para Ana, até 1e3 vezes por dia", 3),
             ("A cada 30 segundos, diga olá para Ana, até 1,0000 vezes por dia", 1000),
             ("A cada 30 segundos, diga olá para Ana, até " + "9" * 5000 + " vezes por dia", 999),
