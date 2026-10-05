@@ -48,6 +48,8 @@ TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9
 _TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
 _NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z")
 _POINTER_RE = re.compile(r"(?:/(?:[^/~]|~[01])*)*\Z")
+# A complete number as a person may write it, so a fragment of one ("1" of "1e3", "5" of ".5") is never a token.
+_NUMBER_TOKEN_RE = re.compile(r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")
 _SCHEDULE_FIELDS = {
     "hourly": frozenset({"kind", "every"}),
     "daily": frozenset({"kind", "time"}),
@@ -204,12 +206,8 @@ def _leaves(value: object, at: str = "") -> Iterator[tuple[str, object]]:
 
 
 def _cited(origin: Mapping[str, object], target: object, words: Words) -> bool:
-    if origin["from"] == "message":
-        found = words.mine(origin["text"])
-    else:
-        found = words.adopted(origin["region"], origin["text"], origin["instruction"])
     text = origin["text"]
-    if not found or isinstance(target, bool) or target is None:
+    if not _cited_text(origin, words) or isinstance(target, bool) or target is None:
         return False
     if isinstance(target, str):
         return target == text
@@ -219,6 +217,46 @@ def _cited(origin: Mapping[str, object], target: object, words: Words) -> bool:
         and type(parsed := json.loads(text)) is type(target)
         and parsed == target
     )
+
+
+def _narrowed(source: dict[str, object], words: Words) -> dict[str, object]:
+    """The literal with each number its compiler cited together with the person's words narrowed to its own digits.
+
+    A compiler may cite "page 1" for the number 1. When that whole citation stands in the person's own words (or, for a
+    quote, in the adopted region) and holds exactly one complete number, which is that scalar with its JSON type, the
+    origin cites that number instead: a part of the very text it cited, so it proves nothing the person's words did not
+    already hold. Anything else is left exactly as cited for the check to refuse.
+    """
+    leaves = dict(_leaves(source["value"]))
+    for origin in source["origins"]:
+        target, text = leaves.get(origin["at"]), origin["text"]
+        if (
+            origin["from"] == "default"
+            or isinstance(target, bool)
+            or not isinstance(target, int | float)
+            or not isinstance(text, str)
+            or _NUMBER_RE.fullmatch(text) is not None
+            or not _cited_text(origin, words)
+        ):
+            continue
+        tokens = set(_NUMBER_TOKEN_RE.findall(text))
+        token = tokens.pop() if len(tokens) == 1 else ""
+        if _NUMBER_RE.fullmatch(token) is None:
+            continue
+        try:
+            parsed = json.loads(token)
+        except ValueError:
+            continue
+        if type(parsed) is type(target) and parsed == target:
+            origin["text"] = token
+    return source
+
+
+def _cited_text(origin: Mapping[str, object], words: Words) -> bool:
+    """Whether the whole cited text stands in the person's own words, or in the region their own words adopt."""
+    if origin["from"] == "message":
+        return words.mine(origin["text"])
+    return words.adopted(origin["region"], origin["text"], origin["instruction"])
 
 
 def _proven(source: Mapping[str, object], member: object, words: Words) -> bool:
@@ -382,6 +420,8 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
     inputs: dict[str, object] = {}
     for item in step.inputs:
         source = _source(item)
+        if item.kind == "literal":
+            source = _narrowed(source, words)
         if item.member in inputs or (item.kind == "kept" and not update):
             raise UnprovenError
         literal_valid = item.kind != "literal" or (

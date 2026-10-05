@@ -426,6 +426,61 @@ class CapTests(unittest.TestCase):
         self.assertEqual(routine._answer(update, source, _chat().assistants, listed), "unproven")
 
 
+class NumberCitationTests(unittest.TestCase):
+    """A number cited with its own words is narrowed to its digits; anything else stays as cited and unproven."""
+
+    HUGE = "código " + "9" * 5_000
+    WORDS = f'{REQUEST}, Página 1, 10 vezes, nível 1e3, ganho .5, saldo -1, taxa 2.5, {HUGE}. Use "lote 7" como lote'
+
+    def wire(self, origin: routine.Origin, value: str = "1", member: str = "count") -> dict[str, object]:
+        compiled = _compiled(
+            steps=[
+                routine.Step(
+                    id="greet",
+                    assistant="hello-pulse",
+                    action="hello",
+                    inputs=[_source(member, value_json=value, origins=[origin])],
+                )
+            ]
+        )
+        return routine.change(compiled, _said(self.WORDS), CONTRACTS, None)
+
+    def cited(self, origin: routine.Origin, value: str = "1") -> str:
+        return self.wire(origin, value)["steps"][0]["input"]["count"]["origins"][0]["text"]
+
+    def test_a_number_cited_with_its_own_words_is_narrowed_to_its_digits(self):
+        self.assertEqual(self.cited(_origin("Página 1")), "1")
+        self.assertEqual(self.cited(_origin("1")), "1")
+        self.assertEqual(self.cited(_origin("saldo -1"), "-1"), "-1")
+        self.assertEqual(self.cited(_origin("taxa 2.5"), "2.5"), "2.5")
+        quote = _origin("lote 7", "quote", region=0, instruction="como lote")
+        self.assertEqual(self.cited(quote, "7"), "7")
+
+    def test_anything_but_one_whole_matching_number_in_the_persons_words_stays_unproven(self):
+        refused = (
+            (_origin("Página 1, 10 vezes"), "1"),
+            (_origin("Página 1, 10 vezes"), "10"),
+            (_origin("Página 1"), "10"),
+            (_origin("Página 1"), "1.0"),
+            (_origin("taxa 2.5"), "2"),
+            (_origin("nível 1e3"), "1"),
+            (_origin("ganho .5"), "5"),
+            (_origin("Inventado 1"), "1"),
+            (_origin("Página 1 ou " + "9" * 5_000), "1"),
+            (_origin(self.HUGE), "1"),
+            (_origin("lote 7", "quote", region=0, instruction="ignore isso"), "7"),
+            (_origin("lote 7", "quote", region=1, instruction="como lote"), "7"),
+            (_origin("Página 1"), "true"),
+            (_origin(None), "1"),
+        )
+        for origin, value in refused:
+            with self.subTest(text=(origin.text or "")[:30], value=value), self.assertRaises(routine.UnprovenError):
+                self.wire(origin, value)
+        # A text member is never narrowed.
+        with self.assertRaises(routine.UnprovenError):
+            self.wire(_origin("para Ana"), '"Ana"', member="name")
+
+
 class CompilerTests(unittest.TestCase):
     def test_the_compiler_is_one_structured_call_and_any_failure_is_unavailable(self):
         class Structured:
