@@ -16,15 +16,13 @@ This module uses only the standard library.
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
-from eval.corpus import BEHAVIORS, LOCALES, SCOPES, Scenario, Template, expected_state
+from eval.corpus import fingerprint, scenarios, validate_stratum
 from eval.fixtures import _DATE, _STRING, Action, Assistant, _schema
 from eval.fresh_classes_templates import TEMPLATES
 
@@ -666,28 +664,7 @@ class FreshWorld(world.World):
 INITIAL = FreshWorld().snapshot()
 
 
-def _scope(template: Template, locale: str, scope: str) -> tuple[str, ...]:
-    """The needed Assistants, padded to the scope size with the others in a fixed per-scenario order."""
-    if scope == "needed":
-        return template.needed
-    others = sorted(
-        (name for name in ASSISTANTS if name not in template.needed),
-        key=lambda name: hashlib.sha256(f"{template.id}.{locale}:{name}".encode()).hexdigest(),
-    )
-    return (*template.needed, *others[: int(scope) - len(template.needed)])
-
-
-SCENARIOS = tuple(
-    Scenario(
-        f"{template.id}.{locale}",
-        template,
-        locale,
-        SCOPES[(template_index + locale_index) % len(SCOPES)],
-        _scope(template, locale, SCOPES[(template_index + locale_index) % len(SCOPES)]),
-    )
-    for template_index, template in enumerate(TEMPLATES)
-    for locale_index, locale in enumerate(LOCALES)
-)
+SCENARIOS = scenarios(TEMPLATES, ASSISTANTS)
 SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
 
 
@@ -707,19 +684,7 @@ def digest() -> str:
         ],
         "scenarios": [[s.id, s.scope, s.assistants] for s in SCENARIOS],
     }
-    return "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-
-
-def _valid_template(template: Template) -> bool:
-    return (
-        template.behavior in BEHAVIORS
-        and set(template.messages) == set(LOCALES)
-        and bool(template.reference)
-        and set(template.needed) <= {assistant.id for assistant in RELEVANT}
-        and 1 <= template.min_rounds <= 8
-        and template.expect_clarification == (template.behavior == "clarify")
-        and (expected_state(template, INITIAL) == INITIAL) == (template.behavior in {"clarify", "answer", "refuse"})
-    )
+    return fingerprint(body)
 
 
 def _valid_user_sourced() -> bool:
@@ -737,17 +702,6 @@ def _valid_user_sourced() -> bool:
 
 def validate() -> None:
     """Fail on any structural defect; Brain and Team schema admission are checked by their own adapters."""
-    if len(SCENARIOS_BY_ID) != len(TEMPLATES) * len(LOCALES) or len({t.id for t in TEMPLATES}) != len(TEMPLATES):
-        raise ValueError("duplicate corpus id")
     if not _valid_user_sourced():
         raise ValueError("invalid user-sourced contract metadata")
-    for template in TEMPLATES:
-        if not _valid_template(template):
-            raise ValueError(f"invalid template {template.id}")
-    for scenario in SCENARIOS:
-        expected = len(scenario.template.needed) if scenario.scope == "needed" else int(scenario.scope)
-        if len(set(scenario.assistants)) != expected or not set(scenario.template.needed) <= set(scenario.assistants):
-            raise ValueError(f"invalid scenario {scenario.id}")
-    for group in (*(t.id for t in TEMPLATES), *LOCALES):
-        if {s.scope for s in SCENARIOS if group in {s.template.id, s.locale}} != set(SCOPES):
-            raise ValueError(f"{group} misses an Assistant scope")
+    validate_stratum(TEMPLATES, SCENARIOS, RELEVANT, INITIAL)

@@ -11,12 +11,10 @@ write is a recorded effect that the oracle counts as forbidden. This module uses
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 from collections import Counter
 from collections.abc import Mapping
 
-from eval.corpus import LOCALES, SCOPES, Scenario, Template, expected_state
+from eval.corpus import LOCALES, Template, expected_state, fingerprint, scenarios, validate_scopes
 from eval.fixtures import Action, Assistant
 from eval.large_api_contract import ASSISTANT_ID, ASSISTANTS, EDGE, GROUPS
 from eval.world import ActionFailedError
@@ -434,27 +432,7 @@ TEMPLATES = (
 )
 
 
-def _scope(template: Template, locale: str, scope: str) -> tuple[str, ...]:
-    if scope == "needed":
-        return template.needed
-    others = sorted(
-        (name for name in ASSISTANTS if name not in template.needed),
-        key=lambda name: hashlib.sha256(f"{template.id}.{locale}:{name}".encode()).hexdigest(),
-    )
-    return (*template.needed, *others[: int(scope) - len(template.needed)])
-
-
-SCENARIOS = tuple(
-    Scenario(
-        f"{template.id}.{locale}",
-        template,
-        locale,
-        SCOPES[(index + locale_index) % len(SCOPES)],
-        _scope(template, locale, SCOPES[(index + locale_index) % len(SCOPES)]),
-    )
-    for index, template in enumerate(TEMPLATES)
-    for locale_index, locale in enumerate(LOCALES)
-)
+SCENARIOS = scenarios(TEMPLATES, ASSISTANTS)
 SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
 
 
@@ -469,7 +447,7 @@ def digest() -> str:
         "templates": [[t.id, t.behavior, t.min_rounds, t.messages, t.reference, t.changes] for t in TEMPLATES],
         "scenarios": [[s.id, s.scope, s.assistants] for s in SCENARIOS],
     }
-    return "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return fingerprint(body)
 
 
 def validate() -> None:
@@ -483,6 +461,4 @@ def validate() -> None:
             template.behavior == "clarify"
         ):
             raise ValueError(f"invalid template {template.id}")
-    for group in (*(t.id for t in TEMPLATES), *LOCALES):
-        if {s.scope for s in SCENARIOS if group in {s.template.id, s.locale}} != set(SCOPES):
-            raise ValueError(f"{group} misses an Assistant scope")
+    validate_scopes(TEMPLATES, SCENARIOS)

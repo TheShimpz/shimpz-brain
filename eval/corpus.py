@@ -18,10 +18,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from eval.fixtures import ASSISTANTS, RELEVANT
+from eval.fixtures import ASSISTANTS, RELEVANT, Assistant
 from eval.world import INITIAL, STATUS_IP, World
 
 # precision-v2 compared quoted event titles case-insensitively; v2.1 compares them literally.
@@ -385,28 +385,32 @@ class Scenario:
         }
 
 
-def _scope(template: Template, locale: str, scope: str) -> tuple[str, ...]:
+def _scope(template: Template, locale: str, scope: str, assistants: Iterable[str]) -> tuple[str, ...]:
     """The needed Assistants, padded to the scope size with the others in a fixed per-scenario order."""
     if scope == "needed":
         return template.needed
     others = sorted(
-        (assistant for assistant in ASSISTANTS if assistant not in template.needed),
+        (name for name in assistants if name not in template.needed),
         key=lambda name: hashlib.sha256(f"{template.id}.{locale}:{name}".encode()).hexdigest(),
     )
     return (*template.needed, *others[: int(scope) - len(template.needed)])
 
 
-SCENARIOS = tuple(
-    Scenario(
-        f"{template.id}.{locale}",
-        template,
-        locale,
-        SCOPES[(template_index + locale_index) % len(SCOPES)],
-        _scope(template, locale, SCOPES[(template_index + locale_index) % len(SCOPES)]),
-    )
-    for template_index, template in enumerate(TEMPLATES)
-    for locale_index, locale in enumerate(LOCALES)
-)
+def scenarios(templates: Sequence[Template], assistants: Iterable[str]) -> tuple[Scenario, ...]:
+    """Every template in every locale, rotating the Assistant scope so each template and locale meets every scope."""
+    built = []
+    for template_index, template in enumerate(templates):
+        for locale_index, locale in enumerate(LOCALES):
+            scope = SCOPES[(template_index + locale_index) % len(SCOPES)]
+            built.append(
+                Scenario(
+                    f"{template.id}.{locale}", template, locale, scope, _scope(template, locale, scope, assistants)
+                )
+            )
+    return tuple(built)
+
+
+SCENARIOS = scenarios(TEMPLATES, ASSISTANTS)
 SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
 
 
@@ -477,26 +481,55 @@ def digest() -> str:
         ],
         "scenarios": [[s.id, s.scope, s.assistants] for s in SCENARIOS],
     }
+    return fingerprint(body)
+
+
+def fingerprint(body: Mapping[str, object]) -> str:
+    """The canonical digest of a corpus definition; any change to `body` requires a new corpus id."""
     return "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _valid_template(template: Template, relevant: set[str], initial: Mapping[str, object]) -> bool:
+    """A template is closed: known behavior, every locale, a reference, relevant needs, and changes matching it."""
+    return (
+        template.behavior in BEHAVIORS
+        and set(template.messages) == set(LOCALES)
+        and bool(template.reference)
+        and set(template.needed) <= relevant
+        and 1 <= template.min_rounds <= 8
+        and template.expect_clarification == (template.behavior == "clarify")
+        and (expected_state(template, initial) == initial) == (template.behavior in {"clarify", "answer", "refuse"})
+    )
+
+
+def validate_scopes(templates: Sequence[Template], scenarios: Sequence[Scenario]) -> None:
+    """Every template and every locale must meet every Assistant scope."""
+    for group in (*(t.id for t in templates), *LOCALES):
+        if {s.scope for s in scenarios if group in {s.template.id, s.locale}} != set(SCOPES):
+            raise ValueError(f"{group} misses an Assistant scope")
+
+
+def validate_stratum(
+    templates: Sequence[Template],
+    scenarios: Sequence[Scenario],
+    relevant: Iterable[Assistant],
+    initial: Mapping[str, object],
+) -> None:
+    """Fail on any structural defect of one stratum's templates and scenarios."""
+    template_ids = {t.id for t in templates}
+    if len({s.id for s in scenarios}) != len(templates) * len(LOCALES) or len(template_ids) != len(templates):
+        raise ValueError("duplicate corpus id")
+    relevant_ids = {assistant.id for assistant in relevant}
+    for template in templates:
+        if not _valid_template(template, relevant_ids, initial):
+            raise ValueError(f"invalid template {template.id}")
+    for scenario in scenarios:
+        expected = len(scenario.template.needed) if scenario.scope == "needed" else int(scenario.scope)
+        if len(set(scenario.assistants)) != expected or not set(scenario.template.needed) <= set(scenario.assistants):
+            raise ValueError(f"invalid scenario {scenario.id}")
+    validate_scopes(templates, scenarios)
 
 
 def validate() -> None:
     """Fail on any structural defect; Brain and Team schema admission are checked by their own adapters."""
-    if len(SCENARIOS_BY_ID) != len(TEMPLATES) * len(LOCALES) or len({t.id for t in TEMPLATES}) != len(TEMPLATES):
-        raise ValueError("duplicate corpus id")
-    for template in TEMPLATES:
-        if template.behavior not in BEHAVIORS or set(template.messages) != set(LOCALES) or not template.reference:
-            raise ValueError(f"invalid template {template.id}")
-        if not set(template.needed) <= {assistant.id for assistant in RELEVANT} or not 1 <= template.min_rounds <= 8:
-            raise ValueError(f"invalid template {template.id}")
-        if template.expect_clarification != (template.behavior == "clarify"):
-            raise ValueError(f"invalid template {template.id}")
-        if (expected_state(template) == INITIAL) != (template.behavior in {"clarify", "answer", "refuse"}):
-            raise ValueError(f"invalid template {template.id}")
-    for scenario in SCENARIOS:
-        expected = len(scenario.template.needed) if scenario.scope == "needed" else int(scenario.scope)
-        if len(set(scenario.assistants)) != expected or not set(scenario.template.needed) <= set(scenario.assistants):
-            raise ValueError(f"invalid scenario {scenario.id}")
-    for group in (*(t.id for t in TEMPLATES), *LOCALES):
-        if {s.scope for s in SCENARIOS if group in {s.template.id, s.locale}} != set(SCOPES):
-            raise ValueError(f"{group} misses an Assistant scope")
+    validate_stratum(TEMPLATES, SCENARIOS, RELEVANT, INITIAL)
