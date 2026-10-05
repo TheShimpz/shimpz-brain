@@ -15,6 +15,8 @@ from typing import Any
 from unittest import mock
 
 import agent_runtime
+import model_usage
+from eval import cost as eval_cost
 from eval import routines
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -51,6 +53,7 @@ def _compiling(schedule: dict[str, object], action: str = "list-zones"):
     answer = routine.Compiled(
         decision="compiled",
         refusal=None,
+        continues=False,
         name="Zonas",
         request="Todo dia às 9h, liste minhas zonas DNS",
         schedule=routine.Schedule(kind=schedule["kind"], **fields),
@@ -61,6 +64,55 @@ def _compiling(schedule: dict[str, object], action: str = "list-zones"):
     )
     return mock.patch.object(
         agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: answer
+    )
+
+
+def _need_answer(continues: bool = False) -> routine.Compiled:
+    question = routine.Question(
+        text="Qual trabalho?",
+        field="missing",
+        step=None,
+        member=None,
+        options=[
+            routine.Choice(label="Listar os domínios do Cloudflare", description="", value_json="null"),
+            routine.Choice(label="Limpar o cache", description="", value_json="null"),
+        ],
+    )
+    return routine.Compiled(
+        decision="need",
+        refusal=None,
+        continues=continues,
+        name="",
+        request="",
+        schedule=None,
+        timezone=None,
+        steps=[],
+        question=question,
+        reply="Pergunto.",
+    )
+
+
+def _compiled_answer(schedule: dict[str, object], *, continues: bool) -> routine.Compiled:
+    fields = dict.fromkeys(("every", "time", "weekday", "day", "gap", "cap")) | {
+        key: value for key, value in schedule.items() if key != "kind"
+    }
+    return routine.Compiled(
+        decision="compiled",
+        refusal=None,
+        continues=continues,
+        name="Domínios",
+        request="cria uma rotina que faz isso a cada 30 segundos",
+        schedule=routine.Schedule(kind=schedule["kind"], **fields),
+        timezone=None,
+        steps=[routine.Step(id="zones", assistant="cloudflare", action="list-zones", inputs=[])],
+        question=None,
+        reply="Pronto.",
+    )
+
+
+def _needing():
+    return mock.patch.object(
+        agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: _need_answer()
     )
 
 
@@ -95,10 +147,13 @@ class RoutineEvalTests(unittest.TestCase):
         self.assertFalse(routines.run_case(_runtime(AIMessage(content="Rotina criada para isso.")), PROVIDER, case, 1))
 
     def test_a_refusal_that_blames_an_admissible_timing_or_steers_misses(self):
-        case = _case("earlier-missing-pt")
+        case = routines.RoutineCase(
+            "refusal", "c", "cria uma rotina que faz isso a cada 30 segundos", None, locale="pt"
+        )
         refused = routine.Compiled(
             decision="refused",
             refusal="unspecified",
+            continues=False,
             name="Zonas",
             request=case.message,
             schedule=None,
@@ -137,18 +192,49 @@ class RoutineEvalTests(unittest.TestCase):
         self.assertEqual(
             [call.args[1].routine_earlier for call in turn.call_args_list], [(), ("lista minhas zonas dns",)]
         )
-        # A timing outside the contract may be named as the reason, but never steered.
-        too_frequent = _case("too-frequent-en")
-        named = "Nothing was created: a Routine repeats at most every 5 seconds, so that interval is not supported."
-        self.assertTrue(routines.run_case(_runtime(AIMessage(content=named)), PROVIDER, too_frequent, 0))
+
+    def test_a_missing_piece_passes_only_as_a_neutral_question(self):
+        case = _case("earlier-missing-pt")
+        with _needing():
+            self.assertTrue(routines.run_case(_runtime(_created()), PROVIDER, case, 0))
+        # A refusal instead of a question misses.
         self.assertFalse(
-            routines.run_case(
-                _runtime(AIMessage(content="Not supported; for example, every 5 seconds works.")),
-                PROVIDER,
-                too_frequent,
-                0,
-            )
+            routines.run_case(_runtime(AIMessage(content="Nenhuma rotina foi criada.")), PROVIDER, case, 0)
         )
+        recommended = mock.Mock(status="completed", routine={"op": "need", "continues": False}, reply="Q")
+        recommended.clarification.default_index = 0
+        with mock.patch.object(routines, "_turn", return_value=recommended):
+            self.assertFalse(routines.run_case(_runtime(), PROVIDER, case, 0))
+
+    def test_a_journey_keeps_the_draft_between_turns_and_scores_its_last_turn(self):
+        journey = next(item for item in routines.JOURNEYS if item.id == "answers-pt")
+        created = _compiled_answer({"kind": "continuous", "gap": 30, "cap": 100}, continues=True)
+        answers = iter([_need_answer(), _need_answer(continues=True), created])
+        compiling = mock.patch.object(
+            agent_runtime.AgentRuntime, "_routine_compiler", lambda _self, _context: lambda _prompt: next(answers)
+        )
+        seen = []
+        real = routines._turn
+
+        def turn(runtime, context, message):
+            seen.append((context.routine_draft, context.routine_answer, context.routine_earlier, message))
+            return real(runtime, context, message)
+
+        with compiling, mock.patch.object(routines, "_turn", side_effect=turn):
+            self.assertTrue(routines.run_journey(_runtime(_created(), _created(), _created()), PROVIDER, journey, 0))
+        first = journey.steps[0].text
+        self.assertEqual(seen[0][:3], ((), None, ()))
+        self.assertEqual(seen[1][:2], ((("said", first),), "Listar os domínios do Cloudflare"))
+        self.assertTrue(seen[1][3].startswith(f"{first}\n\nPergunta: Qual trabalho?\nResposta: "))
+        self.assertEqual(seen[2][0], (("said", first), ("said", "Listar os domínios do Cloudflare")))
+        # A turn that refuses, or a journey that answers before any question, misses.
+        refusing = mock.patch.object(routines, "_turn", return_value=mock.Mock(status="completed", routine=None))
+        with refusing:
+            self.assertFalse(routines.run_journey(_runtime(), PROVIDER, journey, 0))
+        early = routines.Journey("x", "c", (routines.Step("a", answer=True),), {"op": "discard"}, "pt")
+        self.assertFalse(routines.run_journey(_runtime(), PROVIDER, early, 0))
+        with self.assertRaises(ValueError), mock.patch.object(routines, "JOURNEYS", (early,)):
+            routines.validate_corpus()
 
     def test_evaluate_counts_attempts_and_a_provider_failure_is_a_miss(self):
         runtime = mock.Mock()
@@ -156,6 +242,23 @@ class RoutineEvalTests(unittest.TestCase):
         result = routines.evaluate(runtime, PROVIDER)
         self.assertEqual(result["passing_cases"], 0)
         self.assertEqual({item["passed"] for item in result["cases"]}, {0})
+        # A call that reported nothing is charged its whole reservation, so the cap stops the run before overspending.
+        self.assertTrue(result["budget"]["exhausted"])
+        self.assertLessEqual(result["budget"]["spent_usd"], routines.BUDGET_USD)
+        only = routines.evaluate(runtime, PROVIDER, frozenset({"owner-pt", "daily-pt"}), 1.0)
+        self.assertEqual([item["id"] for item in only["cases"]], ["daily-pt", "owner-pt"])
+        self.assertFalse(only["budget"]["exhausted"])
+        passing = mock.patch.object(routines, "run_case", return_value=True)
+        with (
+            passing,
+            mock.patch.object(
+                model_usage,
+                "measure",
+                side_effect=lambda work: (work(), dict.fromkeys(eval_cost.FIELDS, 0) | {"model_calls": 1}),
+            ),
+        ):
+            counted = routines.evaluate(runtime, PROVIDER, frozenset({"daily-pt"}))
+        self.assertEqual((counted["passing_cases"], counted["budget"]["unknown_settlements"]), (1, 0))
         output = io.StringIO()
         with redirect_stdout(output), mock.patch("sys.argv", ["routines"]):
             self.assertEqual(routines.main(), 0)

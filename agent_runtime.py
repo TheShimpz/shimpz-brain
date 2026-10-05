@@ -36,6 +36,7 @@ import memory as team_memory
 import provider_cancel
 import provider_client
 import routine_recovery
+import routine_words
 import turn_pins
 import turn_prompt
 from langchain_core.language_models import BaseChatModel
@@ -200,6 +201,10 @@ class TurnContext:
     # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092, 2026-10-04), only beside
     # ``routines``; only a start compiles, so a resume never reads them.
     routine_earlier: tuple[str, ...] = ()
+    # The user's Routine draft as Team froze it, kinded parts oldest first, and the answer the user's composed reply
+    # gave to its last question (ADR-0092, 2026-10-05); only beside ``routines``, and only a start reads them.
+    routine_draft: tuple[tuple[str, str], ...] = ()
+    routine_answer: str | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
@@ -253,11 +258,14 @@ def _admit_knowledge(context: TurnContext) -> None:
         except team_routine.RoutineContractError as exc:
             raise RuntimeContractError("invalid routines") from exc
     try:
-        object.__setattr__(context, "routine_earlier", team_routine.canonical_earlier(context.routine_earlier))
-    except team_routine.RoutineContractError as exc:
-        raise RuntimeContractError("invalid earlier sends") from exc
-    if context.routine_earlier and context.routines is None:
-        raise RuntimeContractError("invalid earlier sends")
+        object.__setattr__(context, "routine_earlier", routine_words.canonical_earlier(context.routine_earlier))
+        object.__setattr__(context, "routine_draft", routine_words.canonical_draft(context.routine_draft))
+        routine_words.canonical_answer(context.routine_answer)
+    except routine_words.RoutineWordsError as exc:
+        raise RuntimeContractError("invalid Routine words") from exc
+    cited = context.routine_earlier or context.routine_draft or context.routine_answer is not None
+    if cited and context.routines is None:
+        raise RuntimeContractError("invalid Routine words")
     if type(context.knowledge_writable) is not bool:
         raise RuntimeContractError("invalid knowledge scope")
 
@@ -798,7 +806,7 @@ class AgentRuntime:
             agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})
         except Exception as exc:
             raise RuntimeStateError("checkpoint update failed") from exc
-        question = None if asked is None else clarifier.parse(asked)
+        question = None if asked is None else clarifier.parse(asked, routine=True)
         return TurnResult(status="completed", reply=reply, routine=change, clarification=question)
 
     def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
@@ -846,17 +854,20 @@ class AgentRuntime:
         message: str,
         assistants: tuple[AssistantDefinition, ...],
         locale: str | None,
-        earlier: tuple[str, ...] = (),
+        draft: tuple[tuple[str, str], ...] = (),
     ) -> object:
-        """Recompile a Routine from its Team-held creation source, with no turn, tools, or history (ADR-0092)."""
+        """Recompile a Routine from its Team-held words, with no turn, tools, or history (ADR-0092).
+
+        ``message`` is the sealed words' last part and ``draft`` every part before it.
+        """
         try:
-            earlier = team_routine.canonical_earlier(earlier)
-        except team_routine.RoutineContractError as exc:
-            raise RuntimeContractError("invalid earlier sends") from exc
+            draft = routine_words.canonical_sealed(draft)
+        except routine_words.RoutineWordsError as exc:
+            raise RuntimeContractError("invalid Routine words") from exc
         ask = team_routine.recompiler(
             functools.partial(self._single_attempt_model, provider), provider.provider, structured_output
         )
-        return team_routine.recompile(message, assistants, locale, ask, earlier)
+        return team_routine.recompile(message, assistants, locale, ask, draft)
 
     def capability_plan(
         self,

@@ -26,6 +26,7 @@ import memory as team_memory
 import model_usage
 import provider_cancel
 import routine_recovery
+import routine_words
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
@@ -134,7 +135,11 @@ class TurnContextInput(ClosedInput):
     # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
     # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092), only beside routines.
-    routine_earlier: list[str] = Field(max_length=team_routine.MAX_EARLIER)
+    routine_earlier: list[str] = Field(max_length=routine_words.MAX_EARLIER)
+    # The user's Routine draft as Team froze it, and the answer a composed reply gave to its question (ADR-0092,
+    # 2026-10-05); only beside routines.
+    routine_draft: list[dict[str, Any]] = Field(max_length=routine_words.MAX_DRAFT_PARTS)
+    routine_answer: str | None = Field(max_length=routine_words.MAX_ANSWER_CHARS)
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
@@ -162,6 +167,8 @@ class TurnContextInput(ClosedInput):
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
             routine_earlier=tuple(self.routine_earlier),
+            routine_draft=tuple(self.routine_draft),
+            routine_answer=self.routine_answer,
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
         )
@@ -339,8 +346,8 @@ class RoutineCompileInput(ClosedInput):
     provider: ProviderInput
     locale: interface_language.Locale | None
     message: str = Field(min_length=1, max_length=team_routine.MAX_SOURCE_CHARS)
-    # The sealed earlier sends the creation message cited, oldest first (ADR-0092, 2026-10-04).
-    earlier: list[str] = Field(max_length=team_routine.MAX_EARLIER)
+    # Every sealed part before the message, kinded and oldest first (ADR-0092 amendments, 2026-10-04 and 2026-10-05).
+    draft: list[dict[str, Any]] = Field(max_length=routine_words.MAX_PARTS - 1)
     assistants: list[AssistantInput] = Field(min_length=1, max_length=agent_runtime.MAX_ASSISTANTS)
 
     @field_validator("assistants")
@@ -826,7 +833,7 @@ def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], Runtim
         outcome, usage = await _cancellable(
             request,
             lambda: current_runtime().routine_compile(
-                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale, tuple(body.earlier)
+                body.runtime_provider(), body.message, _assistants(body.assistants), body.locale, tuple(body.draft)
             ),
             "Routine compile cancelled",
         )

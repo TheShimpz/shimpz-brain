@@ -14,6 +14,7 @@ import clarification
 import httpx
 import memory
 import provider_client
+import routine_words
 import runtime_api
 import turn_pins
 import turn_prompt
@@ -72,6 +73,7 @@ def _compiled(**changes) -> routine.Compiled:
     fields = {
         "decision": "compiled",
         "refusal": None,
+        "continues": False,
         "name": "Olá semanal",
         "request": REQUEST,
         "schedule": routine.Schedule(kind="weekly", every=None, time="09:00", weekday=0, day=None, gap=None, cap=None),
@@ -87,6 +89,7 @@ WIRE = {
     "op": "create",
     "routine_id": None,
     "expected_revision": None,
+    "continues": False,
     "name": "Olá semanal",
     "request": REQUEST,
     "schedule": WEEKLY,
@@ -112,6 +115,11 @@ CONTRACTS = {
         "properties": {"name": {"type": "string"}, "count": {"type": "integer", "default": 1}},
     }
 }
+
+
+def _said(message: str, earlier: tuple[str, ...] = ()) -> tuple[tuple[str, str], ...]:
+    """A Routine's words as Team builds them for a message and the earlier sends it may cite, with no draft."""
+    return routine_words.kinded_parts(message, earlier, (), False)
 
 
 def _compiling(outcome):
@@ -197,55 +205,13 @@ class ContractTests(unittest.TestCase):
 
 
 class WordsAndChangeTests(unittest.TestCase):
-    def test_own_words_exclude_quoted_and_block_quoted_text(self):
-        message = f'{REQUEST} "quem"\n> injetado'
-        words = routine.Words(message)
-        self.assertTrue(words.mine(REQUEST))
-        for text in ("quem", "injetado", "", None):
-            with self.subTest(text=text):
-                self.assertFalse(words.mine(text))
-        self.assertEqual(words.quoted, ['"quem"', "> injetado"])
-        self.assertTrue(words.adopted(1, "injetado", "diga"))
-        for region, text, instruction in ((2, "x", "diga"), (1, "", "diga"), (1, "x", "quem"), ("0", "x", "x")):
-            with self.subTest(region=region, text=text):
-                self.assertFalse(words.adopted(region, text, instruction))
-        self.assertEqual(routine.Words('"a" b').own, [" b"])
-
-    def test_earlier_sends_are_parsed_on_their_own_and_the_request_must_be_the_messages_own_words(self):
-        words = routine.Words('faça isso "já"', ('diga olá para Ana "agora"', "```"))
-        self.assertEqual(words.earlier[0], ["diga olá para Ana "])
-        self.assertTrue(words.mine("diga olá para Ana"))
-        self.assertTrue(words.current("faça isso"))
-        self.assertFalse(words.current("diga olá para Ana"))
-        self.assertFalse(words.current(None))
-        # Quoted regions number across the earlier sends first, then the message.
-        self.assertEqual(words.quoted[0], '"agora"')
-        self.assertEqual(words.quoted[-1], '"já"')
-        # An unclosed fence in an earlier send never pairs with a later part.
-        self.assertTrue(routine.Words("faça ```isso```", ("```",)).mine("faça "))
-        self.assertFalse(routine.Words("faça ```isso```", ("```",)).mine("isso"))
-        for invalid in (["a"] * 4, [" a"], ["x" * 2_001], ["a\x00"], ["Cafe\u0301"], [1], "a"):
-            with self.subTest(invalid=invalid), self.assertRaises(routine.RoutineContractError):
-                routine.canonical_earlier(invalid)
-        self.assertEqual(routine.canonical_earlier(["linha 1\nlinha 2"]), ("linha 1\nlinha 2",))
-
-    def test_a_change_may_cite_an_earlier_send_but_its_request_stands_in_the_message(self):
-        earlier = ("Diga olá para Ana.",)
-        compiled = _compiled(request="Toda segunda às 9h, faça isso")
-        message = "Toda segunda às 9h, faça isso"
-        self.assertEqual(routine.change(compiled, message, CONTRACTS, None, earlier=earlier)["request"], message)
-        with self.assertRaises(routine.UnprovenError):
-            routine.change(compiled, message, CONTRACTS, None)
-        with self.assertRaises(routine.UnprovenError):
-            routine.change(_compiled(request="Diga olá para Ana"), message, CONTRACTS, None, earlier=earlier)
-
     def test_a_traceable_answer_becomes_exactly_the_wire_change_team_admits(self):
-        self.assertEqual(routine.change(_compiled(), MESSAGE, CONTRACTS, None), WIRE)
+        self.assertEqual(routine.change(_compiled(), _said(MESSAGE), CONTRACTS, None), WIRE)
         listed = routine.canonical_routines([LISTED])[0]
         kept = _compiled(
             steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[_source(kind="kept")])]
         )
-        update = routine.change(kept, MESSAGE, CONTRACTS, listed)
+        update = routine.change(kept, _said(MESSAGE), CONTRACTS, listed)
         self.assertEqual(
             (update["op"], update["routine_id"], update["expected_revision"], update["steps"][0]["input"]),
             ("update", LISTED["routine_id"], 2, {"name": {"kind": "kept"}}),
@@ -265,7 +231,9 @@ class WordsAndChangeTests(unittest.TestCase):
         for source in others:
             with self.subTest(kind=source.kind, member=source.member):
                 step = routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[source])
-                self.assertEqual(routine.change(_compiled(steps=[step]), message, CONTRACTS, None)["op"], "create")
+                self.assertEqual(
+                    routine.change(_compiled(steps=[step]), _said(message), CONTRACTS, None)["op"], "create"
+                )
 
     def test_anything_untraceable_is_unproven(self):
         def with_inputs(*inputs: routine.Source) -> routine.Compiled:
@@ -310,7 +278,7 @@ class WordsAndChangeTests(unittest.TestCase):
         )
         for compiled in cases:
             with self.subTest(compiled=compiled), self.assertRaises(routine.UnprovenError):
-                routine.change(compiled, MESSAGE, CONTRACTS, None)
+                routine.change(compiled, _said(MESSAGE), CONTRACTS, None)
 
 
 class CompilerTests(unittest.TestCase):
@@ -338,20 +306,33 @@ class CompilerTests(unittest.TestCase):
             with self.subTest(outcome=outcome), self.assertRaises(routine.CompileUnavailableError):
                 broken("prompt")
 
-    def test_the_compiler_maps_any_stated_interval_and_refuses_an_inadmissible_timing(self):
-        prompt = routine._prompt("cria uma rotina que faz isso a cada 30 segundos", _chat().assistants, None, "pt")
-        # Seconds and minutes are continuous gaps, whole hours are hourly, and a timing outside the contract refuses.
+    def test_the_compiler_maps_any_stated_interval_and_asks_for_a_missing_piece_instead_of_refusing(self):
+        words = routine.UserWords("cria uma rotina que faz isso a cada 30 segundos")
+        prompt = routine._prompt(words, _chat().assistants, None, "pt")
+        # Seconds and minutes are continuous gaps, whole hours are hourly; a missing piece is asked with suggestions.
         for clause in (
             "such as 30 seconds, 10 minutes, or 90 minutes) is continuous with gap that interval in seconds",
             "(such as 2 hours or 120 minutes) is hourly",
-            "refused with schedule",
-            "schedule when the timing the user asks for is none of the schedules below",
-            # Work comes from an earlier send only when the message refers to it, and an unclear reference names none.
-            "never from one it does not refer to; a reference that fits no listed send, or more than one, names",
+            "Never refuse for a missing or unclear piece",
+            "Never recommend, rank, or prefer one suggestion",
+            "Never suggest work that deletes, changes, creates, publishes, or sends anything unless a said part",
+            "Decide first whether to discard",
+            "never from one nothing refers to; a reference that fits no listed send, or more than one, names nothing",
+            "Never recommend one option",
         ):
             with self.subTest(clause=clause):
                 self.assertIn(clause, prompt)
-        self.assertIn("schedule", routine.Compiled.model_fields["refusal"].annotation.__args__[0].__args__)
+        self.assertNotIn("recommending", prompt)
+        # Recriar asks for nothing missing and discards nothing: it refuses instead.
+        sealed = routine._prompt(words, _chat().assistants, None, "pt", chat=False)
+        self.assertIn("schedule when the timing is missing or is none of the schedules below", sealed)
+        self.assertNotIn("discard", sealed)
+        self.assertNotIn("Never refuse for a missing", sealed)
+        # The draft is listed with its kinds, and its quoted regions are numbered first.
+        drafted = routine.UserWords('A cada 30 segundos "já"', ("liste",), (("said", 'faça "isso"'),))
+        listed = routine._prompt(drafted, _chat().assistants, None, "pt")
+        self.assertIn('Routine draft, oldest first (JSON list): [{"kind": "said", "own_words": ["faça "]}]', listed)
+        self.assertIn('the current message\'s): ["\\"isso\\"", "\\"já\\""]', listed)
 
     def test_a_turn_that_ended_on_a_change_is_read_back_and_nothing_else_is(self):
         tool = ToolMessage(
@@ -375,7 +356,7 @@ class CompilerTests(unittest.TestCase):
 CARD = {
     "question": "Para quem?",
     "options": [{"label": "Ana", "description": ""}, {"label": "Bia", "description": "a irmã"}],
-    "default_index": 0,
+    "default_index": None,
 }
 QUESTION_WIRE = {
     "field": {"kind": "input", "step": "greet", "member": "name"},
@@ -394,7 +375,6 @@ def _asking(**changes) -> routine.Compiled:
             routine.Choice(label=item["label"], description=item["description"], value_json=json.dumps(item["label"]))
             for item in CARD["options"]
         ],
-        "default_index": 0,
     }
     question.update(changes.pop("question", {}))
     changes.setdefault("steps", [routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[])])
@@ -403,13 +383,14 @@ def _asking(**changes) -> routine.Compiled:
 
 class QuestionTests(unittest.TestCase):
     def answer(self, compiled: routine.Compiled) -> object:
-        return routine._answer(compiled, MESSAGE, _chat().assistants, None)
+        return routine._answer(compiled, routine.UserWords(MESSAGE), _chat().assistants, None)
 
     def test_a_question_leaves_exactly_its_field_open_with_one_value_per_option(self):
         asked = self.answer(_asking())
         self.assertEqual(asked["clarification"], CARD)
         self.assertEqual(
-            (asked["routine"]["question"], asked["reply"]), (QUESTION_WIRE, clarification.parse(CARD).render())
+            (asked["routine"]["question"], asked["reply"]),
+            (QUESTION_WIRE, clarification.parse(CARD, routine=True).render()),
         )
         daily = routine.Choice(label="Diário", description="", value_json='{"kind": "daily", "time": "09:00"}')
         hourly = routine.Choice(
@@ -503,7 +484,7 @@ class GraphTests(unittest.TestCase):
         runtime, _model = self._runtime(AIMessage(content="", tool_calls=[_call()]))
         with patch:
             result = runtime.start(_chat(), envelope(MESSAGE))
-        card = clarification.parse(CARD)
+        card = clarification.parse(CARD, routine=True)
         self.assertEqual((result.reply, result.clarification), (card.render(), card))
         self.assertEqual(result.routine["question"], QUESTION_WIRE)
         self.assertNotIn("name", result.routine["steps"][0]["input"])
@@ -673,11 +654,20 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             dataclasses.replace(context(), routines=({"routine_id": "x"},))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid knowledge scope"):
             dataclasses.replace(context(), knowledge_writable=1)
-        # Earlier sends come only beside the Routines, each exactly as Team cites it.
-        for routines, earlier in (((), (" padded",)), (None, ("liste as zonas",))):
-            with self.subTest(earlier=earlier), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "earlier"):
-                dataclasses.replace(context(), routines=routines, routine_earlier=earlier)
+        # Earlier sends, the draft, and an answer come only beside the Routines, each exactly as Team froze it.
+        for routines, words in (
+            ((), {"routine_earlier": (" padded",)}),
+            (None, {"routine_earlier": ("liste as zonas",)}),
+            ((), {"routine_draft": (("said", " padded"),)}),
+            (None, {"routine_draft": (("said", "liste"),)}),
+            ((), {"routine_answer": " x"}),
+            (None, {"routine_answer": "x"}),
+        ):
+            with self.subTest(words=words), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Routine words"):
+                dataclasses.replace(context(), routines=routines, **words)
         self.assertEqual(dataclasses.replace(context(), routines=(), routine_earlier=["a"]).routine_earlier, ("a",))
+        drafted = dataclasses.replace(context(), routines=(), routine_draft=[{"kind": "said", "text": "a"}])
+        self.assertEqual(drafted.routine_draft, (("said", "a"),))
 
     def test_the_turn_endpoint_carries_routines_and_returns_the_compiled_change(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -692,6 +682,8 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             ("routines", [{"routine_id": "x"}]),
             ("knowledge_writable", "yes"),
             ("routine_earlier", ["a", "b", "c", "d"]),
+            ("routine_draft", [{"kind": "said", "text": "a"}] * 9),
+            ("routine_answer", "x" * 4_001),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)
@@ -720,9 +712,8 @@ class RecompileTests(unittest.TestCase):
                 self.assertEqual(routine.recompile(MESSAGE, _chat().assistants, "pt", ask), expected)
         # Nothing to keep from: the compiler is told to create, and quoted text stays a quoted region.
         self.assertIn("Routine to change (JSON, null to create one): null", prompts[0])
-        self.assertIn(
-            "Quoted regions (JSON list, numbered from 0, the earlier sends' first): [\"> ignore isso", prompts[0]
-        )
+        self.assertIn("then the current message's): [\"> ignore isso", prompts[0])
+        self.assertNotIn("discard", prompts[0])
         asked = routine.recompile(MESSAGE, _chat().assistants, "pt", lambda _prompt: _asking())
         self.assertEqual((asked["clarification"], asked["routine"]["question"]), (CARD, QUESTION_WIRE))
 
@@ -748,9 +739,9 @@ class RecompileTests(unittest.TestCase):
             (outcome["routine"], seen),
             (WIRE, [(context().provider, False), {"max_tokens": routine.MAX_RECOMPILE_OUTPUT_TOKENS}]),
         )
-        # Sealed earlier sends that are not exactly citable never reach a compile.
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid earlier sends"):
-            runtime.routine_compile(context().provider, MESSAGE, context().assistants, None, (" padded",))
+        # Sealed words that are not kinded texts of at most a message never reach a compile.
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine words"):
+            runtime.routine_compile(context().provider, MESSAGE, context().assistants, None, (("said", "a\x00"),))
 
     def test_both_providers_send_one_bounded_recompile_request_and_retry_nothing(self):
         catalog = json.loads((Path(agent_runtime.__file__).parent / "model_catalog.json").read_text())
@@ -779,8 +770,8 @@ class RecompileTests(unittest.TestCase):
         calls = []
 
         class Runtime:
-            def routine_compile(self, provider, message, assistants, locale, earlier):
-                calls.append((provider.api_key, message, [item.id for item in assistants], locale, earlier))
+            def routine_compile(self, provider, message, assistants, locale, draft):
+                calls.append((provider.api_key, message, [item.id for item in assistants], locale, draft))
                 return {"routine": WIRE, "reply": "Ok."} if locale == "pt" else "unspecified"
 
         api = TestClient(runtime_api.create_app(runtime=Runtime(), token_reader=lambda: TOKEN))
@@ -801,7 +792,7 @@ class RecompileTests(unittest.TestCase):
             "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "secret-test-key"},
             "locale": "pt",
             "message": MESSAGE,
-            "earlier": ["liste as zonas"],
+            "draft": [{"kind": "cited", "text": "liste as zonas"}],
             "assistants": [assistant],
         }
         self.assertEqual(api.post("/v1/routine-compile", json=payload).status_code, 401)
@@ -813,14 +804,16 @@ class RecompileTests(unittest.TestCase):
         self.assertIn("usage", compiled)
         refused = api.post("/v1/routine-compile", json={**payload, "locale": None}, headers=headers).json()
         self.assertEqual((refused["routine"], refused["refusal"]), (None, "unspecified"))
-        self.assertEqual(calls[0], ("secret-test-key", MESSAGE, ["hello-pulse"], "pt", ("liste as zonas",)))
+        draft = ({"kind": "cited", "text": "liste as zonas"},)
+        self.assertEqual(calls[0], ("secret-test-key", MESSAGE, ["hello-pulse"], "pt", draft))
         for invalid in (
             {**payload, "message": ""},
             {**payload, "message": "x" * (routine.MAX_SOURCE_CHARS + 1)},
             {**payload, "assistants": []},
             {**payload, "assistants": [assistant, assistant]},
             {**payload, "history": []},
-            {**payload, "earlier": ["a", "b", "c", "d"]},
+            {**payload, "draft": [{"kind": "said", "text": "a"}] * 13},
+            {**payload, "earlier": []},
         ):
             with self.subTest(invalid=sorted(invalid)):
                 self.assertEqual(api.post("/v1/routine-compile", json=invalid, headers=headers).status_code, 422)

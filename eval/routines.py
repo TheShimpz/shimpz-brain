@@ -6,10 +6,18 @@ real ``AgentRuntime`` and its isolated compiler with an in-memory checkpoint. Ou
 pass counts.
 
 Exact checks score whether the turn compiled a Routine change, and its operation, schedule, timezone, and ordered
-Actions, or asked exactly one open field with one value per option; every literal's provenance was already proven
-against the user's own words by the guard. A turn that compiled nothing must not claim a Routine, blame a timing the
-contract admits, or steer the person toward one schedule. Three of three is a conservative floor, not a reliability
-estimate. Keep the first complete run, including misses; never rerun only to turn a missed case green.
+Actions, or asked exactly one open field with one value per option, or asked for a missing piece with suggestions and
+no recommendation (ADR-0092 amendment, 2026-10-05); every literal's provenance was already proven against the user's own
+words by the guard. A turn that compiled nothing must not claim a Routine, blame a timing the contract admits, or steer
+the person toward one schedule.
+
+Journeys replay a conversation turn by turn, keeping the person's Routine draft exactly as Team does: a turn that asks
+keeps the words it compiled from, the next send or composed answer continues them, and no turn may refuse. The owner's
+2026-10-05 transcript, after a restart that left no earlier send, is one of them. ``--only`` limits the run to some case
+or journey ids, and ``--budget`` caps the estimated spend in US dollars; the run stops before an attempt the cap cannot
+hold.
+Three of three is a conservative floor, not a reliability estimate. Keep the first complete run, including misses;
+never rerun only to turn a missed case green.
 """
 
 from __future__ import annotations
@@ -25,12 +33,39 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import agent_runtime
+import model_usage
+from eval import cost as eval_cost
 from eval.intent_route import _key
 from eval.turns import DNS, FLOOR_MODELS, MESSAGES, TURN_EFFORT
 from langgraph.checkpoint.memory import InMemorySaver
 
 ATTEMPTS = 3
 ROUTINE_ID = "a" * 32
+BUDGET_USD = 0.30
+# A conservative bound for one turn: the chat call, its correction, and the compile, at their largest prompts.
+TURN_INPUT_TOKENS = 3 * 24_000
+TURN_OUTPUT_TOKENS = 3 * 4_096
+CLOUDFLARE = agent_runtime.AssistantDefinition(
+    id="cloudflare",
+    genesis="Cloudflare manages the user's Cloudflare account: their domains, which Cloudflare calls zones, and DNS.",
+    actions=(
+        agent_runtime.ActionDefinition(
+            "list-zones",
+            "List the domains (zones) in the user's Cloudflare account.",
+            {"type": "object", "additionalProperties": False, "properties": {}},
+        ),
+        agent_runtime.ActionDefinition(
+            "purge-cache",
+            "Purge the cached files of one domain.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"zone": {"type": "string", "description": "Domain, such as example.com."}},
+                "required": ["zone"],
+            },
+        ),
+    ),
+)
 EXISTING = (
     {
         "routine_id": ROUTINE_ID,
@@ -68,14 +103,16 @@ class RoutineCase:
     # The person's earlier sends in the same conversation, each its own turn first; Team freezes them for the Routine
     # turn, which the eval passes on exactly as Team would (ADR-0092 amendment, 2026-10-04).
     earlier: tuple[str, ...] = ()
-    # Whether the timing itself is outside the Routine contract, so a refusal may name it.
-    timing_refused: bool = False
     # The interface language a real chat sends; None leaves the reply in the message's language.
     locale: str | None = None
 
 
 def _create(schedule: dict[str, object], actions: list[list[str]], timezone: str | None = None) -> dict[str, object]:
     return {"op": "create", "schedule": schedule, "timezone": timezone, "actions": actions}
+
+
+# A question for a missing piece: suggestions, none recommended, and no candidate change.
+NEED = {"op": "need"}
 
 
 def _cap_question(gap: int) -> dict[str, object]:
@@ -158,10 +195,9 @@ CASES = (
     ),
     RoutineCase(
         "too-frequent-en",
-        "an interval under five seconds creates nothing",
+        "an interval under five seconds creates nothing and asks for a supported one",
         "List my DNS zones every 2 seconds.",
-        None,
-        timing_refused=True,
+        NEED,
     ),
     RoutineCase(
         "earlier-work-pt",
@@ -181,9 +217,9 @@ CASES = (
     ),
     RoutineCase(
         "earlier-missing-pt",
-        "a reference with no earlier send names no work, and its admissible timing is never blamed",
+        "a reference with no earlier send names no work, so the work is asked for instead of refused",
         "cria uma rotina que faz isso a cada 30 segundos",
-        None,
+        NEED,
         locale="pt",
     ),
     RoutineCase(
@@ -223,7 +259,91 @@ CASES = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class Step:
+    """One send of a journey: a message, or a free-text answer composed to the last question as Admin composes it."""
+
+    text: str
+    answer: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Journey:
+    id: str
+    contract: str
+    steps: tuple[Step, ...]
+    # What the last turn must end with; every earlier turn must ask, never refuse.
+    expected: Mapping[str, object]
+    locale: str
+
+
+# The labels Admin composes an answer with, per interface language.
+_COMPOSED = {"pt": ("Pergunta", "Resposta"), "en": ("Question", "Answer"), "de": ("Frage", "Antwort")}
+_CLOUDFLARE_ZONES = [["cloudflare", "list-zones"]]
+
+
+def _cap_question_of(gap: int) -> dict[str, object]:
+    return {**_cap_question(gap), "actions": _CLOUDFLARE_ZONES}
+
+
+JOURNEYS = (
+    Journey(
+        "owner-pt",
+        "the owner's transcript after a restart: each message adds one piece, and the last asks only the daily cap",
+        (
+            Step("cria uma rotina que faz isso a cada 30 segundos"),
+            Step("Uma rotina para listas os dominios do Cloudflare, como solicitei anteriormente"),
+            Step("A cada 30 segundos"),
+        ),
+        _cap_question_of(30),
+        "pt",
+    ),
+    Journey(
+        "owner-en",
+        "the same transcript in English",
+        (
+            Step("create a routine that does this every 30 seconds"),
+            Step("A routine to list my Cloudflare domains, as I asked before"),
+            Step("Every 30 seconds"),
+        ),
+        _cap_question_of(30),
+        "en",
+    ),
+    Journey(
+        "owner-de",
+        "the same transcript in German",
+        (
+            Step("Erstelle eine Routine, die das alle 30 Sekunden macht"),
+            Step("Eine Routine, die meine Cloudflare-Domains auflistet, wie ich vorhin gesagt habe"),
+            Step("Alle 30 Sekunden"),
+        ),
+        _cap_question_of(30),
+        "de",
+    ),
+    Journey(
+        "answers-pt",
+        "free-text answers to each question complete the draft and create the Routine with nothing retyped",
+        (
+            Step("cria uma rotina que faz isso a cada 30 segundos"),
+            Step("Listar os domínios do Cloudflare", answer=True),
+            Step("Até 100 execuções por dia", answer=True),
+        ),
+        {**_create({"kind": "continuous", "gap": 30, "cap": 100}, _CLOUDFLARE_ZONES), "timezone": None},
+        "pt",
+    ),
+    Journey(
+        "discard-pt",
+        "abandoning the Routine being set up discards the draft and creates nothing",
+        (Step("cria uma rotina que faz isso a cada 30 segundos"), Step("esquece essa rotina, não quero mais")),
+        {"op": "discard"},
+        "pt",
+    ),
+)
+
+
 def _scored(change: Mapping[str, object]) -> dict[str, object]:
+    if change.get("op") in {"need", "discard"}:
+        return {"op": change["op"]}
     if "question" in change:
         field = change["question"]["field"]
         values = sorted(json.dumps(value, sort_keys=True) for value in change["question"]["values"])
@@ -234,6 +354,12 @@ def _scored(change: Mapping[str, object]) -> dict[str, object]:
         "timezone": change["timezone"],
         "actions": [[step["assistant"], step["action"]] for step in change["steps"]],
     }
+
+
+def _asks_neutrally(result) -> bool:
+    """A Routine question recommends and preselects nothing, and claims no Routine."""
+    question = result.clarification
+    return question is not None and question.default_index is None and not _CREATED_CLAIMS.search(result.reply)
 
 
 def run_case(
@@ -257,9 +383,69 @@ def run_case(
         return False
     if case.expected is None:
         reply = result.reply.casefold()
-        blamed = not case.timing_refused and _TIMING_BLAME.search(reply)
+        blamed = _TIMING_BLAME.search(reply)
         return result.routine is None and not (_CREATED_CLAIMS.search(reply) or blamed or _STEERING.search(reply))
+    if case.expected == NEED:
+        return result.routine is not None and _scored(result.routine) == NEED and _asks_neutrally(result)
     return result.routine is not None and _scored(result.routine) == dict(case.expected)
+
+
+@dataclass(slots=True)
+class _Team:
+    """What Team keeps between a journey's turns: the person's citable sends, their Routine draft, and its question."""
+
+    sends: list[str] = dataclasses.field(default_factory=list)
+    draft: tuple[tuple[str, str], ...] = ()
+    question: tuple[str, str] | None = None
+
+    def frozen(self, message: str, answer: str | None) -> dict[str, object]:
+        """The Routine words Team freezes for a send: earlier sends not already in the draft, the draft, an answer."""
+        texts = {text for _kind, text in self.draft}
+        earlier = tuple(text for text in self.sends[-3:] if text not in texts)
+        return {"routine_earlier": earlier, "routine_draft": self.draft, "routine_answer": answer}
+
+    def admit(self, step: Step, message: str, words: Mapping[str, object], result) -> None:
+        # A composed answer is a barrier: no earlier send before it is ever cited again.
+        self.sends = [] if step.answer else [*self.sends, message]
+        outcome = result.routine
+        if outcome.get("op") == "need" or "question" in outcome:
+            said = words["routine_answer"] or message
+            kept = self.draft if outcome["continues"] else ()
+            cited = tuple(("cited", text) for text in words["routine_earlier"])
+            self.draft = (*kept, *cited, ("said", said))
+            self.question = (result.clarification.question, message)
+        else:
+            self.draft, self.question = (), None
+
+
+def run_journey(
+    runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, journey: Journey, index: int
+) -> bool:
+    """Replay one conversation turn by turn with Team's draft; no turn may refuse, and the last ends as expected."""
+    context = agent_runtime.TurnContext(
+        f"eval:journey:{journey.id}:{index}", "Eval Team", (CLOUDFLARE,), provider, routines=(), locale=journey.locale
+    )
+    team = _Team()
+    result = None
+    for step in journey.steps:
+        message = step.text
+        if step.answer:
+            if team.question is None:
+                return False
+            asked, original = team.question
+            label, given = _COMPOSED[journey.locale]
+            message = f"{original}\n\n{label}: {asked}\n{given}: {step.text}"
+        words = team.frozen(message, step.text if step.answer else None)
+        result = _turn(runtime, dataclasses.replace(context, **words), message)
+        if result.status != "completed" or result.routine is None:
+            return False
+        if result.clarification is not None and not _asks_neutrally(result):
+            return False
+        team.admit(step, message, words, result)
+    scored = _scored(result.routine)
+    if "question" in result.routine:
+        scored["actions"] = [[step["assistant"], step["action"]] for step in result.routine["steps"]]
+    return scored == dict(journey.expected)
 
 
 def _turn(runtime: agent_runtime.AgentRuntime, context: agent_runtime.TurnContext, message: str):
@@ -277,27 +463,67 @@ def _turn(runtime: agent_runtime.AgentRuntime, context: agent_runtime.TurnContex
 
 
 def validate_corpus() -> None:
-    ids = [case.id for case in CASES]
+    ids = [case.id for case in CASES] + [journey.id for journey in JOURNEYS]
     if len(ids) != len(set(ids)) or not all(ids):
         raise ValueError("duplicate or empty Routine case id")
     for case in CASES:
         agent_runtime.TurnContext("eval", "Eval Team", (DNS,), _offline_provider(), routines=case.routines)
+    for journey in JOURNEYS:
+        if not journey.steps or journey.steps[0].answer or journey.locale not in _COMPOSED:
+            raise ValueError("a journey starts with a message in a composable language")
 
 
 def _offline_provider() -> agent_runtime.ProviderConfig:
     return agent_runtime.ProviderConfig("openai", FLOOR_MODELS["openai"], "offline-validation-key")
 
 
-def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig) -> dict[str, object]:
+def _attempt(budget: eval_cost.Budget, model: str, turns: int, work) -> bool:
+    """One attempt, reserved at its worst case before any call and settled at what its calls reported."""
+    reservation = budget.reserve(eval_cost.call_bound(model, TURN_INPUT_TOKENS, TURN_OUTPUT_TOKENS) * turns)
+    passed, counts = False, {}
+    try:
+        # A refused or malformed provider response is a miss for this attempt, not an evaluation failure.
+        with contextlib.suppress(agent_runtime.RuntimeContractError, agent_runtime.ProviderRequestError):
+            passed, counts = model_usage.measure(work)
+    finally:
+        usage = eval_cost.Usage.of(counts) if counts else eval_cost.Usage()
+        budget.settle(reservation, eval_cost.cost(usage, model) if counts else eval_cost.Cost(0.0, False))
+    return bool(passed)
+
+
+def evaluate(
+    runtime: agent_runtime.AgentRuntime,
+    provider: agent_runtime.ProviderConfig,
+    only: frozenset[str] = frozenset(),
+    budget_usd: float = BUDGET_USD,
+) -> dict[str, object]:
     turn_provider = dataclasses.replace(provider, effort=TURN_EFFORT)
-    results = []
-    for case in CASES:
+    budget = eval_cost.Budget(budget_usd)
+    work = [
+        *((case.id, 1, lambda index, case=case: run_case(runtime, turn_provider, case, index)) for case in CASES),
+        *(
+            (
+                journey.id,
+                len(journey.steps),
+                lambda index, journey=journey: run_journey(runtime, turn_provider, journey, index),
+            )
+            for journey in JOURNEYS
+        ),
+    ]
+    results, exhausted = [], False
+    for item_id, turns, run in work:
+        if only and item_id not in only:
+            continue
         passed = 0
         for index in range(ATTEMPTS):
-            # A refused or malformed provider response is a miss for this attempt, not an evaluation failure.
-            with contextlib.suppress(agent_runtime.RuntimeContractError, agent_runtime.ProviderRequestError):
-                passed += run_case(runtime, turn_provider, case, index)
-        results.append({"id": case.id, "passed": passed, "required": ATTEMPTS})
+            try:
+                passed += _attempt(budget, provider.model, turns, lambda run=run, index=index: run(index))
+            except eval_cost.BudgetExhaustedError:
+                exhausted = True
+                break
+        results.append({"id": item_id, "passed": passed, "required": ATTEMPTS})
+        if exhausted:
+            break
     return {
         "provider": provider.provider,
         "model": provider.model,
@@ -305,6 +531,7 @@ def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
         "turn_effort": TURN_EFFORT,
         "cases": results,
         "passing_cases": sum(item["passed"] == ATTEMPTS for item in results),
+        "budget": {**budget.summary(), "exhausted": exhausted},
     }
 
 
@@ -313,6 +540,8 @@ def main() -> int:
     parser.add_argument("--key-file", type=Path)
     parser.add_argument("--provider", choices=sorted(FLOOR_MODELS), default="openai")
     parser.add_argument("--model")
+    parser.add_argument("--only", action="append", default=[])
+    parser.add_argument("--budget", type=float, default=BUDGET_USD)
     args = parser.parse_args()
     model = args.model or FLOOR_MODELS[args.provider]
     try:
@@ -323,7 +552,7 @@ def main() -> int:
         provider = agent_runtime.ProviderConfig(args.provider, model, _key(args.key_file))
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:
-            result = evaluate(runtime, provider)
+            result = evaluate(runtime, provider, frozenset(args.only), args.budget)
         finally:
             runtime.close()
     except OSError, ValueError:
