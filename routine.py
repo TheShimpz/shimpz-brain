@@ -447,7 +447,7 @@ def _step(step: Step, contracts: Mapping[tuple[str, str], Mapping[str, Any]], wo
             and all(map(_origin_shape, source["origins"]))
             and _proven(source, properties.get(item.member), words)
         )
-        relation_valid = item.kind not in _BINDINGS or words.mine(item.instruction)
+        relation_valid = item.kind not in _BINDINGS or words.said(item.instruction)
         if not literal_valid or not relation_valid:
             raise UnprovenError
         inputs[item.member] = source
@@ -663,8 +663,8 @@ def _prompt(
         "only open field of the whole Routine and the user's words narrow it to two to five values, which is a "
         "question about that member), "
         "run_clock with clock date, time, datetime, or epoch_seconds of each run, step_output with the earlier step "
-        "id, an RFC 6901 pointer into that step's output, and instruction copying the user's own words that relate "
-        "the two, step_text like step_output but passing that value as plain text, only for a member that takes text "
+        "id, an RFC 6901 pointer into that step's output, and instruction copying a said part's own words that "
+        "relate the two, step_text like step_output but passing that value as plain text, only for a member that takes text "
         "and only when the user asks to pass the result on as text or formatted, or kept (only when changing the "
         "listed Routine) to keep that member exactly. output is what each run does with its result: mode show when "
         "the user asks to see, get, or be told the result (such as show me the zones, e me mostra), with step the id "

@@ -340,6 +340,15 @@ class OutputTests(unittest.TestCase):
             wire["steps"][1]["input"]["name"],
             {"kind": "step_text", "step": "greet", "pointer": "", "instruction": "diga olá para Ana"},
         )
+        # Words only an earlier send holds never relate two steps.
+        cited = _source(
+            "name", "step_text", value_json=None, origins=[], step="greet", pointer="", instruction="passe adiante"
+        )
+        relayed = [steps[0], routine.Step(id="again", assistant="hello-pulse", action="hello", inputs=[cited])]
+        with self.assertRaises(routine.UnprovenError):
+            routine.change(
+                _compiled(output=chain, steps=relayed), _said(self.SAID, ("passe adiante",)), CONTRACTS, None
+            )
         unrelated = _source("name", "step_text", value_json=None, origins=[], step="greet", pointer="", instruction="x")
         steps[1] = routine.Step(id="again", assistant="hello-pulse", action="hello", inputs=[unrelated])
         with self.assertRaises(routine.UnprovenError):
@@ -467,6 +476,7 @@ class CapTests(unittest.TestCase):
                 schedule=None,
                 steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[])],
                 question=routine.Question(**question, options=list(options)),
+                output=routine.Output(mode="show", step="greet", instruction="listando minhas zonas dns"),
                 # A reply written before the person answers is never shown for any option.
                 reply="A rotina ficará configurada quando você escolher um limite diário.",
             )
