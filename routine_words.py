@@ -60,7 +60,9 @@ def canonical_earlier(value: object) -> tuple[str, ...]:
 def _kinded(value: object) -> tuple[str, str] | None:
     if isinstance(value, dict) and set(value) == {"kind", "text"}:
         value = (value["kind"], value["text"])
-    if not isinstance(value, (list, tuple)) or len(value) != 2 or value[0] not in _KINDS:
+    if not isinstance(value, (list, tuple)) or len(value) != 2 or not isinstance(value[0], str):
+        return None
+    if value[0] not in _KINDS:
         return None
     return value[0], value[1]
 

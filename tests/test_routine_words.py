@@ -86,6 +86,8 @@ class WordsTests(unittest.TestCase):
             [("said", "x" * 16_000)] * 3,
             [{"kind": "said"}],
             [("said",)],
+            [{"kind": [], "text": "x"}],
+            [{"kind": "said", "text": None}],
         ):
             with self.subTest(invalid=str(invalid)[:40]), self.assertRaises(routine_words.RoutineWordsError):
                 routine_words.canonical_draft(invalid)

@@ -782,6 +782,8 @@ def recompile(
         compiled = ask(_prompt(source, assistants, None, locale, chat=False))
     except CompileUnavailableError:
         return "unavailable"
+    # Every sealed word granted the Routine, so all of them count, numbered exactly as Team admits them.
+    compiled = compiled.model_copy(update={"continues": bool(draft)})
     return _answer(compiled, source, assistants, None, chat=False)
 
 

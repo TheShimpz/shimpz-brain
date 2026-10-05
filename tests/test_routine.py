@@ -717,6 +717,20 @@ class RecompileTests(unittest.TestCase):
         asked = routine.recompile(MESSAGE, _chat().assistants, "pt", lambda _prompt: _asking())
         self.assertEqual((asked["clarification"], asked["routine"]["question"]), (CARD, QUESTION_WIRE))
 
+    def test_every_sealed_part_counts_with_the_regions_team_numbers(self):
+        """A recompile never drops sealed words: quote regions keep the numbering Team admits them with."""
+        draft = (("said", 'Toda segunda às 9h, diga "olá Bob"'),)
+        quoted = _source(value_json='"olá Bob"', origins=[_origin("olá Bob", "quote", region=0, instruction="diga")])
+        compiled = _compiled(
+            continues=False,
+            request="Toda segunda às 9h, diga",
+            steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[quoted])],
+        )
+        outcome = routine.recompile('para Ana "agora"', _chat().assistants, "pt", lambda _prompt: compiled, draft)
+        self.assertEqual(outcome["routine"]["continues"], True)
+        origin = outcome["routine"]["steps"][0]["input"]["name"]["origins"][0]
+        self.assertEqual((origin["region"], origin["text"]), (0, "olá Bob"))
+
     def test_the_runtime_compiles_once_with_no_provider_retry(self):
         seen = []
 
