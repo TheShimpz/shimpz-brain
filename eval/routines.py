@@ -2,8 +2,8 @@
 
 Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.routines`` from Brain to validate the corpus without a
 provider. Add ``--key-file`` (and optionally ``--provider``/``--model``) for three real attempts per case through the
-real ``AgentRuntime`` and its isolated compiler with an in-memory checkpoint. Output contains only case identifiers and
-pass counts.
+real ``AgentRuntime`` and its isolated compiler with an in-memory checkpoint. Output contains only case identifiers,
+pass counts, and each miss's closed reason: the turn that missed and the shape of what it ended with, never any text.
 
 Exact checks score whether the turn compiled a Routine change, and its operation, schedule, timezone, and ordered
 Actions, or asked exactly one open field with one value per option, or asked for a missing piece with suggestions and
@@ -403,6 +403,35 @@ def _scored(change: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+@dataclass(frozen=True, slots=True)
+class Outcome:
+    """One attempt's result: it passes with no reason, and a miss names its turn and what it ended with, never text."""
+
+    reason: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.reason is None
+
+
+PASSED = Outcome()
+
+
+def _shape(change: Mapping[str, object] | None) -> str:
+    """What a turn ended with: no change, a need, a question about one field, or a compiled operation."""
+    if change is None:
+        return "no change"
+    if "question" in change:
+        return f"ask {change['question']['field']['kind']}"
+    return str(change.get("op"))
+
+
+def _differs(scored: Mapping[str, object], expected: Mapping[str, object]) -> Outcome:
+    if scored == dict(expected):
+        return PASSED
+    keys = sorted(key for key in {*scored, *expected} if scored.get(key) != expected.get(key))
+    return Outcome(f"ended with {scored.get('op')}, differing in {', '.join(keys)}")
+
+
 def _complete(change: Mapping[str, object], assistants: tuple[agent_runtime.AssistantDefinition, ...]) -> bool:
     """Whether every compiled step, with each option of an input question filled in, could be admitted and run.
 
@@ -458,7 +487,7 @@ def _asks_neutrally(result) -> bool:
 
 def run_case(
     runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, case: RoutineCase, index: int
-) -> bool:
+) -> Outcome:
     """Drive one case; any Action the model asks for is answered with an empty success so the turn can finish."""
     context = agent_runtime.TurnContext(
         f"eval:routine:{case.id}:{index}",
@@ -470,22 +499,42 @@ def run_case(
     )
     for earlier in case.earlier:
         if _turn(runtime, context, earlier).status != "completed":
-            return False
+            return Outcome("an earlier send did not complete")
     # Team offers the Routine turn exactly the earlier sends it froze for it.
     result = _turn(runtime, dataclasses.replace(context, routine_earlier=case.earlier), case.message)
     if result.status != "completed":
-        return False
+        return Outcome(f"ended {result.status}")
     if case.expected is None:
-        reply = result.reply.casefold()
-        blamed = _TIMING_BLAME.search(reply)
-        return result.routine is None and not (_CREATED_CLAIMS.search(reply) or blamed or _STEERING.search(reply))
-    if case.expected == NEED:
-        return result.routine is not None and _scored(result.routine) == NEED and _asks_neutrally(result)
-    return (
-        result.routine is not None
-        and _complete(result.routine, context.assistants)
-        and _scored(result.routine) == dict(case.expected)
-    )
+        return _unchanged(result)
+    return _changed(result, case.expected, context.assistants)
+
+
+def _changed(result, expected: Mapping[str, object], assistants: tuple[agent_runtime.AssistantDefinition, ...]):
+    """A turn that must end with exactly the expected change, question, or need."""
+    if result.routine is None:
+        return Outcome("ended with no change")
+    if expected == NEED:
+        if _scored(result.routine) != NEED:
+            return Outcome(f"ended with {_shape(result.routine)}, expected need")
+        return PASSED if _asks_neutrally(result) else Outcome("asked with a recommendation or a claim")
+    if not _complete(result.routine, assistants):
+        return Outcome(f"ended with {_shape(result.routine)} missing a required or valid input")
+    return _differs(_scored(result.routine), expected)
+
+
+def _unchanged(result) -> Outcome:
+    """A turn that must change nothing, claim nothing, blame no admissible timing, and steer toward nothing."""
+    if result.routine is not None:
+        return Outcome(f"ended with {_shape(result.routine)}, expected no change")
+    reply = result.reply.casefold()
+    for proxy, reason in (
+        (_CREATED_CLAIMS, "claims a Routine"),
+        (_TIMING_BLAME, "blames the timing"),
+        (_STEERING, "steers toward a choice"),
+    ):
+        if proxy.search(reply):
+            return Outcome(reason)
+    return PASSED
 
 
 @dataclass(slots=True)
@@ -518,36 +567,40 @@ class _Team:
 
 def run_journey(
     runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, journey: Journey, index: int
-) -> bool:
+) -> Outcome:
     """Replay one conversation turn by turn with Team's draft; no turn may refuse, and the last ends as expected."""
     context = agent_runtime.TurnContext(
         f"eval:journey:{journey.id}:{index}", "Eval Team", (CLOUDFLARE,), provider, routines=(), locale=journey.locale
     )
     team = _Team()
     result = None
-    for step in journey.steps:
+    for number, step in enumerate(journey.steps, 1):
         message = step.text
         if step.answer:
             if team.question is None:
-                return False
+                return Outcome(f"turn {number}: an answer with no open question")
             asked, original = team.question
             label, given = _COMPOSED[journey.locale]
             message = f"{original}\n\n{label}: {asked}\n{given}: {step.text}"
         words = team.frozen(message, step.text if step.answer else None)
         result = _turn(runtime, dataclasses.replace(context, **words), message)
-        if result.status != "completed" or result.routine is None:
-            return False
+        if result.status != "completed":
+            return Outcome(f"turn {number}: ended {result.status}")
+        if result.routine is None:
+            return Outcome(f"turn {number}: ended with no change")
         if result.clarification is not None and not _asks_neutrally(result):
-            return False
+            return Outcome(f"turn {number}: asked with a recommendation or a claim")
         team.admit(step, message, words, result)
+    last = len(journey.steps)
     if not _complete(result.routine, context.assistants):
-        return False
+        return Outcome(f"turn {last}: ended with {_shape(result.routine)} missing a required or valid input")
     scored = _scored(result.routine)
     if "question" in result.routine:
         scored["actions"] = [[step["assistant"], step["action"]] for step in result.routine["steps"]]
     if "inputs" in journey.expected:
         scored["inputs"] = _inputs(result.routine)
-    return scored == dict(journey.expected)
+    differs = _differs(scored, journey.expected)
+    return differs or Outcome(f"turn {last}: {differs.reason}")
 
 
 def _turn(runtime: agent_runtime.AgentRuntime, context: agent_runtime.TurnContext, message: str):
@@ -579,10 +632,10 @@ def _offline_provider() -> agent_runtime.ProviderConfig:
     return agent_runtime.ProviderConfig("openai", FLOOR_MODELS["openai"], "offline-validation-key")
 
 
-def _attempt(budget: eval_cost.Budget, model: str, turns: int, work) -> bool:
+def _attempt(budget: eval_cost.Budget, model: str, turns: int, work) -> Outcome:
     """One attempt, reserved at its worst case before any call and settled at what its calls reported."""
     reservation = budget.reserve(eval_cost.call_bound(model, TURN_INPUT_TOKENS, TURN_OUTPUT_TOKENS) * turns)
-    passed, counts = False, {}
+    passed, counts = Outcome("a provider or contract error"), {}
     try:
         # A refused or malformed provider response is a miss for this attempt, not an evaluation failure.
         with contextlib.suppress(agent_runtime.RuntimeContractError, agent_runtime.ProviderRequestError):
@@ -590,7 +643,7 @@ def _attempt(budget: eval_cost.Budget, model: str, turns: int, work) -> bool:
     finally:
         usage = eval_cost.Usage.of(counts) if counts else eval_cost.Usage()
         budget.settle(reservation, eval_cost.cost(usage, model) if counts else eval_cost.Cost(0.0, False))
-    return bool(passed)
+    return passed if isinstance(passed, Outcome) else Outcome(None if passed else "missed")
 
 
 def evaluate(
@@ -616,14 +669,16 @@ def evaluate(
     for item_id, turns, run in work:
         if only and item_id not in only:
             continue
-        passed = 0
+        passed, misses = 0, []
         for index in range(ATTEMPTS):
             try:
-                passed += _attempt(budget, provider.model, turns, lambda run=run, index=index: run(index))
+                outcome = _attempt(budget, provider.model, turns, lambda run=run, index=index: run(index))
             except eval_cost.BudgetExhaustedError:
                 exhausted = True
                 break
-        results.append({"id": item_id, "passed": passed, "required": ATTEMPTS})
+            passed += bool(outcome)
+            misses += [] if outcome else [outcome.reason]
+        results.append({"id": item_id, "passed": passed, "required": ATTEMPTS, "misses": misses})
         if exhausted:
             break
     return {

@@ -201,10 +201,18 @@ class RoutineEvalTests(unittest.TestCase):
             "No Routine was created. You can ask again for every hour.",
         )
         with compiling:
-            for reply, passed in ((factual, True), (owner_seen, False), *((text, False) for text in steering)):
+            expected = (
+                (factual, None),
+                (owner_seen, "blames the timing"),
+                *((text, "steers toward a choice") for text in steering),
+            )
+            for reply, reason in expected:
                 with self.subTest(reply=reply):
                     runtime = _runtime(_created(), AIMessage(content=reply))
-                    self.assertEqual(routines.run_case(runtime, PROVIDER, case, 0), passed)
+                    # A miss names only its closed reason, never the reply's text.
+                    self.assertEqual(routines.run_case(runtime, PROVIDER, case, 0).reason, reason)
+            claimed = routines.run_case(_runtime(_created(), AIMessage(content="Rotina criada.")), PROVIDER, case, 0)
+            self.assertEqual(claimed.reason, "claims a Routine")
         # Each earlier send is its own turn first; one that never completes misses the case before its Routine turn.
         incident = _case("earlier-work-pt")
         with mock.patch.object(routines, "_turn", return_value=mock.Mock(status="action-required")) as turn:
@@ -258,9 +266,15 @@ class RoutineEvalTests(unittest.TestCase):
         # A turn that refuses, or a journey that answers before any question, misses.
         refusing = mock.patch.object(routines, "_turn", return_value=mock.Mock(status="completed", routine=None))
         with refusing:
-            self.assertFalse(routines.run_journey(_runtime(), PROVIDER, journey, 0))
+            refused = routines.run_journey(_runtime(), PROVIDER, journey, 0)
+        self.assertEqual(refused.reason, "turn 1: ended with no change")
         early = routines.Journey("x", "c", (routines.Step("a", answer=True),), {"op": "discard"}, "pt")
-        self.assertFalse(routines.run_journey(_runtime(), PROVIDER, early, 0))
+        self.assertEqual(
+            routines.run_journey(_runtime(), PROVIDER, early, 0).reason, "turn 1: an answer with no open question"
+        )
+        stopped = mock.patch.object(routines, "_turn", return_value=mock.Mock(status="stopped"))
+        with stopped:
+            self.assertEqual(routines.run_journey(_runtime(), PROVIDER, journey, 0).reason, "turn 1: ended stopped")
         with self.assertRaises(ValueError), mock.patch.object(routines, "JOURNEYS", (early,)):
             routines.validate_corpus()
 
@@ -270,6 +284,10 @@ class RoutineEvalTests(unittest.TestCase):
         journey = next(item for item in routines.JOURNEYS if item.id == "answers-pt")
         missing = [PAGING[0]]
         other = [PAGING[0], _said("per_page", "5")]
+        reasons = {
+            "page": "turn 4: ended with create missing a required or valid input",
+            "page,per_page": "turn 4: ended with create, differing in inputs",
+        }
         for inputs in (missing, other):
             created = _compiled_answer({"kind": "continuous", "gap": 30, "cap": 100}, continues=True, inputs=inputs)
             answers = iter([_need_answer(), _need_answer(continues=True), _need_answer(continues=True), created])
@@ -278,9 +296,10 @@ class RoutineEvalTests(unittest.TestCase):
                 "_routine_compiler",
                 lambda _self, _context, answers=answers: lambda _prompt: next(answers),
             )
-            with self.subTest(inputs=[item.member for item in inputs]), compiling:
+            members = ",".join(item.member for item in inputs)
+            with self.subTest(inputs=members), compiling:
                 runtime = _runtime(_created(), _created(), _created(), _created())
-                self.assertFalse(routines.run_journey(runtime, PROVIDER, journey, 0))
+                self.assertEqual(routines.run_journey(runtime, PROVIDER, journey, 0).reason, reasons[members])
         cloudflare = (routines.CLOUDFLARE,)
         page = {"kind": "literal", "value": 1}
         zones = {"id": "zones", "assistant": "cloudflare", "action": "list-zones", "input": {"page": page}}
@@ -322,6 +341,7 @@ class RoutineEvalTests(unittest.TestCase):
         runtime.start.side_effect = agent_runtime.ProviderRequestError("down")
         result = routines.evaluate(runtime, PROVIDER)
         self.assertEqual(result["passing_cases"], 0)
+        self.assertEqual(result["cases"][0]["misses"], ["a provider or contract error"] * routines.ATTEMPTS)
         self.assertEqual({item["passed"] for item in result["cases"]}, {0})
         # A call that reported nothing is charged its whole reservation, so the cap stops the run before overspending.
         self.assertTrue(result["budget"]["exhausted"])
