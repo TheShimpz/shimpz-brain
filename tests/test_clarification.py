@@ -59,10 +59,24 @@ class ParseTests(unittest.TestCase):
             {**VALID, "default_index": 2},
             {**VALID, "default_index": True},
             {**VALID, "default_index": "0"},
+            {**VALID, "default_index": None},
         ]
         for value in broken:
             with self.subTest(value=str(value)[:60]):
                 self.assertIsNone(clarification.parse(value))
+
+    def test_a_routine_question_recommends_and_marks_no_option(self):
+        asked = {**VALID, "default_index": None}
+        parsed = clarification.parse(asked, routine=True)
+        self.assertEqual(parsed.to_dict(), asked)
+        self.assertEqual(
+            parsed.render(), "Qual período você quer cobrir?\n\n1. Hoje — Só lançamentos de hoje.\n2. Esta semana"
+        )
+        # A Routine question never recommends one, and an ordinary one always does.
+        self.assertIsNone(clarification.parse(VALID, routine=True))
+        # It may offer a single suggestion beside the free-text answer, never none.
+        self.assertEqual(len(clarification.parse({**asked, "options": VALID["options"][:1]}, routine=True).options), 1)
+        self.assertIsNone(clarification.parse({**asked, "options": []}, routine=True))
 
     def test_recorded_requires_the_tool_result_to_end_the_graph(self):
         call = AIMessage(content="", tool_calls=[_clarify(VALID)])
