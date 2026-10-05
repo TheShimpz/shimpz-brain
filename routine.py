@@ -292,9 +292,11 @@ class Schedule(BaseModel):
 
 
 class Choice(BaseModel):
-    """One option of a Routine question: what the user sees, and the value its open field then holds.
+    """One option of a Routine question: what the user sees, the value its open field then holds, and its reply.
 
-    A question for a missing piece carries no value: its label is a suggestion the user may pick as their answer.
+    The reply is what the user is told once this option's Routine is created or changed, written for exactly that
+    Routine. A question for a missing piece carries no value and no reply: its label is a suggestion the user may pick
+    as their answer.
     """
 
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -302,6 +304,7 @@ class Choice(BaseModel):
     label: str
     description: str
     value_json: str
+    reply: str
 
 
 class Question(BaseModel):
@@ -505,10 +508,10 @@ def _missing_rules(language: str, chat: bool) -> str:
         f"{language} that states only facts (when the timing asked for is outside what a Routine supports, it says "
         "what a Routine supports); field missing, step and member null; options are one to five suggestions, each "
         "with a short label in the user's words or language naming exactly one choice, never joining alternatives or "
-        "unrelated work, an empty "
-        "description, and value_json null. For missing work, suggest first the user's own requests in the draft and "
-        "earlier sends, then other work the listed Actions do; for missing timing, the interval the user stated when "
-        "a Routine supports it, then common intervals such as every 30 seconds, every 5 minutes, every hour, or "
+        "unrelated work, an empty description, value_json null, and an empty reply. For missing work, suggest first "
+        "the user's own requests in the draft and earlier sends, then other work the listed Actions do; for missing "
+        "timing, the interval the user stated when a Routine supports it, then common intervals such as every 30 "
+        "seconds, every 5 minutes, every hour, or "
         "every day at 09:00. Never suggest work that deletes, changes, creates, publishes, or sends anything unless a "
         "said part already asks for that work. Never recommend, rank, or prefer one suggestion. With need, compile "
         "nothing: name and request empty, schedule and timezone null, steps empty. "
@@ -558,9 +561,10 @@ def _prompt(
         "words do not ask for work to recur; quoted when the recurring words are only quoted or forwarded text; "
         "secret when the words hold a password, token, key, or payment detail; unsupported when no listed Action can "
         f"do the work. {_missing_rules(language, chat)}"
-        "Otherwise compile: name is a short title; request copies word for word one single line of a said part's own "
-        f"words that asks for the recurrence; {_timing_rules(language)}; timezone is an IANA zone only when the user "
-        "names a place or zone, or when changing the listed Routine its own zone unless the user names another, else "
+        "Otherwise compile: name is a short title of the work alone, stating no timing or value; request copies word "
+        "for word one single line of a said part's own words that asks for the recurrence; "
+        f"{_timing_rules(language)}; timezone is an IANA zone only when the user names a place or zone, or when "
+        "changing the listed Routine its own zone unless the user names another, else "
         "null; steps are at most 8 listed Actions in order, ids lowercase, filling required input members and only "
         "members the user asked for. A member is a literal (value_json holds its JSON value; each scalar of it has "
         "one origin: at is its JSON Pointer inside the value, empty for the whole value; source message with text "
@@ -581,10 +585,14 @@ def _prompt(
         "values, decide ask: compile everything else, give that field no value (schedule null, or that member left "
         "out of its step's inputs), and fill question with text, one short question in "
         f"{language}; field schedule or input, with step and member for an input, else null; options, two to five "
-        "distinct choices each with a short label naming exactly one choice, a description that may be empty, and "
-        "value_json, the JSON value the field then holds (a schedule object as above, or the member's value). Never "
-        "recommend one option. Otherwise question is null. reply is never empty: one short sentence in "
-        f"{language} saying the Routine is set up as described, as it will be once a question is answered.\n\n"
+        "distinct choices each with a short label naming exactly one choice, a description that may be empty, "
+        "value_json, the JSON value the field then holds (a schedule object as above, or the member's value), and "
+        f"reply, one short sentence in {language} saying in the past tense that the Routine was created (or changed), "
+        "since it is shown only once the user has picked that option. Never recommend one option. Otherwise question "
+        f"is null. reply is empty with ask or need; with compiled it is one short sentence in {language} saying in the "
+        "past tense that the Routine was created or changed. Every reply names only the Routine's work, never its "
+        "timing, count, or any other value, which the Routine's own notice shows, and never says that anything is "
+        "still to be chosen, answered, or set up.\n\n"
         f"Routine draft, oldest first (JSON list): {json.dumps(listed, ensure_ascii=False)}\n"
         "User's earlier sends the current message may refer to, oldest first (JSON list of each send's own words): "
         f"{json.dumps([own for _kind, own in earlier.parts], ensure_ascii=False)}\n"
@@ -670,8 +678,12 @@ def _clarification(question: Question) -> clarification.Clarification | None:
     )
 
 
-def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: dict | None, reply: str) -> object:
-    """A candidate change with exactly its one open field, and the question whose options each fill it."""
+def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: dict | None) -> object:
+    """A candidate change with exactly its one open field, and the question whose options each fill it.
+
+    Each option carries its own reply, written for the Routine it completes: a reply shown once the person picks an
+    option never speaks for a value they did not pick, nor of the choice as still to make.
+    """
     question = compiled.question
     if question is None or question.field == "missing" or len(question.options) < clarification.MIN_OPTIONS:
         # A field with one value leaves nothing to ask; only a missing piece may offer a single suggestion.
@@ -681,6 +693,7 @@ def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: di
     if question.field == "input":
         field.update(step=question.step, member=question.member)
     parts = source.parts(compiled.continues)
+    replies = [team_memory._line(item.reply, MAX_REPLY_CHARS) for item in question.options]
     try:
         values = [_value(item, question) for item in question.options]
         wire = change(compiled, parts, contracts, target, question.field, 0 if compiled.continues else source.skipped)
@@ -695,9 +708,9 @@ def _asked(compiled: Compiled, source: UserWords, contracts: Mapping, target: di
         cap_proven(value, Words((*parts, (SAID, item.label))), target)
         for item, value in zip(question.options, values, strict=True)
     )
-    if asked is None or not open_input or not capped:
+    if asked is None or not open_input or not capped or not all(replies):
         return "unproven"
-    wire["question"] = {"field": field, "values": values, "reply": reply}
+    wire["question"] = {"field": field, "values": values, "replies": replies}
     return {"routine": wire, "reply": asked.render(), "clarification": asked.to_dict()}
 
 
@@ -742,23 +755,31 @@ def _answer(
     if compiled.decision == "need":
         # Its reply is the question itself.
         return _needed(compiled, target)
+    return _decided(compiled, source, assistants, target)
+
+
+def _decided(
+    compiled: Compiled, source: UserWords, assistants: tuple[Any, ...], target: dict[str, object] | None
+) -> object:
+    """A change with one open field and its question, a discarded draft, or a compiled change."""
+    contracts = {
+        (assistant.id, action.id): action.input_schema for assistant in assistants for action in assistant.actions
+    }
+    if compiled.decision == "ask":
+        # Each option carries the reply of the Routine it completes.
+        return _asked(compiled, source, contracts, target)
     reply = team_memory._line(compiled.reply, MAX_REPLY_CHARS)
     if not reply:
         return "unproven"
     if compiled.decision == "discard":
         return {"routine": {"op": "discard"}, "reply": reply} if source.draft else "no-draft"
-    return _decided(compiled, source, assistants, target, reply)
+    return _settled(compiled, source, contracts, target, reply)
 
 
-def _decided(
-    compiled: Compiled, source: UserWords, assistants: tuple[Any, ...], target: dict[str, object] | None, reply: str
+def _settled(
+    compiled: Compiled, source: UserWords, contracts: Mapping, target: dict[str, object] | None, reply: str
 ) -> object:
-    """A compiled change, or a change with one open field and its question."""
-    contracts = {
-        (assistant.id, action.id): action.input_schema for assistant in assistants for action in assistant.actions
-    }
-    if compiled.decision == "ask":
-        return _asked(compiled, source, contracts, target, reply)
+    """A compiled change with no open field."""
     if compiled.question is not None:
         return "unproven"
     skipped = 0 if compiled.continues else source.skipped

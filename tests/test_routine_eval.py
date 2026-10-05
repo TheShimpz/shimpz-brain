@@ -74,8 +74,8 @@ def _need_answer(continues: bool = False) -> routine.Compiled:
         step=None,
         member=None,
         options=[
-            routine.Choice(label="Listar os domínios do Cloudflare", description="", value_json="null"),
-            routine.Choice(label="Limpar o cache", description="", value_json="null"),
+            routine.Choice(label="Listar os domínios do Cloudflare", description="", value_json="null", reply=""),
+            routine.Choice(label="Limpar o cache", description="", value_json="null", reply=""),
         ],
     )
     return routine.Compiled(

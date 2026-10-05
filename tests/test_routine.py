@@ -373,14 +373,15 @@ class CapTests(unittest.TestCase):
             with self.subTest(target=target["schedule"]), self.assertRaises(routine.UnprovenError):
                 routine.change(_compiled(request=words, schedule=_continuous(1000)), _said(words), CONTRACTS, target)
 
-    def test_each_cap_options_label_states_its_cap(self):
-        """A picked label is the person's answer: an option whose label never states its cap grants the compiler's."""
+    def test_the_owners_cap_question_carries_each_options_own_reply_and_cap_label(self):
+        """The owner's 2026-10-05 Routine: the cap asked last, each option a complete Routine with its own reply."""
         draft = (("said", "cria uma rotina listando minhas zonas dns"), ("said", "A cada 30 segundos"))
+        caps = (100, 500, 1000)
 
         def option(cap: int, label: str) -> routine.Choice:
-            return routine.Choice(
-                label=label, description="", value_json=json.dumps({"kind": "continuous", "gap": 30, "cap": cap})
-            )
+            value = json.dumps({"kind": "continuous", "gap": 30, "cap": cap})
+            reply = f"Pronto: listo suas zonas a cada 30 segundos, até {cap} vezes por dia."
+            return routine.Choice(label=label, description="", value_json=value, reply=reply)
 
         def asking(*options: routine.Choice) -> routine.Compiled:
             question = {"text": "Qual limite diário?", "field": "schedule", "step": None, "member": None}
@@ -391,12 +392,17 @@ class CapTests(unittest.TestCase):
                 schedule=None,
                 steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[])],
                 question=routine.Question(**question, options=list(options)),
+                # A reply written before the person answers is never shown for any option.
+                reply="A rotina ficará configurada quando você escolher um limite diário.",
             )
 
         source = routine.UserWords("Página 1, 5 zonas", (), draft)
-        labelled = [option(cap, f"Até {cap} execuções por dia") for cap in (100, 500, 1000)]
+        labelled = [option(cap, f"Até {cap} execuções por dia") for cap in caps]
         asked = routine._answer(asking(*labelled), source, _chat().assistants, None)
-        self.assertEqual([value["cap"] for value in asked["routine"]["question"]["values"]], [100, 500, 1000])
+        self.assertEqual([value["cap"] for value in asked["routine"]["question"]["values"]], list(caps))
+        self.assertEqual(asked["routine"]["question"]["replies"], [item.reply for item in labelled])
+        self.assertNotIn("escolher", json.dumps(asked["routine"], ensure_ascii=False))
+        # An option whose label, the person's answer once picked, never states its cap would grant the compiler's.
         mislabelled = [option(1000, "Até 100 execuções por dia"), *labelled[1:]]
         self.assertEqual(routine._answer(asking(*mislabelled), source, _chat().assistants, None), "unproven")
 
@@ -481,7 +487,8 @@ CARD = {
 QUESTION_WIRE = {
     "field": {"kind": "input", "step": "greet", "member": "name"},
     "values": ["Ana", "Bia"],
-    "reply": _compiled().reply,
+    # Each option's own reply, written for the Routine it completes.
+    "replies": ["Pronto: toda segunda às 9h digo olá para Ana.", "Pronto: toda segunda às 9h digo olá para Bia."],
 }
 
 
@@ -492,7 +499,12 @@ def _asking(**changes) -> routine.Compiled:
         "step": "greet",
         "member": "name",
         "options": [
-            routine.Choice(label=item["label"], description=item["description"], value_json=json.dumps(item["label"]))
+            routine.Choice(
+                label=item["label"],
+                description=item["description"],
+                value_json=json.dumps(item["label"]),
+                reply=f"Pronto: toda segunda às 9h digo olá para {item['label']}.",
+            )
             for item in CARD["options"]
         ],
     }
@@ -512,11 +524,14 @@ class QuestionTests(unittest.TestCase):
             (asked["routine"]["question"], asked["reply"]),
             (QUESTION_WIRE, clarification.parse(CARD, routine=True).render()),
         )
-        daily = routine.Choice(label="Diário", description="", value_json='{"kind": "daily", "time": "09:00"}')
+        daily = routine.Choice(
+            label="Diário", description="", value_json='{"kind": "daily", "time": "09:00"}', reply="Pronto: diário."
+        )
         hourly = routine.Choice(
             label="De hora em hora",
             description="",
             value_json='{"kind": "hourly", "every": 1, "time": null, "gap": null}',
+            reply="Pronto: de hora em hora.",
         )
         timed = self.answer(
             _asking(
@@ -531,8 +546,9 @@ class QuestionTests(unittest.TestCase):
         )
 
     def test_any_other_question_is_unproven(self):
-        bad = routine.Choice(label="X", description="", value_json="NaN")
-        weird = routine.Choice(label="Y", description="", value_json='{"kind": "yearly"}')
+        bad = routine.Choice(label="X", description="", value_json="NaN", reply="Pronto.")
+        weird = routine.Choice(label="Y", description="", value_json='{"kind": "yearly"}', reply="Pronto.")
+        silent = _asking().question.options[1].model_copy(update={"reply": " "})
         cases = (
             _compiled(decision="ask"),
             _compiled(question=_asking().question),
@@ -543,6 +559,8 @@ class QuestionTests(unittest.TestCase):
             _asking(question={"member": ""}),
             _asking(steps=[routine.Step(id="greet", assistant="hello-pulse", action="hello", inputs=[_source()])]),
             _asking(question={"field": "schedule"}),
+            # Every option needs the reply of its own Routine; one written for no option is never shown.
+            _asking(question={"options": [_asking().question.options[0], silent]}),
         )
         for compiled in cases:
             with self.subTest(compiled=compiled):

@@ -151,7 +151,8 @@ def _needing(**changes) -> routine.Compiled:
         step=None,
         member=None,
         options=[
-            routine.Choice(label=item["label"], description="", value_json="null") for item in NEED_CARD["options"]
+            routine.Choice(label=item["label"], description="", value_json="null", reply="")
+            for item in NEED_CARD["options"]
         ],
     )
     fields = {"decision": "need", "name": "", "request": "", "schedule": None, "steps": [], "question": question}
