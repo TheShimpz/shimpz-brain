@@ -1072,7 +1072,7 @@ def _attempt_team(
     modules: Modules, directory: str, brain: tuple[str, Path], settings, events: list | None
 ) -> tuple[object, Team, Fixture]:
     """A fresh Local Team for one attempt, whose own Space gives it its own Brain thread."""
-    provider, model, space = settings
+    provider, model, space, effort = settings
     url, token_file = brain
     fixture = Fixture(events=events)
     client = modules.brain_client.BrainRuntimeClient(base_url=url, token_file=token_file)
@@ -1081,7 +1081,7 @@ def _attempt_team(
     controller = case._chat_controller(directory, client if events is None else _traced(client, fixture))
     controller.assistant_lifecycle.invoke = fixture.invoke
     controller.space_id = controller.chat_turn_service.space_id = space
-    controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model))
+    controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model, effort))
     return case, Team(controller.chat_turn_service, modules), fixture
 
 
@@ -1133,6 +1133,8 @@ class Runner:
         self.variants: dict[str, object] | None = None
         self.exhausted = False
         self.trace_dir: Path | None = None
+        # The Team's reasoning effort for every attempt; None keeps Team's default.
+        self.effort: str | None = None
 
     def one(self, model: tuple[str, str, str], case: tuple[str, Callable], index: int) -> tuple[Outcome, object]:
         provider, model_id, key = model
@@ -1142,7 +1144,7 @@ class Runner:
         )
         self.meter.usage = None
         with tempfile.TemporaryDirectory() as directory:
-            settings = (provider, model_id, f"eval-{secrets.token_hex(8)}")
+            settings = (provider, model_id, f"eval-{secrets.token_hex(8)}", self.effort)
             events = None if self.trace_dir is None else []
             harness, team, fixture = _attempt_team(self.modules, directory, self.brain, settings, events)
             attempt = Attempt(team, fixture, provider, key)
@@ -1192,6 +1194,7 @@ def run(
     limits: tuple[int, float],
     only: frozenset[str],
     trace_dir: Path | None = None,
+    effort: str | None = None,
 ) -> dict:
     modules = _team_modules()
     original = modules.brain_usage.record
@@ -1201,7 +1204,7 @@ def run(
         runner.meter.add(counts)
         original(operation, provider, model, counts)
 
-    report: dict[str, object] = {"attempts_per_case": limits[0], "models": []}
+    report: dict[str, object] = {"attempts_per_case": limits[0], "effort": effort, "models": []}
     with (
         mock.patch.object(modules.local_authority, "routine_key_fingerprint", return_value=ROUTINE_KEY),
         mock.patch.object(modules.local_audit, "record_request", return_value="a" * 32),
@@ -1209,7 +1212,7 @@ def run(
         mock.patch.object(modules.brain_usage, "record", metered),
     ):
         runner = Runner(modules, brain, limits[1], limits[0])
-        runner.trace_dir = trace_dir
+        runner.trace_dir, runner.effort = trace_dir, effort
         for model in models:
             cases = []
             for case in CASES:
@@ -1264,6 +1267,9 @@ def main() -> int:
     parser.add_argument("--budget", type=float, default=BUDGET_USD)
     parser.add_argument("--only", action="append", default=[])
     parser.add_argument("--trace-dir", type=Path, help="write each attempt's whole transcript to DIR/MODEL/CASE/N.json")
+    parser.add_argument(
+        "--effort", choices=("low", "medium", "high"), help="the Team's reasoning effort; default Team's"
+    )
     args = parser.parse_args()
     if args.serve_brain:
         if args.brain_port is None or args.token_file is None:
@@ -1278,7 +1284,7 @@ def main() -> int:
     if not models or args.brain_port is None or args.token_file is None:
         raise SystemExit("name the Brain's port, its token file, and at least one key file")
     brain = (brain_served(args.brain_port), args.token_file)
-    report = run(models, brain, (args.attempts, args.budget), frozenset(args.only), args.trace_dir)
+    report = run(models, brain, (args.attempts, args.budget), frozenset(args.only), args.trace_dir, args.effort)
     print(json.dumps(report, indent=2))
     # Any miss, skipped attempt, missing model or case, or budget stop fails the run; no caller reads it as a pass.
     return 0 if report["gate"]["passed"] else 1
