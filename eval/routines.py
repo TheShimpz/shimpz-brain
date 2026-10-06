@@ -197,12 +197,39 @@ class Meter:
         self.usage = current if self.usage is None else self.usage + current
 
 
-def serve_brain(port: int, token_file: Path) -> int:
+def _log_provider_failures(log: Path) -> None:
+    """Write every provider failure the Brain maps to a 502 to ``log``, with its cause: the provider's own error.
+
+    The cause is the provider SDK's exception, whose text is the provider's error body; request headers, and so the
+    key, are never part of it.
+    """
+    import logging
+    import traceback
+
+    import runtime_errors
+
+    logging.basicConfig(filename=log, level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    original = runtime_errors.ProviderRequestError.__init__
+
+    def logged(self, *args, **kwargs) -> None:
+        cause = sys.exc_info()[1]
+        if cause is not None:
+            trace = "".join(traceback.format_exception(cause))[-4000:]
+            logging.getLogger("routine-eval").error("provider failure: %s: %s\n%s", type(cause).__name__, cause, trace)
+        original(self, *args, **kwargs)
+
+    runtime_errors.ProviderRequestError.__init__ = logged
+
+
+def serve_brain(port: int, token_file: Path, log: Path | None = None) -> int:
     """Brain's real runtime API on loopback with an in-memory checkpoint, run from Brain's own environment."""
     import agent_runtime
     import runtime_api
     import uvicorn
     from langgraph.checkpoint.memory import InMemorySaver
+
+    if log is not None:
+        _log_provider_failures(log)
 
     token = secrets.token_urlsafe(32)
     descriptor = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -1152,6 +1179,8 @@ class Runner:
                 outcome = play(attempt)
             except self.modules.local_app.ApiProblem as exc:
                 outcome = Outcome(f"team:{exc.code}")
+                # Team's mapped detail, as Admin would see it; the Brain's own cause is in its --brain-log.
+                fixture.note({"kind": "team-error", "code": exc.code, "detail": str(exc)})
             if not outcome:
                 outcome.cause = _cause(attempt, outcome.reason)
             outcome.questions = tuple(attempt.questions)
@@ -1259,6 +1288,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--validate", action="store_true")
     parser.add_argument("--serve-brain", action="store_true")
+    parser.add_argument("--brain-log", type=Path, help="with --serve-brain: log each provider failure and its cause")
     parser.add_argument("--brain-port", type=int)
     parser.add_argument("--token-file", type=Path)
     parser.add_argument("--openai-key-file", type=Path)
@@ -1277,7 +1307,7 @@ def main() -> int:
     if args.serve_brain:
         if args.brain_port is None or args.token_file is None:
             raise SystemExit("name the Brain's port and its new token file")
-        return serve_brain(args.brain_port, args.token_file)
+        return serve_brain(args.brain_port, args.token_file, args.brain_log)
     validate()
     if args.validate:
         print(json.dumps({"validated": [case for case, _play in CASES]}))
