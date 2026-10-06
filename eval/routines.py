@@ -673,8 +673,8 @@ def run(
                 cases.append(runner.case(model, case))
             report["models"].append({"provider": model[0], "model": model[1], "cases": cases})
     report["variants"] = runner.variants
-    report["gate"] = gate(report, limits[0])
     report["budget"] = runner.budget.summary()
+    report["gate"] = gate(report, limits[0])
     return report
 
 
