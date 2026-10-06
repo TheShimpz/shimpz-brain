@@ -25,47 +25,28 @@ SECRET = secrets.token_urlsafe(32)
 NO_USAGE = dict.fromkeys(model_usage.FIELDS, 0)
 
 
+def _greeter(assistant_id: str, genesis: str, summary: str) -> dict:
+    """A fresh Assistant declaring one greeting Action named hello."""
+    action = {
+        "id": "hello",
+        "summary": summary,
+        "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "additionalProperties": False},
+        "output_schema": {},
+        "authorization": False,
+        "input_files": [],
+    }
+    return {"id": assistant_id, "genesis": genesis, "actions": [action]}
+
+
 def body(**updates):
     value = {
         "thread_id": "team:hello-pulse:conversation-1",
         "team_name": "  Greeting Crew  ",
         "assistants": [
-            {
-                "id": "hello-pulse",
-                "genesis": "Combine declared greeting Actions for a friendly welcome.",
-                "actions": [
-                    {
-                        "id": "hello",
-                        "summary": "Return a greeting.",
-                        "input_schema": {
-                            "type": "object",
-                            "properties": {"name": {"type": "string"}},
-                            "additionalProperties": False,
-                        },
-                        "output_schema": {},
-                        "authorization": False,
-                        "input_files": [],
-                    }
-                ],
-            },
-            {
-                "id": "backup-greeter",
-                "genesis": "Use the backup Action only for a bounded greeting.",
-                "actions": [
-                    {
-                        "id": "hello",
-                        "summary": "Return a backup greeting.",
-                        "input_schema": {
-                            "type": "object",
-                            "properties": {"name": {"type": "string"}},
-                            "additionalProperties": False,
-                        },
-                        "output_schema": {},
-                        "authorization": False,
-                        "input_files": [],
-                    }
-                ],
-            },
+            _greeter("hello-pulse", "Combine declared greeting Actions for a friendly welcome.", "Return a greeting."),
+            _greeter(
+                "backup-greeter", "Use the backup Action only for a bounded greeting.", "Return a backup greeting."
+            ),
         ],
         "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET, "effort": "low"},
         "memories": [],
