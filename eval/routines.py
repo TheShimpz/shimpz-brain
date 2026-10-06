@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import collections
 import contextlib
+import copy
 import dataclasses
 import importlib.util
 import json
@@ -229,6 +230,17 @@ class Team:
     modules: object
 
 
+# The person's words for each output disposition, and how they recognise the agent's option for it.
+OUTPUT_WORDS = {"show": "Mostrar sempre", "changes": "Mostrar só quando mudar", "none": "Não precisa mostrar nada"}
+OUTPUT_OPTIONS = {
+    "show": r"sempre|toda|cada execu",
+    "changes": r"mud|altera",
+    "none": r"nada|não mostr|nenhum|sem mostrar",
+}
+# The whole set of topics a person states in a fully specified request.
+FULL = frozenset({"work", "zone", "frequency"})
+
+
 @dataclasses.dataclass
 class Person:
     """What the person means and how they answer: how often, the zone they mean, and what they have said so far."""
@@ -238,14 +250,23 @@ class Person:
     gap: int | None = None
     # The owner's topics not given yet, answered in this order when a question matches none of them.
     pending: list[str] = dataclasses.field(default_factory=list)
-    # Whether the person has stated how often yet, in a send or an answer.
-    stated: bool = True
     zone: str = SHIMPZ
     # How the person names the zones they mean when asked which.
     zone_words: str = "shimpz.com"
     # Whether two zones share the name, so a question about them gets the person's zone by its id.
     choosing: bool = False
     chose: bool = False
+    # What each run does with its result, as the person wants it: show, changes, or none.
+    output: str = "show"
+    # The topics the person has stated so far, in a send or an answer.
+    said: set[str] = dataclasses.field(default_factory=set)
+    # The topics the agent has asked, in order, and every question it should not have asked.
+    asked: list[str] = dataclasses.field(default_factory=list)
+    violations: list[str] = dataclasses.field(default_factory=list)
+
+    @property
+    def stated(self) -> bool:
+        return "frequency" in self.said
 
     def says(self, topic: str) -> str:
         return {
@@ -253,6 +274,7 @@ class Person:
             "frequency": self.frequency,
             "zone": self.zone_words,
             "timezone": TIMEZONE,
+            "output": OUTPUT_WORDS[self.output],
         }[topic]
 
 
@@ -353,47 +375,70 @@ def _kind(response: dict[str, object]) -> str:
 
 # What a question asks, by its own words only: each topic the person can answer, and the result's delivery, which
 # they leave to the recommended option. A bare "which" names the zone only when no topic matched.
-_HINTS: tuple[tuple[str | None, tuple[str, ...]], ...] = (
-    ("work", ("trabalho", "o que", "tarefa", "repita", "repetir", "fazer")),
+_HINTS: tuple[tuple[str, str], ...] = (
+    ("work", r"(qual|que) (trabalho|tarefa)|o que (você )?(quer|deseja|gostaria)|o que .*repet"),
     (
         "frequency",
-        (
-            *("frequ", "com que", "quando", "intervalo", "periodicidade", "horário", "horario", "quantas vezes"),
-            *("segundo", "minuto", "execuç", "limite"),
-        ),
+        r"(com que|qual|que|em qual|de quanto em quanto) (a )?(frequ|intervalo|periodicidade|horário|horario)"
+        r"|quantas vezes|quando (deve|devo|quer|a rotina)|que horas|de quanto em quanto",
     ),
-    ("zone", ("zona", "domínio", "dominio", "escopo")),
-    ("timezone", ("fuso", "timezone", "utc")),
-    (None, ("receber", "resultado", "mostrar", "notific", "mudan")),
+    ("zone", r"(qual|quais|que|de qual|para qual|em qual) (\w+ )?(zona|domínio|dominio)|identificar a zona"),
+    ("timezone", r"fuso|timezone|\butc\b"),
+    ("limits", r"limite|mínimo|minimo|não (é |são )?aceit|não está disponível|não permite|orçamento"),
+    ("output", r"receber|resultado|mostrar|notific|mudan|exib|apresent|saída|saida|ver os"),
 )
-_TOPICS = ("work", "frequency", "zone", "timezone")
+_TOPICS = ("work", "frequency", "zone", "timezone", "output")
+# Topics the agent never asks: Team owns the schedule and its limits, and the browser gives the zone.
+_FORBIDDEN = {"frequency": "asked-schedule", "timezone": "asked-timezone", "limits": "asked-limits"}
 _WHICH = ("qual", "quais")
 
 
-def _matched(text: str) -> list[str | None]:
-    return [topic for topic, words in _HINTS if any(word in text for word in words)]
+def _matched(text: str) -> list[str]:
+    return [topic for topic, pattern in _HINTS if re.search(pattern, text)]
 
 
-def _parts(question: str, person: Person) -> tuple[list[str], bool]:
-    """The person's answers to every topic the question asks, in their own order, and whether a part none covers.
-
-    The sentences that ask come first and the surrounding text counts only when they match nothing; with nothing
-    matched, the owner's next topic not given yet answers it.
-    """
-    # "Fuso horário" asks the timezone, never the hour.
-    whole = question.casefold().replace("fuso horário", "fuso").replace("fuso horario", "fuso")
+def asked_topics(question: str) -> list[str]:
+    """The topics a question asks, by its own words: the sentences that ask first, the surrounding text otherwise."""
+    # "Fuso horário" asks the timezone, never the hour; "só quando mudar" asks the output, never the time; a domain's
+    # dot never ends a sentence.
+    whole = re.sub(r"(\w)\.(\w)", r"\1\2", question.casefold())
+    whole = whole.replace("fuso horário", "fuso").replace("fuso horario", "fuso")
+    whole = re.sub(r"\b(só|somente|apenas) quando", "apenas mudan", whole)
     asked = " ".join(re.findall(r"[^.?!]*\?", whole)) or whole
     matched = _matched(asked) or _matched(whole)
-    uncovered = None in matched
-    wanted = [topic for topic in matched if topic is not None]
-    if not wanted and any(word in asked for word in _WHICH):
-        wanted = ["zone"]
+    if not matched and any(word in asked for word in _WHICH):
+        matched = ["zone"]
+    return [topic for topic in matched if topic is not None]
+
+
+def _judge_question(person: Person, topics: list[str]) -> None:
+    """Record every question the agent should not have asked: twice, a forbidden topic, or something already said."""
+    for topic in topics:
+        if topic in person.asked:
+            person.violations.append(f"asked-twice:{topic}")
+        elif topic in _FORBIDDEN:
+            person.violations.append(_FORBIDDEN[topic])
+        elif topic in person.said:
+            person.violations.append(f"already-said:{topic}")
+        person.asked.append(topic)
+
+
+def _parts(question: str, person: Person, judged: bool = True) -> tuple[list[str], bool]:
+    """The person's answers to every topic the question asks, in their own order, and whether a part none covers.
+
+    With nothing matched, the owner's next topic not given yet answers it. A question the agent asked is judged
+    against what the person already said before it is answered.
+    """
+    wanted = asked_topics(question)
+    uncovered = False
+    if judged:
+        _judge_question(person, wanted)
     if not wanted and not uncovered and person.pending:
         wanted = [person.pending[0]]
     for topic in wanted:
         if topic in person.pending:
             person.pending.remove(topic)
-    person.stated = person.stated or "frequency" in wanted
+    person.said.update(topic for topic in wanted if topic in _TOPICS)
     return [person.says(topic) for topic in _TOPICS if topic in wanted], uncovered
 
 
@@ -415,13 +460,18 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     chosen = _zone_choice(person, text, options)
     if chosen is not None:
         return chosen, clarification is not None
-    parts, uncovered = _parts(text, person)
+    # Only a question is judged: a prose reply that asks nothing is not a question.
+    parts, uncovered = _parts(text, person, judged=clarification is not None or "?" in text)
     if clarification is None:
         return "; ".join(parts) or None, False
     recommended = options[clarification["default_index"]]["label"]
-    # The person picks their own zone's option when the agent offers one, as one press sends it.
+    # The person picks the option that is their own choice when the agent offers one, as one press sends it.
     own = next((item["label"] for item in options if "Sao_Paulo" in item["label"] or "Brasília" in item["label"]), None)
-    parts = [own if part == TIMEZONE and own else part for part in parts]
+    shown = next(
+        (item["label"] for item in options if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())), None
+    )
+    replaced = {TIMEZONE: own, OUTPUT_WORDS[person.output]: shown}
+    parts = [replaced.get(part) or part for part in parts]
     return "; ".join([*parts, *([recommended] if uncovered or not parts else [])]), True
 
 
@@ -436,7 +486,7 @@ def _team_answer(person: Person, question: dict[str, object]) -> str | None:
     """The person's answer to one of Team's recoverable Routine questions, as they would type it; None if none fits."""
     code = question["code"]
     if code == "routine-schedule-unstated":
-        person.stated = True
+        person.said.add("frequency")
         return person.frequency
     if code == "routine-binding-ambiguous":
         return _target(person, list(question.get("options") or []))
@@ -581,8 +631,9 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
         ),
         ("invented-schedule", attempt.person.stated),
         ("schedule", stratum.schedule(attempt.person, card["schedule"])),
-        (f"output:{card['output']['mode']}", card["output"]["mode"] in ("show", "changes")),
+        (f"output:{card['output']['mode']}", card["output"]["mode"] == attempt.person.output),
         (binding or "binding", binding is None),
+        (attempt.person.violations[0] if attempt.person.violations else "", not attempt.person.violations),
         (f"repeated-question:{attempt.repeated[0] if attempt.repeated else ''}", not attempt.repeated),
         ("too-many-sends", len(attempt.sends) <= stratum.sends + attempt.questions.count(OVER_BUDGET)),
     )
@@ -604,20 +655,28 @@ def _judged(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> 
 
 def _replay_miss(attempt: Attempt, stratum: Stratum) -> str | None:
     """Why one replay did not run the person's work and show exactly its result from the right Action, or None."""
-    zones_meant = stratum.zones
     attempt.fixture.calls.clear()
     status, notice = attempt.replay()
-    if status != "done" or not all(map(attempt.fixture.listed, zones_meant)):
+    if status != "done" or not all(map(attempt.fixture.listed, stratum.zones)):
         return f"replay:{status}"
     output = None if notice is None else notice.detail.get("output")
+    if attempt.person.output == "none":
+        # A Routine that shows nothing completes and shows nothing.
+        shown = output is not None and output.get("state") == "shown"
+        return "replay-notice" if notice is None or notice.outcome != "done" or shown else None
     if notice is None or notice.outcome != "done" or output is None or output["state"] != "shown":
         return "replay-notice"
+    return _shown_miss(attempt, stratum, output)
+
+
+def _shown_miss(attempt: Attempt, stratum: Stratum, output: dict[str, object]) -> str | None:
+    """Why a shown result is not exactly the result of the Action the Routine shows, or None."""
     (routine,) = attempt.team.service.routine_store.load("team_1").routines
     if routine.plan["steps"][output["step"] - 1]["action"] != stratum.shows:
         return "replay-shown:step"
     if stratum.shows == "list-zones":
         return None if _shown_zone_names(output["value"]) == ZONE_SET else "replay-shown:zones"
-    if _shown_records(output["value"]) not in [_expected_records(zone) for zone in zones_meant]:
+    if _shown_records(output["value"]) not in [_expected_records(zone) for zone in stratum.zones]:
         return "replay-shown:records"
     return None
 
@@ -688,78 +747,87 @@ def _send(first: str) -> Callable[[Attempt], dict[str, object]]:
 
 
 def _person(frequency: str, gap: int | None = None, **changes) -> Callable[[], Person]:
-    return lambda: Person(frequency, gap, **changes)
+    """A fresh person for each attempt: every mutable member is copied, so no attempt sees another's answers."""
+    return lambda: Person(frequency, gap, **{key: copy.copy(value) for key, value in changes.items()})
 
 
+# Each stratum's cap is its scripted sends plus one per piece the person left out of them, the output disposition
+# included whenever they did not state it.
 STRATA = (
     Stratum(
         "owner-4-turns",
         _send("Cria uma rotina pra mim"),
-        _person("A cada 30 segundos", 30, pending=["work", "frequency", "zone"], stated=False),
+        _person("A cada 30 segundos", 30, pending=["work", "frequency", "zone"], output="show"),
         _continuous,
-        sends=4,
+        sends=5,
     ),
     Stratum(
         "plain-list",
         _send("Todo dia às 9h, liste os registros DNS de shimpz.com"),
-        _person("Todo dia às 9h"),
+        _person("Todo dia às 9h", output="changes", said=set(FULL)),
         _daily_nine,
-        sends=1,
+        sends=2,
     ),
     Stratum(
         "multi-zone",
         _send("A cada hora, liste os registros DNS de shimpz.com e de example.com"),
-        _person("A cada hora", zone_words="shimpz.com e example.com"),
+        _person("A cada hora", zone_words="shimpz.com e example.com", output="show", said=set(FULL)),
         _hourly,
         zones=(SHIMPZ, EXAMPLE),
-        sends=1,
+        sends=2,
     ),
     Stratum(
         "earlier-send-naming",
         lambda attempt: _primed(attempt, "Liste os registros DNS de shimpz.com", "Faça isso a cada hora"),
-        _person("A cada hora"),
+        _person("A cada hora", output="none", said=set(FULL)),
         _hourly,
-        sends=2,
+        sends=3,
     ),
     Stratum(
         "missing-schedule",
         _send("Cria uma rotina que liste os registros DNS de shimpz.com"),
-        _person("Todo dia às 9h", stated=False),
+        _person("Todo dia às 9h", output="changes", said={"work", "zone"}),
         _daily_nine,
-        sends=2,
+        sends=3,
     ),
     Stratum(
         "reversed-order-primed",
         lambda attempt: _primed(
             attempt, "Qual é o id da zona shimpz.com?", "A cada hora, liste os registros DNS dessa zona"
         ),
-        _person("A cada hora"),
+        _person("A cada hora", output="show", said=set(FULL)),
         _hourly,
-        sends=2,
+        sends=3,
     ),
-    Stratum("reversed-order-unprimed", _unprimed, _person("A cada hora"), _hourly, sends=2),
+    Stratum(
+        "reversed-order-unprimed",
+        _unprimed,
+        _person("A cada hora", output="changes", said=set(FULL)),
+        _hourly,
+        sends=3,
+    ),
     Stratum(
         "twin-names-at-creation",
         _send("A cada hora, liste os registros DNS de shimpz.com"),
-        _person("A cada hora", choosing=True),
+        _person("A cada hora", choosing=True, output="show", said=set(FULL)),
         _hourly,
         twin=True,
-        sends=2,
+        sends=3,
     ),
     Stratum(
         "interval-30s",
-        _send("A cada 30 segundos, liste os registros DNS de shimpz.com"),
-        _person("A cada 30 segundos", 30),
+        _send("A cada 30 segundos, liste os registros DNS de shimpz.com e me mostre sempre"),
+        _person("A cada 30 segundos", 30, output="show", said={*FULL, "output"}),
         _continuous,
         sends=1,
     ),
     Stratum(
         "interval-5s",
         _send("A cada 5 segundos, liste minhas zonas"),
-        _person("A cada 5 segundos", 5, zone_words="Todas as minhas zonas"),
+        _person("A cada 5 segundos", 5, zone_words="Todas as minhas zonas", output="none", said=set(FULL)),
         _continuous,
         zones=(),
-        sends=1,
+        sends=2,
         shows="list-zones",
     ),
 )
@@ -774,6 +842,9 @@ def _played(stratum: Stratum) -> Callable[[Attempt], Outcome]:
         if not outcome and attempt.repeated and (outcome.reason or "").startswith(("no-card", "question:")):
             # The span already held the answer Team asked for again: the attempt went nowhere because of the repeat.
             outcome.reason = f"repeated-question:{attempt.repeated[0]}"
+        elif not outcome and attempt.person.violations and (outcome.reason or "").startswith("no-card"):
+            # The agent asked what it should not have, and the attempt went nowhere.
+            outcome.reason = attempt.person.violations[0]
         return outcome
 
     return play
@@ -817,7 +888,7 @@ def _cause(attempt: Attempt, reason: str) -> str:
     shaped = _shape_cause(attempt, reason)
     if shaped is not None:
         return shaped
-    kept = ("replay-shown", "twin-", "question:", "invented-schedule", "repeated-question")
+    kept = ("replay-shown", "twin-", "question:", "invented-schedule", "repeated-question", "asked-", "already-said")
     return reason if reason.startswith(kept) else reason.split(":", 1)[0]
 
 
