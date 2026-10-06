@@ -38,6 +38,9 @@ class TeamProtocolMirrorTests(unittest.TestCase):
                 "http/v1/phrase.py",
                 "http/v1/purpose.py",
                 "http/v1/routine.py",
+                "http/v1/routine_context.py",
+                "http/v1/routine_notice.py",
+                "http/v1/routine_proposal.py",
                 "http/v1/turn.py",
             },
         )

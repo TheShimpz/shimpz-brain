@@ -78,7 +78,7 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
     calls = attempt.fixture.calls
     binding = _twin_miss(attempt, card) if stratum.twin else _selector_miss(card, stratum.zones)
     checks = (
-        ("card-invalid", attempt.team.modules.http_routine.canonical_proposal(card) == card),
+        ("card-invalid", attempt.team.modules.http_routine_proposal.canonical_proposal(card) == card),
         (
             "calls",
             any(action == "list-zones" for action, _payload in calls)

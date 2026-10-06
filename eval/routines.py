@@ -122,9 +122,9 @@ def validate() -> None:
         Draft202012Validator(actions["list-zones"]["output_schema"]).validate(value)
     for zone in (SHIMPZ, MOVED, TWIN, EXAMPLE):
         Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone))
-    from protocol.http.v1 import routine as http_routine
+    from protocol.http.v1 import routine_proposal as http_routine_proposal
 
-    if http_routine.OUTPUT_CHOICES["pt"] != OUTPUT_LABELS:
+    if http_routine_proposal.OUTPUT_CHOICES["pt"] != OUTPUT_LABELS:
         raise SystemExit("the person's output labels drifted from Team's protocol OUTPUT_CHOICES")
     if len({case for case, _play in CASES}) != len(CASES):
         raise SystemExit("case ids are not unique")
@@ -141,7 +141,7 @@ class Modules:
     local_app: object
     local_audit: object
     local_authority: object
-    http_routine: object
+    http_routine_proposal: object
     record: object
 
 
@@ -155,7 +155,7 @@ def _team_modules() -> Modules:
     from local import app as local_app
     from local import audit as local_audit
     from local import authority as local_authority
-    from protocol.http.v1 import routine as http_routine
+    from protocol.http.v1 import routine_proposal as http_routine_proposal
     from routine import record
 
     return Modules(
@@ -166,7 +166,7 @@ def _team_modules() -> Modules:
         local_app,
         local_audit,
         local_authority,
-        http_routine,
+        http_routine_proposal,
         record,
     )
 

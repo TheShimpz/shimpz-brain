@@ -21,6 +21,8 @@ import memory as team_memory
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import routine as team_routine_protocol
+from protocol.team.http.v1 import routine_context as team_routine_context
+from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 
 TOOL_NAME = "shimpz_routine"
 # Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
@@ -84,7 +86,7 @@ def valid_capacity(value: object) -> bool:
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
     """The Team's Routines as data, exactly as Team's protocol admits its listing, or a contract error."""
-    listed = team_routine_protocol.canonical_routine_listings(value)
+    listed = team_routine_context.canonical_routine_listings(value)
     if listed is None:
         raise RoutineContractError("invalid routines")
     sizes = [len(json.dumps(item["steps"], ensure_ascii=False, separators=(",", ":")).encode()) for item in listed]
@@ -95,12 +97,12 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
 
 def canonical_question(value: object) -> dict[str, object] | None:
     """The Routine question Team asked the person in this recording, as Team's closed form, or None."""
-    return team_routine_protocol.canonical_question(value)
+    return team_routine_proposal.canonical_question(value)
 
 
 def canonical_rerun(value: object) -> tuple[dict[str, object], ...] | None:
     """The work Team asks the agent to run again before it records, as Team's closed form, or None."""
-    work = team_routine_protocol.canonical_rerun(value)
+    work = team_routine_context.canonical_rerun(value)
     return None if work is None else tuple(work)
 
 
