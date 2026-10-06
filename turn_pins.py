@@ -22,6 +22,7 @@ ROUTINES_METADATA = "shimpz_turn_routines"
 QUESTION_METADATA = "shimpz_turn_routine_question"
 MODE_METADATA = "shimpz_turn_routine_mode"
 RERUN_METADATA = "shimpz_turn_routine_rerun"
+CAPACITY_METADATA = "shimpz_turn_routine_capacity"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
 MESSAGE_METADATA = "shimpz_turn_message"
@@ -138,6 +139,25 @@ def restore_routine_mode(metadata: Mapping[str, object]) -> tuple[bool, tuple[di
     if (decoded is not None and work is None) or _json(None if work is None else list(work)) != rerun:
         raise PinError("recorded turn pins are invalid")
     return mode == "true", work
+
+
+def record_capacity(capacity: int | None) -> dict[str, str]:
+    """The checkpoint entry holding the daily Action steps Team left a new Routine, pinned with the listing."""
+    return {CAPACITY_METADATA: _json(capacity)}
+
+
+def restore_capacity(metadata: Mapping[str, object]) -> int | None:
+    """The exact capacity a start recorded; anything else is corrupt state."""
+    value = metadata.get(CAPACITY_METADATA)
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        decoded = json.loads(value)
+    except ValueError as exc:
+        raise PinError("recorded turn pins are invalid") from exc
+    if (decoded is not None and not team_routine.valid_capacity(decoded)) or _json(decoded) != value:
+        raise PinError("recorded turn pins are invalid")
+    return decoded
 
 
 def record_turn(locale: str | None, message_id: str | None) -> dict[str, str]:

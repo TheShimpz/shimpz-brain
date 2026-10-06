@@ -430,6 +430,42 @@ class RoutineModeTests(unittest.TestCase):
         self.assertIn("The Team needs this work run again", system)
 
 
+class ContinuationFrameTests(unittest.TestCase):
+    """A resume as Team sends it: no listing, no capacity, no mode, the Team's configured model (ADR-0101)."""
+
+    @staticmethod
+    def _team_resume(model: str = "gpt-6-luna") -> agent_runtime.TurnContext:
+        provider = dataclasses.replace(context().provider, model=model)
+        return dataclasses.replace(
+            context(), provider=provider, memories=(), routines=None, routine_capacity=None, locale="pt"
+        )
+
+    def test_a_team_continuation_restores_the_listing_and_capacity_its_start_pinned(self):
+        seen: list[agent_runtime.ProviderConfig] = []
+        RecordingToolAwareFakeModel.seen_messages = []
+        model = RecordingToolAwareFakeModel(
+            responses=[AIMessage(content="", tool_calls=[_action()]), AIMessage(content="", tool_calls=[_call()])]
+        )
+
+        def factory(config):
+            seen.append(config)
+            return model
+
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=factory)
+        started = dataclasses.replace(_chat([LISTED]), routine_mode=True)
+        suspended = runtime.start(started, envelope(MESSAGE))
+        finished = runtime.resume(self._team_resume(), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
+        self.assertEqual(finished.status, "completed")
+        self.assertIn("If this message asks for a Routine", _system(model.seen_messages[-1]))
+
+    def test_the_capacity_pin_refuses_corrupt_state(self):
+        self.assertEqual(turn_pins.restore_capacity(turn_pins.record_capacity(None)), None)
+        self.assertEqual(turn_pins.restore_capacity(turn_pins.record_capacity(20_000)), 20_000)
+        for value in (None, "x", "-1", "true", "20000.0", "999999999"):
+            with self.subTest(capacity=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_capacity({turn_pins.CAPACITY_METADATA: value})
+
+
 class PromptPinAndEndpointTests(unittest.TestCase):
     def test_a_pending_question_is_pinned_for_the_logical_turn(self):
         for question in (None, QUESTION):

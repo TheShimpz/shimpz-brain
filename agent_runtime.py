@@ -323,6 +323,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
         question = turn_pins.restore_question(metadata)
         mode, rerun = turn_pins.restore_routine_mode(metadata)
+        capacity = turn_pins.restore_capacity(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         commitment, charge = turn_pins.restore_attachments(metadata)
     except turn_pins.PinError as exc:
@@ -336,6 +337,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         memories=rules,
         skills=skills,
         routines=routines,
+        routine_capacity=capacity,
         routine_question=question,
         routine_mode=mode,
         routine_rerun=rerun,
@@ -587,6 +589,7 @@ class AgentRuntime:
                 ),
                 **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
+                **turn_pins.record_capacity(context.routine_capacity),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_attachments(
                     turn_attachments.commitment(context.attachments), context.attachment_charge
