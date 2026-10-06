@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
+from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import urlsplit
 
 from eval.fixtures import ASSISTANTS, Action
@@ -105,6 +106,11 @@ def ledgered(
 def title(value: object) -> str:
     """A title the user quoted is exact: the oracle compares it literally, case, spacing, and characters included."""
     return str(value)
+
+
+def money(value: object) -> str:
+    """An amount as the fresh strata store it: rounded half up to whole cents."""
+    return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def _fqdn(name: object, zone: str) -> str:

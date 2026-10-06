@@ -18,7 +18,6 @@ from __future__ import annotations
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping
-from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
 from eval.corpus import scenarios, stratum_digest, validate_ids, validate_stratum
@@ -363,10 +362,6 @@ NO_EFFECT_CODES = world.NO_EFFECT_CODES | frozenset(
 _Result = tuple[dict[str, object], str | None]
 
 
-def _money(value: object) -> str:
-    return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-
-
 def _fold(value: object) -> str:
     """Case- and accent-insensitive text for name searches."""
     text = unicodedata.normalize("NFKD", str(value).strip().casefold())
@@ -458,7 +453,7 @@ class FreshWorld(world.World):
             raise world.ActionFailedError("invalid-end-date")
         item["end_date"] = end
         if "new_monthly_rent" in arguments:
-            item["monthly_rent"] = _money(arguments["new_monthly_rent"])
+            item["monthly_rent"] = world.money(arguments["new_monthly_rent"])
         return {"lease": self._lease_view(key)}, f"lease:{key}:end_date"
 
     def _property_update_tenant_contact(self, arguments: Mapping[str, object]) -> _Result:
@@ -525,7 +520,7 @@ class FreshWorld(world.World):
             "priority": str(arguments.get("priority", "normal")),
             "preferred_date": preferred,
             "access_notes": str(arguments.get("access_notes", "")),
-            "cost_cap": _money(arguments["cost_cap"]) if "cost_cap" in arguments else "",
+            "cost_cap": world.money(arguments["cost_cap"]) if "cost_cap" in arguments else "",
             "notify_tenant": bool(arguments.get("notify_tenant", False)),
             "status": "open",
             "visit_date": preferred or _CONTRACTORS[contractor][4],
@@ -545,7 +540,7 @@ class FreshWorld(world.World):
         key = self._open_work_order(arguments)
         item = self.work_orders[key]
         item["status"] = "completed"
-        item["final_cost"] = _money(arguments["final_cost"])
+        item["final_cost"] = world.money(arguments["final_cost"])
         item["invoice_number"] = str(arguments.get("invoice_number", ""))
         return {"work_order": self._work_order_view(key)}, f"workorder:{key}:status"
 
@@ -602,7 +597,7 @@ class FreshWorld(world.World):
         key = self._new("trf")
         self.transfers[key] = {
             "payee_id": payee,
-            "amount": _money(arguments["amount"]),
+            "amount": world.money(arguments["amount"]),
             "reference": str(arguments.get("reference", "")),
             "execution_date": execution,
             "instant": instant,

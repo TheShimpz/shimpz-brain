@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
 from eval.corpus import scenarios, stratum_digest, validate_stratum
@@ -297,10 +296,6 @@ NO_EFFECT_CODES = world.NO_EFFECT_CODES | frozenset(
 _Result = tuple[dict[str, object], str | None]
 
 
-def _money(value: object) -> str:
-    return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-
-
 def _contains(text: object, *fields: object) -> bool:
     """A plain API's search: a case-insensitive substring match, nothing more."""
     needle = str(text).strip().casefold()
@@ -385,7 +380,7 @@ class FreshWorld(world.World):
 
     def _recipes_set_price(self, arguments: Mapping[str, object]) -> _Result:
         key = self._known(self.recipes, arguments.get("recipe_id"), "recipe-not-found")
-        self.recipes[key]["price"] = _money(arguments["price"])
+        self.recipes[key]["price"] = world.money(arguments["price"])
         return {"recipe": {"id": key, **self.recipes[key]}}, f"recipe:{key}:price"
 
     # Rentals.

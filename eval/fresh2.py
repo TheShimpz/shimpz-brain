@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
 from eval.corpus import LOCALES, Template, scenarios, stratum_digest, validate_stratum
@@ -244,10 +243,6 @@ def _cost(weight_grams: int, service: str) -> str:
     return f"{cents // 100}.{cents % 100:02d}"
 
 
-def _money(value: object) -> str:
-    return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-
-
 class FreshWorld(world.World):
     """The precision World, unchanged, plus the state and behavior of the three new Assistants."""
 
@@ -415,7 +410,7 @@ class FreshWorld(world.World):
         self.expenses[key] = {
             "description": world.title(arguments["description"]),
             "date": str(arguments["date"]),
-            "amount": _money(arguments["amount"]),
+            "amount": world.money(arguments["amount"]),
             "currency": str(arguments["currency"]),
             "category": str(arguments["category"]),
             "paid_with": str(arguments.get("paid_with", "company-card")),
