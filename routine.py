@@ -85,8 +85,10 @@ SCHEMA = {
 DESCRIPTION = (
     "Record the work you just ran in this turn as a Routine the Team repeats on a schedule. Call it only when the "
     "person asks for work to recur or to change a listed Routine, only after you ran exactly that work once in this "
-    "turn, and alone in your response. It ends the turn; the Team then shows the person a card to confirm, so never "
-    "say a Routine was created."
+    "turn, and alone in your response. It takes no schedule or timezone: the Team reads how often from the person's "
+    "own words (any interval from 5 seconds to one day, at most ceil(86400 / interval) runs a day) in the person's "
+    "own timezone, and asks the person itself when something is missing or does not fit. It ends the turn; the "
+    "Team then shows the person a card to confirm, so never say a Routine was created."
 )
 # How a call outside the closed shape is answered: nothing was recorded, and the model may call again.
 _NOT_DONE = "Not done: nothing was recorded. "
