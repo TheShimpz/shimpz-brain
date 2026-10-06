@@ -14,11 +14,7 @@ class ProviderModelTests(unittest.TestCase):
         for provider, models in agent_runtime.MODELS_BY_PROVIDER.items():
             for model in models:
                 with self.subTest(provider=provider, model=model):
-                    config = agent_runtime.ProviderConfig(
-                        provider=provider,
-                        model=model,
-                        api_key="secret-test-key",
-                    )
+                    config = agent_runtime.ProviderConfig(provider, model, "secret-test-key")
                     self.assertEqual((config.provider, config.model), (provider, model))
 
         for provider, model in (
@@ -40,11 +36,7 @@ class ProviderModelTests(unittest.TestCase):
             for provider, models in agent_runtime.MODELS_BY_PROVIDER.items():
                 with self.subTest(provider=provider):
                     provider_client.provider_model(
-                        agent_runtime.ProviderConfig(
-                            provider=provider,
-                            model=next(iter(models)),
-                            api_key="secret-test-key",
-                        )
+                        agent_runtime.ProviderConfig(provider, next(iter(models)), "secret-test-key")
                     )
 
         openai.assert_called_once()
@@ -61,27 +53,9 @@ class ProviderModelTests(unittest.TestCase):
             ),
         ):
             factory = provider_client.ProviderModelFactory()
-            factory(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6.1-sol",
-                    api_key="first-secret-key",
-                )
-            )
-            factory(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6.1-sol",
-                    api_key="second-secret-key",
-                )
-            )
-            factory.decision(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6.1-sol",
-                    api_key="decision-secret-key",
-                )
-            )
+            factory(agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "first-secret-key"))
+            factory(agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "second-secret-key"))
+            factory.decision(agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "decision-secret-key"))
             factory.close()
 
         first, second, decision = constructor.call_args_list
@@ -99,19 +73,9 @@ class ProviderModelTests(unittest.TestCase):
             mock.patch.object(provider_client, "_action_chat_openai", return_value=(openai := mock.Mock())),
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
+            provider_client.provider_model(agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "secret-test-key"))
             provider_client.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6.1-sol",
-                    api_key="secret-test-key",
-                )
-            )
-            provider_client.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="anthropic",
-                    model="claude-sonnet-5-5",
-                    api_key="secret-test-key",
-                )
+                agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
             )
 
         self.assertTrue(openai.call_args.kwargs["use_responses_api"])
@@ -127,19 +91,11 @@ class ProviderModelTests(unittest.TestCase):
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             provider_client.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="openai",
-                    model="gpt-6-luna",
-                    api_key="secret-test-key",
-                ),
+                agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"),
                 decision=True,
             )
             provider_client.provider_model(
-                agent_runtime.ProviderConfig(
-                    provider="anthropic",
-                    model="claude-sonnet-5-5",
-                    api_key="secret-test-key",
-                ),
+                agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key"),
                 decision=True,
             )
 
