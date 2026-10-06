@@ -524,6 +524,26 @@ class RoutineModeTests(unittest.TestCase):
                     context(), routines=routines, routine_capacity=None if routines is None else 20_000, **changes
                 )
 
+    def test_the_prompt_adds_the_routine_mode_and_rerun_sections_only_when_sent(self):
+        runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
+        runtime.start(dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN), envelope("Sim"))
+        system = _system(model.seen_messages[-1])
+        self.assertIn("If this message asks for a Routine", system)
+        self.assertIn("use it to run other Actions", system)
+        self.assertIn("The Team needs this work run again exactly as listed", system)
+        self.assertIn(json.dumps(list(RERUN), ensure_ascii=False), system)
+        runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
+        runtime.start(_chat(), envelope("Oi"))
+        system = _system(model.seen_messages[-1])
+        self.assertNotIn("If this message asks for a Routine", system)
+        self.assertNotIn("The Team needs this work run again", system)
+
+    def test_the_routine_mode_section_can_be_switched_off_for_measurement(self):
+        runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
+        with mock.patch.dict("os.environ", {"SHIMPZ_ROUTINE_MODE_PROMPT": "off"}):
+            runtime.start(dataclasses.replace(_chat(), routine_mode=True), envelope("Sim"))
+        self.assertNotIn("If this message asks for a Routine", _system(model.seen_messages[-1]))
+
     def test_the_mode_and_rerun_are_pinned_for_the_logical_turn(self):
         for mode, rerun in ((False, None), (True, RERUN)):
             with self.subTest(mode=mode):
@@ -540,6 +560,17 @@ class RoutineModeTests(unittest.TestCase):
         ):
             with self.subTest(key=key, value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore_routine_mode({**pins, key: value})
+
+    def test_a_resumed_turn_keeps_the_mode_and_rerun_its_start_pinned(self):
+        runtime, model = GraphTests._runtime(
+            None, AIMessage(content="", tool_calls=[_action()]), AIMessage(content="Ok.")
+        )
+        started = dataclasses.replace(_chat([LISTED]), routine_mode=True, routine_rerun=RERUN)
+        suspended = runtime.start(started, envelope("Sim"))
+        runtime.resume(_chat([LISTED]), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
+        system = _system(model.seen_messages[-1])
+        self.assertIn("If this message asks for a Routine", system)
+        self.assertIn("The Team needs this work run again", system)
 
 
 class PromptPinAndEndpointTests(unittest.TestCase):

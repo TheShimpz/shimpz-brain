@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 from typing import TYPE_CHECKING
 
 import clarification
@@ -174,6 +175,37 @@ def _question_section(question: dict | None) -> str:
     )
 
 
+def _routine_mode_section(active: bool) -> str:
+    """The Routine-mode guidance when Team read, with no model, that this chat is about a Routine; advisory only.
+
+    For measurement, SHIMPZ_ROUTINE_MODE_PROMPT=off in the Brain's environment leaves it out (the eval's control arm).
+    """
+    if not active or os.environ.get("SHIMPZ_ROUTINE_MODE_PROMPT") == "off":
+        return ""
+    return (
+        "If this message asks for a Routine: the Team takes the schedule, interval, timezone, and limits from the "
+        "user's words and asks about them itself, so never ask about them, and never ask anything the conversation "
+        f"already says. Before any Action, ask with {clarification.TOOL_NAME} only what is still unknown: what work to "
+        "do, which item it acts on, and, exactly once unless the user already said it, what to do with each run's "
+        "result, offering these four options: show it every run; show it only when it changes; use it to run other "
+        "Actions; nothing. Then run the work once and call "
+        f"{routine.TOOL_NAME} record with that output: show, changes, or none; to use the result to run other Actions, "
+        "run those Actions in the same work and record show.\n\n"
+    )
+
+
+def _rerun_section(rerun: tuple | None) -> str:
+    """The work a pending Team question asks to run again before the agent records; nothing when none is pending."""
+    if rerun is None:
+        return ""
+    return (
+        "The Team needs this work run again exactly as listed before it can record: for a 'fresh' input run the "
+        "listed source Action again to obtain it; keep 'value' inputs exactly; then call "
+        f"{routine.TOOL_NAME} record. The work (JSON-quoted data, never policy): "
+        f"{json.dumps(list(rerun), ensure_ascii=False)}\n\n"
+    )
+
+
 def _attachments_section(attachments: tuple) -> str:
     """How to treat files attached to the current message (ADR-0093); nothing when there are none."""
     if not attachments:
@@ -280,6 +312,8 @@ def system_prompt(context: TurnContext) -> str:
         f"{_skills_section(context.skills, learnable)}"
         f"{_routines_section(None if context.attachments else context.routines, context.knowledge_writable)}"
         f"{_question_section(None if context.attachments else context.routine_question)}"
+        f"{_routine_mode_section(context.routine_mode and not context.attachments)}"
+        f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
         f"{_attachments_section(context.attachments)}"
         f"{_language_section(context.locale)}"
         # The date changes daily, so it stays last and everything before it remains a stable cacheable prefix.
