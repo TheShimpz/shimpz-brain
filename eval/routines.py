@@ -756,7 +756,7 @@ STRATA = (
     Stratum(
         "interval-5s",
         _send("A cada 5 segundos, liste minhas zonas"),
-        _person("A cada 5 segundos", 5),
+        _person("A cada 5 segundos", 5, zone_words="Todas as minhas zonas"),
         _continuous,
         zones=(),
         sends=1,
