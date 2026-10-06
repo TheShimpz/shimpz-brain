@@ -43,6 +43,25 @@ QUESTION = {
     "value": None,
 }
 
+RERUN = (
+    {
+        "assistant": "hello-pulse",
+        "action": "hello",
+        "count": 2,
+        "inputs": [
+            {"member": "name", "kind": "value", "value": '"ana"', "chosen": True, "source": None},
+            {"member": "day", "kind": "clock", "value": None, "chosen": False, "source": None},
+            {
+                "member": "zone",
+                "kind": "fresh",
+                "value": None,
+                "chosen": False,
+                "source": {"assistant": "hello-pulse", "action": "list"},
+            },
+        ],
+    },
+)
+
 
 def _args(**changes) -> dict:
     fields = {
@@ -447,6 +466,82 @@ class PendingQuestionTests(unittest.TestCase):
         return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
 
 
+class RoutineModeTests(unittest.TestCase):
+    def test_a_rerun_is_closed_team_data(self):
+        self.assertEqual(routine.canonical_rerun(list(RERUN)), RERUN)
+        entry, value = RERUN[0], RERUN[0]["inputs"][0]
+        clock, fresh = RERUN[0]["inputs"][1], RERUN[0]["inputs"][2]
+        withheld = {**value, "value": None}
+        listed = {**value, "member": "other", "value": '["a", {"b": 1}]', "chosen": False}
+        self.assertEqual(routine.canonical_rerun([{**entry, "inputs": [withheld, listed]}])[0]["inputs"][1], listed)
+        for rerun in (
+            None,
+            {},
+            [],
+            [entry] * (routine.MAX_STEPS + 1),
+            [{**entry, "extra": 1}],
+            [{**entry, "assistant": "Bad Id"}],
+            [{**entry, "action": ""}],
+            [{**entry, "count": 0}],
+            [{**entry, "count": True}],
+            [{**entry, "count": routine.MAX_STEPS + 1}],
+            [entry, {**entry, "count": routine.MAX_STEPS - 1}],
+            [{**entry, "inputs": "x"}],
+            [{**entry, "inputs": [value] * 2}],
+            [{**entry, "inputs": [{**value, "member": f"m{index}"} for index in range(routine.MAX_STEP_INPUTS + 1)]}],
+            [{**entry, "inputs": [{**value, "member": ""}]}],
+            [{**entry, "inputs": [{**value, "member": "a\nb"}]}],
+            [{**entry, "inputs": [{**value, "member": "m" * 129}]}],
+            [{**entry, "inputs": [{**value, "kind": "other"}]}],
+            [{**entry, "inputs": [{**value, "value": "not json"}]}],
+            [{**entry, "inputs": [{**value, "value": '"a"  '}]}],
+            [{**entry, "inputs": [{**value, "value": '"' + "x" * 1023 + '"'}]}],
+            [{**entry, "inputs": [{**value, "value": 1}]}],
+            [{**entry, "inputs": [{**value, "chosen": 1}]}],
+            [{**entry, "inputs": [{**value, "source": fresh["source"]}]}],
+            [{**entry, "inputs": [{**clock, "value": '"x"'}]}],
+            [{**entry, "inputs": [{**clock, "chosen": True}]}],
+            [{**entry, "inputs": [{**fresh, "source": {"assistant": "hello-pulse"}}]}],
+            [{**entry, "inputs": [{**fresh, "source": {"assistant": "Bad Id", "action": "list"}}]}],
+            [{**entry, "inputs": [{**fresh, "source": "list"}]}],
+            [{**entry, "inputs": [{k: v for k, v in value.items() if k != "chosen"}]}],
+        ):
+            with self.subTest(rerun=str(rerun)[:80]):
+                self.assertIsNone(routine.canonical_rerun(rerun))
+
+    def test_only_a_recording_chat_turn_carries_a_mode_or_a_rerun(self):
+        chat = dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN)
+        self.assertEqual((chat.routine_mode, chat.routine_rerun), (True, RERUN))
+        for changes, error in (
+            ({"routine_mode": True}, "invalid Routine mode"),
+            ({"routine_mode": 1, "routines": ()}, "invalid Routine mode"),
+            ({"routine_rerun": RERUN}, "invalid Routine rerun"),
+            ({"routine_rerun": ({"assistant": "x"},), "routines": ()}, "invalid Routine rerun"),
+        ):
+            routines = changes.pop("routines", None)
+            with self.subTest(changes=changes), self.assertRaisesRegex(agent_runtime.RuntimeContractError, error):
+                dataclasses.replace(
+                    context(), routines=routines, routine_capacity=None if routines is None else 20_000, **changes
+                )
+
+    def test_the_mode_and_rerun_are_pinned_for_the_logical_turn(self):
+        for mode, rerun in ((False, None), (True, RERUN)):
+            with self.subTest(mode=mode):
+                pins = turn_pins.record_routine_mode(mode, rerun)
+                self.assertEqual(turn_pins.restore_routine_mode(pins), (mode, rerun))
+        pins = turn_pins.record_routine_mode(True, RERUN)
+        for key, value in (
+            (turn_pins.MODE_METADATA, None),
+            (turn_pins.MODE_METADATA, "1"),
+            (turn_pins.RERUN_METADATA, None),
+            (turn_pins.RERUN_METADATA, "not json"),
+            (turn_pins.RERUN_METADATA, '[{"assistant": "x"}]'),
+            (turn_pins.RERUN_METADATA, json.dumps([dict(reversed(list(RERUN[0].items())))], ensure_ascii=False)),
+        ):
+            with self.subTest(key=key, value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_routine_mode({**pins, key: value})
+
+
 class PromptPinAndEndpointTests(unittest.TestCase):
     def test_a_pending_question_is_pinned_for_the_logical_turn(self):
         for question in (None, QUESTION):
@@ -493,6 +588,8 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             ("knowledge_writable", "yes"),
             ("routine_earlier", ["a"]),
             ("routine_question", {"code": "routine-no-room", "options": [], "value": None}),
+            ("routine_mode", "yes"),
+            ("routine_rerun", [{"assistant": "x"}]),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)

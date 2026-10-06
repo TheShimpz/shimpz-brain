@@ -196,6 +196,10 @@ class TurnContext:
     routine_capacity: int | None = None
     # The question Team asked the person about this recording, pinned like Routines; None when none is pending.
     routine_question: dict[str, object] | None = None
+    # Whether Team read, with no model, that this chat is about a Routine (advisory), and the work a pending unsourced
+    # or rerun question asks to run again; both pinned like the question (ADR-0101).
+    routine_mode: bool = False
+    routine_rerun: tuple[dict[str, object], ...] | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
@@ -243,6 +247,13 @@ def _admit_knowledge(context: TurnContext) -> None:
             object.__setattr__(context, "skills", team_memory.canonical_skills(context.skills))
         except team_memory.MemoryContractError as exc:
             raise RuntimeContractError("invalid skills") from exc
+    _admit_routines(context)
+    if type(context.knowledge_writable) is not bool:
+        raise RuntimeContractError("invalid knowledge scope")
+
+
+def _admit_routines(context: TurnContext) -> None:
+    """Canonicalize the turn's Routines and what Team sends about a recording in place, refusing anything invalid."""
     if context.routines is not None:
         try:
             object.__setattr__(context, "routines", team_routine.canonical_routines(context.routines))
@@ -257,8 +268,13 @@ def _admit_knowledge(context: TurnContext) -> None:
         if question is None:
             raise RuntimeContractError("invalid Routine question")
         object.__setattr__(context, "routine_question", question)
-    if type(context.knowledge_writable) is not bool:
-        raise RuntimeContractError("invalid knowledge scope")
+    if type(context.routine_mode) is not bool or (context.routine_mode and context.routines is None):
+        raise RuntimeContractError("invalid Routine mode")
+    if context.routine_rerun is not None:
+        rerun = None if context.routines is None else team_routine.canonical_rerun(context.routine_rerun)
+        if rerun is None:
+            raise RuntimeContractError("invalid Routine rerun")
+        object.__setattr__(context, "routine_rerun", rerun)
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,6 +322,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
     try:
         turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
         question = turn_pins.restore_question(metadata)
+        mode, rerun = turn_pins.restore_routine_mode(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         commitment, charge = turn_pins.restore_attachments(metadata)
     except turn_pins.PinError as exc:
@@ -320,6 +337,8 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         skills=skills,
         routines=routines,
         routine_question=question,
+        routine_mode=mode,
+        routine_rerun=rerun,
         knowledge_writable=writable,
         locale=locale,
         turn_message_id=turn_message_id,
@@ -567,6 +586,7 @@ class AgentRuntime:
                     context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
                 ),
                 **turn_pins.record_question(context.routine_question),
+                **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_attachments(
                     turn_attachments.commitment(context.attachments), context.attachment_charge

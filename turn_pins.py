@@ -20,6 +20,8 @@ MEMORY_METADATA = "shimpz_turn_memory"
 SKILLS_METADATA = "shimpz_turn_skills"
 ROUTINES_METADATA = "shimpz_turn_routines"
 QUESTION_METADATA = "shimpz_turn_routine_question"
+MODE_METADATA = "shimpz_turn_routine_mode"
+RERUN_METADATA = "shimpz_turn_routine_rerun"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
 MESSAGE_METADATA = "shimpz_turn_message"
@@ -116,6 +118,26 @@ def restore_question(metadata: Mapping[str, object]) -> dict[str, object] | None
     if (decoded is not None and question is None) or _json(question) != value:
         raise PinError("recorded turn pins are invalid")
     return question
+
+
+def record_routine_mode(mode: bool, rerun: tuple[dict[str, object], ...] | None) -> dict[str, str]:
+    """The checkpoint entries holding whether the turn is about a Routine and the work Team asked to run again."""
+    return {MODE_METADATA: _json(mode), RERUN_METADATA: _json(None if rerun is None else list(rerun))}
+
+
+def restore_routine_mode(metadata: Mapping[str, object]) -> tuple[bool, tuple[dict[str, object], ...] | None]:
+    """The exact Routine mode and rerun a start recorded; anything else is corrupt state."""
+    mode, rerun = metadata.get(MODE_METADATA), metadata.get(RERUN_METADATA)
+    try:
+        if not isinstance(rerun, str) or mode not in {"true", "false"}:
+            raise ValueError
+        decoded = json.loads(rerun)
+    except ValueError as exc:
+        raise PinError("recorded turn pins are invalid") from exc
+    work = None if decoded is None else team_routine.canonical_rerun(decoded)
+    if (decoded is not None and work is None) or _json(None if work is None else list(work)) != rerun:
+        raise PinError("recorded turn pins are invalid")
+    return mode == "true", work
 
 
 def record_turn(locale: str | None, message_id: str | None) -> dict[str, str]:

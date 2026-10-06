@@ -21,6 +21,7 @@ import clarification
 import memory as team_memory
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import identifiers as team_identifiers
 
 TOOL_NAME = "shimpz_routine"
 MAX_ROUTINES = 8
@@ -172,6 +173,77 @@ def canonical_question(value: object) -> dict[str, object] | None:
     if not valid:
         return None
     return {"code": code, "options": [dict(item) for item in options], "value": interval}
+
+
+# The work a pending unsourced or rerun question asks to run again, mirrored from Team's Brain context (ADR-0101):
+# each entry one call or ``count`` consecutive identical ones, each input a literal Team shows as exact JSON text (or
+# withholds), the run date, or a value a source Action must return again.
+RERUN_KINDS = ("value", "clock", "fresh")
+MAX_STEP_INPUTS = 64
+MAX_MEMBER_CHARS = 128
+MAX_RERUN_LITERAL_CHARS = 1024
+_RERUN_FIELDS = frozenset({"assistant", "action", "count", "inputs"})
+_RERUN_INPUT_FIELDS = frozenset({"member", "kind", "value", "chosen", "source"})
+
+
+def _action_ref(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"assistant", "action"}
+        and team_identifiers.canonical_assistant_id(value["assistant"]) == value["assistant"]
+        and team_identifiers.canonical_action_id(value["action"]) == value["action"]
+    )
+
+
+def _literal(text: object) -> bool:
+    """A value Team shows as its exact JSON text, as Team writes it, within its bound."""
+    if not isinstance(text, str) or len(text) > MAX_RERUN_LITERAL_CHARS:
+        return False
+    try:
+        return json.dumps(json.loads(text), ensure_ascii=False) == text
+    except ValueError:
+        return False
+
+
+def _rerun_input(value: object) -> bool:
+    if not isinstance(value, dict) or set(value) != _RERUN_INPUT_FIELDS or value["kind"] not in RERUN_KINDS:
+        return False
+    member, kind = value["member"], value["kind"]
+    return (
+        isinstance(member, str)
+        and 0 < len(member) <= MAX_MEMBER_CHARS
+        and _UNSAFE_RE.search(member) is None
+        and type(value["chosen"]) is bool
+        and (value["value"] is None or (kind == "value" and _literal(value["value"])))
+        and (kind == "value" or value["chosen"] is False)
+        and (value["source"] is None or (kind == "fresh" and _action_ref(value["source"])))
+    )
+
+
+def _rerun_entry(value: object) -> bool:
+    if not isinstance(value, dict) or set(value) != _RERUN_FIELDS:
+        return False
+    inputs = value["inputs"]
+    return (
+        _action_ref({"assistant": value["assistant"], "action": value["action"]})
+        and _whole(value["count"], 1, MAX_STEPS)
+        and isinstance(inputs, list)
+        and len(inputs) <= MAX_STEP_INPUTS
+        and all(_rerun_input(item) for item in inputs)
+        and len({item["member"] for item in inputs}) == len(inputs)
+    )
+
+
+def canonical_rerun(value: object) -> tuple[dict[str, object], ...] | None:
+    """The work Team asks the agent to run again before it records, as Team's closed form, or None."""
+    if (
+        not isinstance(value, list | tuple)
+        or not 0 < len(value) <= MAX_STEPS
+        or not all(_rerun_entry(item) for item in value)
+        or sum(item["count"] for item in value) > MAX_STEPS
+    ):
+        return None
+    return tuple(json.loads(json.dumps(item, ensure_ascii=False)) for item in value)
 
 
 def valid_capacity(value: object) -> bool:

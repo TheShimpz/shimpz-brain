@@ -72,6 +72,8 @@ def body(**updates):
         "routines": [],
         "routine_capacity": 20_000,
         "routine_question": None,
+        "routine_mode": False,
+        "routine_rerun": None,
         "knowledge_writable": True,
         "attachments": [],
         "message": "Hello",
