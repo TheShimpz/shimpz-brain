@@ -295,8 +295,9 @@ class ActionLabelsInput(ClosedInput):
 
 
 class RoutineInput(ClosedInput):
+    """The held run's Routine, by its name."""
+
     name: str = Field(min_length=1, max_length=80)
-    request: str = Field(min_length=1, max_length=500)
 
 
 class RoutineStepInput(ClosedInput):
@@ -317,7 +318,6 @@ class RoutineRecoveryInput(ClosedInput):
     def runtime_request(self) -> routine_recovery.RecoveryRequest:
         return routine_recovery.RecoveryRequest(
             self.routine.name,
-            self.routine.request,
             self.step.assistant,
             self.step.action,
             self.proof,

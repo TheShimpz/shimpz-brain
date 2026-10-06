@@ -1,7 +1,7 @@
 """The Brain's one decision in a held Routine run's automatic recovery (ADR-0092 section 6).
 
 Team asks only after its own evidence proved the failed step had no business effect. The model reads the Routine's
-name and request, the step's Assistant Action, and the step's sanitized failure diagnostics, all as untrusted data, and
+name, the step's Assistant Action, and the step's sanitized failure diagnostics, all as untrusted data, and
 chooses exactly one of: ``retry`` the same step once with its unchanged input, ``ask`` the person through the recovery
 card, or ``pause`` the Routine. It has no tools, history, memory, Skills, Actions, or authority: Team decides whether a
 retry is permitted at all, and repeats only the same logical operation with the same payload. One structured call with
@@ -29,7 +29,6 @@ MAX_DIAGNOSTICS = 8
 @dataclass(frozen=True, slots=True)
 class RecoveryRequest:
     name: str
-    request: str
     assistant: str
     action: str
     proof: Literal["not_occurred", "no_effect"]
@@ -56,7 +55,7 @@ def _prompt(request: RecoveryRequest) -> list[object]:
         f"only one JSON object with exactly one key named decision. The user's language is {language}."
     )
     payload = {
-        "routine": {"name": request.name, "request": request.request},
+        "routine": {"name": request.name},
         "step": {"assistant": request.assistant, "action": request.action},
         "team_proof": request.proof,
         "diagnostics": list(request.diagnostics[:MAX_DIAGNOSTICS]),

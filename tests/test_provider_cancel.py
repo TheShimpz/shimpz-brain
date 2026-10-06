@@ -512,7 +512,7 @@ class RecoveryDisconnectTests(unittest.TestCase):
         payload = {
             "provider": {"provider": "openai", "model": "gpt-6-luna", "api_key": "secret-test-key"},
             "locale": "pt",
-            "routine": {"name": "Daily DNS", "request": "Check DNS daily"},
+            "routine": {"name": "Daily DNS"},
             "step": {"assistant": "dns", "action": "create-record"},
             "proof": "not_occurred",
             "diagnostics": [],
