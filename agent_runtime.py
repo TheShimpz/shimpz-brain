@@ -627,7 +627,7 @@ class AgentRuntime:
             middleware=[
                 *_prompt_caching(context.provider),
                 *turn_attachments.middleware(context.attachments, context.turn_message_id, context.attachment_charge),
-                clarifier.guard(allowed=clarification_allowed),
+                clarifier.guard(allowed=clarification_allowed, routine_mode=context.routine_mode),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
                 *([team_routine.guard(context)] if routine_tool else []),
                 # The innermost model-call wrapper sees each provider response before any other middleware.

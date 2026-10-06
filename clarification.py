@@ -19,6 +19,7 @@ from typing import Any
 import tool_refusal
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import turn as team_turn
 
 TOOL_NAME = "shimpz_clarify"
@@ -65,6 +66,8 @@ _CORRECTIONS = {
     "Finish the request with what you have and state what remains open.",
     "invalid": "Not executed: the clarification must have one single-line question, two to five distinct single-line "
     "options, and a default_index that points to one of them.",
+    "team-owned": "Not asked: the Team asks the schedule, the output, and limits itself; continue the work and call "
+    "record.",
 }
 
 
@@ -173,11 +176,17 @@ def tool() -> StructuredTool:
     )
 
 
-def _review(messages: list[Any], *, allowed: bool) -> str | None:
+def _team_owned(asked: Clarification) -> bool:
+    """Whether a clarification asks what Team reads from the person's words itself, by Team's own phrase tables."""
+    return any(team_phrase.team_asks(text) for text in (asked.question, *(option.label for option in asked.options)))
+
+
+def _review(messages: list[Any], *, allowed: bool, routine_mode: bool = False) -> str | None:
     """Return why the latest model response must not run, or None when it may run.
 
     A turn's start runs no Action before it suspends, and every resume follows an Action, so a clarification is
-    allowed exactly while a turn starts.
+    allowed exactly while a turn starts. In a Routine turn, a question about the schedule, the output, or limits is
+    Team's to ask (ADR-0101), so the agent's own is refused.
     """
     latest = messages[-1] if messages else None
     if not isinstance(latest, AIMessage):
@@ -193,14 +202,23 @@ def _review(messages: list[Any], *, allowed: bool) -> str | None:
         return "mixed"
     if not allowed:
         return "after-action"
-    if parse(latest.tool_calls[0].get("args")) is None:
+    return _refused(latest.tool_calls[0].get("args"), routine_mode)
+
+
+def _refused(arguments: object, routine_mode: bool) -> str | None:
+    """Why one lone clarification's own arguments may not run: malformed, or Team's question in a Routine turn."""
+    asked = parse(arguments)
+    if asked is None:
         return "invalid"
+    if routine_mode and _team_owned(asked):
+        return "team-owned"
     return None
 
 
-def guard(*, allowed: bool):
+def guard(*, allowed: bool, routine_mode: bool = False):
     """The middleware that reviews every model response before its tools run."""
-    return tool_refusal.guard("ClarificationGuard", functools.partial(_review, allowed=allowed), _CORRECTIONS)
+    review = functools.partial(_review, allowed=allowed, routine_mode=routine_mode)
+    return tool_refusal.guard("ClarificationGuard", review, _CORRECTIONS)
 
 
 def recorded(messages: list[Any]) -> Clarification | None:

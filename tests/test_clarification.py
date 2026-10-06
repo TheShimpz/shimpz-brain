@@ -215,3 +215,36 @@ class GraphTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _routine_question(question: str, labels: tuple[str, ...] = ("Sim", "Não")) -> AIMessage:
+    options = [{"label": label, "description": ""} for label in labels]
+    args = {"question": question, "options": options, "default_index": 0}
+    return AIMessage(content="", tool_calls=[_clarify(args)])
+
+
+class TeamOwnedQuestionTests(unittest.TestCase):
+    def review(self, response: AIMessage, routine_mode: bool) -> dict | None:
+        return clarification.guard(allowed=True, routine_mode=routine_mode).after_model(
+            {"messages": [HumanMessage(content="Oi"), response]}, None
+        )
+
+    def test_routine_mode_refuses_what_the_team_asks_itself(self):
+        for response in (
+            _routine_question("Com que frequência a rotina deve rodar?"),
+            _routine_question("How often should the Routine run?"),
+            _routine_question("Como você quer receber o resultado de cada execução?"),
+            _routine_question("What should happen with each run's result?", ("Show every run", "Only on change")),
+            _routine_question("Qual zona e quando?", ("A cada 30 segundos", "Todo dia às 9h")),
+            _routine_question("Quantas vezes por dia a rotina pode rodar?"),
+        ):
+            with self.subTest(question=response.tool_calls[0]["args"]["question"]):
+                refused = self.review(response, routine_mode=True)
+                self.assertIsNotNone(refused)
+                self.assertTrue(refused["messages"][0].content.startswith("Not asked: the Team asks"))
+
+    def test_work_and_item_questions_pass_in_routine_mode_and_nothing_changes_outside_it(self):
+        for question in ("Qual zona devo consultar?", "Which zone should I use?", "O que a rotina deve fazer?"):
+            with self.subTest(question=question):
+                self.assertIsNone(self.review(_routine_question(question, ("shimpz.com", "example.com")), True))
+        self.assertIsNone(self.review(_routine_question("Com que frequência a rotina deve rodar?"), False))
