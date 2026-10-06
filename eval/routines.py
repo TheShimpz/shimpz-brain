@@ -430,6 +430,7 @@ class Modules:
 def _team_modules() -> Modules:
     sys.path[:0] = [str(TEAMS), str(TEAMS / "tests")]
     import local_controller_harness
+
     from inference import client as brain_client
     from inference import config as inference_config
     from inference import usage as brain_usage
