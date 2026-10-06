@@ -143,6 +143,8 @@ class TurnContextInput(ClosedInput):
     # withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
     routine_capacity: StrictInt | None
+    # The question Team asked the person about this recording, which the person's message may answer (ADR-0101).
+    routine_question: dict[str, Any] | None
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
@@ -165,6 +167,7 @@ class TurnContextInput(ClosedInput):
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
             routine_capacity=self.routine_capacity,
+            routine_question=self.routine_question,
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
         )

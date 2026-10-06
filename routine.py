@@ -110,6 +110,70 @@ def _whole(value: object, low: int, high: int) -> bool:
     return type(value) is int and low <= value <= high
 
 
+# The questions Team may have asked about a recording before its card, mirrored exactly from the Team protocol.
+QUESTION_CODES = (
+    "routine-schedule-unstated",
+    "routine-interval-over-budget",
+    "routine-binding-ambiguous",
+    "routine-binding-unsourced",
+    "routine-work-split",
+    "routine-work-rerun",
+)
+MAX_QUESTION_OPTIONS = 8
+MAX_QUESTION_OPTION_CHARS = 120
+_UNSAFE_RE = re.compile(r"[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]")
+
+
+def _plain(value: object) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= MAX_QUESTION_OPTION_CHARS and _UNSAFE_RE.search(value) is None
+
+
+def _target(text: object) -> bool:
+    """A target's exact compact JSON text: one plain string or one integer, as Team writes it."""
+    if not isinstance(text, str) or not 0 < len(text) <= 2 * MAX_QUESTION_OPTION_CHARS + 2:
+        return False
+    try:
+        decoded = json.loads(text)
+    except ValueError:
+        return False
+    if isinstance(decoded, str):
+        scalar = _plain(decoded)
+    else:
+        scalar = type(decoded) is int and len(text) <= MAX_QUESTION_OPTION_CHARS
+    return scalar and json.dumps(decoded, ensure_ascii=False) == text
+
+
+def _option(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"value", "label"}
+        and _target(value["value"])
+        and (value["label"] is None or _plain(value["label"]))
+    )
+
+
+def canonical_question(value: object) -> dict[str, object] | None:
+    """The Routine question Team asked the person in this recording, as Team's closed form, or None."""
+    if not isinstance(value, dict) or set(value) != {"code", "options", "value"} or value["code"] not in QUESTION_CODES:
+        return None
+    code, options, interval = value["code"], value["options"], value["value"]
+    valid = (
+        isinstance(options, list)
+        and (code == "routine-binding-ambiguous" or not options)
+        and len(options) <= MAX_QUESTION_OPTIONS
+        and all(_option(item) for item in options)
+        and len({item["value"] for item in options}) == len(options)
+        and (
+            _whole(interval, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
+            if code == "routine-interval-over-budget"
+            else interval is None
+        )
+    )
+    if not valid:
+        return None
+    return {"code": code, "options": [dict(item) for item in options], "value": interval}
+
+
 def valid_capacity(value: object) -> bool:
     """Whether a Team's daily Action steps left for a Routine is a whole count within the Team's own bound."""
     return _whole(value, 0, MAX_DAILY_STEPS)

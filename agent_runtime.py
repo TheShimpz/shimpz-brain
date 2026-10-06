@@ -194,6 +194,8 @@ class TurnContext:
     routines: tuple[dict[str, object], ...] | None = None
     # The daily Action steps the Team leaves a new Routine, advisory only; Team clamps a cap at the card (ADR-0101).
     routine_capacity: int | None = None
+    # The question Team asked the person about this recording, pinned like Routines; None when none is pending.
+    routine_question: dict[str, object] | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
@@ -250,6 +252,11 @@ def _admit_knowledge(context: TurnContext) -> None:
         context.routine_capacity is None or team_routine.valid_capacity(context.routine_capacity)
     ):
         raise RuntimeContractError("invalid Routine capacity")
+    if context.routine_question is not None:
+        question = None if context.routines is None else team_routine.canonical_question(context.routine_question)
+        if question is None:
+            raise RuntimeContractError("invalid Routine question")
+        object.__setattr__(context, "routine_question", question)
     if type(context.knowledge_writable) is not bool:
         raise RuntimeContractError("invalid knowledge scope")
 
@@ -298,6 +305,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
     """A resumed turn's context with exactly the pins its start recorded."""
     try:
         turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
+        question = turn_pins.restore_question(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         commitment, charge = turn_pins.restore_attachments(metadata)
     except turn_pins.PinError as exc:
@@ -311,6 +319,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         memories=rules,
         skills=skills,
         routines=routines,
+        routine_question=question,
         knowledge_writable=writable,
         locale=locale,
         turn_message_id=turn_message_id,
@@ -557,6 +566,7 @@ class AgentRuntime:
                 **turn_pins.record(
                     context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
                 ),
+                **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_attachments(
                     turn_attachments.commitment(context.attachments), context.attachment_charge

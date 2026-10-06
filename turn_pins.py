@@ -19,6 +19,7 @@ DATE_METADATA = "shimpz_turn_date"
 MEMORY_METADATA = "shimpz_turn_memory"
 SKILLS_METADATA = "shimpz_turn_skills"
 ROUTINES_METADATA = "shimpz_turn_routines"
+QUESTION_METADATA = "shimpz_turn_routine_question"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
 MESSAGE_METADATA = "shimpz_turn_message"
@@ -95,6 +96,26 @@ def restore(
     ):
         raise PinError("recorded turn pins are invalid")
     return recorded_date, recorded_memory, recorded_skills, recorded_routines, writable_value == "true"
+
+
+def record_question(question: dict[str, object] | None) -> dict[str, str]:
+    """The checkpoint entry holding the Routine question Team asked before this turn started, or none."""
+    return {QUESTION_METADATA: _json(question)}
+
+
+def restore_question(metadata: Mapping[str, object]) -> dict[str, object] | None:
+    """The exact Routine question a start recorded; anything else is corrupt state."""
+    value = metadata.get(QUESTION_METADATA)
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        decoded = json.loads(value)
+    except ValueError as exc:
+        raise PinError("recorded turn pins are invalid") from exc
+    question = None if decoded is None else team_routine.canonical_question(decoded)
+    if (decoded is not None and question is None) or _json(question) != value:
+        raise PinError("recorded turn pins are invalid")
+    return question
 
 
 def record_turn(locale: str | None, message_id: str | None) -> dict[str, str]:

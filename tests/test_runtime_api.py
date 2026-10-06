@@ -71,6 +71,7 @@ def body(**updates):
         "skills": [],
         "routines": [],
         "routine_capacity": 20_000,
+        "routine_question": None,
         "knowledge_writable": True,
         "attachments": [],
         "message": "Hello",

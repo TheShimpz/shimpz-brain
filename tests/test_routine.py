@@ -37,6 +37,11 @@ LISTED = {
     "steps": [{"id": "s1", "assistant": "hello-pulse", "action": "hello", "inputs": ["name"]}],
 }
 REPLY = "Listei os registros DNS de shimpz.com. Confira o cartão da rotina."
+QUESTION = {
+    "code": "routine-binding-ambiguous",
+    "options": [{"value": '"023e105f"', "label": "shimpz.com"}, {"value": "9007199254740993", "label": None}],
+    "value": None,
+}
 
 
 def _args(**changes) -> dict:
@@ -373,7 +378,86 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(turn_prompt._runs([]), [])
 
 
+class PendingQuestionTests(unittest.TestCase):
+    def test_a_pending_question_is_closed_team_data(self):
+        interval = {"code": "routine-interval-over-budget", "options": [], "value": 9}
+        schedule = {"code": "routine-schedule-unstated", "options": [], "value": None}
+        for value in (QUESTION, interval, schedule):
+            with self.subTest(value=value):
+                self.assertEqual(routine.canonical_question(value), value)
+        option = QUESTION["options"][0]
+        for value in (
+            None,
+            [],
+            {**QUESTION, "extra": 1},
+            {**QUESTION, "code": "routine-timezone-unstated"},
+            {**QUESTION, "code": "routine-no-room"},
+            {**schedule, "options": [option]},
+            {**QUESTION, "options": [option, option]},
+            {**QUESTION, "options": [option] * 9},
+            {**QUESTION, "options": [{**option, "value": "023e105f"}]},
+            {**QUESTION, "options": [{**option, "value": '"a"  '}]},
+            {**QUESTION, "options": [{**option, "value": "1.5"}]},
+            {**QUESTION, "options": [{**option, "value": '"' + "x" * 121 + '"'}]},
+            {**QUESTION, "options": [{**option, "value": 7}]},
+            {**QUESTION, "options": [{**option, "value": '"' + "x" * 300 + '"'}]},
+            {**QUESTION, "options": [{**option, "value": "1" * 121}]},
+            {**QUESTION, "options": [{**option, "label": ""}]},
+            {**QUESTION, "options": [{**option, "label": "a\nb"}]},
+            {**QUESTION, "options": [{"value": '"a"'}]},
+            {**QUESTION, "options": "a"},
+            {**QUESTION, "value": 9},
+            {**interval, "value": 4},
+            {**interval, "value": True},
+            {**interval, "value": None},
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(routine.canonical_question(value))
+
+    def test_only_a_recording_chat_turn_carries_a_valid_question(self):
+        asked = dataclasses.replace(_chat(), routine_question=QUESTION)
+        self.assertEqual(asked.routine_question, QUESTION)
+        for routines, question in ((None, QUESTION), ((), {**QUESTION, "code": "x"})):
+            with (
+                self.subTest(question=question),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine question"),
+            ):
+                dataclasses.replace(
+                    context(),
+                    routines=routines,
+                    routine_capacity=None if routines is None else 20_000,
+                    routine_question=question,
+                )
+
+    def test_the_prompt_names_the_pending_question_only_while_one_is_pending(self):
+        runtime, model = self._runtime(AIMessage(content="Ok."))
+        runtime.start(dataclasses.replace(_chat(), routine_question=QUESTION), envelope("A primeira"))
+        system = _system(model.seen_messages[-1])
+        self.assertIn("The Team asked the user this Routine question", system)
+        self.assertIn(json.dumps(QUESTION, ensure_ascii=False), system)
+        runtime, model = self._runtime(AIMessage(content="Ok."))
+        runtime.start(_chat(), envelope("Oi"))
+        system = _system(model.seen_messages[-1])
+        self.assertIn("Routines are work", system)
+        self.assertNotIn("The Team asked the user this Routine question", system)
+
+    @staticmethod
+    def _runtime(*responses):
+        model = RecordingToolAwareFakeModel(responses=list(responses))
+        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
+
+
 class PromptPinAndEndpointTests(unittest.TestCase):
+    def test_a_pending_question_is_pinned_for_the_logical_turn(self):
+        for question in (None, QUESTION):
+            with self.subTest(question=question):
+                self.assertEqual(turn_pins.restore_question(turn_pins.record_question(question)), question)
+        pins = turn_pins.record_question(QUESTION)
+        reordered = json.dumps(dict(reversed(list(QUESTION.items()))), ensure_ascii=False)
+        for value in (None, "not json", '{"code": "x"}', reordered):
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_question({**pins, turn_pins.QUESTION_METADATA: value})
+
     def test_routines_are_pinned_for_the_logical_turn(self):
         date = turn_prompt.today()
         pins = turn_pins.record(date, (), None, (LISTED,))
@@ -408,6 +492,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             ("routines", [{"routine_id": "x"}]),
             ("knowledge_writable", "yes"),
             ("routine_earlier", ["a"]),
+            ("routine_question", {"code": "routine-no-room", "options": [], "value": None}),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)
