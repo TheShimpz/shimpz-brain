@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 
 import agent_runtime
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 PROVIDER = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "test-key-0123456789")
@@ -37,6 +37,11 @@ class RecordingModel(ToolModel):
     def _generate(self, messages: list[Any], *args: Any, **kwargs: Any):
         type(self).seen.append(list(messages))
         return super()._generate(messages, *args, **kwargs)
+
+
+def system_text(messages: list) -> str:
+    """The text of the first system message a model was asked about."""
+    return next(message.content for message in messages if isinstance(message, SystemMessage))
 
 
 def call(assistant: agent_runtime.AssistantDefinition, action: str, args: dict[str, object], call_id: str) -> dict:

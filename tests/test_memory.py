@@ -14,10 +14,11 @@ import runtime_api
 import turn_pins
 import turn_prompt
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
 from test_runtime_api import TOKEN, body
+from tool_fake import system_text
 
 ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
 LANGUAGE = memory.Memory("language", "responda sempre em português do Brasil")
@@ -58,10 +59,6 @@ class _Invoked:
 
 def _confirming(ask=_confirm_all):
     return mock.patch.object(agent_runtime.AgentRuntime, "_memory_check", lambda _self, _context: ask)
-
-
-def _system(messages: list) -> str:
-    return next(message.content for message in messages if isinstance(message, SystemMessage))
 
 
 def _with_memory(memories=()):
@@ -272,7 +269,7 @@ class GraphTests(unittest.TestCase):
         runtime, model = self._runtime(AIMessage(content="Oi."))
         result = runtime.start(context(), "Oi")
         self.assertNotIn(memory.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
-        self.assertNotIn("What you remember", _system(model.seen_messages[0]))
+        self.assertNotIn("What you remember", system_text(model.seen_messages[0]))
         self.assertEqual(result.memory, ())
 
     def test_a_resumed_turn_keeps_the_memories_it_started_with(self):
@@ -284,7 +281,7 @@ class GraphTests(unittest.TestCase):
         changed = dataclasses.replace(started, memories=(memory.Memory("tone", "Be brief."),))
         runtime.resume(changed, {suspended.actions[0].interrupt_id: {"ok": True}})
         runtime.start(changed, "E agora?")
-        seen = [_system(messages) for messages in model.seen_messages]
+        seen = [system_text(messages) for messages in model.seen_messages]
         self.assertIn(LANGUAGE.preference, seen[1])
         self.assertNotIn("Be brief.", seen[1])
         self.assertIn("Be brief.", seen[2])

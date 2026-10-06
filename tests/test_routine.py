@@ -15,11 +15,12 @@ import runtime_api
 import turn_pins
 import turn_prompt
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
 from test_memory import envelope
 from test_runtime_api import TOKEN, body
+from tool_fake import system_text
 
 import routine
 
@@ -95,10 +96,6 @@ def _wire(turn_date: datetime.date, **changes) -> dict:
         "turn_date": turn_date.isoformat(),
     }
     return {**fields, **changes}
-
-
-def _system(messages: list) -> str:
-    return next(message.content for message in messages if isinstance(message, SystemMessage))
 
 
 class ContractTests(unittest.TestCase):
@@ -232,7 +229,7 @@ class GraphTests(unittest.TestCase):
         self.assertEqual((finished.status, finished.reply), ("completed", REPLY))
         self.assertEqual(finished.routine, _wire(chat.turn_date))
         self.assertIn(routine.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
-        system = _system(model.seen_messages[-1])
+        system = system_text(model.seen_messages[-1])
         self.assertIn("This Team's Routines", system)
         self.assertIn("run exactly the recurring work once in this same turn", system)
         self.assertIn("never say a Routine was created or changed", system)
@@ -299,7 +296,7 @@ class GraphTests(unittest.TestCase):
         self.assertEqual((result.reply, result.routine, result.memory), ("Resumo pronto.", None, ()))
         self.assertNotIn(routine.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
         self.assertNotIn(memory.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
-        system = _system(model.seen_messages[0])
+        system = system_text(model.seen_messages[0])
         self.assertIn("responda em português", system)
         self.assertNotIn("This Team's Routines", system)
 
@@ -307,7 +304,7 @@ class GraphTests(unittest.TestCase):
         runtime, model = self._runtime(AIMessage(content="Oi."))
         result = runtime.start(context(), "Oi")
         self.assertNotIn(routine.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
-        self.assertNotIn("Routines are work", _system(model.seen_messages[0]))
+        self.assertNotIn("Routines are work", system_text(model.seen_messages[0]))
         self.assertIsNone(result.routine)
 
     def test_the_chat_lists_a_repeated_action_once_with_its_count(self):
@@ -317,7 +314,7 @@ class GraphTests(unittest.TestCase):
         runtime, model = self._runtime(AIMessage(content="Olá."))
         runtime.start(_chat([{**LISTED, "steps": steps}]), envelope("Oi"))
         runs = [["hello-pulse", "hello", 3], ["hello-pulse", "list"], ["hello-pulse", "hello"]]
-        self.assertIn(json.dumps(runs, ensure_ascii=False), _system(model.seen_messages[-1]))
+        self.assertIn(json.dumps(runs, ensure_ascii=False), system_text(model.seen_messages[-1]))
         self.assertEqual(turn_prompt._runs([]), [])
 
 
@@ -346,12 +343,12 @@ class PendingQuestionTests(unittest.TestCase):
     def test_the_prompt_names_the_pending_question_only_while_one_is_pending(self):
         runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(dataclasses.replace(_chat(), routine_question=QUESTION), envelope("A primeira"))
-        system = _system(model.seen_messages[-1])
+        system = system_text(model.seen_messages[-1])
         self.assertIn("The Team asked the user this Routine question", system)
         self.assertIn(json.dumps(QUESTION, ensure_ascii=False), system)
         runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(_chat(), envelope("Oi"))
-        system = _system(model.seen_messages[-1])
+        system = system_text(model.seen_messages[-1])
         self.assertIn("Routines are work", system)
         self.assertNotIn("The Team asked the user this Routine question", system)
 
@@ -382,7 +379,7 @@ class RoutineModeTests(unittest.TestCase):
     def test_the_prompt_adds_the_routine_mode_and_rerun_sections_only_when_sent(self):
         runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN), envelope("Sim"))
-        system = _system(model.seen_messages[-1])
+        system = system_text(model.seen_messages[-1])
         self.assertIn("If this message asks for a Routine", system)
         self.assertIn("what to do with each run's result from the user's words and asks about them itself", system)
         self.assertIn("when none is listed, look the value up with an Action that returns it", system)
@@ -390,7 +387,7 @@ class RoutineModeTests(unittest.TestCase):
         self.assertIn(json.dumps(list(RERUN), ensure_ascii=False), system)
         runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(_chat(), envelope("Oi"))
-        system = _system(model.seen_messages[-1])
+        system = system_text(model.seen_messages[-1])
         self.assertNotIn("If this message asks for a Routine", system)
         self.assertNotIn("The Team needs this work run again", system)
 
@@ -398,7 +395,7 @@ class RoutineModeTests(unittest.TestCase):
         runtime, model = _runtime(AIMessage(content="Ok."))
         with mock.patch.dict("os.environ", {"SHIMPZ_ROUTINE_MODE_PROMPT": "off"}):
             runtime.start(dataclasses.replace(_chat(), routine_mode=True), envelope("Sim"))
-        self.assertNotIn("If this message asks for a Routine", _system(model.seen_messages[-1]))
+        self.assertNotIn("If this message asks for a Routine", system_text(model.seen_messages[-1]))
 
     def test_the_mode_and_rerun_are_pinned_for_the_logical_turn(self):
         for mode, rerun in ((False, None), (True, RERUN)):
@@ -424,7 +421,7 @@ class RoutineModeTests(unittest.TestCase):
         started = dataclasses.replace(_chat([LISTED]), routine_mode=True, routine_rerun=RERUN)
         suspended = runtime.start(started, envelope("Sim"))
         runtime.resume(_chat([LISTED]), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
-        system = _system(model.seen_messages[-1])
+        system = system_text(model.seen_messages[-1])
         self.assertIn("If this message asks for a Routine", system)
         self.assertIn("The Team needs this work run again", system)
 
@@ -455,7 +452,7 @@ class ContinuationFrameTests(unittest.TestCase):
         suspended = runtime.start(started, envelope(MESSAGE))
         finished = runtime.resume(self._team_resume(), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
         self.assertEqual(finished.status, "completed")
-        self.assertIn("If this message asks for a Routine", _system(model.seen_messages[-1]))
+        self.assertIn("If this message asks for a Routine", system_text(model.seen_messages[-1]))
         # The turn finishes on the model it started on, whatever model the resume names for the same provider.
         self.assertEqual({config.model for config in seen}, {started.provider.model})
 

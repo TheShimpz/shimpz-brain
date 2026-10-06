@@ -10,17 +10,14 @@ import agent_runtime
 import interface_language
 import turn_pins
 import turn_prompt
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, action, assistant, context
+from tool_fake import system_text
 
 ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
 MESSAGE_ID = "shimpz-turn-" + "a" * 32
 LANGUAGE_LINE = "Write every reply, clarification question, and option in "
-
-
-def _system(messages: list) -> str:
-    return next(message.content for message in messages if isinstance(message, SystemMessage))
 
 
 class InterfaceLanguageTests(unittest.TestCase):
@@ -97,7 +94,7 @@ class InterfaceLanguageTests(unittest.TestCase):
         self.assertRegex(message_id, turn_pins.TURN_MESSAGE_RE)
         # A resume never names a language; the one its start pinned still rules every later call of the turn.
         runtime.resume(dataclasses.replace(started, locale=None), {suspended.actions[0].interrupt_id: {"ok": True}})
-        prompts = [_system(messages) for messages in model.seen_messages]
+        prompts = [system_text(messages) for messages in model.seen_messages]
         self.assertEqual(len(prompts), 2)
         for prompt in prompts:
             self.assertIn(LANGUAGE_LINE + "Brazilian Portuguese", prompt)

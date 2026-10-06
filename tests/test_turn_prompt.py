@@ -9,17 +9,14 @@ import unittest
 import agent_runtime
 import turn_pins
 import turn_prompt
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, action, assistant, context
+from tool_fake import system_text
 
 YESTERDAY = datetime.date(2026, 9, 28)
 TODAY = datetime.date(2026, 9, 29)
 ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
-
-
-def _system(messages: list) -> str:
-    return next(message.content for message in messages if isinstance(message, SystemMessage))
 
 
 class PromptTests(unittest.TestCase):
@@ -84,7 +81,7 @@ class PinnedDateTests(unittest.TestCase):
         resumed = dataclasses.replace(started, turn_date=TODAY)
         runtime.resume(resumed, {suspended.actions[0].interrupt_id: {"message": "hi"}})
         runtime.start(resumed, "And now?")
-        dates = [_system(messages).rsplit("Current date: ", 1)[1][:10] for messages in model.seen_messages]
+        dates = [system_text(messages).rsplit("Current date: ", 1)[1][:10] for messages in model.seen_messages]
         self.assertEqual(dates, ["2026-09-28", "2026-09-28", "2026-09-29"])
 
     def test_only_an_exact_recorded_date_is_accepted(self):
