@@ -329,23 +329,16 @@ class BrainEgressHandlerTests(unittest.TestCase):
     def test_resolution_rejects_errors_invalid_mixed_and_empty_answers(self) -> None:
         with mock.patch.object(app.socket, "getaddrinfo", side_effect=OSError):
             self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
-        with mock.patch.object(
-            app.socket,
-            "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("not-an-ip", 443))],
-        ):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
-        with mock.patch.object(
-            app.socket,
-            "getaddrinfo",
-            return_value=[
+        for refused in (
+            [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("not-an-ip", 443))],
+            [
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.1.1.1", 443)),
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 443)),
             ],
+            [],
         ):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
-        with mock.patch.object(app.socket, "getaddrinfo", return_value=[]):
-            self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
+            with self.subTest(answers=refused), mock.patch.object(app.socket, "getaddrinfo", return_value=refused):
+                self.assertIsNone(app._resolve_public("api.openai.com", 443, _later()))
         with mock.patch.object(
             app.socket,
             "getaddrinfo",
