@@ -406,6 +406,7 @@ def variants(attempt: Attempt) -> dict[str, object]:
         "status": status,
         "outcome": None if notice is None else notice.outcome,
         "reason": None if notice is None else notice.detail.get("reason"),
+        "code": None if notice is None else notice.detail.get("code"),
         "held_at": [item.action for item in attempt.team.service.routine_store.load("team_1").incidents],
         "list_dns_records_dispatched": any(action == "list-dns-records" for action, _payload in attempt.fixture.calls),
     }
