@@ -64,8 +64,8 @@ from pathlib import Path
 from unittest import mock
 
 BRAIN = Path(__file__).resolve().parents[1]
-# The Team worktree the eval drives; --teams names another, such as one carrying a routing change.
-TEAMS = BRAIN.parent / "teams-det"
+# The Team checkout the eval drives; --teams names another, such as a worktree carrying a Team change.
+TEAMS = BRAIN.parent / "teams"
 CONTRACT = TEAMS / "tests" / "fixtures" / "reference-assistant" / "shimpz.contract.json"
 
 
@@ -1331,7 +1331,7 @@ def main() -> int:
     parser.add_argument(
         "--model", action="append", default=[], help="measurement only: PROVIDER:MODEL in place of that provider's"
     )
-    parser.add_argument("--teams", type=Path, help="the Team worktree to drive; default the sibling teams-det")
+    parser.add_argument("--teams", type=Path, help="the Team worktree to drive; default the sibling teams")
     args = parser.parse_args()
     if args.teams is not None:
         global TEAMS, CONTRACT
