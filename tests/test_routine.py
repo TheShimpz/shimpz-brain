@@ -413,6 +413,9 @@ class RoutineModeTests(unittest.TestCase):
         ):
             with self.subTest(key=key, value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore_routine_mode({**pins, key: value})
+        # A rerun that is not JSON text is refused before the mode is judged, even when the mode is not hashable.
+        with self.assertRaises(turn_pins.PinError):
+            turn_pins.restore_routine_mode({turn_pins.MODE_METADATA: [], turn_pins.RERUN_METADATA: None})
 
     def test_a_resumed_turn_keeps_the_mode_and_rerun_its_start_pinned(self):
         runtime, model = GraphTests._runtime(

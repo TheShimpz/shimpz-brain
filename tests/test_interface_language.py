@@ -69,6 +69,8 @@ class InterfaceLanguageTests(unittest.TestCase):
             {**valid, turn_pins.MESSAGE_METADATA: '"shimpz-turn-1"'},
             {**valid, turn_pins.MESSAGE_METADATA: 1},
             {key: value for key, value in valid.items() if key != turn_pins.MESSAGE_METADATA},
+            # Both pins must be JSON text before either is decoded.
+            {**valid, turn_pins.LOCALE_METADATA: "[" * 100_000, turn_pins.MESSAGE_METADATA: 1},
         )
         for metadata in corrupt:
             with self.subTest(metadata=metadata), self.assertRaises(turn_pins.PinError):

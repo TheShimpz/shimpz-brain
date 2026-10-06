@@ -135,7 +135,7 @@ def record_routine_mode(mode: bool, rerun: tuple[dict[str, object], ...] | None)
 def restore_routine_mode(metadata: Mapping[str, object]) -> tuple[bool, tuple[dict[str, object], ...] | None]:
     """The exact Routine mode and rerun a start recorded; anything else is corrupt state."""
     mode, rerun = metadata.get(MODE_METADATA), metadata.get(RERUN_METADATA)
-    if mode not in {"true", "false"}:
+    if not isinstance(rerun, str) or mode not in {"true", "false"}:
         raise PinError("recorded turn pins are invalid")
     decoded = _decoded(rerun)
     work = None if decoded is None else team_routine.canonical_rerun(decoded)
@@ -185,6 +185,8 @@ def record_turn(locale: str | None, message_id: str | None) -> dict[str, str]:
 def restore_turn(metadata: Mapping[str, object]) -> tuple[str | None, str]:
     """The exact interface language and start message id a start recorded; anything else is corrupt state."""
     locale_value, message_value = metadata.get(LOCALE_METADATA), metadata.get(MESSAGE_METADATA)
+    if not isinstance(locale_value, str) or not isinstance(message_value, str):
+        raise PinError("recorded turn pins are invalid")
     locale, message_id = _decoded(locale_value), _decoded(message_value)
     if not valid_turn(locale, message_id) or _json(locale) != locale_value or _json(message_id) != message_value:
         raise PinError("recorded turn pins are invalid")
