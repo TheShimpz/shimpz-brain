@@ -24,12 +24,14 @@ Strata, each ``--attempts`` (30) times per model, fixed before sampling: the own
 list; two named zones at once (multi-zone); a zone named only in an earlier send; a request with no schedule; the
 reversed-order bait, primed (the zone was looked up in an earlier send) and unprimed (its id is known only from an
 earlier reply outside the span); two zones with the same name at creation, which must be asked about; and intervals of
-30 and 5 seconds, whose card keeps the exact gap the person last stated with cap ceil(86400 / gap). The driver answers
-the agent's questions and Team's recoverable Routine questions as the person would. A stratum passes when the card
-binds every zone the person meant through a reference (the twin stratum: the person's chosen zone by its id), carries
-the schedule the person stated, "Criar rotina" creates the Routine, and one replay through Team's real claim and run
-lists those zones' records and shows one of them. After the first passing owner attempt, two replay variants run with
-no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never dispatch list-dns-records.
+30 seconds (list a zone's records) and 5 seconds (one step, list the zones), whose card keeps the exact gap the person
+stated with cap ceil(86400 / gap). The driver answers the agent's questions and Team's recoverable Routine questions as
+the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
+stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
+chosen zone by its id), carries the schedule the person stated, takes no more sends than its missing pieces need,
+"Criar rotina" creates the Routine, and one replay through Team's real claim and run shows that work's exact result.
+After the first passing owner attempt, two replay variants run with no model: shimpz.com under a new zone id, and two
+zones named shimpz.com, which must never dispatch list-dns-records.
 The gate exits non-zero unless every stratum of every shipped model passed every attempt and both variants held.
 Output holds stratum ids, pass counts, Wilson 95% bounds, closed miss reasons with root causes, the questions asked,
 the schedules seen, and the estimated cost; never a message, a reply, or a key (only ``--trace-dir`` writes messages).
@@ -82,6 +84,8 @@ ACCOUNT = {"id": "f" * 32, "name": "Owner"}
 OTHER_ZONES = (("9a7806061c88ada191ed06f989cc3dac", "example.com"), ("1b3f0c5e2a9d47e8b6c1d0f2a3b4c5d6", "other.org"))
 EXAMPLE = OTHER_ZONES[0][0]
 ZONE_NAMES = {SHIMPZ: "shimpz.com", EXAMPLE: "example.com"}
+# Every zone name list-zones answers with when no two zones share a name.
+ZONE_SET = {"example.com", "other.org", "shimpz.com"}
 TIMEZONE = "America/Sao_Paulo"
 # The labels Admin's Portuguese interface composes a clarification answer with (admin/frontend/src/lib/messages.js).
 QUESTION_LABEL, ANSWER_LABEL = "Pergunta", "Resposta"
@@ -421,13 +425,11 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     return "; ".join([*parts, *([recommended] if uncovered or not parts else [])]), True
 
 
-def _target(person: Person, options: list[object]) -> str | None:
-    """A binding question's option whose target is the person's zone: its own text, or the zone's id."""
-    found = next((item for item in options if person.zone in json.dumps(item)), None)
-    if found is None:
-        return None
-    person.chose = True
-    return found if isinstance(found, str) else person.zone
+def _target(person: Person, options: list[dict[str, str]]) -> str | None:
+    """The exact JSON text of the binding question's option whose target is the person's zone, as Admin sends it."""
+    found = next((item["value"] for item in options if json.loads(item["value"]) == person.zone), None)
+    person.chose = person.chose or found is not None
+    return found
 
 
 def _team_answer(person: Person, question: dict[str, object]) -> str | None:
@@ -452,8 +454,15 @@ _FIXED_ANSWERS = {
     "routine-binding-unsourced": "pode buscar de novo",
     "routine-work-rerun": "pode buscar de novo",
     "routine-work-split": "faça tudo de novo",
-    "routine-timezone-unstated": TIMEZONE,
-    "routine-timezone-ambiguous": TIMEZONE,
+}
+# The question line Admin shows for each Team question; Team reads only the answer of a composed answer.
+_TEAM_QUESTIONS = {
+    "routine-schedule-unstated": "Com que frequência a rotina deve rodar?",
+    "routine-binding-ambiguous": "Qual destes alvos a rotina deve usar?",
+    "routine-binding-unsourced": "Posso buscar esse valor de novo?",
+    "routine-work-rerun": "Posso refazer o trabalho completo?",
+    "routine-work-split": "Posso refazer o trabalho completo de uma vez?",
+    OVER_BUDGET: "Esse intervalo não cabe no orçamento diário. Qual intervalo a rotina deve usar?",
 }
 
 
@@ -463,8 +472,6 @@ def _already_answered(attempt: Attempt, code: str) -> bool:
     return (
         code in attempt.answered
         or (code == "routine-schedule-unstated" and person.stated)
-        # Every send carries the browser's IANA zone, so Team always has it.
-        or code == "routine-timezone-unstated"
         or (code == "routine-binding-ambiguous" and person.chose)
     )
 
@@ -488,15 +495,17 @@ def _conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
             attempt.questions.append(code)
             if _already_answered(attempt, code):
                 attempt.repeated.append(code)
-            answer, composed = _team_answer(attempt.person, question), False
+            answer = _team_answer(attempt.person, question)
             attempt.answered[code] = answer or ""
+            # Admin answers Team's question with its composed form, which Team records from without the Brain.
+            asked, composed = _TEAM_QUESTIONS.get(code, code), True
         else:
             answer, composed = _answer(attempt.person, response)
+            asked = (response.get("clarification") or {}).get("question")
         if answer is None:
             return response
         if composed:
-            asked = response["clarification"]["question"]
-            answer = f"{message.strip()}\n\n{QUESTION_LABEL}: {asked}\n{ANSWER_LABEL}: {answer}"
+            answer = f"{message.strip()}\n\n{QUESTION_LABEL}: {asked}\n{ANSWER_LABEL}: {answer.strip()}"
         message = answer
     return response
 
@@ -514,6 +523,8 @@ class Stratum:
     # The owner's rule, never make the person retype: the most sends it may take, its scripted sends plus one per
     # piece the person genuinely left out; an interval Team says does not fit adds the one send that chooses another.
     sends: int = 1
+    # The Action whose result the Routine shows: the records of a zone, or the zones themselves.
+    shows: str = "list-dns-records"
 
 
 def _selector_miss(card: dict[str, object], zones_meant: tuple[str, ...]) -> str | None:
@@ -588,11 +599,12 @@ def _judged(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> 
     answer = attempt.confirm(seen.pop("proposal_id"))
     if answer["status"] != "created":
         return Outcome(f"confirm:{answer['status']}", seen)
-    return Outcome(_replay_miss(attempt, stratum.zones), seen)
+    return Outcome(_replay_miss(attempt, stratum), seen)
 
 
-def _replay_miss(attempt: Attempt, zones_meant: tuple[str, ...]) -> str | None:
-    """Why one replay did not list the person's zones' records and show one of them from list-dns-records, or None."""
+def _replay_miss(attempt: Attempt, stratum: Stratum) -> str | None:
+    """Why one replay did not run the person's work and show exactly its result from the right Action, or None."""
+    zones_meant = stratum.zones
     attempt.fixture.calls.clear()
     status, notice = attempt.replay()
     if status != "done" or not all(map(attempt.fixture.listed, zones_meant)):
@@ -601,11 +613,21 @@ def _replay_miss(attempt: Attempt, zones_meant: tuple[str, ...]) -> str | None:
     if notice is None or notice.outcome != "done" or output is None or output["state"] != "shown":
         return "replay-notice"
     (routine,) = attempt.team.service.routine_store.load("team_1").routines
-    if routine.plan["steps"][output["step"] - 1]["action"] != "list-dns-records":
+    if routine.plan["steps"][output["step"] - 1]["action"] != stratum.shows:
         return "replay-shown:step"
+    if stratum.shows == "list-zones":
+        return None if _shown_zone_names(output["value"]) == ZONE_SET else "replay-shown:zones"
     if _shown_records(output["value"]) not in [_expected_records(zone) for zone in zones_meant]:
         return "replay-shown:records"
     return None
+
+
+def _shown_zone_names(value: dict[str, object]) -> set[object] | None:
+    """Each shown zone's name, or None when the shown result holds no complete zones list."""
+    listed = _fields(value).get("zones")
+    if listed is None or listed.get("kind") != "list" or listed["omitted"]:
+        return None
+    return {_fields(item).get("name", {}).get("value") for item in listed["items"]}
 
 
 def _fields(node: dict[str, object]) -> dict[str, object]:
@@ -733,10 +755,12 @@ STRATA = (
     ),
     Stratum(
         "interval-5s",
-        _send("A cada 5 segundos, liste os registros DNS de shimpz.com"),
+        _send("A cada 5 segundos, liste minhas zonas"),
         _person("A cada 5 segundos", 5),
         _continuous,
+        zones=(),
         sends=1,
+        shows="list-zones",
     ),
 )
 
