@@ -349,6 +349,20 @@ def _zone_choice(person: Person, text: str, options: list[dict[str, str]]) -> st
     return next((item["label"] for item in options if person.zone in item["label"]), f"A zona de id {person.zone}")
 
 
+def _matching(person: Person, options: list[dict[str, str]]) -> str:
+    """With no recommended option, the one whose words best match what the person means; the first on a tie.
+
+    A Routine turn's clarification recommends nothing, so the person reads the options and presses the closest one.
+    """
+    meant = [person.zone_words, "registros dns", person.frequency, OUTPUT_WORDS[person.output]]
+    words = {word for text in meant for word in re.findall(r"\w{4,}", text.casefold())}
+
+    def score(item: dict[str, str]) -> int:
+        return len(words & set(re.findall(r"\w{4,}", f"{item['label']} {item['description']}".casefold())))
+
+    return max(options, key=score)["label"]
+
+
 def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bool]:
     """The person's answer to the agent's own question, and whether Admin composes it as a clarification answer."""
     clarification = response.get("clarification")
@@ -361,7 +375,8 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     parts, uncovered = _parts(text, person, judged=clarification is not None or "?" in text)
     if clarification is None:
         return "; ".join(parts) or None, False
-    recommended = options[clarification["default_index"]]["label"]
+    default = clarification.get("default_index")
+    recommended = options[default]["label"] if default is not None else _matching(person, options)
     # The person picks the option that is their own choice when the agent offers one, as one press sends it.
     own = next((item["label"] for item in options if "Sao_Paulo" in item["label"] or "Brasília" in item["label"]), None)
     # An option that also names a schedule or other choices would say more than the person means; they type their
