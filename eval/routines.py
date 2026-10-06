@@ -670,9 +670,9 @@ def _replay_miss(attempt: Attempt, stratum: Stratum) -> str | None:
         return f"replay:{status}"
     output = None if notice is None else notice.detail.get("output")
     if attempt.person.output == "none":
-        # A Routine that shows nothing completes and shows nothing.
+        # A Routine that shows nothing completes and publishes no shown result: a run notice, if any, shows nothing.
         shown = output is not None and output.get("state") == "shown"
-        return "replay-notice" if notice is None or notice.outcome != "done" or shown else None
+        return "replay-notice" if notice is not None and notice.outcome == "done" and shown else None
     if notice is None or notice.outcome != "done" or output is None or output["state"] != "shown":
         return "replay-notice"
     return _shown_miss(attempt, stratum, output)
