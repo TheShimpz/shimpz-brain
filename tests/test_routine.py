@@ -211,11 +211,15 @@ class RecordTests(unittest.TestCase):
                 self.assertIsNone(routine.recorded(messages))
 
 
+def _runtime(*responses):
+    model = RecordingToolAwareFakeModel(responses=list(responses))
+    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
+
+
 class GraphTests(unittest.TestCase):
     def _runtime(self, *responses):
         RecordingToolAwareFakeModel.seen_messages = []
-        model = RecordingToolAwareFakeModel(responses=list(responses))
-        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
+        return _runtime(*responses)
 
     def test_the_agent_runs_the_work_once_then_records_it_after_the_actions_resume(self):
         runtime, model = self._runtime(
@@ -340,21 +344,16 @@ class PendingQuestionTests(unittest.TestCase):
                 )
 
     def test_the_prompt_names_the_pending_question_only_while_one_is_pending(self):
-        runtime, model = self._runtime(AIMessage(content="Ok."))
+        runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(dataclasses.replace(_chat(), routine_question=QUESTION), envelope("A primeira"))
         system = _system(model.seen_messages[-1])
         self.assertIn("The Team asked the user this Routine question", system)
         self.assertIn(json.dumps(QUESTION, ensure_ascii=False), system)
-        runtime, model = self._runtime(AIMessage(content="Ok."))
+        runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(_chat(), envelope("Oi"))
         system = _system(model.seen_messages[-1])
         self.assertIn("Routines are work", system)
         self.assertNotIn("The Team asked the user this Routine question", system)
-
-    @staticmethod
-    def _runtime(*responses):
-        model = RecordingToolAwareFakeModel(responses=list(responses))
-        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
 
 
 class RoutineModeTests(unittest.TestCase):
@@ -381,7 +380,7 @@ class RoutineModeTests(unittest.TestCase):
                 )
 
     def test_the_prompt_adds_the_routine_mode_and_rerun_sections_only_when_sent(self):
-        runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
+        runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN), envelope("Sim"))
         system = _system(model.seen_messages[-1])
         self.assertIn("If this message asks for a Routine", system)
@@ -389,14 +388,14 @@ class RoutineModeTests(unittest.TestCase):
         self.assertIn("when none is listed, look the value up with an Action that returns it", system)
         self.assertIn("The Team needs this work run again exactly as listed", system)
         self.assertIn(json.dumps(list(RERUN), ensure_ascii=False), system)
-        runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
+        runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(_chat(), envelope("Oi"))
         system = _system(model.seen_messages[-1])
         self.assertNotIn("If this message asks for a Routine", system)
         self.assertNotIn("The Team needs this work run again", system)
 
     def test_the_routine_mode_section_can_be_switched_off_for_measurement(self):
-        runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
+        runtime, model = _runtime(AIMessage(content="Ok."))
         with mock.patch.dict("os.environ", {"SHIMPZ_ROUTINE_MODE_PROMPT": "off"}):
             runtime.start(dataclasses.replace(_chat(), routine_mode=True), envelope("Sim"))
         self.assertNotIn("If this message asks for a Routine", _system(model.seen_messages[-1]))
