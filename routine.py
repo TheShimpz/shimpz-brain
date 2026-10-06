@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import functools
 import json
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -21,43 +20,23 @@ import clarification
 import memory as team_memory
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
-from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import routine as team_routine_protocol
 
 TOOL_NAME = "shimpz_routine"
-MAX_ROUTINES = 8
-# A plan of up to 256 steps, one Action as often as the work needs (ADR-0092 amendment, 2026-10-05, scale).
-MAX_STEPS = 256
-# A listed Routine's steps, encoded, at most: each projects a Team plan of at most 256 KiB, and the Team's plans
-# together hold at most 1 MiB, so the listing never outgrows what Team admits (ADR-0092 amendment, 2026-10-05, scale).
+# Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
+MAX_ROUTINES = team_routine_protocol.MAX_ROUTINES
+MAX_STEPS = team_routine_protocol.MAX_ROUTINE_STEPS
+MAX_NAME_CHARS = team_routine_protocol.MAX_ROUTINE_NAME_CHARS
+# Brain's own request bound on the listing: each Routine's steps, encoded, at most 256 KiB, and the Team's together
+# 1 MiB, as Team's plans are bounded, so a listing never outgrows the turn request Brain admits.
 MAX_LISTED_STEPS_BYTES = 256 * 1024
 MAX_LISTING_STEPS_BYTES = 1024 * 1024
-MAX_NAME_CHARS = 80
 # The reply the person reads beside the card: the result of the work the agent ran.
 MAX_REPLY_CHARS = 4000
-# The Team's daily Action steps across its Routines, which Team enforces; the listing only reports each one's share.
+# The Team's daily Action steps across its Routines, which Team enforces; the context reports what is left of them.
 MAX_DAILY_STEPS = 20_000
-ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
-STEP_ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
-# Mirrors the Team protocol's schedule and timezone grammar of a listed Routine exactly.
-TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}\Z")
-_TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
-_SCHEDULE_FIELDS = {
-    "hourly": frozenset({"kind", "every"}),
-    "daily": frozenset({"kind", "time"}),
-    "weekly": frozenset({"kind", "weekday", "time"}),
-    "monthly": frozenset({"kind", "day", "time"}),
-    "continuous": frozenset({"kind", "gap", "cap"}),
-}
-MIN_CONTINUOUS_GAP_SECONDS = 5
-MAX_CONTINUOUS_GAP_SECONDS = 86_400
-DAY_SECONDS = 86_400
-# Where a listed Routine's timezone came from; "none" is Team's UTC fallback when no zone was captured.
-TIMEZONE_SOURCES = ("browser", "person", "none")
-# What a recorded Routine's runs do with their result: show it every run, only when it changed, or show none of it.
+# What the record tool lets the agent choose for each run's result: show it every run, only on change, or none.
 OUTPUT_MODES = ("show", "changes", "none")
-# What a listed Routine does: a recordable mode, or a decision turn that runs always or only on a change.
-LISTED_MODES = (*OUTPUT_MODES, "decide")
-DECISION_WHEN = ("always", "changes")
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -107,258 +86,31 @@ class RoutineContractError(ValueError):
     pass
 
 
-def _whole(value: object, low: int, high: int) -> bool:
-    return type(value) is int and low <= value <= high
+def valid_capacity(value: object) -> bool:
+    """Whether a Team's daily Action steps left for a Routine is a whole count within the Team's own bound."""
+    return type(value) is int and 0 <= value <= MAX_DAILY_STEPS
 
 
-# The questions Team may have asked about a recording before its card, mirrored exactly from the Team protocol.
-QUESTION_CODES = (
-    "routine-schedule-unstated",
-    "routine-interval-over-budget",
-    "routine-binding-ambiguous",
-    "routine-binding-unsourced",
-    "routine-work-split",
-    "routine-work-rerun",
-)
-MAX_QUESTION_OPTIONS = 8
-MAX_QUESTION_OPTION_CHARS = 120
-_UNSAFE_RE = re.compile(r"[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]")
-
-
-def _plain(value: object) -> bool:
-    return isinstance(value, str) and 0 < len(value) <= MAX_QUESTION_OPTION_CHARS and _UNSAFE_RE.search(value) is None
-
-
-def _target(text: object) -> bool:
-    """A target's exact compact JSON text: one plain string or one integer, as Team writes it."""
-    if not isinstance(text, str) or not 0 < len(text) <= 2 * MAX_QUESTION_OPTION_CHARS + 2:
-        return False
-    try:
-        decoded = json.loads(text)
-    except ValueError:
-        return False
-    if isinstance(decoded, str):
-        scalar = _plain(decoded)
-    else:
-        scalar = type(decoded) is int and len(text) <= MAX_QUESTION_OPTION_CHARS
-    return scalar and json.dumps(decoded, ensure_ascii=False) == text
-
-
-def _option(value: object) -> bool:
-    return (
-        isinstance(value, dict)
-        and set(value) == {"value", "label"}
-        and _target(value["value"])
-        and (value["label"] is None or _plain(value["label"]))
-    )
+def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
+    """The Team's Routines as data, exactly as Team's protocol admits its listing, or a contract error."""
+    listed = team_routine_protocol.canonical_routine_listings(value)
+    if listed is None:
+        raise RoutineContractError("invalid routines")
+    sizes = [len(json.dumps(item["steps"], ensure_ascii=False, separators=(",", ":")).encode()) for item in listed]
+    if any(size > MAX_LISTED_STEPS_BYTES for size in sizes) or sum(sizes) > MAX_LISTING_STEPS_BYTES:
+        raise RoutineContractError("invalid routines")
+    return tuple(listed)
 
 
 def canonical_question(value: object) -> dict[str, object] | None:
     """The Routine question Team asked the person in this recording, as Team's closed form, or None."""
-    if not isinstance(value, dict) or set(value) != {"code", "options", "value"} or value["code"] not in QUESTION_CODES:
-        return None
-    code, options, interval = value["code"], value["options"], value["value"]
-    valid = (
-        isinstance(options, list)
-        and (code == "routine-binding-ambiguous" or not options)
-        and len(options) <= MAX_QUESTION_OPTIONS
-        and all(_option(item) for item in options)
-        and len({item["value"] for item in options}) == len(options)
-        and (
-            _whole(interval, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
-            if code == "routine-interval-over-budget"
-            else interval is None
-        )
-    )
-    if not valid:
-        return None
-    return {"code": code, "options": [dict(item) for item in options], "value": interval}
-
-
-# The work a pending unsourced or rerun question asks to run again, mirrored from Team's Brain context (ADR-0101):
-# each entry one call or ``count`` consecutive identical ones, each input a literal Team shows as exact JSON text (or
-# withholds), the run date, or a value a source Action must return again.
-RERUN_KINDS = ("value", "clock", "fresh")
-MAX_STEP_INPUTS = 64
-MAX_MEMBER_CHARS = 128
-MAX_RERUN_LITERAL_CHARS = 1024
-_RERUN_FIELDS = frozenset({"assistant", "action", "count", "inputs"})
-_RERUN_INPUT_FIELDS = frozenset({"member", "kind", "value", "chosen", "source"})
-
-
-def _action_ref(value: object) -> bool:
-    return (
-        isinstance(value, dict)
-        and set(value) == {"assistant", "action"}
-        and team_identifiers.canonical_assistant_id(value["assistant"]) == value["assistant"]
-        and team_identifiers.canonical_action_id(value["action"]) == value["action"]
-    )
-
-
-def _literal(text: object) -> bool:
-    """A value Team shows as its exact JSON text, as Team writes it, within its bound."""
-    if not isinstance(text, str) or len(text) > MAX_RERUN_LITERAL_CHARS:
-        return False
-    try:
-        return json.dumps(json.loads(text), ensure_ascii=False) == text
-    except ValueError:
-        return False
-
-
-def _rerun_input(value: object) -> bool:
-    if not isinstance(value, dict) or set(value) != _RERUN_INPUT_FIELDS or value["kind"] not in RERUN_KINDS:
-        return False
-    member, kind = value["member"], value["kind"]
-    return (
-        isinstance(member, str)
-        and 0 < len(member) <= MAX_MEMBER_CHARS
-        and _UNSAFE_RE.search(member) is None
-        and type(value["chosen"]) is bool
-        and (value["value"] is None or (kind == "value" and _literal(value["value"])))
-        and (kind == "value" or value["chosen"] is False)
-        and (value["source"] is None or (kind == "fresh" and _action_ref(value["source"])))
-    )
-
-
-def _rerun_entry(value: object) -> bool:
-    if not isinstance(value, dict) or set(value) != _RERUN_FIELDS:
-        return False
-    inputs = value["inputs"]
-    return (
-        _action_ref({"assistant": value["assistant"], "action": value["action"]})
-        and _whole(value["count"], 1, MAX_STEPS)
-        and isinstance(inputs, list)
-        and len(inputs) <= MAX_STEP_INPUTS
-        and all(_rerun_input(item) for item in inputs)
-        and len({item["member"] for item in inputs}) == len(inputs)
-    )
+    return team_routine_protocol.canonical_question(value)
 
 
 def canonical_rerun(value: object) -> tuple[dict[str, object], ...] | None:
     """The work Team asks the agent to run again before it records, as Team's closed form, or None."""
-    if (
-        not isinstance(value, list | tuple)
-        or not 0 < len(value) <= MAX_STEPS
-        or not all(_rerun_entry(item) for item in value)
-        or sum(item["count"] for item in value) > MAX_STEPS
-    ):
-        return None
-    return tuple(json.loads(json.dumps(item, ensure_ascii=False)) for item in value)
-
-
-def valid_capacity(value: object) -> bool:
-    """Whether a Team's daily Action steps left for a Routine is a whole count within the Team's own bound."""
-    return _whole(value, 0, MAX_DAILY_STEPS)
-
-
-def continuous_cap(gap: int) -> int:
-    """A continuous Routine's starts in any rolling 24 hours: its gap's whole day, ceil(86400 / gap), never lowered."""
-    return -(-DAY_SECONDS // gap)
-
-
-def canonical_schedule(value: object) -> dict[str, object] | None:
-    kind = value.get("kind") if isinstance(value, dict) else None
-    if not isinstance(kind, str) or kind not in _SCHEDULE_FIELDS or set(value) != _SCHEDULE_FIELDS[kind]:
-        return None
-    if kind == "hourly":
-        return dict(value) if _whole(value["every"], 1, 24) else None
-    if kind == "continuous":
-        gap = value["gap"]
-        valid = (
-            _whole(gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
-            and type(value["cap"]) is int
-            and value["cap"] == continuous_cap(gap)
-        )
-        return dict(value) if valid else None
-    valid = (
-        isinstance(value["time"], str)
-        and _TIME_RE.fullmatch(value["time"]) is not None
-        and (kind != "weekly" or _whole(value["weekday"], 0, 6))
-        and (kind != "monthly" or _whole(value["day"], 1, 28))
-    )
-    return dict(value) if valid else None
-
-
-def _routine_step(value: object) -> dict[str, object]:
-    if (
-        not isinstance(value, dict)
-        or set(value) != {"id", "assistant", "action", "inputs"}
-        or not isinstance(value["id"], str)
-        or STEP_ID_RE.fullmatch(value["id"]) is None
-        or not all(isinstance(value[key], str) for key in ("assistant", "action"))
-        or not isinstance(value["inputs"], list)
-        or not all(isinstance(name, str) for name in value["inputs"])
-    ):
-        raise RoutineContractError("invalid routines")
-    return {"id": value["id"], "assistant": value["assistant"], "action": value["action"], "inputs": value["inputs"]}
-
-
-def _zoned(timezone: str, source: object) -> bool:
-    """A listed timezone and its source: "none" is exactly UTC, Team's fallback for any schedule."""
-    return source in TIMEZONE_SOURCES and (source != "none" or timezone == "UTC")
-
-
-def _listed_output(value: object) -> bool:
-    """A listed Routine's output: a recordable mode, or a decision that runs always or only on a change."""
-    return (
-        isinstance(value, dict)
-        and set(value) == {"mode", "when"}
-        and value["mode"] in LISTED_MODES
-        and (value["when"] in DECISION_WHEN if value["mode"] == "decide" else value["when"] is None)
-    )
-
-
-def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
-    """The Team's Routines as data (at most 8): id, name, schedule, zone, source, revision, daily steps, output, steps.
-
-    Only a decision may list no steps.
-    """
-    fields = {
-        "routine_id",
-        "name",
-        "schedule",
-        "timezone",
-        "timezone_source",
-        "revision",
-        "daily_steps",
-        "output",
-        "steps",
-    }
-    if not isinstance(value, (list, tuple)) or len(value) > MAX_ROUTINES:
-        raise RoutineContractError("invalid routines")
-    routines = []
-    for entry in value:
-        if not isinstance(entry, dict) or set(entry) != fields:
-            raise RoutineContractError("invalid routines")
-        name = team_memory._line(entry["name"], MAX_NAME_CHARS)
-        schedule = canonical_schedule(entry["schedule"])
-        steps = entry["steps"]
-        if (
-            not isinstance(entry["routine_id"], str)
-            or ROUTINE_ID_RE.fullmatch(entry["routine_id"]) is None
-            or not name
-            or schedule is None
-            or not isinstance(entry["timezone"], str)
-            or TIMEZONE_RE.fullmatch(entry["timezone"]) is None
-            or not _zoned(entry["timezone"], entry["timezone_source"])
-            or not _whole(entry["revision"], 1, 2**31 - 1)
-            or not valid_capacity(entry["daily_steps"])
-            or not _listed_output(entry["output"])
-            or not isinstance(steps, list)
-            or len(steps) > MAX_STEPS
-            or (not steps and entry["output"]["mode"] != "decide")
-        ):
-            raise RoutineContractError("invalid routines")
-        listed = {**entry, "schedule": schedule, "output": dict(entry["output"])}
-        routines.append({**listed, "steps": [_routine_step(step) for step in steps]})
-    sizes = [len(json.dumps(item["steps"], ensure_ascii=False, separators=(",", ":")).encode()) for item in routines]
-    if (
-        len({item["routine_id"] for item in routines}) != len(routines)
-        or any(size > MAX_LISTED_STEPS_BYTES for size in sizes)
-        or sum(sizes) > MAX_LISTING_STEPS_BYTES
-    ):
-        raise RoutineContractError("invalid routines")
-    return tuple(routines)
+    work = team_routine_protocol.canonical_rerun(value)
+    return None if work is None else tuple(work)
 
 
 def _reply(value: object) -> str | None:

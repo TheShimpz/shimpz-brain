@@ -20,6 +20,7 @@ import memory as team_memory
 import runtime_api
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from protocol.team.http.v1 import identifiers as team_identifiers
 from test_agent_runtime import ToolAwareFakeModel
 from test_runtime_api import TOKEN, FakeRuntime, body, client
 
@@ -137,7 +138,7 @@ def _largest_uncounted() -> dict[str, object]:
                 "timezone": "/".join(letter * 32 for letter in "ABC"),
                 "timezone_source": "browser",
                 "revision": 2**31 - 1,
-                "daily_steps": team_routine.MAX_DAILY_STEPS,
+                "daily_steps": team_routine.team_routine_protocol.MAX_LISTED_DAILY_STEPS,
                 "output": {"mode": "decide", "when": "changes"},
                 "steps": _listed_steps(team_routine.MAX_LISTING_STEPS_BYTES // team_routine.MAX_ROUTINES),
             }
@@ -147,10 +148,18 @@ def _largest_uncounted() -> dict[str, object]:
 
 
 def _listed_steps(size: int) -> list[dict[str, object]]:
-    """One listed Routine's steps encoded in exactly ``size`` bytes: the listing bound counts bytes, not steps."""
-    step = {"id": "s" + "x" * 31, "assistant": "a" * 64, "action": "b" * 64, "inputs": [""]}
-    empty = len(_encoded([step]))
-    return [{**step, "inputs": ["c" * (size - empty)]}]
+    """One listed Routine's widest steps, as many as fit ``size`` encoded bytes: the listing bound counts bytes."""
+    names = [f"{index:02d}" + "c" * (team_routine.team_routine_protocol.MAX_MEMBER_CHARS - 2) for index in range(64)]
+    step = {
+        "id": "s" + "x" * 31,
+        "assistant": "a" * team_identifiers.MAX_ASSISTANT_ID_CHARS,
+        "action": "b" * team_identifiers.MAX_ACTION_ID_CHARS,
+        "inputs": names,
+    }
+    steps: list[dict[str, object]] = []
+    while len(_encoded([*steps, step])) <= size:
+        steps.append(step)
+    return steps
 
 
 def _serve(peer: _Peer, scope: dict[str, Any], runtime: FakeRuntime | None = None) -> FakeRuntime:

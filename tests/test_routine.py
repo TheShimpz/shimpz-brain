@@ -49,8 +49,8 @@ RERUN = (
         "action": "hello",
         "count": 2,
         "inputs": [
-            {"member": "name", "kind": "value", "value": '"ana"', "chosen": True, "source": None},
             {"member": "day", "kind": "clock", "value": None, "chosen": False, "source": None},
+            {"member": "name", "kind": "value", "value": '"ana"', "chosen": True, "source": None},
             {
                 "member": "zone",
                 "kind": "fresh",
@@ -104,107 +104,37 @@ def _system(messages: list) -> str:
 
 
 class ContractTests(unittest.TestCase):
-    def test_the_schedule_grammar_mirrors_the_team_protocol_exactly(self):
-        for value in (
-            {"kind": "hourly", "every": 1},
-            {"kind": "hourly", "every": 24},
-            {"kind": "daily", "time": "00:00"},
-            {"kind": "weekly", "weekday": 6, "time": "23:59"},
-            {"kind": "monthly", "day": 28, "time": "09:05"},
-            {"kind": "continuous", "gap": 5, "cap": 17280},
-            {"kind": "continuous", "gap": 30, "cap": 2880},
-            {"kind": "continuous", "gap": 7, "cap": 12343},
-            {"kind": "continuous", "gap": 86400, "cap": 1},
-        ):
-            with self.subTest(value=value):
-                self.assertEqual(routine.canonical_schedule(value), value)
-        for value in (
-            None,
-            [],
-            {"kind": ["daily"], "time": "09:00"},
-            {"kind": "yearly", "time": "09:00"},
-            {"kind": "hourly", "every": 0},
-            {"kind": "hourly", "every": True},
-            {"kind": "daily", "time": "24:00"},
-            {"kind": "daily", "time": "09:00", "every": 1},
-            {"kind": "weekly", "weekday": 7, "time": "09:00"},
-            {"kind": "monthly", "day": 29, "time": "09:00"},
-            {"kind": "continuous", "gap": 4, "cap": 100},
-            {"kind": "continuous", "gap": 86401, "cap": 100},
-            {"kind": "continuous", "gap": 5, "cap": 0},
-            {"kind": "continuous", "gap": 30, "cap": 1000},
-            {"kind": "continuous", "gap": 30, "cap": 2881},
-            {"kind": "continuous", "gap": 30, "cap": 2880.0},
-            {"kind": "continuous", "gap": 5.0, "cap": 17280},
-            {"kind": "continuous", "gap": 5},
-            {"kind": "continuous", "gap": 5, "cap": 100, "time": "09:00"},
-        ):
-            with self.subTest(value=value):
-                self.assertIsNone(routine.canonical_schedule(value))
-
-    def test_listed_routines_are_closed_data(self):
+    def test_listed_routines_are_teams_own_protocol_form(self):
+        # Team's mirrored protocol is the only authority for the listing; Brain only turns a refusal into its error.
         self.assertEqual(routine.canonical_routines([LISTED]), (LISTED,))
-        named = {**LISTED, "timezone": "Europe/Lisbon", "timezone_source": "person"}
-        self.assertEqual(routine.canonical_routines([named]), (named,))
-        # UTC as Team's fallback when no zone was captured, for any schedule, never read as the person's zone.
-        unzoned = {**LISTED, "schedule": {"kind": "hourly", "every": 1}, "timezone": "UTC", "timezone_source": "none"}
+        unzoned = {**LISTED, "timezone": "UTC", "timezone_source": "none"}
         self.assertEqual(routine.canonical_routines([unzoned]), (unzoned,))
-        calendar = {**LISTED, "timezone": "UTC", "timezone_source": "none"}
-        self.assertEqual(routine.canonical_routines([calendar]), (calendar,))
-        deciding = {**LISTED, "output": {"mode": "decide", "when": "changes"}, "steps": []}
-        self.assertEqual(routine.canonical_routines([deciding]), (deciding,))
-        step = LISTED["steps"][0]
-        for value in (
-            None,
-            [{**LISTED, "extra": 1}],
-            [{**LISTED, "quote": "retired"}],
-            [{key: item for key, item in LISTED.items() if key != "output"}],
-            [{**LISTED, "routine_id": "A" * 32}],
-            [{**LISTED, "name": ""}],
-            [{**LISTED, "schedule": {"kind": "daily"}}],
-            [{**LISTED, "timezone": "../etc"}],
-            [{key: item for key, item in LISTED.items() if key != "timezone_source"}],
-            [{**LISTED, "timezone_source": "guessed"}],
-            [{**LISTED, "timezone_source": "none"}],
-            [{**unzoned, "timezone": "America/Sao_Paulo"}],
-            [{**LISTED, "revision": 0}],
-            [{**LISTED, "output": {"mode": "chain", "when": None}}],
-            [{**LISTED, "output": {"mode": "show", "when": "always"}}],
-            [{**LISTED, "output": {"mode": "decide", "when": None}}],
-            [{**LISTED, "output": {"mode": "show"}}],
-            [{**LISTED, "steps": []}],
-            [{**LISTED, "steps": [step] * (routine.MAX_STEPS + 1)}],
-            [{**LISTED, "daily_steps": -1}],
-            [{**LISTED, "daily_steps": routine.MAX_DAILY_STEPS + 1}],
-            [{**LISTED, "daily_steps": True}],
-            [{**LISTED, "steps": [{**step, "inputs": ["x" * 1000] * 263}]}],
-            [{**LISTED, "steps": [{**step, "id": "Bad"}]}],
-            [{**LISTED, "steps": [{**step, "inputs": [1]}]}],
-            [{**LISTED, "steps": [{**step, "extra": 1}]}],
-            [{**LISTED, "steps": [{**step, "action": 1}]}],
-            [LISTED, LISTED],
-            [dict(LISTED, routine_id=f"{index:032x}") for index in range(routine.MAX_ROUTINES + 1)],
-        ):
+        for value in (None, [{**LISTED, "extra": 1}], [{**LISTED, "timezone_source": "guessed"}], [LISTED, LISTED]):
             with self.subTest(value=value), self.assertRaises(routine.RoutineContractError):
                 routine.canonical_routines(value)
 
-    def test_a_listing_holds_at_most_what_team_admits_by_encoded_size(self):
+    def test_a_listing_holds_at_most_brains_own_encoded_request_bound(self):
         step = LISTED["steps"][0]
 
         def listed(index: int, size: int) -> dict:
-            # One step whose single input name pads the encoded steps to exactly ``size`` bytes.
-            empty = len(json.dumps([{**step, "inputs": [""]}], separators=(",", ":")).encode())
-            padded = [{**step, "inputs": ["é" * ((size - empty) // 2)]}]
-            return {**LISTED, "routine_id": f"{index:032x}", "steps": padded}
+            # One step per 64 input names, padded so the encoded steps take exactly ``size`` bytes.
+            names = [f"{name:03d}" + "a" * 124 for name in range(64)]
+            base = len(json.dumps([{**step, "inputs": names}], separators=(",", ":")).encode())
+            steps, used = [], 2
+            while used + base + 1 <= size:
+                steps.append({**step, "id": f"s{len(steps)}", "inputs": names})
+                used = len(json.dumps(steps, separators=(",", ":")).encode())
+            return {**LISTED, "routine_id": f"{index:032x}", "steps": steps}
 
-        most = routine.MAX_LISTED_STEPS_BYTES
-        self.assertEqual(len(routine.canonical_routines([listed(0, most)])), 1)
+        within = listed(0, routine.MAX_LISTED_STEPS_BYTES)
+        self.assertEqual(len(routine.canonical_routines([within])), 1)
+        over = {**within, "steps": [*within["steps"], *within["steps"][:2]]}
+        over["steps"] = [{**item, "id": f"s{index}"} for index, item in enumerate(over["steps"])]
         with self.assertRaises(routine.RoutineContractError):
-            routine.canonical_routines([listed(0, most + 2)])
-        whole = [listed(index, most) for index in range(routine.MAX_LISTING_STEPS_BYTES // most)]
-        self.assertEqual(len(routine.canonical_routines(whole)), len(whole))
+            routine.canonical_routines([over])
+        whole = [listed(index, routine.MAX_LISTED_STEPS_BYTES) for index in range(5)]
         with self.assertRaises(routine.RoutineContractError):
-            routine.canonical_routines([*whole, listed(len(whole), 128)])
+            routine.canonical_routines(whole)
 
     def test_the_tool_schema_is_closed_and_offers_only_recordable_modes(self):
         tool = routine.tool()
@@ -398,38 +328,9 @@ class GraphTests(unittest.TestCase):
 
 
 class PendingQuestionTests(unittest.TestCase):
-    def test_a_pending_question_is_closed_team_data(self):
-        interval = {"code": "routine-interval-over-budget", "options": [], "value": 9}
-        schedule = {"code": "routine-schedule-unstated", "options": [], "value": None}
-        for value in (QUESTION, interval, schedule):
-            with self.subTest(value=value):
-                self.assertEqual(routine.canonical_question(value), value)
-        option = QUESTION["options"][0]
-        for value in (
-            None,
-            [],
-            {**QUESTION, "extra": 1},
-            {**QUESTION, "code": "routine-timezone-unstated"},
-            {**QUESTION, "code": "routine-no-room"},
-            {**schedule, "options": [option]},
-            {**QUESTION, "options": [option, option]},
-            {**QUESTION, "options": [option] * 9},
-            {**QUESTION, "options": [{**option, "value": "023e105f"}]},
-            {**QUESTION, "options": [{**option, "value": '"a"  '}]},
-            {**QUESTION, "options": [{**option, "value": "1.5"}]},
-            {**QUESTION, "options": [{**option, "value": '"' + "x" * 121 + '"'}]},
-            {**QUESTION, "options": [{**option, "value": 7}]},
-            {**QUESTION, "options": [{**option, "value": '"' + "x" * 300 + '"'}]},
-            {**QUESTION, "options": [{**option, "value": "1" * 121}]},
-            {**QUESTION, "options": [{**option, "label": ""}]},
-            {**QUESTION, "options": [{**option, "label": "a\nb"}]},
-            {**QUESTION, "options": [{"value": '"a"'}]},
-            {**QUESTION, "options": "a"},
-            {**QUESTION, "value": 9},
-            {**interval, "value": 4},
-            {**interval, "value": True},
-            {**interval, "value": None},
-        ):
+    def test_a_pending_question_is_teams_own_protocol_form(self):
+        self.assertEqual(routine.canonical_question(QUESTION), QUESTION)
+        for value in (None, {**QUESTION, "extra": 1}, {**QUESTION, "code": "routine-no-room"}):
             with self.subTest(value=value):
                 self.assertIsNone(routine.canonical_question(value))
 
@@ -467,45 +368,10 @@ class PendingQuestionTests(unittest.TestCase):
 
 
 class RoutineModeTests(unittest.TestCase):
-    def test_a_rerun_is_closed_team_data(self):
+    def test_a_rerun_is_teams_own_protocol_form(self):
         self.assertEqual(routine.canonical_rerun(list(RERUN)), RERUN)
-        entry, value = RERUN[0], RERUN[0]["inputs"][0]
-        clock, fresh = RERUN[0]["inputs"][1], RERUN[0]["inputs"][2]
-        withheld = {**value, "value": None}
-        listed = {**value, "member": "other", "value": '["a", {"b": 1}]', "chosen": False}
-        self.assertEqual(routine.canonical_rerun([{**entry, "inputs": [withheld, listed]}])[0]["inputs"][1], listed)
-        for rerun in (
-            None,
-            {},
-            [],
-            [entry] * (routine.MAX_STEPS + 1),
-            [{**entry, "extra": 1}],
-            [{**entry, "assistant": "Bad Id"}],
-            [{**entry, "action": ""}],
-            [{**entry, "count": 0}],
-            [{**entry, "count": True}],
-            [{**entry, "count": routine.MAX_STEPS + 1}],
-            [entry, {**entry, "count": routine.MAX_STEPS - 1}],
-            [{**entry, "inputs": "x"}],
-            [{**entry, "inputs": [value] * 2}],
-            [{**entry, "inputs": [{**value, "member": f"m{index}"} for index in range(routine.MAX_STEP_INPUTS + 1)]}],
-            [{**entry, "inputs": [{**value, "member": ""}]}],
-            [{**entry, "inputs": [{**value, "member": "a\nb"}]}],
-            [{**entry, "inputs": [{**value, "member": "m" * 129}]}],
-            [{**entry, "inputs": [{**value, "kind": "other"}]}],
-            [{**entry, "inputs": [{**value, "value": "not json"}]}],
-            [{**entry, "inputs": [{**value, "value": '"a"  '}]}],
-            [{**entry, "inputs": [{**value, "value": '"' + "x" * 1023 + '"'}]}],
-            [{**entry, "inputs": [{**value, "value": 1}]}],
-            [{**entry, "inputs": [{**value, "chosen": 1}]}],
-            [{**entry, "inputs": [{**value, "source": fresh["source"]}]}],
-            [{**entry, "inputs": [{**clock, "value": '"x"'}]}],
-            [{**entry, "inputs": [{**clock, "chosen": True}]}],
-            [{**entry, "inputs": [{**fresh, "source": {"assistant": "hello-pulse"}}]}],
-            [{**entry, "inputs": [{**fresh, "source": {"assistant": "Bad Id", "action": "list"}}]}],
-            [{**entry, "inputs": [{**fresh, "source": "list"}]}],
-            [{**entry, "inputs": [{k: v for k, v in value.items() if k != "chosen"}]}],
-        ):
+        entry = RERUN[0]
+        for rerun in (None, [], [{**entry, "extra": 1}], [{**entry, "inputs": list(reversed(entry["inputs"]))}]):
             with self.subTest(rerun=str(rerun)[:80]):
                 self.assertIsNone(routine.canonical_rerun(rerun))
 
