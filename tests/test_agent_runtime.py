@@ -20,6 +20,7 @@ import agent_runtime
 import clarification
 import context_budget
 import provider_client
+import tool_fake
 import turn_prompt
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
@@ -102,6 +103,16 @@ def context(
     )
 
 
+def _saver(kind: str, path: Path) -> tuple[Any, sqlite3.Connection | None]:
+    """A fresh in-memory saver, or a set-up SQLite saver at ``path`` with the connection its runtime closes."""
+    if kind == "memory":
+        return InMemorySaver(), None
+    connection = sqlite3.connect(path, check_same_thread=False)
+    saver = SqliteSaver(connection)
+    saver.setup()
+    return saver, connection
+
+
 class AgentRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
         ToolAwareFakeModel.bound_tools = []
@@ -141,16 +152,7 @@ class AgentRuntimeTests(unittest.TestCase):
     def test_empty_assistant_context_binds_no_tools_and_returns_a_natural_reply(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="I can help you think this through.")])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
-        turn = agent_runtime.TurnContext(
-            thread_id="team:brain-only:thread-1",
-            team_name="Planning",
-            assistants=(),
-            provider=agent_runtime.ProviderConfig(
-                provider="openai",
-                model="gpt-6.1-sol",
-                api_key="secret-test-key",
-            ),
-        )
+        turn = dataclasses.replace(context(thread_id="team:brain-only:thread-1", team_name="Planning"), assistants=())
 
         result = runtime.start(turn, "Help me organize an idea")
 
@@ -180,16 +182,7 @@ class AgentRuntimeTests(unittest.TestCase):
             ]
         )
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
-        turn = agent_runtime.TurnContext(
-            thread_id="team:brain-only:thread-2",
-            team_name="Planning",
-            assistants=(),
-            provider=agent_runtime.ProviderConfig(
-                provider="openai",
-                model="gpt-6.1-sol",
-                api_key="secret-test-key",
-            ),
-        )
+        turn = dataclasses.replace(context(thread_id="team:brain-only:thread-2", team_name="Planning"), assistants=())
 
         # The undeclared call is answered as an unknown tool and never executes; a model that keeps calling it ends
         # the turn at the graph limit.
@@ -228,29 +221,19 @@ class AgentRuntimeTests(unittest.TestCase):
     def test_selected_to_empty_scope_never_leaks_prior_action_context(self):
         for saver_kind in ("memory", "sqlite"):
             with self.subTest(saver=saver_kind), tempfile.TemporaryDirectory() as directory:
-                if saver_kind == "memory":
-                    saver = InMemorySaver()
-                    connection = None
-                else:
-                    connection = sqlite3.connect(Path(directory) / "scope.sqlite3", check_same_thread=False)
-                    saver = SqliteSaver(connection)
-                    saver.setup()
+                saver, connection = _saver(saver_kind, Path(directory) / "scope.sqlite3")
                 selected = context(
                     assistant("weather-pulse", action("lookup")),
                     thread_id=f"team:scope:{saver_kind}",
                 )
-                selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
                 model = RecordingToolAwareFakeModel(
                     responses=[
                         AIMessage(
                             content="",
                             tool_calls=[
-                                {
-                                    "name": selected_tool,
-                                    "args": {"name": "Lisbon"},
-                                    "id": "provider-call-private",
-                                    "type": "tool_call",
-                                }
+                                tool_fake.call(
+                                    assistant("weather-pulse"), "lookup", {"name": "Lisbon"}, "provider-call-private"
+                                )
                             ],
                         ),
                         AIMessage(content="The private Action result was used."),
@@ -264,12 +247,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
                 suspended = runtime.start(selected, "Use the private Action")
                 runtime.resume(selected, {suspended.actions[0].interrupt_id: {"secret": "PRIVATE"}})
-                empty = agent_runtime.TurnContext(
-                    thread_id=selected.thread_id,
-                    team_name=selected.team_name,
-                    assistants=(),
-                    provider=selected.provider,
-                )
+                empty = dataclasses.replace(selected, assistants=())
 
                 result = runtime.start(empty, "Continue without Assistants")
 
@@ -290,12 +268,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_switching_selected_assistants_clears_the_prior_provider_context(self):
         first = context(assistant("weather-pulse"), thread_id="team:scope:selected")
-        second = agent_runtime.TurnContext(
-            thread_id=first.thread_id,
-            team_name=first.team_name,
-            assistants=(assistant("campaign-reader"),),
-            provider=first.provider,
-        )
+        second = dataclasses.replace(first, assistants=(assistant("campaign-reader"),))
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="Weather-private reply."), AIMessage(content="Campaign reply.")]
         )
@@ -328,25 +301,15 @@ class AgentRuntimeTests(unittest.TestCase):
     def test_new_turn_discards_an_abandoned_action_interrupt(self):
         for saver_kind in ("memory", "sqlite"):
             with self.subTest(saver=saver_kind), tempfile.TemporaryDirectory() as directory:
-                if saver_kind == "memory":
-                    saver = InMemorySaver()
-                    connection = None
-                else:
-                    connection = sqlite3.connect(Path(directory) / "interrupt.sqlite3", check_same_thread=False)
-                    saver = SqliteSaver(connection)
-                    saver.setup()
-                selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
+                saver, connection = _saver(saver_kind, Path(directory) / "interrupt.sqlite3")
                 model = RecordingToolAwareFakeModel(
                     responses=[
                         AIMessage(
                             content="",
                             tool_calls=[
-                                {
-                                    "name": selected_tool,
-                                    "args": {"name": "Lisbon"},
-                                    "id": "provider-call-abandoned",
-                                    "type": "tool_call",
-                                }
+                                tool_fake.call(
+                                    assistant("weather-pulse"), "lookup", {"name": "Lisbon"}, "provider-call-abandoned"
+                                )
                             ],
                         ),
                         AIMessage(content="Fresh reply after cancellation."),
@@ -393,12 +356,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_concurrent_scope_changes_are_serialized_before_provider_context_is_built(self):
         first = context(assistant("weather-pulse"), thread_id="team:scope:concurrent")
-        second = agent_runtime.TurnContext(
-            thread_id=first.thread_id,
-            team_name=first.team_name,
-            assistants=(assistant("campaign-reader"),),
-            provider=first.provider,
-        )
+        second = dataclasses.replace(first, assistants=(assistant("campaign-reader"),))
         model = BlockingScopeModel(responses=[AIMessage(content="First reply."), AIMessage(content="Second reply.")])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
 
@@ -556,12 +514,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 AIMessage(
                     content="",
                     tool_calls=[
-                        {
-                            "name": selected_tool,
-                            "args": {"name": "Ada"},
-                            "id": "provider-call-1",
-                            "type": "tool_call",
-                        }
+                        tool_fake.call(assistant("weather-pulse"), "lookup", {"name": "Ada"}, "provider-call-1")
                     ],
                 ),
                 AIMessage(content="The Assistant returned: Hello, Ada."),
@@ -821,18 +774,14 @@ class AgentRuntimeTests(unittest.TestCase):
                 "Start",
             )
 
-        selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
         model = ToolAwareFakeModel(
             responses=[
                 AIMessage(
                     content="",
                     tool_calls=[
-                        {
-                            "name": selected_tool,
-                            "args": {"name": "Lisbon"},
-                            "id": "provider-call-dependency",
-                            "type": "tool_call",
-                        }
+                        tool_fake.call(
+                            assistant("weather-pulse"), "lookup", {"name": "Lisbon"}, "provider-call-dependency"
+                        )
                     ],
                 )
             ]
