@@ -215,6 +215,8 @@ class RecordTests(unittest.TestCase):
             (_args(schedule={**SCHEDULE, "gap": 4}), "schedule"),
             (_args(schedule={**SCHEDULE, "time": "09:00"}), "schedule"),
             (_args(schedule="daily"), "schedule"),
+            (_args(schedule={**SCHEDULE, "unexpected": None}), "schedule"),
+            (_args(schedule={key: item for key, item in SCHEDULE.items() if key != "every"}), "schedule"),
             (_args(timezone="../etc"), "timezone"),
             (_args(timezone=1), "timezone"),
             (_args(output={"mode": "decide"}), "output"),

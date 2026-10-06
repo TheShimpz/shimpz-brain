@@ -225,9 +225,14 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
     return tuple(routines)
 
 
+_SCHEDULE_MEMBERS = frozenset(SCHEMA["properties"]["schedule"]["required"])
+
+
 def _present(value: object) -> object:
-    """A schedule object without the null members its one structured shape carries."""
-    return {key: item for key, item in value.items() if item is not None} if isinstance(value, dict) else value
+    """A schedule with exactly the tool's members, without the nulls its one structured shape carries; else None."""
+    if not isinstance(value, dict) or set(value) != _SCHEDULE_MEMBERS:
+        return None
+    return {key: item for key, item in value.items() if item is not None}
 
 
 def _reply(value: object) -> str | None:
