@@ -41,6 +41,16 @@ SCOPES = ("needed", "4", "16")
 BEHAVIORS = frozenset({"act", "safe-lookup", "harmless-default", "clarify", "answer", "refuse"})
 
 
+def messages(*texts: str) -> dict[str, str]:
+    """Messages in LOCALES order: ar, de, en, es, fr, ja, pt, zh."""
+    return dict(zip(LOCALES, texts, strict=True))
+
+
+def created(prefix: str, key: str, **fields: object) -> dict[str, object]:
+    """The snapshot entries of one created item: its presence and every stored field."""
+    return {f"{prefix}:{key}": True, **{f"{prefix}:{key}:{name}": value for name, value in fields.items()}}
+
+
 @dataclass(frozen=True, slots=True)
 class Template:
     id: str

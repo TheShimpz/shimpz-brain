@@ -8,21 +8,12 @@ This module uses only the standard library.
 
 from __future__ import annotations
 
-from eval.corpus import LOCALES, Template
-
-
-def _messages(*texts: str) -> dict[str, str]:
-    """Messages in LOCALES order: ar, de, en, es, fr, ja, pt, zh."""
-    return dict(zip(LOCALES, texts, strict=True))
-
-
-def _created(prefix: str, key: str, **fields: object) -> dict[str, object]:
-    return {f"{prefix}:{key}": True, **{f"{prefix}:{key}:{name}": value for name, value in fields.items()}}
+from eval.corpus import Template, created, messages
 
 
 def _transfer(payee_id: str, amount: str, reference: str = "") -> dict[str, object]:
     """One immediately sent transfer with every other optional field at its default."""
-    return _created(
+    return created(
         "transfer",
         "trf-new-1",
         payee_id=payee_id,
@@ -39,7 +30,7 @@ def _work_order(
     unit_id: str, contractor_id: str, title: str, visit: tuple[str, str], cost_cap: str = ""
 ) -> dict[str, object]:
     """The first new work order, open, with every optional field but cost_cap at its default."""
-    return _created(
+    return created(
         "workorder",
         "WO-1063",
         unit_id=unit_id,
@@ -64,7 +55,7 @@ TEMPLATES = (
         "act",
         ("property", "repairs", "payments"),
         3,
-        _messages(
+        messages(
             "ادفع للمقاول الذي أصلح الغلاية في شقة Henrik Schulz: المبلغ هو التكلفة النهائية لأمر العمل ذاك، واجعل "
             "رقم أمر العمل مرجعًا للتحويل.",
             "Bezahl den Handwerker, der in der Wohnung von Henrik Schulz den Heizkessel repariert hat: den Endbetrag "
@@ -93,7 +84,7 @@ TEMPLATES = (
         "act",
         ("property", "repairs", "calendar"),
         3,
-        _messages(
+        messages(
             "اطلب من صانع الأقفال الذي نتعامل معه تغيير قفل الباب الأمامي في شقة Amira Nasser بأمر عمل عنوانه "
             '"Replace front door lock"، ثم أضف موعد الزيارة إلى تقويمي بالعنوان نفسه.',
             "Beauftrag unseren Schlüsseldienst, bei Amira Nasser das Wohnungstürschloss auszutauschen, mit einem "
@@ -132,7 +123,7 @@ TEMPLATES = (
         "safe-lookup",
         ("repairs", "property"),
         3,
-        _messages(
+        messages(
             "مدّد عقد إيجار الشخص الذي يسكن الشقة التي نُفّذ فيها أمر العمل WO-1055 حتى 2027-05-31.",
             "Verlängere den Mietvertrag der Person, die in der Wohnung wohnt, in der der Arbeitsauftrag WO-1055 "
             "erledigt wurde, bis zum 2027-05-31.",
@@ -157,7 +148,7 @@ TEMPLATES = (
         "safe-lookup",
         ("property", "repairs", "payments"),
         3,
-        _messages(
+        messages(
             "توقف العمل مؤقتًا: ألغِ التحويل المجدول إلى المقاول المكلّف بأمر العمل المفتوح في Shop 1, 22 Mill Lane.",
             "Der Auftrag liegt auf Eis: Storniere die geplante Überweisung an den Handwerker, der dem offenen "
             "Arbeitsauftrag in Shop 1, 22 Mill Lane zugeteilt ist.",
@@ -184,7 +175,7 @@ TEMPLATES = (
         "act",
         ("property", "repairs"),
         2,
-        _messages(
+        messages(
             'افتح أمر عمل لـ Kraft Plumbing بعنوان "Dripping kitchen tap" لإصلاح صنبور المطبخ الذي يقطر في Flat 2B, '
             "14 Elm Street، بحد أقصى للتكلفة قدره 150 EUR.",
             "Leg für Kraft Plumbing einen Arbeitsauftrag „Dripping kitchen tap“ an: Der Küchenwasserhahn in Flat 2B, "
@@ -214,7 +205,7 @@ TEMPLATES = (
         "act",
         ("payments",),
         2,
-        _messages(
+        messages(
             "حوّل 85.50 يورو إلى Ivo Brandt.",
             "Überweis Ivo Brandt 85,50 €.",
             "Transfer €85.50 to Ivo Brandt.",
@@ -235,7 +226,7 @@ TEMPLATES = (
         "clarify",
         ("payments",),
         1,
-        _messages(
+        messages(
             "أضف عامل تنظيف النوافذ الجديد لدينا، Sven Ekberg، كمستفيد وحوّل له 120 يورو.",
             "Leg unseren neuen Fensterputzer Sven Ekberg als Zahlungsempfänger an und überweis ihm 120 EUR.",
             "Add our new window cleaner, Sven Ekberg, as a payee and transfer him 120 EUR.",
@@ -257,7 +248,7 @@ TEMPLATES = (
         "clarify",
         ("payments", "repairs"),
         1,
-        _messages(
+        messages(
             "ادفع فاتورة Kraft Plumbing رقم KP-5512، واستخدم رقم الفاتورة مرجعًا للتحويل.",
             "Bezahl die Rechnung KP-5512 von Kraft Plumbing, mit der Rechnungsnummer als Verwendungszweck.",
             "Pay Kraft Plumbing's invoice KP-5512 and use the invoice number as the reference.",
@@ -278,7 +269,7 @@ TEMPLATES = (
         "act",
         ("property", "repairs"),
         3,
-        _messages(
+        messages(
             "انقل زيارة السبّاك لشقة Lucía Moreno إلى 5 أكتوبر 2026 الساعة 3:30 مساءً.",
             "Verschieb den Termin des Installateurs in der Wohnung von Lucía Moreno auf den 5. Oktober 2026 um "
             "15:30 Uhr.",
@@ -300,7 +291,7 @@ TEMPLATES = (
         "act",
         ("property",),
         2,
-        _messages(
+        messages(
             "جدّد عقد إيجار Lucas Moreau حتى 31 مارس 2028 بإيجار شهري قدره 1,210 يورو.",
             "Verlängere den Mietvertrag von Lucas Moreau bis zum 31. März 2028 zu 1.210 € im Monat.",
             "Renew Lucas Moreau's lease until March 31, 2028 at €1,210 a month.",

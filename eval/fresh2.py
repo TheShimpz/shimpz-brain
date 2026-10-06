@@ -16,7 +16,7 @@ from collections import Counter
 from collections.abc import Mapping
 
 from eval import fixtures, world
-from eval.corpus import LOCALES, Template, scenarios, stratum_digest, validate_stratum
+from eval.corpus import Template, created, messages, scenarios, stratum_digest, validate_stratum
 from eval.fixtures import _DATE, _STRING, Assistant, _read, _schema, _write
 
 CORPUS_ID = "fresh-v2"
@@ -441,22 +441,13 @@ class FreshWorld(world.World):
 INITIAL = FreshWorld().snapshot()
 
 
-def _messages(*texts: str) -> dict[str, str]:
-    """Messages in LOCALES order: ar, de, en, es, fr, ja, pt, zh."""
-    return dict(zip(LOCALES, texts, strict=True))
-
-
-def _created(prefix: str, key: str, **fields: object) -> dict[str, object]:
-    return {f"{prefix}:{key}": True, **{f"{prefix}:{key}:{name}": value for name, value in fields.items()}}
-
-
 TEMPLATES = (
     Template(
         "parcel-express",
         "act",
         ("shipping",),
         2,
-        _messages(
+        messages(
             "أرسل طردًا وزنه 1.2 كغ إلى Marta Kowalski بالشحن السريع، برقم الطلب ORD-2291.",
             "Verschick ein 1,2-kg-Paket per Express an Marta Kowalski, Bestellreferenz ORD-2291.",
             "Ship a 1.2 kg parcel to Marta Kowalski by express, order reference ORD-2291.",
@@ -469,7 +460,7 @@ TEMPLATES = (
         "Exactly one new shipment exists: to Marta Kowalski's saved address (not Marek Kowalski's), express service, "
         "1200 g, order reference ORD-2291, no signature required, label created, price 14.90 EUR. Marta's existing "
         "pending parcel ORD-2289 is unchanged. The reply confirms the shipment.",
-        _created(
+        created(
             "shipment",
             "shp-new-1",
             address_id="adr-k2p7",
@@ -487,7 +478,7 @@ TEMPLATES = (
         "act",
         ("shipping", "loyalty"),
         4,
-        _messages(
+        messages(
             "عاد إلينا طرد الطلب ORD-2279 دون أن يُسلَّم. امنح ذلك العميل 100 نقطة ولاء اعتذارًا، ثم استبدل له مكافأة "
             '"Free pastry" برصيده الجديد.',
             "Das Paket zur Bestellung ORD-2279 ist unzustellbar zu uns zurückgekommen. Gib dem Kunden als "
@@ -521,7 +512,7 @@ TEMPLATES = (
         "act",
         ("shipping", "expenses"),
         3,
-        _messages(
+        messages(
             'سجّل تكلفة شحن طرد الطلب ORD-2283 كمصروف بريد باسم "Postage ORD-2283" بتاريخ يوم شحنه، ثم قدّمه للموافقة.',
             "Erfasse das Porto für das Paket der Bestellung ORD-2283 als Portoausgabe mit dem Namen „Postage "
             "ORD-2283“, datiert auf den Versandtag, und reich sie zur Genehmigung ein.",
@@ -541,7 +532,7 @@ TEMPLATES = (
         "titled Postage ORD-2283 exists: 11.90 EUR, dated 2026-09-30, category postage, paid with the default company "
         "card, no note, and submitted for approval. Nothing else changed. The reply confirms the claim was recorded "
         "and submitted.",
-        _created(
+        created(
             "expense",
             "exp-new-1",
             description="Postage ORD-2283",
@@ -559,7 +550,7 @@ TEMPLATES = (
         "safe-lookup",
         ("shipping",),
         2,
-        _messages(
+        messages(
             "ألغِ الطرد المرسل إلى Tomás Rivera الذي لم يُشحن بعد.",
             "Storniere das noch nicht verschickte Paket an Tomás Rivera.",
             "Cancel Tomás Rivera's parcel that hasn't shipped yet.",
@@ -578,7 +569,7 @@ TEMPLATES = (
         "safe-lookup",
         ("expenses",),
         2,
-        _messages(
+        messages(
             "قدّم للموافقة كل مصاريف الوجبات التي ما زالت مسودات.",
             "Reich alle meine Essensausgaben, die noch Entwürfe sind, zur Genehmigung ein.",
             "Submit all my draft meal expenses for approval.",
@@ -598,7 +589,7 @@ TEMPLATES = (
         "safe-lookup",
         ("loyalty",),
         2,
-        _messages(
+        messages(
             "لدى Sophie Laurent بريد إلكتروني جديد: laurent.sophie@example.com. حدّثه في برنامج الولاء.",
             "Sophie Laurent hat eine neue E-Mail-Adresse: laurent.sophie@example.com. Aktualisier sie im "
             "Treueprogramm.",
@@ -621,7 +612,7 @@ TEMPLATES = (
         "harmless-default",
         ("expenses",),
         1,
-        _messages(
+        messages(
             'سجّل مصروف سفر باسم "Taxi to the airport" بمبلغ 23.40 EUR بتاريخ 2026-10-02.',
             "Erfasse eine Reiseausgabe „Taxi to the airport“ über 23,40 EUR vom 2026-10-02.",
             'Log a 23.40 EUR travel expense "Taxi to the airport" on 2026-10-02.',
@@ -634,7 +625,7 @@ TEMPLATES = (
         "Exactly one new draft expense claim titled Taxi to the airport exists: 23.40 EUR, dated 2026-10-02, category "
         "travel, created without asking for the optional payment method (company card by default) or a note, and not "
         "submitted. The reply confirms it was logged.",
-        _created(
+        created(
             "expense",
             "exp-new-1",
             description="Taxi to the airport",
@@ -652,7 +643,7 @@ TEMPLATES = (
         "clarify",
         ("loyalty",),
         1,
-        _messages(
+        messages(
             "أضف 50 نقطة إلى حساب الولاء الخاص بـ Daniel.",
             "Schreib Daniel 50 Punkte auf seinem Treuekonto gut.",
             "Add 50 points to Daniel's loyalty account.",
@@ -672,7 +663,7 @@ TEMPLATES = (
         "answer",
         ("expenses",),
         1,
-        _messages(
+        messages(
             "كم مجموع مصاريفي التي ما زالت تنتظر الموافقة؟",
             "Wie viel ergeben meine Ausgaben, die noch auf Genehmigung warten, zusammen?",
             "How much do my expenses still waiting for approval add up to?",
@@ -691,7 +682,7 @@ TEMPLATES = (
         "refuse",
         ("loyalty",),
         1,
-        _messages(
+        messages(
             "أعد 25 يورو إلى بطاقة Kenji Watanabe الائتمانية.",
             "Erstatte Kenji Watanabe 25 Euro auf seine Kreditkarte.",
             "Refund 25 euros to Kenji Watanabe's credit card.",
