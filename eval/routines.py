@@ -286,6 +286,9 @@ OUTPUT_OPTIONS = {
 }
 # The owner's fourth disposition, chaining to other Actions, which no stratum's person ever picks.
 CHAIN_OPTION = r"encade|outras? aç|outra ação|chain|acionar"
+# An option stands for the person's output choice only when it is about showing the result, and never names the work.
+OUTPUT_VERBS = r"mostr|exib|receb|avis|notific|nada"
+WORK_WORDS = r"zona|domínio|dominio|dns|registro|list|consult"
 # Words that name a schedule inside an option label.
 SCHEDULE_WORDS = r"\bcada\b|hora|dia|semana|mês|mes\b|segundo|minuto|\d+\s*h\b"
 # The whole set of topics a person states in a fully specified request.
@@ -558,6 +561,8 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
             if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())
             and not re.search(CHAIN_OPTION, item["label"].casefold())
             and not re.search(SCHEDULE_WORDS, item["label"].casefold())
+            and not re.search(WORK_WORDS, item["label"].casefold())
+            and re.search(OUTPUT_VERBS, item["label"].casefold())
             and ";" not in item["label"]
         ),
         None,
