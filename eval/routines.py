@@ -263,6 +263,10 @@ class Attempt:
         # Each send's response kind and the Actions it called, in order; and every Team question asked.
         self.sends: list[tuple[str, tuple[str, ...]]] = []
         self.questions: list[str] = []
+        # Each Team question code the person answered, with the answer; and every question asked again after the span
+        # already held its answer.
+        self.answered: dict[str, str] = {}
+        self.repeated: list[str] = []
 
     def _person(self):
         audit = self.team.modules.local_audit
@@ -432,7 +436,7 @@ def _team_answer(person: Person, question: dict[str, object]) -> str | None:
         return person.frequency
     if code == "routine-binding-ambiguous":
         return _target(person, list(question.get("options") or []))
-    if code == "routine-interval-over-budget" and isinstance(question.get("value"), int):
+    if code == OVER_BUDGET and isinstance(question.get("value"), int):
         # The person takes the shortest interval Team says fits.
         person.gap = question["value"]
         person.frequency = f"A cada {person.gap} segundos"
@@ -440,6 +444,7 @@ def _team_answer(person: Person, question: dict[str, object]) -> str | None:
     return _FIXED_ANSWERS.get(code)
 
 
+OVER_BUDGET = "routine-interval-over-budget"
 # The person's own words for the questions whose answer never depends on the attempt.
 _FIXED_ANSWERS = {
     "routine-binding-unsourced": "pode buscar de novo",
@@ -448,6 +453,18 @@ _FIXED_ANSWERS = {
     "routine-timezone-unstated": TIMEZONE,
     "routine-timezone-ambiguous": TIMEZONE,
 }
+
+
+def _already_answered(attempt: Attempt, code: str) -> bool:
+    """Whether the span already held the answer to a Team question: the person answered it, said it, or sent it."""
+    person = attempt.person
+    return (
+        code in attempt.answered
+        or (code == "routine-schedule-unstated" and person.stated)
+        # Every send carries the browser's IANA zone, so Team always has it.
+        or code == "routine-timezone-unstated"
+        or (code == "routine-binding-ambiguous" and person.chose)
+    )
 
 
 def _conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
@@ -465,8 +482,12 @@ def _conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
             return response
         question = response.get("routine_question")
         if question is not None:
-            attempt.questions.append(question["code"])
+            code = question["code"]
+            attempt.questions.append(code)
+            if _already_answered(attempt, code):
+                attempt.repeated.append(code)
             answer, composed = _team_answer(attempt.person, question), False
+            attempt.answered[code] = answer or ""
         else:
             answer, composed = _answer(attempt.person, response)
         if answer is None:
@@ -488,6 +509,9 @@ class Stratum:
     schedule: Callable[[Person, dict[str, object]], bool]
     zones: tuple[str, ...] = (SHIMPZ,)
     twin: bool = False
+    # The owner's rule, never make the person retype: the most sends it may take, its scripted sends plus one per
+    # piece the person genuinely left out; an interval Team says does not fit adds the one send that chooses another.
+    sends: int = 1
 
 
 def _selector_miss(card: dict[str, object], zones_meant: tuple[str, ...]) -> str | None:
@@ -546,6 +570,8 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
         ("schedule", stratum.schedule(attempt.person, card["schedule"])),
         (f"output:{card['output']['mode']}", card["output"]["mode"] in ("show", "changes")),
         (binding or "binding", binding is None),
+        (f"repeated-question:{attempt.repeated[0] if attempt.repeated else ''}", not attempt.repeated),
+        ("too-many-sends", len(attempt.sends) <= stratum.sends + attempt.questions.count(OVER_BUDGET)),
     )
     failed = next((reason for reason, held in checks if not held), None)
     return Outcome(failed, seen) if failed else Outcome(None, {**seen, "proposal_id": card["proposal_id"]})
@@ -645,14 +671,16 @@ STRATA = (
     Stratum(
         "owner-4-turns",
         _send("Cria uma rotina pra mim"),
-        _person("A cada 30 segundos", 30, pending=list(_TOPICS), stated=False),
+        _person("A cada 30 segundos", 30, pending=["work", "frequency", "zone"], stated=False),
         _continuous,
+        sends=4,
     ),
     Stratum(
         "plain-list",
         _send("Todo dia às 9h, liste os registros DNS de shimpz.com"),
         _person("Todo dia às 9h"),
         _daily_nine,
+        sends=1,
     ),
     Stratum(
         "multi-zone",
@@ -660,18 +688,21 @@ STRATA = (
         _person("A cada hora"),
         _hourly,
         zones=(SHIMPZ, EXAMPLE),
+        sends=1,
     ),
     Stratum(
         "earlier-send-naming",
         lambda attempt: _primed(attempt, "Liste os registros DNS de shimpz.com", "Faça isso a cada hora"),
         _person("A cada hora"),
         _hourly,
+        sends=2,
     ),
     Stratum(
         "missing-schedule",
         _send("Cria uma rotina que liste os registros DNS de shimpz.com"),
         _person("Todo dia às 9h", stated=False),
         _daily_nine,
+        sends=2,
     ),
     Stratum(
         "reversed-order-primed",
@@ -680,26 +711,30 @@ STRATA = (
         ),
         _person("A cada hora"),
         _hourly,
+        sends=2,
     ),
-    Stratum("reversed-order-unprimed", _unprimed, _person("A cada hora"), _hourly),
+    Stratum("reversed-order-unprimed", _unprimed, _person("A cada hora"), _hourly, sends=2),
     Stratum(
         "twin-names-at-creation",
         _send("A cada hora, liste os registros DNS de shimpz.com"),
         _person("A cada hora", choosing=True),
         _hourly,
         twin=True,
+        sends=2,
     ),
     Stratum(
         "interval-30s",
         _send("A cada 30 segundos, liste os registros DNS de shimpz.com"),
         _person("A cada 30 segundos", 30),
         _continuous,
+        sends=1,
     ),
     Stratum(
         "interval-5s",
         _send("A cada 5 segundos, liste os registros DNS de shimpz.com"),
         _person("A cada 5 segundos", 5),
         _continuous,
+        sends=1,
     ),
 )
 
@@ -709,7 +744,11 @@ def _played(stratum: Stratum) -> Callable[[Attempt], Outcome]:
         attempt.person = stratum.person()
         attempt.fixture.twin = stratum.twin
         response = stratum.play(attempt)
-        return response if isinstance(response, Outcome) else _judged(attempt, response, stratum)
+        outcome = response if isinstance(response, Outcome) else _judged(attempt, response, stratum)
+        if not outcome and attempt.repeated and (outcome.reason or "").startswith(("no-card", "question:")):
+            # The span already held the answer Team asked for again: the attempt went nowhere because of the repeat.
+            outcome.reason = f"repeated-question:{attempt.repeated[0]}"
+        return outcome
 
     return play
 
@@ -727,6 +766,20 @@ def _lookup_cause(attempt: Attempt) -> str:
     return "selector-unresolved"
 
 
+def _shape_cause(attempt: Attempt, reason: str) -> str | None:
+    """A miss whose cause is the shape of the sends themselves: how many there were and what each one got."""
+    if reason == "no-card":
+        return "sends-exhausted" if len(attempt.sends) >= MAX_SENDS else f"stopped-on-{attempt.sends[-1][0]}"
+    if reason == "refused:routine-recording-empty":
+        return "work-done-before-record" if any(actions for _kind, actions in attempt.sends[:-1]) else "no-work"
+    if reason == "too-many-sends":
+        asked = attempt.sends[:-1]
+        agent = sum(kind in ("clarification", "prose") for kind, _actions in asked)
+        team = sum(kind == "question" for kind, _actions in asked)
+        return f"agent-asked-{agent}-team-asked-{team}"
+    return None
+
+
 def _cause(attempt: Attempt, reason: str) -> str:
     """A miss's structural root cause, from its closed reason and the shape of the attempt's sends."""
     if reason == "all-zones":
@@ -735,11 +788,10 @@ def _cause(attempt: Attempt, reason: str) -> str:
         return _lookup_cause(attempt)
     if reason == "schedule":
         return "frequency-changed"
-    if reason == "no-card":
-        return "sends-exhausted" if len(attempt.sends) >= MAX_SENDS else f"stopped-on-{attempt.sends[-1][0]}"
-    if reason == "refused:routine-recording-empty":
-        return "work-done-before-record" if any(actions for _kind, actions in attempt.sends[:-1]) else "no-work"
-    kept = ("replay-shown", "twin-", "question:", "invented-schedule")
+    shaped = _shape_cause(attempt, reason)
+    if shaped is not None:
+        return shaped
+    kept = ("replay-shown", "twin-", "question:", "invented-schedule", "repeated-question")
     return reason if reason.startswith(kept) else reason.split(":", 1)[0]
 
 
