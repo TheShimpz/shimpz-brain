@@ -19,13 +19,15 @@ from typing import Any
 import tool_refusal
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import turn as team_turn
 
 TOOL_NAME = "shimpz_clarify"
-MAX_QUESTION_CHARS = 240
-MAX_LABEL_CHARS = 80
-MAX_DESCRIPTION_CHARS = 160
-MIN_OPTIONS = 2
-MAX_OPTIONS = 5
+# The question bounds are Team's chat-turn protocol, applied through the Brain's pinned mirror.
+MAX_QUESTION_CHARS = team_turn.MAX_CLARIFICATION_QUESTION_CHARS
+MAX_LABEL_CHARS = team_turn.MAX_CLARIFICATION_LABEL_CHARS
+MAX_DESCRIPTION_CHARS = team_turn.MAX_CLARIFICATION_DESCRIPTION_CHARS
+MIN_OPTIONS = team_turn.MIN_CLARIFICATION_OPTIONS
+MAX_OPTIONS = team_turn.MAX_CLARIFICATION_OPTIONS
 SCHEMA = {
     "type": "object",
     "properties": {

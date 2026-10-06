@@ -24,7 +24,7 @@ def _files(directory: Path) -> set[str]:
 
 
 class TeamProtocolMirrorTests(unittest.TestCase):
-    def test_the_mirror_holds_only_the_pinned_action_protocol_and_two_http_modules(self) -> None:
+    def test_the_mirror_holds_only_the_pinned_action_protocol_and_three_http_modules(self) -> None:
         self.assertEqual(
             _files(MIRROR),
             {
@@ -35,6 +35,7 @@ class TeamProtocolMirrorTests(unittest.TestCase):
                 "http/upstream.json",
                 "http/v1/identifiers.py",
                 "http/v1/purpose.py",
+                "http/v1/turn.py",
             },
         )
 

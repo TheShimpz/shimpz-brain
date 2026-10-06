@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import hashlib
 import json
 import re
 import unicodedata
@@ -22,27 +21,30 @@ import tool_refusal
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict
 
 TOOL_NAME = "shimpz_memory"
-MAX_MEMORIES = 32
-MAX_PREFERENCE_CHARS = 280
+# The memory, skill, and message bounds are Team's chat-turn protocol, applied through the Brain's pinned mirror.
+MAX_MEMORIES = team_turn.MAX_MEMORIES
+MAX_PREFERENCE_CHARS = team_turn.MAX_MEMORY_PREFERENCE_CHARS
 MIN_QUOTE_CHARS = 4
-TOPIC_RE = re.compile(r"[a-z][a-z0-9-]{0,39}\Z")
+TOPIC_RE = team_turn.MEMORY_TOPIC_RE
 # Skills the Team learned from completed tasks (ADR-0085); their keys are reserved and can only be forgotten.
-SKILL_KEY_RE = re.compile(r"procedure-[0-9a-f]{12}\Z")
-MAX_SKILLS = 8
+SKILL_KEY_PREFIX = team_turn.SKILL_KEY_PREFIX
+SKILL_KEY_RE = team_turn.SKILL_KEY_RE
+MAX_SKILLS = team_turn.MAX_SKILLS
 # One request may forget every memory and every procedure at once; the Team admits exactly this many changes per turn.
-MAX_CHANGES = MAX_MEMORIES + MAX_SKILLS
-# Team admits a chat message of at most 16,000 characters into the closed start envelope it sends the Brain.
-MAX_TURN_MESSAGE_CHARS = 16_000
+MAX_CHANGES = team_turn.MAX_MEMORY_CHANGES
+# The closed start envelope the Team sends the Brain carries a chat message within Team's admitted bound.
+MAX_TURN_MESSAGE_CHARS = team_turn.MAX_CHAT_MESSAGE_CHARS
 # One compact boolean per candidate change leaves room for far more candidates than a bounded turn proposes.
 MAX_CONFIRMATION_CHARS = 4_096
 SCHEMA = {
     "type": "object",
     "properties": {
         "op": {"type": "string", "enum": ["remember", "forget"]},
-        "topic": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$"},
+        "topic": {"type": "string", "pattern": team_turn.MEMORY_TOPIC_PATTERN},
         "quote": {"type": "string", "minLength": MIN_QUOTE_CHARS, "maxLength": MAX_PREFERENCE_CHARS},
     },
     "required": ["op", "topic", "quote"],
@@ -104,12 +106,7 @@ def _line(value: object, maximum: int) -> str | None:
 
 
 _CONTRACT_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_INPUT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}\Z")
-
-
-def _skill_key(contracts: dict[str, str], steps: list[dict[str, object]]) -> str:
-    body = json.dumps({"contracts": contracts, "steps": steps}, separators=(",", ":"), sort_keys=True)
-    return "procedure-" + hashlib.sha256(body.encode()).hexdigest()[:12]
+_skill_key = team_turn.skill_key
 
 
 def _step_admitted(step: object) -> bool:
@@ -119,8 +116,8 @@ def _step_admitted(step: object) -> bool:
         and team_identifiers.canonical_assistant_id(step["assistant_id"]) is not None
         and team_identifiers.canonical_action_id(step["action"]) is not None
         and isinstance(step["inputs"], list)
-        and len(step["inputs"]) <= 32
-        and all(isinstance(name, str) and _INPUT_RE.fullmatch(name) for name in step["inputs"])
+        and len(step["inputs"]) <= team_turn.MAX_SKILL_INPUTS
+        and all(isinstance(name, str) and team_turn.SKILL_INPUT_RE.fullmatch(name) for name in step["inputs"])
         and step["inputs"] == sorted(set(step["inputs"]))
     )
 
@@ -134,7 +131,7 @@ def _skill_admitted(skill: object) -> bool:
         type(skill["usable"]) is bool
         and isinstance(contracts, dict)
         and isinstance(steps, list)
-        and 2 <= len(steps) <= 16
+        and team_turn.MIN_SKILL_STEPS <= len(steps) <= team_turn.MAX_SKILL_STEPS
         and all(_step_admitted(step) for step in steps)
         and set(contracts) == {step["assistant_id"] for step in steps}
         and all(isinstance(digest, str) and _CONTRACT_RE.fullmatch(digest) for digest in contracts.values())
@@ -167,7 +164,7 @@ def canonical(value: object) -> tuple[Memory, ...]:
         if (
             not isinstance(topic, str)
             or TOPIC_RE.fullmatch(topic) is None
-            or topic.startswith("procedure-")
+            or topic.startswith(SKILL_KEY_PREFIX)
             or not preference
         ):
             raise MemoryContractError("invalid memory")
@@ -230,7 +227,7 @@ def change(arguments: object, current_message: str | None) -> Change | None:
         or op not in {"remember", "forget"}
         or not isinstance(topic, str)
         or TOPIC_RE.fullmatch(topic) is None
-        or (topic.startswith("procedure-") and (op != "forget" or SKILL_KEY_RE.fullmatch(topic) is None))
+        or (topic.startswith(SKILL_KEY_PREFIX) and (op != "forget" or SKILL_KEY_RE.fullmatch(topic) is None))
         or quote is None
         or len(_comparable(quote)) < MIN_QUOTE_CHARS
         or current_message is None

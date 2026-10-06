@@ -41,7 +41,7 @@ COPY --chown=brainruntime:brainruntime action_labels.py action_purpose.py action
 # The generated, pinned Team protocol mirror keeps its package path; namespace packages need no __init__.py.
 COPY --chown=brainruntime:brainruntime protocol/team/action/v1/schema.py /app/protocol/team/action/v1/
 COPY --chown=brainruntime:brainruntime protocol/team/http/v1/identifiers.py protocol/team/http/v1/purpose.py \
-    /app/protocol/team/http/v1/
+    protocol/team/http/v1/turn.py /app/protocol/team/http/v1/
 
 # Two allocator arenas and a fixed mmap threshold hand freed request memory back instead of keeping it in per-thread
 # arenas, so resident memory follows what runtime_api admits rather than ratcheting toward the container limit.

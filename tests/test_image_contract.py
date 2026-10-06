@@ -83,7 +83,7 @@ class StaticBrainImageContractTests(unittest.TestCase):
         )
         self.assertIn(
             "COPY --chown=brainruntime:brainruntime protocol/team/http/v1/identifiers.py "
-            "protocol/team/http/v1/purpose.py \\\n    /app/protocol/team/http/v1/\n",
+            "protocol/team/http/v1/purpose.py \\\n    protocol/team/http/v1/turn.py /app/protocol/team/http/v1/\n",
             dockerfile,
         )
         self.assertNotIn("egress/", dockerfile)
