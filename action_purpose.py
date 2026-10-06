@@ -17,9 +17,10 @@ import memory as team_memory
 import turn_pins
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import purpose as team_purpose
 from pydantic import BaseModel, ConfigDict
 
-MAX_PURPOSE_CHARS = 280
 MAX_ASSISTANT_NAME_CHARS = 80
 MAX_ACTION_SUMMARY_CHARS = 2_000
 MAX_PURPOSE_RESPONSE_CHARS = 4 * 1024
@@ -46,28 +47,6 @@ class PurposeOutput(BaseModel):
     purpose: str
 
 
-def sanitize(value: object) -> str | None:
-    """Return one plain single-line sentence, or None; the same rule as Team's `canonical_purpose`."""
-    if (
-        not isinstance(value, str)
-        or unicodedata.normalize("NFC", value) != value
-        or value.strip() != value
-        or not 1 <= len(value) <= MAX_PURPOSE_CHARS
-        or any(
-            unicodedata.category(character)[0] == "C"
-            or unicodedata.category(character) in {"Zl", "Zp"}
-            or (unicodedata.category(character) == "Pd" and character != "-")
-            for character in value
-        )
-        or " -" in value
-        or "- " in value
-        or "://" in value
-        or "www." in value.casefold()
-    ):
-        return None
-    return value
-
-
 @dataclass(frozen=True, slots=True)
 class PendingAction:
     """The exact pending Action interrupt Team asks about, with the reviewed names it shows the person."""
@@ -80,17 +59,15 @@ class PendingAction:
     action_summary: str
 
     def __post_init__(self) -> None:
-        from agent_runtime import ACTION_ID_RE, IDENTIFIER_RE, RuntimeContractError
+        from agent_runtime import IDENTIFIER_RE, RuntimeContractError
 
         if (
             not isinstance(self.thread_id, str)
             or IDENTIFIER_RE.fullmatch(self.thread_id) is None
             or not isinstance(self.interrupt_id, str)
             or IDENTIFIER_RE.fullmatch(self.interrupt_id) is None
-            or not all(
-                isinstance(value, str) and ACTION_ID_RE.fullmatch(value) is not None
-                for value in (self.assistant_id, self.action_id)
-            )
+            or team_identifiers.canonical_assistant_id(self.assistant_id) is None
+            or team_identifiers.canonical_action_id(self.action_id) is None
             or not _public_text(self.assistant_name, MAX_ASSISTANT_NAME_CHARS)
             or not _public_text(self.action_summary, MAX_ACTION_SUMMARY_CHARS)
         ):
@@ -206,4 +183,4 @@ def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRe
         parsed = structured_value(result, PurposeOutput, "Action purpose", MAX_PURPOSE_RESPONSE_CHARS)
     except RuntimeContractError as exc:
         raise ProviderResponseError("model provider response failed") from exc
-    return sanitize(unicodedata.normalize("NFC", parsed.purpose).strip())
+    return team_purpose.canonical_purpose(unicodedata.normalize("NFC", parsed.purpose).strip())

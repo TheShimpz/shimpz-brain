@@ -11,6 +11,7 @@ from typing import Literal
 import interface_language
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field
 
 MAX_CANDIDATES = 8
@@ -106,9 +107,7 @@ def _text(value: object, maximum: int, label: str, *, empty: bool = False, layou
 
 
 def _identifier(value: object) -> str:
-    from agent_runtime import ACTION_ID_RE
-
-    if not isinstance(value, str) or ACTION_ID_RE.fullmatch(value) is None:
+    if team_identifiers.canonical_assistant_id(value) is None:
         raise IntentRouteError("invalid Assistant id")
     return value
 

@@ -77,6 +77,15 @@ class StaticBrainImageContractTests(unittest.TestCase):
             "    model_catalog.json /app/",
             dockerfile,
         )
+        self.assertIn(
+            "COPY --chown=brainruntime:brainruntime protocol/team/action/v1/schema.py /app/protocol/team/action/v1/\n",
+            dockerfile,
+        )
+        self.assertIn(
+            "COPY --chown=brainruntime:brainruntime protocol/team/http/v1/identifiers.py "
+            "protocol/team/http/v1/purpose.py \\\n    /app/protocol/team/http/v1/\n",
+            dockerfile,
+        )
         self.assertNotIn("egress/", dockerfile)
         self.assertNotIn("/var/log/brain-egress", dockerfile)
         self.assertNotIn("SHIMPZ_EGRESS_ALLOW", dockerfile)

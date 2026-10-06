@@ -32,6 +32,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
+from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, field_validator, model_validator
 
 import routine as team_routine
@@ -286,7 +287,7 @@ class ActionLabelsInput(ClosedInput):
     @field_validator("actions")
     @classmethod
     def validate_actions(cls, value: list[str]) -> list[str]:
-        if any(agent_runtime.ACTION_ID_RE.fullmatch(action_id) is None for action_id in value) or len(
+        if any(team_identifiers.canonical_action_id(action_id) is None for action_id in value) or len(
             set(value)
         ) != len(value):
             raise ValueError("invalid Action label ids")

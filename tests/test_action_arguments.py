@@ -6,11 +6,11 @@ import unittest
 from typing import Any
 from unittest import mock
 
-import action_schema
 import action_tool
 import agent_runtime
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from protocol.team.action.v1 import schema as action_protocol
 from test_agent_runtime import ToolAwareFakeModel
 
 SCHEMA = {
@@ -254,10 +254,10 @@ class ExternalReferenceTests(unittest.TestCase):
             agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=rebound)
 
         current = {
-            "$schema": action_schema.DRAFT_2020_12,
+            "$schema": action_protocol.DRAFT_2020_12,
             "$id": "https://example.invalid/action.json",
             "type": "object",
-            "properties": {"x": {"$schema": action_schema.DRAFT_2020_12, "type": "string"}},
+            "properties": {"x": {"$schema": action_protocol.DRAFT_2020_12, "type": "string"}},
         }
         agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=current)
 
@@ -327,8 +327,8 @@ class ExternalReferenceTests(unittest.TestCase):
             }
 
         # 189 JSON values whose validation of `{}` alone would visit about 2^33 subschemas.
-        self.assertEqual(action_schema.json_nodes(doubling(30), 4096), 189)
-        self.assertEqual(action_schema.expanded_subschemas(doubling(30)), 12_884_901_791)
+        self.assertEqual(action_protocol.json_nodes(doubling(30), 4096), 189)
+        self.assertEqual(action_protocol.expanded_subschemas(doubling(30)), 12_884_901_791)
         for levels in (9, 30):
             with (
                 self.subTest(levels=levels),
@@ -337,5 +337,5 @@ class ExternalReferenceTests(unittest.TestCase):
                 ),
             ):
                 agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(levels))
-        self.assertEqual(action_schema.expanded_subschemas(doubling(8)), 3_041)
+        self.assertEqual(action_protocol.expanded_subschemas(doubling(8)), 3_041)
         agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(8))

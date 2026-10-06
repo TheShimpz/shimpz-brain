@@ -110,7 +110,7 @@ def _encoded(value: object) -> bytes:
 def _skill(index: int) -> dict[str, object]:
     steps = [
         {
-            "assistant_id": f"s{step:02d}-" + "a" * 76,
+            "assistant_id": f"s{step:02d}-" + "a" * 36,
             "action": f"a{index}" + "b" * 126,
             "inputs": [f"i{name:02d}" + "x" * 61 for name in range(32)],
         }

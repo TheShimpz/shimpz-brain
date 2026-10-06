@@ -6,9 +6,9 @@ import time
 import unittest
 from unittest import mock
 
-import action_schema
 import action_tool
 import agent_runtime
+from protocol.team.action.v1 import schema as action_protocol
 
 TOOL = agent_runtime._tool_name("shimpz-exa", "search-web")
 # Python's backtracking `re` needs seconds for 30 characters of this pattern and doubles with each one more.
@@ -49,7 +49,7 @@ class ActionPatternTests(unittest.TestCase):
     def test_matches_the_pinned_pattern_semantics(self) -> None:
         for pattern, subject, matches in SEMANTICS:
             with self.subTest(pattern=pattern, subject=subject):
-                self.assertIs(action_schema.pattern_matches(pattern, subject), matches)
+                self.assertIs(action_protocol.pattern_matches(pattern, subject), matches)
                 action = _action({"type": "object", "properties": {"q": {"type": "string", "pattern": pattern}}})
                 self.assertIs(_accepts(action, q=subject), matches)
 
@@ -89,7 +89,7 @@ class ActionPatternTests(unittest.TestCase):
         ):
             with self.subTest(schema=schema), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unevaluated"):
                 _action(schema)
-        with self.assertRaises(action_schema.PatternError):
+        with self.assertRaises(action_protocol.PatternError):
             list(action_tool.action_schema_validator({"unevaluatedProperties": False}).iter_errors({}))
 
         negated = _action({"type": "object", "properties": {"q": {"not": {"pattern": "secret"}}}})
@@ -97,7 +97,7 @@ class ActionPatternTests(unittest.TestCase):
         self.assertFalse(_accepts(negated, q="secret\ud800"))
 
     def test_a_declared_dialect_never_switches_to_the_backtracking_validator(self) -> None:
-        draft = action_schema.DRAFT_2020_12
+        draft = action_protocol.DRAFT_2020_12
         action = _action(
             {
                 "$schema": draft,
@@ -118,15 +118,15 @@ class ActionPatternTests(unittest.TestCase):
     def test_one_validation_charges_every_search_against_one_budget(self) -> None:
         # `a.{900}c` compiles to 7,206 instructions; RE2 runs it without its DFA at several nanoseconds per byte.
         heavy = "a.{900}c"
-        fits = action_schema.MAX_PATTERN_WORK // action_schema._compiled_pattern(heavy).programsize
-        self.assertFalse(action_schema.pattern_matches(heavy, "b" * fits))
-        with self.assertRaisesRegex(action_schema.PatternError, "work budget"):
-            action_schema.pattern_matches(heavy, "\u00e9" * (fits // 2 + 1))
-        with action_schema.pattern_work_budget():
-            self.assertFalse(action_schema.pattern_matches(heavy, "b" * (fits // 2)))
-            with self.assertRaisesRegex(action_schema.PatternError, "work budget"):
-                action_schema.pattern_matches(heavy, "b" * (fits - fits // 2 + 1))
-        self.assertFalse(action_schema.pattern_matches(heavy, "b" * fits))
+        fits = action_protocol.MAX_PATTERN_WORK // action_protocol.compiled_pattern(heavy).programsize
+        self.assertFalse(action_protocol.pattern_matches(heavy, "b" * fits))
+        with self.assertRaisesRegex(action_protocol.PatternError, "work budget"):
+            action_protocol.pattern_matches(heavy, "\u00e9" * (fits // 2 + 1))
+        with action_protocol.pattern_work_budget():
+            self.assertFalse(action_protocol.pattern_matches(heavy, "b" * (fits // 2)))
+            with self.assertRaisesRegex(action_protocol.PatternError, "work budget"):
+                action_protocol.pattern_matches(heavy, "b" * (fits - fits // 2 + 1))
+        self.assertFalse(action_protocol.pattern_matches(heavy, "b" * fits))
         # One argument checked by the heavy pattern from 64 expanded positions: each search alone fits.
         action = _action(
             {

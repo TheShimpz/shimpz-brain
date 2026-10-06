@@ -20,6 +20,7 @@ import provider_client
 import runtime_api
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from protocol.team.http.v1 import purpose as team_purpose
 from structured_fake import StructuredFakeModel
 from test_agent_runtime import ToolAwareFakeModel, action, assistant, context
 from test_runtime_api import NO_USAGE, SECRET, TOKEN, FakeRuntime, client
@@ -81,15 +82,15 @@ def pending(turn, request, **changes) -> action_purpose.PendingAction:
 
 class SanitizeTests(unittest.TestCase):
     def test_only_one_plain_single_line_sentence_survives(self):
-        for value in (PURPOSE, "Para enviar o e-mail, preciso do Gmail.", "x" * action_purpose.MAX_PURPOSE_CHARS):
+        for value in (PURPOSE, "Para enviar o e-mail, preciso do Gmail.", "x" * team_purpose.MAX_PURPOSE_CHARS):
             with self.subTest(value=value[:20]):
-                self.assertEqual(action_purpose.sanitize(value), value)
+                self.assertEqual(team_purpose.canonical_purpose(value), value)
         for value in (
             None,
             1,
             "",
             " leading",
-            "x" * (action_purpose.MAX_PURPOSE_CHARS + 1),
+            "x" * (team_purpose.MAX_PURPOSE_CHARS + 1),
             "é",
             "a — b",
             "a – b",
@@ -102,7 +103,7 @@ class SanitizeTests(unittest.TestCase):
             "visit WWW.evil.example",
         ):
             with self.subTest(value=value):
-                self.assertIsNone(action_purpose.sanitize(value))
+                self.assertIsNone(team_purpose.canonical_purpose(value))
 
 
 class PendingRequestTests(unittest.TestCase):

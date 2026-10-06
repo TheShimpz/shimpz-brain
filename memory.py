@@ -21,6 +21,7 @@ from typing import Any
 import tool_refusal
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict
 
 TOOL_NAME = "shimpz_memory"
@@ -102,7 +103,6 @@ def _line(value: object, maximum: int) -> str | None:
     return value
 
 
-_ASSISTANT_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 _CONTRACT_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _INPUT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}\Z")
 
@@ -113,17 +113,11 @@ def _skill_key(contracts: dict[str, str], steps: list[dict[str, object]]) -> str
 
 
 def _step_admitted(step: object) -> bool:
-    from agent_runtime import ACTION_ID_RE
-
     return (
         isinstance(step, dict)
         and set(step) == {"assistant_id", "action", "inputs"}
-        and isinstance(step["assistant_id"], str)
-        and len(step["assistant_id"]) <= 80
-        and _ASSISTANT_ID_RE.fullmatch(step["assistant_id"]) is not None
-        and isinstance(step["action"], str)
-        and len(step["action"]) <= 128
-        and ACTION_ID_RE.fullmatch(step["action"]) is not None
+        and team_identifiers.canonical_assistant_id(step["assistant_id"]) is not None
+        and team_identifiers.canonical_action_id(step["action"]) is not None
         and isinstance(step["inputs"], list)
         and len(step["inputs"]) <= 32
         and all(isinstance(name, str) and _INPUT_RE.fullmatch(name) for name in step["inputs"])

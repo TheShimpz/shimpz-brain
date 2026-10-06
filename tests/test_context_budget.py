@@ -20,6 +20,7 @@ import provider_client
 import runtime_api
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from protocol.team.action.v1 import schema as action_protocol
 
 
 class RecordingModel(FakeMessagesListChatModel):
@@ -384,7 +385,7 @@ class RuntimeBudgetTests(unittest.TestCase):
         )
         self.assertEqual(self._runtime(AIMessage("fits")).start(_context(*largest), "hi").reply, "fits")
 
-        filler = {"type": "string", "description": "d" * (agent_runtime.MAX_SCHEMA_BYTES - 200)}
+        filler = {"type": "string", "description": "d" * (action_protocol.MAX_BYTES - 200)}
         wide = tuple(
             agent_runtime.ActionDefinition(
                 f"action-{index}",

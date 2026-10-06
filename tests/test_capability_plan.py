@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+import dataclasses
 import unittest
 from unittest import mock
 
@@ -180,15 +180,25 @@ class CapabilityPlanTests(unittest.TestCase):
             ):
                 capability_plan.validate_inputs("Configure DNS", shortlist)
 
-    def test_candidate_identifiers_use_the_current_canonical_pattern(self):
+    def test_candidate_identifiers_follow_the_team_protocol_by_kind(self):
         shortlist = candidates()
         self.assertEqual(capability_plan.validate_inputs("Configure DNS", shortlist)[1], shortlist)
-        with (
-            mock.patch.object(agent_runtime, "ACTION_ID_RE", re.compile(r"never-match\Z")),
-            self.assertRaisesRegex(capability_plan.CapabilityPlanError, "invalid Action id"),
+        first = shortlist[0]
+        integration = capability_plan.CapabilityIntegration("i" * 64, "p" * 64)
+        widest = dataclasses.replace(first, id="a" * 40, actions=("dns.read", "z" * 128), integrations=(integration,))
+        self.assertEqual(capability_plan.validate_inputs("Configure DNS", (widest,))[1], (widest,))
+        for changes, message in (
+            ({"id": "a" * 41}, "invalid Assistant id"),
+            ({"id": "dns.read"}, "invalid Assistant id"),
+            ({"actions": ("z" * 129,)}, "invalid Action id"),
+            ({"integrations": (capability_plan.CapabilityIntegration("i" * 65, "p"),)}, "invalid Integration id"),
+            ({"integrations": (capability_plan.CapabilityIntegration("i", "p.x"),)}, "invalid Integration provider"),
         ):
-            capability_plan.validate_inputs("Configure DNS", shortlist)
-        self.assertEqual(capability_plan.validate_inputs("Configure DNS", shortlist)[1], shortlist)
+            with (
+                self.subTest(changes=changes),
+                self.assertRaisesRegex(capability_plan.CapabilityPlanError, message),
+            ):
+                capability_plan.validate_inputs("Configure DNS", (dataclasses.replace(first, **changes),))
 
     def test_provider_content_envelopes_and_failures_are_closed(self):
         valid = '{"status":"install-required","assistant_ids":["shimpz-cloudflare"]}'

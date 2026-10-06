@@ -25,6 +25,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
+from protocol.team.action.v1 import schema as action_protocol
 
 COLD_IMPORT_TIMEOUT_SECONDS = 10
 
@@ -711,7 +712,7 @@ class AgentRuntimeTests(unittest.TestCase):
             ("Summary", {"type": "object", "value": {1}}, "not JSON"),
             (
                 "Summary",
-                {"type": "object", "description": "x" * agent_runtime.MAX_SCHEMA_BYTES},
+                {"type": "object", "description": "x" * action_protocol.MAX_BYTES},
                 "too large",
             ),
         ):
@@ -908,7 +909,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         # Team admits 4,096 values in one Action schema and 32,768 in one whole machine contract.
         limit = 4096
-        self.assertEqual(action_schema.json_nodes(schema(limit), limit), limit)
+        self.assertEqual(action_protocol.json_nodes(schema(limit), limit), limit)
         dense("action", limit)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "input schema is too large"):
             dense("action", limit + 1)
@@ -939,7 +940,7 @@ class AgentRuntimeTests(unittest.TestCase):
             ([], "invalid Action output schema"),
             ({"type": 1}, "invalid Action output schema"),
             ({"const": object()}, "output schema is not JSON"),
-            ({"const": "x" * agent_runtime.MAX_SCHEMA_BYTES}, "output schema is too large"),
+            ({"const": "x" * action_protocol.MAX_BYTES}, "output schema is too large"),
             (schema(limit + 1), "output schema is too large"),
         ):
             with self.subTest(output=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):

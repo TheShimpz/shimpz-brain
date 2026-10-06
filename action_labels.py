@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import interface_language
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field
 
 MAX_ACTION_LABELS = 64
@@ -95,7 +96,6 @@ def create(
     model: Callable[[], BaseChatModel], provider: str, locale: str, action_ids: tuple[str, ...]
 ) -> tuple[ActionLabel, ...]:
     """Create inert labels without conversation state, tools, or execution authority."""
-    from agent_runtime import ACTION_ID_RE
     from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
     from structured import structured_output
 
@@ -103,7 +103,7 @@ def create(
         raise RuntimeContractError("invalid interface language")
     if (
         not 1 <= len(action_ids) <= MAX_ACTION_LABELS
-        or any(not isinstance(action_id, str) or ACTION_ID_RE.fullmatch(action_id) is None for action_id in action_ids)
+        or any(team_identifiers.canonical_action_id(action_id) is None for action_id in action_ids)
         or len(set(action_ids)) != len(action_ids)
     ):
         raise RuntimeContractError("invalid Action label ids")

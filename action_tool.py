@@ -10,8 +10,8 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-import action_schema
 from langchain_core.tools import StructuredTool
+from protocol.team.action.v1 import schema as action_protocol
 
 if TYPE_CHECKING:
     from agent_runtime import ActionDefinition
@@ -48,7 +48,7 @@ def action_schema_validator(schema: Mapping[str, Any]):
     """Validate Action arguments with the linear-time matcher, never retrieving a reference from anywhere."""
     from referencing import Registry
 
-    return action_schema.payload_validator(schema, Registry(retrieve=_refuse_retrieval))
+    return action_protocol.payload_validator(schema, Registry(retrieve=_refuse_retrieval))
 
 
 def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) -> ActionTool:
@@ -60,9 +60,9 @@ def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) 
 
     def suspend_for_controller(**payload):
         try:
-            with action_schema.pattern_work_budget():
+            with action_protocol.pattern_work_budget():
                 invalid = next(validator.iter_errors(payload), None) is not None
-        except RecursionError, Unresolvable, action_schema.PatternError:
+        except RecursionError, Unresolvable, action_protocol.PatternError:
             # An unresolvable reference, validation deeper than the recursion limit, an argument that is not valid
             # Unicode, or matching beyond its work budget cannot complete: refuse it like any invalid argument.
             invalid = True

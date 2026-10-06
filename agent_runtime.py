@@ -41,6 +41,8 @@ import turn_pins
 import turn_prompt
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
+from protocol.team.action.v1 import schema as action_protocol
+from protocol.team.http.v1 import identifiers as team_identifiers
 from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
 from structured import structured_output
 
@@ -51,7 +53,6 @@ MODELS_BY_PROVIDER = {
     provider["id"]: frozenset(model["id"] for model in provider["models"]) for provider in _MODEL_CATALOG["providers"]
 }
 PROVIDERS = frozenset(MODELS_BY_PROVIDER)
-ACTION_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 TEAM_NAME_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 # Team scopes a Brain request to at most 16 Assistants of at most 128 Actions each, so these two bounds are the
@@ -63,12 +64,8 @@ MAX_ACTION_RESULTS = 128
 MAX_TEAM_NAME_CHARS = 80
 MAX_GENESIS_BYTES = 128 * 1024
 MAX_MESSAGE_CHARS = 64 * 1024
-MAX_SCHEMA_BYTES = 128 * 1024
-# Team admits at most 4,096 JSON values in one Action schema and 32,768 in one whole machine contract, so the input
-# and output schemas of one Assistant together hold at most 32,768. Dense annotation or literal data costs far more
-# decoded memory than its encoded bytes, so only these value counts together with the byte bounds limit the schema data
-# a request retains.
-MAX_SCHEMA_NODES = 4096
+# Team admits at most 32,768 JSON values in one whole machine contract, so the input and output schemas of one Assistant
+# together hold at most that many; each schema also meets the Team Action protocol's own value and byte bounds.
 MAX_ASSISTANT_SCHEMA_NODES = 32_768
 MAX_REPLY_CHARS = 60_000
 DEFAULT_RECURSION_LIMIT = 12
@@ -107,7 +104,7 @@ class ProviderConfig:
 
 def _check_schema(schema: Mapping[str, Any], kind: str) -> None:
     """One Action schema within its value and byte bounds, and a valid JSON Schema."""
-    problem = action_schema.bound_problem(schema, MAX_SCHEMA_NODES, MAX_SCHEMA_BYTES)
+    problem = action_schema.bound_problem(schema)
     if problem is not None:
         message = f"invalid Action {kind} schema" if problem == "invalid" else f"Action {kind} schema is {problem}"
         raise RuntimeContractError(message)
@@ -127,7 +124,7 @@ class ActionDefinition:
     output_schema: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if ACTION_ID_RE.fullmatch(self.id) is None:
+        if team_identifiers.canonical_action_id(self.id) is None:
             raise RuntimeContractError("invalid Action id")
         properties = self.input_schema.get("properties")
         if (
@@ -142,7 +139,7 @@ class ActionDefinition:
             raise RuntimeContractError("Action input schema must describe an object")
         _check_schema(self.input_schema, "input")
         _check_schema(self.output_schema, "output")
-        problem = action_schema.schema_problem(self.input_schema)
+        problem = action_protocol.schema_problem(self.input_schema)
         if problem is not None:
             raise RuntimeContractError(f"Action input schema {problem}")
 
@@ -154,7 +151,7 @@ class AssistantDefinition:
     actions: tuple[ActionDefinition, ...]
 
     def __post_init__(self) -> None:
-        if ACTION_ID_RE.fullmatch(self.id) is None:
+        if team_identifiers.canonical_assistant_id(self.id) is None:
             raise RuntimeContractError("invalid Assistant id")
         try:
             genesis_size = len(self.genesis.encode("utf-8"))
@@ -175,7 +172,7 @@ class AssistantDefinition:
         remaining = MAX_ASSISTANT_SCHEMA_NODES
         for action in self.actions:
             for schema in (action.input_schema, action.output_schema):
-                remaining -= action_schema.json_nodes(schema, remaining)
+                remaining -= action_protocol.json_nodes(schema, remaining)
                 if remaining < 0:
                     raise RuntimeContractError("Assistant Action schemas are too large")
         object.__setattr__(self, "actions", tuple(sorted(self.actions, key=lambda item: item.id)))
@@ -381,8 +378,8 @@ def _pending_result(pending: object) -> TurnResult:
             or value.get("kind") != "action"
             or not isinstance(interrupt_id, str)
             or not interrupt_id
-            or ACTION_ID_RE.fullmatch(str(value.get("assistant_id", ""))) is None
-            or ACTION_ID_RE.fullmatch(str(value.get("action", ""))) is None
+            or team_identifiers.canonical_assistant_id(value.get("assistant_id")) is None
+            or team_identifiers.canonical_action_id(value.get("action")) is None
             or not isinstance(value.get("input"), Mapping)
             or set(value) != {"kind", "assistant_id", "action", "input"}
         ):
