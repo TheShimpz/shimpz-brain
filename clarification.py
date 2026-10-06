@@ -12,12 +12,14 @@ correction and nothing executes.
 from __future__ import annotations
 
 import functools
+import re
+import secrets
 import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
 import tool_refusal
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import turn as team_turn
@@ -229,3 +231,74 @@ def recorded(messages: list[Any]) -> Clarification | None:
     if not isinstance(call, AIMessage) or len(call.tool_calls or []) != 1:
         return None
     return parse(call.tool_calls[0].get("args"))
+
+
+# A Routine turn's final reply may not ask in prose what Team asks itself (ADR-0101): the person's own words and Team's
+# questions settle the schedule, the output, the timezone, and limits. Such a reply is refused once per turn, so the
+# agent runs the work and records instead; a second one is delivered as is, so a turn never loops.
+PROSE_CORRECTION = (
+    "Not asked: the Team asks the schedule, the output, the timezone, and limits itself; run the work and call record, "
+    "or ask only what work or which item."
+)
+CORRECTION_ID_PREFIX = "routine-mode-correction-"
+_QUESTION_RE = re.compile(r"[^.!?\n。！？؟]*[?？؟]")
+# Whole timezone questions, which Team never asks: it takes the person's own zone.
+_TIMEZONE_ASKS = re.compile(
+    r"fuso hor[aá]rio|time ?zone|zona horaria|huso horario|fuseau horaire|zeitzone|タイムゾーン|时区|المنطقة الزمنية",
+    re.IGNORECASE,
+)
+
+
+def _asks_team(text: str) -> bool:
+    """Whether one of the reply's questions asks what Team asks itself."""
+    questions = [match.group().strip() for match in _QUESTION_RE.finditer(text)]
+    return any(team_phrase.team_asks(question) or _TIMEZONE_ASKS.search(question) for question in questions)
+
+
+def _corrected(messages: list[Any]) -> bool:
+    """Whether this turn already refused a prose reply: a correction follows the turn's own latest user message."""
+    latest_user = next((message for message in reversed(messages) if isinstance(message, HumanMessage)), None)
+    return latest_user is not None and str(latest_user.id or "").startswith(CORRECTION_ID_PREFIX)
+
+
+def _text(message: AIMessage) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return " ".join(
+        block.get("text", "") for block in message.content if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
+def prose_refusal(messages: list[Any]) -> dict[str, Any] | None:
+    """The correction for a Routine turn's final prose reply that asks Team's question, once per turn; else None."""
+    latest = messages[-1] if messages else None
+    if not isinstance(latest, AIMessage) or latest.tool_calls or latest.invalid_tool_calls:
+        return None
+    if not _asks_team(_text(latest)) or _corrected(messages):
+        return None
+    correction = HumanMessage(content=PROSE_CORRECTION, id=f"{CORRECTION_ID_PREFIX}{secrets.token_hex(16)}")
+    return {"messages": [correction], "jump_to": "model"}
+
+
+@functools.cache
+def _prose_guard_class():
+    # The agent middleware stack loads with the graph, never when the runtime API module is imported.
+    from langchain.agents.middleware import AgentMiddleware, hook_config
+
+    class RoutineProseGuard(AgentMiddleware):
+        """Send a Routine turn back to work once when its final reply asks Team's question in prose."""
+
+        @property
+        def name(self) -> str:
+            return "RoutineProseGuard"
+
+        @hook_config(can_jump_to=["model"])
+        def after_model(self, state, runtime) -> dict[str, Any] | None:
+            return prose_refusal(list(state["messages"]))
+
+    return RoutineProseGuard
+
+
+def prose_guard():
+    """The middleware that refuses, once per turn, a Routine turn's final reply asking Team's question in prose."""
+    return _prose_guard_class()()
