@@ -1270,6 +1270,9 @@ def main() -> int:
     parser.add_argument(
         "--effort", choices=("low", "medium", "high"), help="the Team's reasoning effort; default Team's"
     )
+    parser.add_argument(
+        "--model", action="append", default=[], help="measurement only: PROVIDER:MODEL in place of that provider's"
+    )
     args = parser.parse_args()
     if args.serve_brain:
         if args.brain_port is None or args.token_file is None:
@@ -1280,7 +1283,9 @@ def main() -> int:
         print(json.dumps({"validated": [case for case, _play in CASES]}))
         return 0
     keys = {"openai": _key(args.openai_key_file), "anthropic": _key(args.anthropic_key_file)}
-    models = [(provider, model, keys[provider]) for provider, model in MODELS if keys[provider]]
+    # A measurement may run another model of a provider; the gate still declares only MODELS, so it then fails.
+    chosen = dict(MODELS) | dict(item.split(":", 1) for item in args.model)
+    models = [(provider, model, keys[provider]) for provider, model in chosen.items() if keys[provider]]
     if not models or args.brain_port is None or args.token_file is None:
         raise SystemExit("name the Brain's port, its token file, and at least one key file")
     brain = (brain_served(args.brain_port), args.token_file)
