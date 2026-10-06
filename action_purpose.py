@@ -170,17 +170,14 @@ def capped(model: BaseChatModel) -> BaseChatModel:
 
 def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRequest) -> str | None:
     """One stateless structured call; a sentence that breaks the plain-text rule yields None."""
-    from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
-    from structured import structured_output, structured_value
+    from structured import bounded_value
 
-    try:
-        result = structured_output(capped(model()), provider, PurposeOutput).invoke(_prompt(request))
-    except ImportError:
-        raise
-    except Exception as exc:
-        raise ProviderRequestError("model provider request failed") from exc
-    try:
-        parsed = structured_value(result, PurposeOutput, "Action purpose", MAX_PURPOSE_RESPONSE_CHARS)
-    except RuntimeContractError as exc:
-        raise ProviderResponseError("model provider response failed") from exc
+    parsed = bounded_value(
+        lambda: capped(model()),
+        provider,
+        PurposeOutput,
+        lambda: _prompt(request),
+        "Action purpose",
+        MAX_PURPOSE_RESPONSE_CHARS,
+    )
     return team_purpose.canonical_purpose(unicodedata.normalize("NFC", parsed.purpose).strip())

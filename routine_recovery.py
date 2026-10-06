@@ -76,16 +76,13 @@ def capped(model: BaseChatModel) -> BaseChatModel:
 
 def decide(model: Callable[[], BaseChatModel], provider: str, request: RecoveryRequest) -> str:
     """One stateless structured call; any refusal or malformed answer is a provider response failure."""
-    from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
-    from structured import structured_output, structured_value
+    from structured import bounded_value
 
-    try:
-        result = structured_output(capped(model()), provider, RecoveryOutput).invoke(_prompt(request))
-    except ImportError:
-        raise
-    except Exception as exc:
-        raise ProviderRequestError("model provider request failed") from exc
-    try:
-        return structured_value(result, RecoveryOutput, "Routine recovery", MAX_RESPONSE_CHARS).decision
-    except RuntimeContractError as exc:
-        raise ProviderResponseError("model provider response failed") from exc
+    return bounded_value(
+        lambda: capped(model()),
+        provider,
+        RecoveryOutput,
+        lambda: _prompt(request),
+        "Routine recovery",
+        MAX_RESPONSE_CHARS,
+    ).decision

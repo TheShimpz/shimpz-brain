@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
@@ -82,3 +82,30 @@ def structured_value[Schema: BaseModel](result: object, schema: type[Schema], la
     if text and _text_value(text, schema, label, max_chars) != parsed:
         raise RuntimeContractError(f"inconsistent {label} response")
     return parsed
+
+
+def bounded_value[Schema: BaseModel](
+    model: Callable[[], BaseChatModel],
+    provider: str,
+    schema: type[Schema],
+    prompt: Callable[[], list],
+    label: str,
+    max_chars: int,
+) -> Schema:
+    """One stateless structured call of the bounded ``model``; any failure is a provider request or response failure.
+
+    Building the model, its prompt, or the call fails as a request; an answer that is not one schema-valid value fails
+    as a response.
+    """
+    from runtime_errors import ProviderRequestError, ProviderResponseError
+
+    try:
+        result = structured_output(model(), provider, schema).invoke(prompt())
+    except ImportError:
+        raise
+    except Exception as exc:
+        raise ProviderRequestError("model provider request failed") from exc
+    try:
+        return structured_value(result, schema, label, max_chars)
+    except RuntimeContractError as exc:
+        raise ProviderResponseError("model provider response failed") from exc
