@@ -8,6 +8,7 @@ with its bounded result.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime
 import functools
@@ -532,6 +533,36 @@ def _conversation_bridge(conversation: tuple[intent_router.ConversationEntry, ..
     return (HumanMessage(content=content, id=f"{CONVERSATION_BRIDGE_ID_PREFIX}{secrets.token_hex(16)}"),)
 
 
+@contextlib.contextmanager
+def _decision_failures(contract: type[Exception], response: type[Exception]):
+    """A decision's failures as runtime errors; any other failure, a provider's included, is a request failure."""
+    try:
+        yield
+    except contract as exc:
+        raise RuntimeContractError(str(exc)) from exc
+    except response as exc:
+        raise ProviderResponseError("model provider response failed") from exc
+    except ImportError:
+        raise
+    except Exception as exc:
+        raise ProviderRequestError("model provider request failed") from exc
+
+
+@contextlib.contextmanager
+def _turn_failures():
+    """A started or resumed turn's failures as runtime errors; provider detail never leaves as text."""
+    try:
+        yield
+    except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
+        raise
+    except turn_attachments.AttachmentContractError as exc:
+        raise RuntimeContractError(str(exc)) from exc
+    except clarifier.UnanswerableToolCallError as exc:
+        raise RuntimeContractError("the model returned an unparsable tool call") from exc
+    except Exception as exc:
+        raise ProviderRequestError("model provider request failed") from exc
+
+
 class AgentRuntime:
     """Compile short-lived provider models over one durable, provider-neutral graph state."""
 
@@ -873,20 +904,10 @@ class AgentRuntime:
         candidates: tuple[capability_planner.CapabilityCandidate, ...],
     ) -> capability_planner.CapabilityPlan:
         """Select a closed Assistant subset without conversation or lifecycle authority."""
-        try:
+        with _decision_failures(capability_planner.CapabilityPlanError, capability_planner.CapabilityPlanResponseError):
             return capability_planner.create(
                 lambda: self._model_factory(provider), provider.provider, objective, candidates
             )
-        except capability_planner.CapabilityPlanError as exc:
-            raise RuntimeContractError(str(exc)) from exc
-        except capability_planner.CapabilityPlanResponseError as exc:
-            raise ProviderResponseError("model provider response failed") from exc
-        except capability_planner.CapabilityPlanProviderError as exc:
-            raise ProviderRequestError("model provider request failed") from exc
-        except ImportError:
-            raise
-        except Exception as exc:
-            raise ProviderRequestError("model provider request failed") from exc
 
     def intent_route(
         self,
@@ -906,21 +927,11 @@ class AgentRuntime:
         if decision_key is not None and self._confident_ordinary(decision_key, objective, expected_intent, context):
             return intent_router.IntentRoute("ordinary-task")
 
-        try:
+        with _decision_failures(intent_router.IntentRouteError, intent_router.IntentRouteResponseError):
             model = functools.partial(self._decision_model, provider)
             return intent_router.create(
                 model, provider.provider, objective, expected_intent, candidates, context, locale
             )
-        except intent_router.IntentRouteError as exc:
-            raise RuntimeContractError(str(exc)) from exc
-        except intent_router.IntentRouteResponseError as exc:
-            raise ProviderResponseError("model provider response failed") from exc
-        except intent_router.IntentRouteProviderError as exc:
-            raise ProviderRequestError("model provider request failed") from exc
-        except ImportError:
-            raise
-        except Exception as exc:
-            raise ProviderRequestError("model provider request failed") from exc
 
     def start(
         self,
@@ -938,35 +949,26 @@ class AgentRuntime:
         turn_id = f"{prefix}{secrets.token_hex(16)}"
         context = replace(context, turn_message_id=turn_id)
         lock = self._thread_lock(context.thread_id)
-        try:
-            with lock:
-                context, history = self._prepare_scope(context, resume=False)
-                self._prune_history(context.thread_id)
-                context = replace(context, attachment_charge=self._attachment_charge(context))
-                agent = self._agent(context, clarification_allowed=True)
-                turn = HumanMessage(content=message, id=turn_id)
-                bridge = self._fit_history(agent, context, history, turn, window)
-                state = agent.invoke({"messages": [*bridge, turn]}, config=self._config(context))
-                result = (
-                    self._finish_clarification(agent, context, state)
-                    or self._finish_routine(agent, context, state)
-                    or self._settle(agent, context, state, after_message_id=turn_id)
-                )
-        except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
-            raise
-        except turn_attachments.AttachmentContractError as exc:
-            raise RuntimeContractError(str(exc)) from exc
-        except clarifier.UnanswerableToolCallError as exc:
-            raise RuntimeContractError("the model returned an unparsable tool call") from exc
-        except Exception as exc:
-            raise ProviderRequestError("model provider request failed") from exc
+        with _turn_failures(), lock:
+            context, history = self._prepare_scope(context, resume=False)
+            self._prune_history(context.thread_id)
+            context = replace(context, attachment_charge=self._attachment_charge(context))
+            agent = self._agent(context, clarification_allowed=True)
+            turn = HumanMessage(content=message, id=turn_id)
+            bridge = self._fit_history(agent, context, history, turn, window)
+            state = agent.invoke({"messages": [*bridge, turn]}, config=self._config(context))
+            result = (
+                self._finish_clarification(agent, context, state)
+                or self._finish_routine(agent, context, state)
+                or self._settle(agent, context, state, after_message_id=turn_id)
+            )
         return self._attach(result, state, context)
 
     def resume(self, context: TurnContext, results: Mapping[str, object]) -> TurnResult:
         if not results or not all(isinstance(key, str) and key for key in results):
             raise RuntimeContractError("invalid Action resume results")
         lock = self._thread_lock(context.thread_id)
-        try:
+        with _turn_failures():
             from langgraph.types import Command
 
             with lock:
@@ -979,12 +981,4 @@ class AgentRuntime:
                 result = self._finish_routine(agent, context, state) or self._settle(
                     agent, context, state, message_offset=message_offset
                 )
-        except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
-            raise
-        except turn_attachments.AttachmentContractError as exc:
-            raise RuntimeContractError(str(exc)) from exc
-        except clarifier.UnanswerableToolCallError as exc:
-            raise RuntimeContractError("the model returned an unparsable tool call") from exc
-        except Exception as exc:
-            raise ProviderRequestError("model provider request failed") from exc
         return self._attach(result, state, context)
