@@ -3,23 +3,21 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import unittest
 from collections import Counter
-from collections.abc import Callable
 from unittest import mock
 
+import eval_stratum_case
 from eval import corpus, fixtures, fresh3
 from eval import world as simulated
+from eval_stratum_case import PASSED, Workflow
+from eval_stratum_case import call as _call
+from eval_stratum_case import one as _one
 
 # Frozen with fresh-v3: a change to the stratum must change its id, not this fingerprint alone.
 DIGEST = "sha256:e859e875b6ca4ca850aea30259fa7b1941eb0837adb138310c25a72bd8f5f2a7"
 DEED_TITLE = "Escritura - Rua das Flores 120, apto 31"
-Workflow = Callable[[fresh3.FreshWorld], None]
-
-
-def _one(items: list) -> dict:
-    (item,) = items
-    return item
 
 
 def _veggie_lasagna(world: fresh3.FreshWorld) -> None:
@@ -127,22 +125,8 @@ REFERENCE: dict[str, Workflow] = {
 }
 
 
-def _run(*workflows: Workflow) -> fresh3.FreshWorld:
-    world = fresh3.FreshWorld()
-    for workflow in workflows:
-        workflow(world)
-    return world
-
-
-def _oracle(scenario_id: str, world: fresh3.FreshWorld) -> corpus.Oracle:
-    return corpus.oracle(fresh3.SCENARIOS_BY_ID[scenario_id], world, fresh3.INITIAL)
-
-
-def _call(assistant: str, action: str, arguments: dict) -> Workflow:
-    def workflow(world: fresh3.FreshWorld) -> None:
-        world.invoke(assistant, action, arguments)
-
-    return workflow
+_run = functools.partial(eval_stratum_case.run, fresh3)
+_oracle = functools.partial(eval_stratum_case.oracle, fresh3)
 
 
 def _collections(world: fresh3.FreshWorld) -> dict[str, dict]:
@@ -224,19 +208,7 @@ class StratumTests(unittest.TestCase):
             self.assertTrue(10 <= len(collections[name]) <= 25, name)
 
     def test_validation_refuses_each_structural_defect(self):
-        template = fresh3.TEMPLATES[0]
-        rest = fresh3.TEMPLATES[1:]
-        defects = [
-            (*fresh3.TEMPLATES, template),
-            (dataclasses.replace(template, behavior="guess"), *rest),
-            (dataclasses.replace(template, needed=("fitness",)), *rest),
-            (dataclasses.replace(template, min_rounds=9), *rest),
-            (dataclasses.replace(template, expect_clarification=True), *rest),
-            (dataclasses.replace(template, changes={}), *rest),
-            (dataclasses.replace(template, reference=""), *rest),
-            (dataclasses.replace(template, messages={"en": "x"}), *rest),
-        ]
-        for index, value in enumerate(defects):
+        for index, value in enumerate(eval_stratum_case.template_defects(fresh3)):
             with (
                 self.subTest(defect=index),
                 mock.patch.object(fresh3, "TEMPLATES", value),
@@ -418,10 +390,7 @@ class OracleTests(unittest.TestCase):
         for scenario in fresh3.SCENARIOS:
             with self.subTest(scenario=scenario.id):
                 result = corpus.oracle(scenario, _run(REFERENCE[scenario.template.id]), fresh3.INITIAL)
-                self.assertEqual(
-                    result.to_dict(),
-                    {"passed": True, "missing": 0, "wrong": 0, "forbidden": 0, "wrong_scope": 0, "duplicates": 0},
-                )
+                self.assertEqual(result.to_dict(), PASSED)
 
     def test_wrong_workflows_fail(self):
         def remind(document: str, date: str = "2026-11-01") -> Workflow:

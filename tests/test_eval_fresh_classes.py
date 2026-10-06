@@ -3,30 +3,20 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import unittest
 from collections import Counter
-from collections.abc import Callable
 from unittest import mock
 
+import eval_stratum_case
 from eval import corpus, fixtures, fresh_classes
 from eval import world as simulated
+from eval_stratum_case import PASSED, Workflow
+from eval_stratum_case import call as _call
+from eval_stratum_case import one as _one
 
 # Frozen with fresh-v4-classes: a change to the stratum must change its id, not this fingerprint alone.
 DIGEST = "sha256:7d5c47197d50a0a84bf7a143aa8f47f67b1dc3cd6645cbbb9fbd7ac56f99a66f"
-Workflow = Callable[[fresh_classes.FreshWorld], None]
-PASSED = {"passed": True, "missing": 0, "wrong": 0, "forbidden": 0, "wrong_scope": 0, "duplicates": 0}
-
-
-def _one(items: list) -> dict:
-    (item,) = items
-    return item
-
-
-def _call(assistant: str, action: str, arguments: dict) -> Workflow:
-    def workflow(world: fresh_classes.FreshWorld) -> None:
-        world.invoke(assistant, action, arguments)
-
-    return workflow
 
 
 def _boiler_payment(world: fresh_classes.FreshWorld) -> None:
@@ -131,15 +121,8 @@ REFERENCE: dict[str, Workflow] = {
 }
 
 
-def _run(*workflows: Workflow) -> fresh_classes.FreshWorld:
-    world = fresh_classes.FreshWorld()
-    for workflow in workflows:
-        workflow(world)
-    return world
-
-
-def _oracle(scenario_id: str, world: fresh_classes.FreshWorld) -> corpus.Oracle:
-    return corpus.oracle(fresh_classes.SCENARIOS_BY_ID[scenario_id], world, fresh_classes.INITIAL)
+_run = functools.partial(eval_stratum_case.run, fresh_classes)
+_oracle = functools.partial(eval_stratum_case.oracle, fresh_classes)
 
 
 class StratumTests(unittest.TestCase):

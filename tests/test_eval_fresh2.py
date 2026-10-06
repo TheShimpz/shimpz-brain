@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import unittest
 from collections import Counter
-from collections.abc import Callable
 from unittest import mock
 
+import eval_stratum_case
 from eval import corpus, fixtures, fresh2
 from eval import world as simulated
+from eval_stratum_case import PASSED, Workflow
+from eval_stratum_case import call as _call
+from eval_stratum_case import one as _one
 
 # Frozen with fresh-v2: a change to the stratum must change its id, not this fingerprint alone.
 DIGEST = "sha256:7e70b1fc819f74c4d3d1a10e8e74eacb4d04b593b931e1c2d189d8b97d668af0"
-Workflow = Callable[[fresh2.FreshWorld], None]
-
-
-def _one(items: list) -> dict:
-    (item,) = items
-    return item
 
 
 def _parcel_express(world: fresh2.FreshWorld) -> None:
@@ -114,22 +112,8 @@ REFERENCE: dict[str, Workflow] = {
 }
 
 
-def _run(*workflows: Workflow) -> fresh2.FreshWorld:
-    world = fresh2.FreshWorld()
-    for workflow in workflows:
-        workflow(world)
-    return world
-
-
-def _oracle(scenario_id: str, world: fresh2.FreshWorld) -> corpus.Oracle:
-    return corpus.oracle(fresh2.SCENARIOS_BY_ID[scenario_id], world, fresh2.INITIAL)
-
-
-def _call(assistant: str, action: str, arguments: dict) -> Workflow:
-    def workflow(world: fresh2.FreshWorld) -> None:
-        world.invoke(assistant, action, arguments)
-
-    return workflow
+_run = functools.partial(eval_stratum_case.run, fresh2)
+_oracle = functools.partial(eval_stratum_case.oracle, fresh2)
 
 
 class StratumTests(unittest.TestCase):
@@ -158,19 +142,7 @@ class StratumTests(unittest.TestCase):
         self.assertLessEqual(simulated.NO_EFFECT_CODES, fresh2.NO_EFFECT_CODES)
 
     def test_validation_refuses_each_structural_defect(self):
-        template = fresh2.TEMPLATES[0]
-        rest = fresh2.TEMPLATES[1:]
-        defects = [
-            (*fresh2.TEMPLATES, template),
-            (dataclasses.replace(template, behavior="guess"), *rest),
-            (dataclasses.replace(template, needed=("fitness",)), *rest),
-            (dataclasses.replace(template, min_rounds=9), *rest),
-            (dataclasses.replace(template, expect_clarification=True), *rest),
-            (dataclasses.replace(template, changes={}), *rest),
-            (dataclasses.replace(template, reference=""), *rest),
-            (dataclasses.replace(template, messages={"en": "x"}), *rest),
-        ]
-        for index, value in enumerate(defects):
+        for index, value in enumerate(eval_stratum_case.template_defects(fresh2)):
             with (
                 self.subTest(defect=index),
                 mock.patch.object(fresh2, "TEMPLATES", value),
@@ -302,10 +274,7 @@ class OracleTests(unittest.TestCase):
         for scenario in fresh2.SCENARIOS:
             with self.subTest(scenario=scenario.id):
                 result = corpus.oracle(scenario, _run(REFERENCE[scenario.template.id]), fresh2.INITIAL)
-                self.assertEqual(
-                    result.to_dict(),
-                    {"passed": True, "missing": 0, "wrong": 0, "forbidden": 0, "wrong_scope": 0, "duplicates": 0},
-                )
+                self.assertEqual(result.to_dict(), PASSED)
 
     def test_a_failed_attempt_before_the_correct_order_still_passes(self):
         world = fresh2.FreshWorld()
