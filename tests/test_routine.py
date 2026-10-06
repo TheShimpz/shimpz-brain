@@ -67,7 +67,6 @@ def _args(**changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
-        "output": {"mode": "show"},
         "replaces": None,
         "reply": REPLY,
     }
@@ -90,7 +89,6 @@ def _wire(turn_date: datetime.date, **changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
-        "output": {"mode": "show", "when": None},
         "notes": "",
         "decide_actions": [],
         "replaces": None,
@@ -136,12 +134,11 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(routine.RoutineContractError):
             routine.canonical_routines(whole)
 
-    def test_the_tool_schema_is_closed_and_offers_only_recordable_modes(self):
+    def test_the_tool_schema_is_closed(self):
         tool = routine.tool()
         self.assertEqual(tool.name, routine.TOOL_NAME)
         self.assertEqual(tool.args_schema, routine.SCHEMA)
-        modes = routine.SCHEMA["properties"]["output"]["properties"]["mode"]["enum"]
-        self.assertEqual(modes, ["show", "changes", "none"])
+        self.assertEqual(routine.SCHEMA["required"], ["op", "name", "replaces", "reply"])
         self.assertFalse(routine.SCHEMA["additionalProperties"])
         with self.assertRaises(routine.RoutineContractError):
             tool.func(**_args())
@@ -152,18 +149,14 @@ class RecordTests(unittest.TestCase):
         chat = _chat([LISTED])
         outcome = routine.record(_args(), chat)
         self.assertEqual(outcome, {"routine": _wire(chat.turn_date), "reply": REPLY})
-        changed = routine.record(_args(output={"mode": "changes"}, replaces="a" * 32), chat)
-        self.assertEqual(
-            changed["routine"],
-            _wire(chat.turn_date, output={"mode": "changes", "when": None}, replaces="a" * 32),
-        )
+        changed = routine.record(_args(replaces="a" * 32), chat)
+        self.assertEqual(changed["routine"], _wire(chat.turn_date, replaces="a" * 32))
 
-    def test_the_schedule_and_timezone_are_never_the_models(self):
-        # Team derives both from the person's own words (ADR-0101 section 2); the tool offers neither.
-        self.assertNotIn("schedule", routine.SCHEMA["properties"])
-        self.assertNotIn("timezone", routine.SCHEMA["properties"])
+    def test_the_schedule_timezone_and_output_are_never_the_models(self):
+        # Team derives all three from the person's own words (ADR-0101 section 2); the tool offers none of them.
         chat = _chat([LISTED])
-        for member in ("schedule", "timezone"):
+        for member in ("schedule", "timezone", "output"):
+            self.assertNotIn(member, routine.SCHEMA["properties"])
             with self.subTest(member=member):
                 self.assertEqual(routine.record({**_args(), member: None}, chat), "invalid")
 
@@ -177,9 +170,6 @@ class RecordTests(unittest.TestCase):
             (_args(name=""), "name"),
             (_args(name="a\nb"), "name"),
             (_args(name="x" * 81), "name"),
-            (_args(output={"mode": "decide"}), "output"),
-            (_args(output={"mode": "show", "when": "always"}), "output"),
-            (_args(output="show"), "output"),
             (_args(replaces="b" * 32), "replaces"),
             (_args(reply=""), "reply"),
             (_args(reply="   "), "reply"),
@@ -262,9 +252,9 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(state["channel_values"]["messages"][-1].content, REPLY)
 
     def test_a_record_on_the_start_ends_the_turn_with_no_second_model_call(self):
-        runtime, model = self._runtime(AIMessage(content="", tool_calls=[_call(output={"mode": "none"})]))
+        runtime, model = self._runtime(AIMessage(content="", tool_calls=[_call()]))
         result = runtime.start(_chat(), envelope(MESSAGE))
-        self.assertEqual(result.routine["output"], {"mode": "none", "when": None})
+        self.assertNotIn("output", result.routine)
         self.assertEqual(len(model.seen_messages), 1)
 
     def test_a_refused_record_reaches_the_model_and_records_nothing(self):
@@ -395,7 +385,8 @@ class RoutineModeTests(unittest.TestCase):
         runtime.start(dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN), envelope("Sim"))
         system = _system(model.seen_messages[-1])
         self.assertIn("If this message asks for a Routine", system)
-        self.assertIn("use it to run other Actions", system)
+        self.assertIn("what to do with each run's result from the user's words and asks about them itself", system)
+        self.assertIn("when none is listed, look the value up with an Action that returns it", system)
         self.assertIn("The Team needs this work run again exactly as listed", system)
         self.assertIn(json.dumps(list(RERUN), ensure_ascii=False), system)
         runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))

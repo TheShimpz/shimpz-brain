@@ -35,20 +35,11 @@ MAX_LISTING_STEPS_BYTES = 1024 * 1024
 MAX_REPLY_CHARS = 4000
 # The Team's daily Action steps across its Routines, which Team enforces; the context reports what is left of them.
 MAX_DAILY_STEPS = 20_000
-# What the record tool lets the agent choose for each run's result: show it every run, only on change, or none.
-OUTPUT_MODES = ("show", "changes", "none")
 SCHEMA = {
     "type": "object",
     "properties": {
         "op": {"type": "string", "enum": ["record"]},
         "name": {"type": "string", "description": "A short name for the Routine, at most 80 characters."},
-        "output": {
-            "type": "object",
-            "description": "show the result after every run, show it only when it changes, or show none of it.",
-            "properties": {"mode": {"type": "string", "enum": list(OUTPUT_MODES)}},
-            "required": ["mode"],
-            "additionalProperties": False,
-        },
         "replaces": {
             "type": ["string", "null"],
             "description": "The routine_id of the listed Routine this one changes; null for a new Routine.",
@@ -58,15 +49,16 @@ SCHEMA = {
             "description": "Your reply to the person: the result of the work you ran, in their language.",
         },
     },
-    "required": ["op", "name", "output", "replaces", "reply"],
+    "required": ["op", "name", "replaces", "reply"],
     "additionalProperties": False,
 }
 DESCRIPTION = (
     "Record the work you just ran in this turn as a Routine the Team repeats on a schedule. Call it only when the "
     "person asks for work to recur or to change a listed Routine, only after you ran exactly that work once in this "
-    "turn, and alone in your response. It takes no schedule or timezone: the Team reads how often from the person's "
-    "own words (any interval from 5 seconds to one day, at most ceil(86400 / interval) runs a day) in the person's "
-    "own timezone, and asks the person itself when something is missing or does not fit. It ends the turn; the "
+    "turn, and alone in your response. It takes no schedule, timezone, or output: the Team reads how often (any "
+    "interval from 5 seconds to one day, at most ceil(86400 / interval) runs a day) and what to do with each run's "
+    "result from the person's own words, in the person's own timezone, and asks the person itself when something is "
+    "missing or does not fit. It ends the turn; the "
     "Team then shows the person a card to confirm, so never say a Routine was created."
 )
 # How a call outside the closed shape is answered: nothing was recorded, and the model may call again.
@@ -76,7 +68,6 @@ _CORRECTIONS = {
     "response ran, so repeat the calls you still need.",
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
     "name": _NOT_DONE + "Give a name of one line, at most 80 characters.",
-    "output": _NOT_DONE + "Choose show, changes, or none.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person a reply of at most 4000 characters.",
 }
@@ -119,10 +110,6 @@ def _reply(value: object) -> str | None:
     return value
 
 
-def _output(value: object) -> bool:
-    return isinstance(value, dict) and set(value) == {"mode"} and value["mode"] in OUTPUT_MODES
-
-
 def record(arguments: object, context: Any) -> dict[str, object] | str:
     """The recorded outcome and reply of one valid call, or the closed correction of the first invalid field."""
     if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
@@ -132,7 +119,6 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     reply = _reply(arguments["reply"])
     checks = (
         ("name", bool(name)),
-        ("output", _output(arguments["output"])),
         ("replaces", replaces is None or any(item["routine_id"] == replaces for item in context.routines)),
         ("reply", reply is not None),
     )
@@ -142,7 +128,6 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     routine = {
         "op": "record",
         "name": name,
-        "output": {"mode": arguments["output"]["mode"], "when": None},
         "notes": "",
         "decide_actions": [],
         "replaces": replaces,
