@@ -30,13 +30,12 @@ the person would, a Team question always in Admin's composed form and a target b
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
 chosen zone by its id), carries the schedule the person stated, takes no more sends than its missing pieces need,
 "Criar rotina" creates the Routine, and one replay through Team's real claim and run shows that work's exact result.
-One frequency question is allowed, from the agent or Team, whichever comes first, while the person has not stated it;
-asking it again, after it was stated, or by both is a miss, as is any timezone or limits question. Team alone asks the
-output, once, while the person has not stated it; the person answers with its protocol label, and an agent output
-question is a miss. After the first
-passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records, two replay variants run
-with no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never dispatch
-list-dns-records.
+One frequency question and one output question are each allowed, from the agent or Team, whichever comes first, while
+the person has not stated it; asking it again, after it was stated, or by both is a miss, as is any timezone or limits
+question. Team's output question gets its protocol label as the answer, and the card must carry the person's choice.
+After the first passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records, two
+replay variants run with no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never
+dispatch list-dns-records.
 The gate exits non-zero unless every stratum of every shipped model passed every attempt and both variants held.
 For the control arm, serve the Brain with SHIMPZ_ROUTINE_MODE_PROMPT=off, which drops its Routine-mode prompt section.
 Output holds stratum ids, pass counts, Wilson 95% bounds, closed miss reasons with root causes, the questions asked,
@@ -315,8 +314,8 @@ class Person:
     # The topics the agent has asked, in order, and every question it should not have asked.
     asked: list[str] = dataclasses.field(default_factory=list)
     violations: list[str] = dataclasses.field(default_factory=list)
-    # Who asked the one frequency question allowed while the person had not stated it: "agent", "team", or None.
-    frequency_asked_by: str | None = None
+    # Who asked the one frequency or output question allowed while the person had not stated it: "agent" or "team".
+    asked_by: dict[str, str] = dataclasses.field(default_factory=dict)
 
     @property
     def stated(self) -> bool:
@@ -447,8 +446,10 @@ _HINTS: tuple[tuple[str, str], ...] = (
 )
 _TOPICS = ("work", "frequency", "zone", "timezone", "output")
 # Topics the agent never asks: Team owns the schedule and its limits, and the browser gives the zone.
-# Topics the agent never asks: the browser gives the zone, Team judges the limits, and Team asks the output.
-_FORBIDDEN = {"timezone": "asked-timezone", "limits": "asked-limits", "output": "asked-output"}
+# Topics no one ever asks: the browser gives the zone, and Team judges the limits.
+_FORBIDDEN = {"timezone": "asked-timezone", "limits": "asked-limits"}
+# Team's questions that ask a once-only topic.
+_TEAM_ONCE = {"routine-schedule-unstated": "frequency", "routine-output-unstated": "output"}
 _WHICH = ("qual", "quais")
 
 
@@ -470,25 +471,30 @@ def asked_topics(question: str) -> list[str]:
     return [topic for topic in matched if topic is not None]
 
 
-def _frequency_question(person: Person, asker: str) -> str | None:
-    """Why a frequency question is a miss, or None for the one allowed.
+# The topics one question may ask, from the agent or Team, whichever comes first, while the person has not stated it;
+# and what both asking it is called.
+_ONCE = {"frequency": "asked-schedule-by-both", "output": "asked-twice:output"}
 
-    One is allowed, from the agent or Team, whichever comes first, while the person has not stated the frequency;
-    asking after it was stated, asking it again, or both asking it is a miss.
+
+def _once(person: Person, topic: str, asker: str) -> str | None:
+    """Why a frequency or output question is a miss, or None for the one allowed.
+
+    One is allowed, from the agent or Team, whichever comes first, while the person has not stated it; asking after it
+    was stated, asking it again, or both asking it is a miss.
     """
-    if person.stated:
-        return "already-said:frequency"
-    if person.frequency_asked_by is not None:
-        return "asked-twice:frequency" if person.frequency_asked_by == asker else "asked-schedule-by-both"
-    person.frequency_asked_by = asker
+    if person.asked_by.get(topic) is not None:
+        return f"asked-twice:{topic}" if person.asked_by[topic] == asker else _ONCE[topic]
+    if topic in person.said:
+        return f"already-said:{topic}"
+    person.asked_by[topic] = asker
     return None
 
 
 def _judge_question(person: Person, topics: list[str]) -> None:
     """Record every question the agent should not have asked: twice, a forbidden topic, or something already said."""
     for topic in topics:
-        if topic == "frequency":
-            miss = _frequency_question(person, "agent")
+        if topic in _ONCE:
+            miss = _once(person, topic, "agent")
             person.violations.extend([miss] if miss else [])
         elif topic in person.asked:
             person.violations.append(f"asked-twice:{topic}")
@@ -635,10 +641,14 @@ def _conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
         if question is not None:
             code = question["code"]
             attempt.questions.append(code)
-            if _already_answered(attempt, code):
+            once = _TEAM_ONCE.get(code)
+            if once is not None and attempt.person.asked_by.get(once) == "agent":
+                # The agent already asked this; Team asking it too is the one question asked twice.
+                attempt.person.violations.append(_ONCE[once])
+            elif _already_answered(attempt, code):
                 attempt.repeated.append(code)
-            elif code == "routine-schedule-unstated":
-                miss = _frequency_question(attempt.person, "team")
+            elif once is not None:
+                miss = _once(attempt.person, once, "team")
                 attempt.person.violations.extend([miss] if miss else [])
             answer = _team_answer(attempt.person, question)
             attempt.answered[code] = answer or ""
