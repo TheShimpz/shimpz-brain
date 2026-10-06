@@ -152,6 +152,10 @@ class Fixture:
             answer = {"result": zones(self.shimpz, twin=self.twin)}
         else:
             answer = {"result": records(str(payload.get("zone_id")))}
+        if payload.get("page", 1) != 1:
+            # Every list fits its first page, as its pagination says, so a later page is empty.
+            key = "zones" if action == "list-zones" else "records"
+            answer = {"result": {key: [], "pagination": {**_pagination(0), "page": payload["page"], "total_count": 0}}}
         self.note({"kind": "action", "action": action, "input": dict(payload), "result": answer["result"]})
         return answer
 
@@ -243,6 +247,8 @@ OUTPUT_OPTIONS = {
 }
 # The owner's fourth disposition, chaining to other Actions, which no stratum's person ever picks.
 CHAIN_OPTION = r"encade|outras? aç|outra ação|chain|acionar"
+# Words that name a schedule inside an option label.
+SCHEDULE_WORDS = r"\bcada\b|hora|dia|semana|mês|mes\b|segundo|minuto|\d+\s*h\b"
 # The whole set of topics a person states in a fully specified request.
 FULL = frozenset({"work", "zone", "frequency"})
 
@@ -497,12 +503,16 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     recommended = options[clarification["default_index"]]["label"]
     # The person picks the option that is their own choice when the agent offers one, as one press sends it.
     own = next((item["label"] for item in options if "Sao_Paulo" in item["label"] or "Brasília" in item["label"]), None)
+    # An option that also names a schedule or other choices would say more than the person means; they type their
+    # own words instead.
     shown = next(
         (
             item["label"]
             for item in options
             if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())
             and not re.search(CHAIN_OPTION, item["label"].casefold())
+            and not re.search(SCHEDULE_WORDS, item["label"].casefold())
+            and ";" not in item["label"]
         ),
         None,
     )
