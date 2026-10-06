@@ -379,7 +379,11 @@ def _kind(response: dict[str, object]) -> str:
 # What a question asks, by its own words only: each topic the person can answer, and the result's delivery, which
 # they leave to the recommended option. A bare "which" names the zone only when no topic matched.
 _HINTS: tuple[tuple[str, str], ...] = (
-    ("work", r"(qual|que) (trabalho|tarefa)|o que (você )?(quer|deseja|gostaria)|o que .*repet"),
+    # "O que fazer com o resultado" asks the output, never the work.
+    (
+        "work",
+        r"(qual|que) (trabalho|tarefa)|o que (você )?(quer|deseja|gostaria)(?![^?]*\bcom (o|a|os|as)\b)|o que .*repet",
+    ),
     (
         "frequency",
         r"(com que|qual|que|em qual|de quanto em quanto) (a )?(frequ|intervalo|periodicidade|horário|horario)"
@@ -388,7 +392,7 @@ _HINTS: tuple[tuple[str, str], ...] = (
     ("zone", r"(qual|quais|que|de qual|para qual|em qual) (\w+ )?(zona|domínio|dominio)|identificar a zona"),
     ("timezone", r"fuso|timezone|\butc\b"),
     ("limits", r"limite|mínimo|minimo|não (é |são )?aceit|não está disponível|não permite|orçamento"),
-    ("output", r"receber|resultado|mostrar|notific|mudan|exib|apresent|saída|saida|ver os"),
+    ("output", r"receber|resultado|mostrar|notific|mudan|exib|apresent|saída|saida|ver os|(faça|fazer|feito) com"),
 )
 _TOPICS = ("work", "frequency", "zone", "timezone", "output")
 # Topics the agent never asks: Team owns the schedule and its limits, and the browser gives the zone.
