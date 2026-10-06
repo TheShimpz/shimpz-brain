@@ -268,23 +268,28 @@ _HINTS = (
 )
 
 
-def _pick(question: str, answers: list[str]) -> str:
-    """The person's answer that fits the question, else the next one they have not given."""
+def _pick(question: str, answers: list[str]) -> str | None:
+    """The person's answer that fits the question, else the next one they have not given, else None."""
     lowered = question.casefold()
     for answer, words in _HINTS:
         if answer in answers and any(word in lowered for word in words):
             answers.remove(answer)
             return answer
-    return answers.pop(0)
+    return answers.pop(0) if answers else None
+
+
+def _repeated(question: str, given: tuple[str, ...]) -> str | None:
+    """A question asked again gets the person's own answer to it again, never another choice made for them."""
+    return _pick(question, [answer for answer, _words in _HINTS if answer in given])
 
 
 def _conversation_turns(attempt: Attempt, first: str, answers: list[str]) -> dict[str, object]:
     """Send and answer as Admin composes it until a turn records, the person has nothing left to say, or sends run out.
 
-    A clarification the person's own answers do not cover gets Admin's preselected recommended option, as one press of
-    its answer button sends it.
+    A question the person already answered gets that answer again; one their answers do not cover gets Admin's
+    preselected recommended option, as one press of its answer button sends it.
     """
-    message = first
+    message, given = first, tuple(answers)
     response: dict[str, object] = {}
     for _send in range(MAX_SENDS):
         response = attempt.send(message)
@@ -294,12 +299,14 @@ def _conversation_turns(attempt: Attempt, first: str, answers: list[str]) -> dic
         if clarification is not None:
             question = clarification["question"]
             recommended = clarification["options"][clarification["default_index"]]["label"]
-            answer = _pick(question, answers) if answers else recommended
+            answer = _pick(question, answers) or _repeated(question, given) or recommended
             message = f"{message.strip()}\n\n{QUESTION_LABEL}: {question}\n{ANSWER_LABEL}: {answer}"
-        elif answers:
-            message = _pick(str(response.get("reply", "")), answers)
         else:
-            return response
+            reply = str(response.get("reply", ""))
+            plain = _pick(reply, answers) or _repeated(reply, given)
+            if plain is None:
+                return response
+            message = plain
     return response
 
 
