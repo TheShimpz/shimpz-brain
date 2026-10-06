@@ -321,17 +321,23 @@ def _parts(question: str, answers: list[str], given: tuple[str, ...]) -> tuple[l
     return parts, uncovered
 
 
-def _conversation_turns(attempt: Attempt, first: str, answers: list[str]) -> dict[str, object]:
+def _conversation_turns(attempt: Attempt, first: str, answers: list[str], frequency: str) -> dict[str, object]:
     """Send and answer as Admin composes it until a turn records, the person has nothing left to say, or sends run out.
 
     Every part of a question gets the person's own answer to it, joined as one typed answer; a part none of their
-    answers covers gets Admin's preselected recommended option, as one press of its answer button sends it.
+    answers covers gets Admin's preselected recommended option, as one press of its answer button sends it. A refusal
+    because the person never stated how often gets their own ``frequency``, as they would type it.
     """
     message, given = first, tuple(answers)
     response: dict[str, object] = {}
     for _send in range(MAX_SENDS):
         response = attempt.send(message)
-        if "routine_proposal" in response or "routine_refusal" in response:
+        refusal = response.get("routine_refusal")
+        if refusal is not None and refusal["code"] == "routine-schedule-unstated":
+            message = frequency
+            attempt.said.add(frequency)
+            continue
+        if "routine_proposal" in response or refusal is not None:
             return response
         clarification = response.get("clarification")
         if clarification is not None:
@@ -395,14 +401,41 @@ def _judged(attempt: Attempt, response: dict[str, object], schedule: Callable[[d
     answer = attempt.confirm(seen.pop("proposal_id"))
     if answer["status"] != "created":
         return Outcome(f"confirm:{answer['status']}", seen)
+    return Outcome(_replay_miss(attempt), seen)
+
+
+def _replay_miss(attempt: Attempt) -> str | None:
+    """Why one replay did not list shimpz.com's records and show exactly them from list-dns-records, or None."""
     attempt.fixture.calls.clear()
     status, notice = attempt.replay()
     if status != "done" or not attempt.fixture.listed(SHIMPZ):
-        return Outcome(f"replay:{status}", seen)
+        return f"replay:{status}"
     output = None if notice is None else notice.detail.get("output")
     if notice is None or notice.outcome != "done" or output is None or output["state"] != "shown":
-        return Outcome("replay-notice", seen)
-    return Outcome(None, seen)
+        return "replay-notice"
+    (routine,) = attempt.team.service.routine_store.load("team_1").routines
+    if routine.plan["steps"][output["step"] - 1]["action"] != "list-dns-records":
+        return "replay-shown:step"
+    if _shown_records(output["value"]) != _expected_records():
+        return "replay-shown:records"
+    return None
+
+
+def _fields(node: dict[str, object]) -> dict[str, object]:
+    return dict(node["fields"]) if node.get("kind") == "fields" else {}
+
+
+def _shown_records(value: dict[str, object]) -> set[tuple[object, ...]] | None:
+    """Each shown record's type, name, and content, or None when the shown result holds no records list."""
+    listed = _fields(value).get("records")
+    if listed is None or listed.get("kind") != "list" or listed["omitted"]:
+        return None
+    members = ("type", "name", "content")
+    return {tuple(_fields(item).get(member, {}).get("value") for member in members) for item in listed["items"]}
+
+
+def _expected_records() -> set[tuple[object, ...]]:
+    return {(item["type"], item["name"], item["content"]) for item in SHIMPZ_RECORDS}
 
 
 def _continuous(schedule: dict[str, object]) -> bool:
@@ -410,12 +443,14 @@ def _continuous(schedule: dict[str, object]) -> bool:
 
 
 def owner(attempt: Attempt) -> Outcome:
-    response = _conversation_turns(attempt, "Cria uma rotina pra mim", list(ANSWERS))
+    response = _conversation_turns(attempt, "Cria uma rotina pra mim", list(ANSWERS), ANSWERS[1])
     return _judged(attempt, response, _continuous)
 
 
 def plain_list(attempt: Attempt) -> Outcome:
-    response = _conversation_turns(attempt, "Todo dia às 9h, liste os registros DNS de shimpz.com", [])
+    response = _conversation_turns(
+        attempt, "Todo dia às 9h, liste os registros DNS de shimpz.com", [], "Todo dia às 9h"
+    )
     return _judged(attempt, response, lambda schedule: schedule == {"kind": "daily", "time": "09:00"})
 
 
@@ -426,7 +461,7 @@ def every_hour(attempt: Attempt) -> Outcome:
     if not attempt.fixture.listed(SHIMPZ):
         return Outcome("first-turn-calls")
     attempt.fixture.calls.clear()
-    response = _conversation_turns(attempt, "Faça isso a cada hora", [])
+    response = _conversation_turns(attempt, "Faça isso a cada hora", [], "A cada hora")
     return _judged(attempt, response, lambda schedule: schedule == {"kind": "hourly", "every": 1})
 
 
@@ -455,7 +490,7 @@ def _cause(attempt: Attempt, reason: str) -> str:
         return "sends-exhausted" if len(attempt.sends) >= MAX_SENDS else f"stopped-on-{attempt.sends[-1][0]}"
     if reason == "refused:routine-recording-empty":
         return "work-done-before-record" if any(actions for _kind, actions in attempt.sends[:-1]) else "no-work"
-    return reason.split(":", 1)[0]
+    return reason if reason.startswith("replay-shown") else reason.split(":", 1)[0]
 
 
 CASES: tuple[tuple[str, Callable[[Attempt], Outcome]], ...] = (
@@ -638,8 +673,34 @@ def run(
                 cases.append(runner.case(model, case))
             report["models"].append({"provider": model[0], "model": model[1], "cases": cases})
     report["variants"] = runner.variants
+    report["gate"] = gate(report, limits[0])
     report["budget"] = runner.budget.summary()
     return report
+
+
+def gate(report: dict[str, object], attempts: int) -> dict[str, object]:
+    """The owner's release gate: every shipped model finished every case at 30 of 30, and both variants held."""
+    failures: list[str] = []
+    if attempts < ATTEMPTS:
+        failures.append("attempts-below-gate")
+    if report["budget"]["unknown_settlements"]:
+        failures.append("cost-unknown")
+    ran = {item["model"]: item["cases"] for item in report["models"]}
+    for _provider, model in MODELS:
+        finished = {case["id"]: case for case in ran.get(model, [])}
+        for case_id, _play in CASES:
+            case = finished.get(case_id)
+            clean = case is not None and not case["inconclusive"] and not case["misses"]
+            if not clean or case["trials"] != max(attempts, ATTEMPTS) or case["passed"] != case["trials"]:
+                failures.append(f"{model}:{case_id}")
+    found = report["variants"] or {}
+    moved, twin = found.get("moved-zone-id", {}), found.get("twin-zone-names", {})
+    if not (moved.get("status") == "done" and moved.get("listed_new_id")):
+        failures.append("variant:moved-zone-id")
+    ambiguous = twin.get("status") == "failed" and twin.get("code") == "plan-reference-ambiguous"
+    if not ambiguous or twin.get("list_dns_records_dispatched") is not False:
+        failures.append("variant:twin-zone-names")
+    return {"passed": not failures, "failures": failures}
 
 
 def _key(path: Path | None) -> str | None:
@@ -673,7 +734,8 @@ def main() -> int:
     brain = (brain_served(args.brain_port), args.token_file)
     report = run(models, brain, (args.attempts, args.budget), frozenset(args.only))
     print(json.dumps(report, indent=2))
-    return 0
+    # Any miss, skipped attempt, missing model or case, or budget stop fails the run; no caller reads it as a pass.
+    return 0 if report["gate"]["passed"] else 1
 
 
 if __name__ == "__main__":
