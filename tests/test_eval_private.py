@@ -20,6 +20,14 @@ class PrivateFileTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
+    def test_transcript_lines_skip_only_blank_lines_and_refuse_malformed_ones(self):
+        path = self.root / "transcript.jsonl"
+        path.write_text('{"a": 1}\n\n \t\n{"b": 2}\n', encoding="utf-8")
+        self.assertEqual(private.read_jsonl(path), [{"a": 1}, {"b": 2}])
+        path.write_text('{"a": 1}\n{not json\n', encoding="utf-8")
+        with self.assertRaises(ValueError):
+            private.read_jsonl(path)
+
     def test_an_existing_file_is_made_owner_only_before_it_is_written(self):
         path = self.root / "transcript.jsonl"
         path.write_text("old\n", encoding="utf-8")

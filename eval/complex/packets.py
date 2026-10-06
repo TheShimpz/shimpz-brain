@@ -114,7 +114,7 @@ def build(records: Iterable[Mapping[str, object]], seed: str) -> tuple[list[dict
 
 def generate(transcript: Path, seed: str, out: Path) -> int:
     """Write the packets, key, and labels of ``transcript`` owner-only into ``out``; the number of packets."""
-    records = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line]
+    records = private.read_jsonl(transcript)
     packets, keys, labels = build(records, seed)
     out.mkdir(mode=0o700, exist_ok=True)
     for name, body in (("packets.json", packets), ("key.json", keys), ("labels.json", labels)):

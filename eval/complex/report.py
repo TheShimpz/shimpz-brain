@@ -251,10 +251,6 @@ def build_report(
     }
 
 
-def _read_jsonl(path: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
-
-
 def _judges(args: argparse.Namespace) -> tuple[Judgment, Judgment]:
     from eval import judge
     from eval.intent_route import _key
@@ -282,7 +278,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "report":
             meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
             calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
-            body = build_report(_read_jsonl(args.transcript), _read_jsonl(args.judged), meta, calibration)
+            body = build_report(private.read_jsonl(args.transcript), private.read_jsonl(args.judged), meta, calibration)
             args.out.write_text(json.dumps(body, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         from eval import judge
@@ -296,7 +292,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.command == "calibrate":
                 text = json.dumps({**calibrate(primary, tiebreak), "judge_budget": ceiling.budget.summary()})
             else:
-                judged = judge_episodes(_read_jsonl(args.transcript), primary, tiebreak)
+                judged = judge_episodes(private.read_jsonl(args.transcript), primary, tiebreak)
                 text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
         except BaseException:
             os.close(descriptor)

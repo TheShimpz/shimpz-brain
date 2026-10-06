@@ -154,7 +154,7 @@ class EpisodeReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             transcript = root / "t.jsonl"
-            transcript.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+            transcript.write_text(" \n".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
             fakes = (lambda _t: GOOD, lambda _t: GOOD)
             with mock.patch.object(report, "_judges", return_value=fakes), redirect_stdout(io.StringIO()):
                 self.assertEqual(report.main(["judge", "--transcript", str(transcript), "--out", str(root / "j")]), 0)

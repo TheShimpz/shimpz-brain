@@ -74,7 +74,7 @@ class JudgingTests(unittest.TestCase):
             path = Path(directory, "t.jsonl")
             private.write_private(path, json.dumps({"a": 1}) + "\n\n")
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-            self.assertEqual(precision.read_jsonl(path), [{"a": 1}])
+            self.assertEqual(private.read_jsonl(path), [{"a": 1}])
         attempt = _attempt("dns-create.en")
         self.assertEqual(precision.attempt_key(attempt), "c|openai|gpt-6-luna|a|0|dns-create.en")
         self.assertEqual(precision.judge_item(attempt).scenario.id, "dns-create.en")

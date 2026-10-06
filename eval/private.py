@@ -9,6 +9,7 @@ made owner-only before anything is written. This module uses only the standard l
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 from pathlib import Path
@@ -88,3 +89,8 @@ def write_descriptor(descriptor: int, text: str) -> None:
 
 def write_private(path: Path, text: str) -> None:
     write_descriptor(open_private(path), text)
+
+
+def read_jsonl(path: Path) -> list[dict[str, object]]:
+    """The records of a transcript or verdict file: blank and whitespace-only lines are skipped; bad JSON raises."""
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

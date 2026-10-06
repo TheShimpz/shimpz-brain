@@ -74,7 +74,8 @@ class PacketTests(unittest.TestCase):
         records = [_record(t, arm) for t in TEMPLATES[:2] for arm in ("alpha", "bravo")]
         with tempfile.TemporaryDirectory() as directory:
             transcript = Path(directory, "t.jsonl")
-            transcript.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+            # A whitespace-only line is skipped like an empty one; every transcript reader shares that policy.
+            transcript.write_text(" \t\n".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
             out = Path(directory, "packets")
             # Generation is called directly on valid input, so a failure keeps its traceback.
             self.assertEqual(packets.generate(transcript, "s", out), 2)

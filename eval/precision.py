@@ -62,10 +62,6 @@ def attempt_key(attempt: Mapping[str, object]) -> str:
     return "|".join(str(attempt[name]) for name in ("campaign", "provider", "model", "arm", "repetition", "scenario"))
 
 
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
 def judge_item(attempt: Mapping[str, object]) -> judge.Item:
     """The judge input; an experiment arm's exposed Assistants, Actions, and contract set replace the scenario's."""
     scenario = SCENARIOS[str(attempt["scenario"])]
@@ -853,10 +849,10 @@ def _report(args: argparse.Namespace) -> None:
     """Build the report from one transcript, its completion runs in order, and every judgment file."""
     meta = json.loads(args.meta.read_text(encoding="utf-8")) if args.meta else {}
     calibration = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
-    judged = [item for path in args.judged for item in read_jsonl(path)]
+    judged = [item for path in args.judged for item in private.read_jsonl(path)]
     check_completion_sources(meta, [path.read_bytes() for path in (args.transcript, *args.completion)])
-    completions = [read_jsonl(path) for path in args.completion]
-    report = build_report(read_jsonl(args.transcript), judged, meta, calibration, args.split, completions)
+    completions = [private.read_jsonl(path) for path in args.completion]
+    report = build_report(private.read_jsonl(args.transcript), judged, meta, calibration, args.split, completions)
     args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -907,7 +903,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result: object = calibrate(primary, tiebreak)
                 text = json.dumps({**result, "judge_budget": budget.summary()}, indent=1, sort_keys=True) + "\n"
             else:
-                judged = judge_attempts(read_jsonl(args.transcript), primary, tiebreak)
+                judged = judge_attempts(private.read_jsonl(args.transcript), primary, tiebreak)
                 text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
         except BaseException:
             os.close(descriptor)
