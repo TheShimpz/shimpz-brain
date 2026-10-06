@@ -15,7 +15,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import ToolAwareFakeModel
-from test_runtime_api import TOKEN, body
+from test_runtime_api import AUTH, TOKEN, body
 
 USAGE = {
     "input_tokens": 120,
@@ -105,7 +105,7 @@ class EndpointTests(unittest.TestCase):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Hello.", usage_metadata=USAGE)])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
         app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
-        response = TestClient(app).post("/v1/turns", json=body(), headers={"Authorization": f"Bearer {TOKEN}"})
+        response = TestClient(app).post("/v1/turns", json=body(), headers=AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["usage"],

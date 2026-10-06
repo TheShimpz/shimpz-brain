@@ -9,7 +9,7 @@ import agent_runtime
 import intent_route
 import runtime_api
 from fastapi.testclient import TestClient
-from test_runtime_api import NO_USAGE, SECRET, TOKEN, FakeRuntime, body, client
+from test_runtime_api import AUTH, NO_USAGE, SECRET, TOKEN, FakeRuntime, body, client
 
 
 class DecisionApiTests(unittest.TestCase):
@@ -23,11 +23,7 @@ class DecisionApiTests(unittest.TestCase):
         api = client(runtime)
 
         self.assertEqual(api.post("/v1/action-labels", json=payload).status_code, 401)
-        response = api.post(
-            "/v1/action-labels",
-            json=payload,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = api.post("/v1/action-labels", json=payload, headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -72,11 +68,7 @@ class DecisionApiTests(unittest.TestCase):
         api = client(runtime)
 
         self.assertEqual(api.post("/v1/capability-plan", json=payload).status_code, 401)
-        response = api.post(
-            "/v1/capability-plan",
-            json=payload,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = api.post("/v1/capability-plan", json=payload, headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -114,7 +106,7 @@ class DecisionApiTests(unittest.TestCase):
                     }
                 ],
             },
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=AUTH,
         )
 
         self.assertEqual(response.status_code, 429)
@@ -132,7 +124,7 @@ class DecisionApiTests(unittest.TestCase):
             "locale": "en",
         }
         decision = {"provider": "typesafe", "api_key": "tsk-test-0123456789abcdef"}
-        headers = {"Authorization": f"Bearer {TOKEN}"}
+        headers = AUTH
         runtime = FakeRuntime()
         response = client(runtime).post(
             "/v1/intent-route", json={**route, "decision_provider": decision}, headers=headers
@@ -184,11 +176,7 @@ class DecisionApiTests(unittest.TestCase):
         }
 
         self.assertEqual(api.post("/v1/intent-route", json=classification).status_code, 401)
-        response = api.post(
-            "/v1/intent-route",
-            json=classification,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = api.post("/v1/intent-route", json=classification, headers=AUTH)
 
         self.assertEqual(
             response.json(),
@@ -218,11 +206,7 @@ class DecisionApiTests(unittest.TestCase):
             "conversation": [],
             "locale": "pt",
         }
-        selected = api.post(
-            "/v1/intent-route",
-            json=selection,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        selected = api.post("/v1/intent-route", json=selection, headers=AUTH)
         self.assertEqual(
             selected.json(),
             {
@@ -291,11 +275,7 @@ class DecisionApiTests(unittest.TestCase):
 
         for payload in invalid:
             with self.subTest(payload=payload):
-                response = api.post(
-                    "/v1/intent-route",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = api.post("/v1/intent-route", json=payload, headers=AUTH)
                 self.assertEqual(response.status_code, 422)
         with mock.patch.object(intent_route, "MAX_CONVERSATION_CHARS", 1):
             response = api.post(
@@ -304,7 +284,7 @@ class DecisionApiTests(unittest.TestCase):
                     **base,
                     "conversation": [{"role": "user", "text": "remove it", "truncated": False}],
                 },
-                headers={"Authorization": f"Bearer {TOKEN}"},
+                headers=AUTH,
             )
         self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [])
@@ -325,7 +305,7 @@ class DecisionApiTests(unittest.TestCase):
                 "conversation": [],
                 "locale": "en",
             },
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=AUTH,
         )
 
         self.assertEqual(response.status_code, 429)
@@ -352,11 +332,7 @@ class DecisionApiTests(unittest.TestCase):
 
         for payload in invalid_values:
             with self.subTest(payload=payload):
-                response = client(runtime).post(
-                    "/v1/action-labels",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = client(runtime).post("/v1/action-labels", json=payload, headers=AUTH)
                 self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [])
 
@@ -367,9 +343,7 @@ class DecisionApiTests(unittest.TestCase):
         wrong["provider"]["effort"] = SECRET
         for request_body in (missing, wrong):
             with self.subTest(fields=sorted(request_body)):
-                response = client(FakeRuntime()).post(
-                    "/v1/turns", json=request_body, headers={"Authorization": f"Bearer {TOKEN}"}
-                )
+                response = client(FakeRuntime()).post("/v1/turns", json=request_body, headers=AUTH)
                 self.assertEqual(response.status_code, 422)
                 self.assertNotIn(SECRET, response.text)
                 self.assertNotIn("input", response.json()["detail"][0])
@@ -384,7 +358,7 @@ class DecisionApiTests(unittest.TestCase):
                 "locale": "pt",
                 "actions": ["list-zones"],
             },
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=AUTH,
         )
 
         self.assertEqual(response.status_code, 502)

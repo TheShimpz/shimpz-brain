@@ -20,6 +20,7 @@ import runtime_api
 from fastapi.testclient import TestClient
 
 TOKEN = secrets.token_hex(24)
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
 SECRET = secrets.token_urlsafe(32)
 NO_USAGE = dict.fromkeys(model_usage.FIELDS, 0)
 
@@ -163,7 +164,7 @@ class RuntimeApiTests(unittest.TestCase):
             }
         )
         runtime = FakeRuntime(agent_runtime.TurnResult(status="completed", reply=asked.render(), clarification=asked))
-        response = client(runtime).post("/v1/turns", json=body(), headers={"Authorization": f"Bearer {TOKEN}"})
+        response = client(runtime).post("/v1/turns", json=body(), headers=AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["clarification"], asked.to_dict())
         self.assertEqual(response.json()["reply"], asked.render())
@@ -190,11 +191,7 @@ class RuntimeApiTests(unittest.TestCase):
 
     def test_start_passes_provider_secret_in_memory_but_never_returns_it(self):
         runtime = FakeRuntime()
-        response = client(runtime).post(
-            "/v1/turns",
-            json=body(),
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = client(runtime).post("/v1/turns", json=body(), headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -218,11 +215,7 @@ class RuntimeApiTests(unittest.TestCase):
 
     def test_start_accepts_an_explicit_brain_only_context(self):
         runtime = FakeRuntime(result=agent_runtime.TurnResult(status="completed", reply="Brain only."))
-        response = client(runtime).post(
-            "/v1/turns",
-            json=body(assistants=[]),
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = client(runtime).post("/v1/turns", json=body(assistants=[]), headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -253,11 +246,7 @@ class RuntimeApiTests(unittest.TestCase):
                 ),
             )
         )
-        response = client(runtime).post(
-            "/v1/turns",
-            json=body(),
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = client(runtime).post("/v1/turns", json=body(), headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -283,26 +272,20 @@ class RuntimeApiTests(unittest.TestCase):
     def test_start_requires_a_bounded_conversation_window_and_resume_refuses_one(self):
         entry = {"role": "user", "text": "Earlier", "truncated": False}
         runtime = FakeRuntime()
-        response = client(runtime).post(
-            "/v1/turns", json=body(conversation=[entry]), headers={"Authorization": f"Bearer {TOKEN}"}
-        )
+        response = client(runtime).post("/v1/turns", json=body(conversation=[entry]), headers=AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(runtime.conversation, (intent_route.ConversationEntry("user", "Earlier", False),))
         for window in ([entry] * 9, [{**entry, "text": "x" * 513}], [{**entry, "role": "system"}]):
             with self.subTest(size=len(window)):
-                response = client(FakeRuntime()).post(
-                    "/v1/turns", json=body(conversation=window), headers={"Authorization": f"Bearer {TOKEN}"}
-                )
+                response = client(FakeRuntime()).post("/v1/turns", json=body(conversation=window), headers=AUTH)
                 self.assertEqual(response.status_code, 422)
         missing = body()
         missing.pop("conversation")
-        response = client(FakeRuntime()).post("/v1/turns", json=missing, headers={"Authorization": f"Bearer {TOKEN}"})
+        response = client(FakeRuntime()).post("/v1/turns", json=missing, headers=AUTH)
         self.assertEqual(response.status_code, 422)
         resume = body(results={"interrupt-1": {"status": "ok"}})
         resume.pop("message")
-        response = client(FakeRuntime()).post(
-            "/v1/turns/resume", json=resume, headers={"Authorization": f"Bearer {TOKEN}"}
-        )
+        response = client(FakeRuntime()).post("/v1/turns/resume", json=resume, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
     def test_resume_accepts_only_explicit_interrupt_results(self):
@@ -312,38 +295,28 @@ class RuntimeApiTests(unittest.TestCase):
         payload.pop("conversation")
         payload.pop("locale")
         payload["results"] = {"interrupt-1": {"message": "Hello, Ada."}}
-        response = client(runtime).post(
-            "/v1/turns/resume",
-            json=payload,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = client(runtime).post("/v1/turns/resume", json=payload, headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(runtime.calls[0][0], "resume")
         self.assertEqual(runtime.calls[0][2], {"interrupt-1": {"message": "Hello, Ada."}})
         self.assertIsNone(runtime.calls[0][1].locale)
         # A resumed turn keeps the language its start pinned; it never carries one of its own.
-        response = client(FakeRuntime()).post(
-            "/v1/turns/resume", json={**payload, "locale": "en"}, headers={"Authorization": f"Bearer {TOKEN}"}
-        )
+        response = client(FakeRuntime()).post("/v1/turns/resume", json={**payload, "locale": "en"}, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
     def test_a_start_names_one_closed_interface_language_or_none(self):
         for locale in ("pt", "ar", None):
             with self.subTest(locale=locale):
                 runtime = FakeRuntime()
-                response = client(runtime).post(
-                    "/v1/turns", json=body(locale=locale), headers={"Authorization": f"Bearer {TOKEN}"}
-                )
+                response = client(runtime).post("/v1/turns", json=body(locale=locale), headers=AUTH)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(runtime.calls[0][1].locale, locale)
         missing = body()
         missing.pop("locale")
         for invalid in (missing, body(locale="pt-BR"), body(locale="Portuguese"), body(locale=1)):
             with self.subTest(invalid=invalid.get("locale")):
-                response = client(FakeRuntime()).post(
-                    "/v1/turns", json=invalid, headers={"Authorization": f"Bearer {TOKEN}"}
-                )
+                response = client(FakeRuntime()).post("/v1/turns", json=invalid, headers=AUTH)
                 self.assertEqual(response.status_code, 422)
 
     def test_thread_deletion_is_authenticated_idempotent_and_closed(self):
@@ -354,11 +327,7 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(api.post("/v1/threads/delete", json=payload).status_code, 401)
         self.assertEqual(runtime.calls, [])
 
-        response = api.post(
-            "/v1/threads/delete",
-            json=payload,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = api.post("/v1/threads/delete", json=payload, headers=AUTH)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "deleted"})
         self.assertEqual(runtime.calls, [("delete_thread", payload["thread_id"])])
@@ -368,33 +337,29 @@ class RuntimeApiTests(unittest.TestCase):
             {"thread_id": payload["thread_id"], "unexpected": True},
         ):
             with self.subTest(invalid=invalid):
-                response = api.post(
-                    "/v1/threads/delete",
-                    json=invalid,
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = api.post("/v1/threads/delete", json=invalid, headers=AUTH)
                 self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [("delete_thread", payload["thread_id"])])
 
     def test_extra_fields_and_invalid_provider_fail_closed(self):
         api = client(FakeRuntime())
         invalid = body(unexpected_command="forbidden")
-        response = api.post("/v1/turns", json=invalid, headers={"Authorization": f"Bearer {TOKEN}"})
+        response = api.post("/v1/turns", json=invalid, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
         invalid = body()
         del invalid["assistants"][0]["genesis"]
-        response = api.post("/v1/turns", json=invalid, headers={"Authorization": f"Bearer {TOKEN}"})
+        response = api.post("/v1/turns", json=invalid, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
         invalid = body()
         invalid["provider"]["provider"] = "codex"
-        response = api.post("/v1/turns", json=invalid, headers={"Authorization": f"Bearer {TOKEN}"})
+        response = api.post("/v1/turns", json=invalid, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
         invalid = body()
         invalid["assistants"][0]["unexpected"] = "forbidden"
-        response = api.post("/v1/turns", json=invalid, headers={"Authorization": f"Bearer {TOKEN}"})
+        response = api.post("/v1/turns", json=invalid, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
     def test_unknown_and_cross_provider_models_fail_before_runtime(self):
@@ -409,11 +374,7 @@ class RuntimeApiTests(unittest.TestCase):
             payload = body()
             payload["provider"] = {"provider": provider, "model": model, "api_key": SECRET, "effort": "low"}
             with self.subTest(provider=provider, model=model):
-                response = api.post(
-                    "/v1/turns",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = api.post("/v1/turns", json=payload, headers=AUTH)
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json(), {"detail": "unsupported model for provider"})
 
@@ -429,7 +390,7 @@ class RuntimeApiTests(unittest.TestCase):
             else:
                 payload["provider"]["effort"] = effort
             with self.subTest(effort=effort):
-                response = api.post("/v1/turns", json=payload, headers={"Authorization": f"Bearer {TOKEN}"})
+                response = api.post("/v1/turns", json=payload, headers=AUTH)
                 self.assertEqual(response.status_code, 422)
         self.assertEqual(runtime.calls, [])
 
@@ -438,18 +399,10 @@ class RuntimeApiTests(unittest.TestCase):
 
         for team_name in ("", "   ", "Bad\nName", "Bad\x7fName", "x" * 81):
             with self.subTest(team_name=team_name):
-                response = api.post(
-                    "/v1/turns",
-                    json=body(team_name=team_name),
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = api.post("/v1/turns", json=body(team_name=team_name), headers=AUTH)
                 self.assertEqual(response.status_code, 422)
 
-        response = api.post(
-            "/v1/turns",
-            json=body(team_name=123),
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = api.post("/v1/turns", json=body(team_name=123), headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
     def test_an_assistant_with_the_team_admitted_128_actions_is_accepted(self):
@@ -460,11 +413,7 @@ class RuntimeApiTests(unittest.TestCase):
             {**payload["assistants"][0], "actions": [{**action, "id": f"action-{index}"} for index in range(128)]}
         ]
 
-        response = client(runtime).post(
-            "/v1/turns",
-            json=payload,
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = client(runtime).post("/v1/turns", json=payload, headers=AUTH)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(runtime.calls[0][1].assistants[0].actions), 128)
@@ -493,11 +442,7 @@ class RuntimeApiTests(unittest.TestCase):
         ):
             runtime = FakeRuntime()
             with self.subTest(total=sum(counts), assistants=len(counts)):
-                response = client(runtime).post(
-                    "/v1/turns",
-                    json=scoped(*counts),
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = client(runtime).post("/v1/turns", json=scoped(*counts), headers=AUTH)
                 self.assertEqual(response.status_code, status)
                 if status == 200:
                     admitted = runtime.calls[0][1].assistants
@@ -505,11 +450,7 @@ class RuntimeApiTests(unittest.TestCase):
 
     def test_provider_error_is_generic_and_never_echoes_credential(self):
         runtime = FakeRuntime(error=agent_runtime.ProviderRequestError(f"provider rejected {SECRET}"))
-        response = client(runtime).post(
-            "/v1/turns",
-            json=body(),
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        response = client(runtime).post("/v1/turns", json=body(), headers=AUTH)
 
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json(), {"detail": "Model provider request failed"})
@@ -519,11 +460,7 @@ class RuntimeApiTests(unittest.TestCase):
         response = client(
             FakeRuntime(error=ImportError(f"missing dependency beside {SECRET}")),
             raise_server_exceptions=False,
-        ).post(
-            "/v1/turns",
-            json=body(),
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
+        ).post("/v1/turns", json=body(), headers=AUTH)
 
         self.assertEqual(response.status_code, 500)
         self.assertNotIn(SECRET, response.text)
@@ -531,9 +468,7 @@ class RuntimeApiTests(unittest.TestCase):
     def test_state_error_is_generic_and_never_echoes_persisted_data(self):
         runtime = FakeRuntime(error=agent_runtime.RuntimeStateError(f"failed to delete {SECRET}"))
         response = client(runtime).post(
-            "/v1/threads/delete",
-            json={"thread_id": "team:hello-pulse:conversation-1"},
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            "/v1/threads/delete", json={"thread_id": "team:hello-pulse:conversation-1"}, headers=AUTH
         )
 
         self.assertEqual(response.status_code, 503)
@@ -575,11 +510,7 @@ class RuntimeApiTests(unittest.TestCase):
             TestClient(application) as api,
         ):
             for _attempt in range(2):
-                response = api.post(
-                    "/v1/turns",
-                    json=body(),
-                    headers={"Authorization": f"Bearer {TOKEN}"},
-                )
+                response = api.post("/v1/turns", json=body(), headers=AUTH)
                 self.assertEqual(response.status_code, 200)
         create_runtime.assert_called_once_with()
         lazy.close.assert_called_once_with()
@@ -595,11 +526,7 @@ class RuntimeApiTests(unittest.TestCase):
             mock.patch.object(runtime_api, "_sqlite_runtime", return_value=no_close),
             TestClient(application) as api,
         ):
-            response = api.post(
-                "/v1/turns",
-                json=body(),
-                headers={"Authorization": f"Bearer {TOKEN}"},
-            )
+            response = api.post("/v1/turns", json=body(), headers=AUTH)
             self.assertEqual(response.status_code, 200)
 
     def test_lazy_runtime_lock_publishes_one_instance_to_concurrent_callers(self):
