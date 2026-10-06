@@ -31,7 +31,9 @@ stratum passes when the card binds every zone the person meant through a referen
 chosen zone by its id), carries the schedule the person stated, takes no more sends than its missing pieces need,
 "Criar rotina" creates the Routine, and one replay through Team's real claim and run shows that work's exact result.
 One frequency question is allowed, from the agent or Team, whichever comes first, while the person has not stated it;
-asking it again, after it was stated, or by both is a miss, as is any timezone or limits question. After the first
+asking it again, after it was stated, or by both is a miss, as is any timezone or limits question. Team alone asks the
+output, once, while the person has not stated it; the person answers with its protocol label, and an agent output
+question is a miss. After the first
 passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records, two replay variants run
 with no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never dispatch
 list-dns-records.
@@ -176,6 +178,10 @@ def validate() -> None:
         Draft202012Validator(actions["list-zones"]["output_schema"]).validate(value)
     for zone in (SHIMPZ, MOVED, TWIN, EXAMPLE):
         Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone))
+    from protocol.http.v1 import routine as http_routine
+
+    if http_routine.OUTPUT_CHOICES["pt"] != OUTPUT_LABELS:
+        raise SystemExit("the person's output labels drifted from Team's protocol OUTPUT_CHOICES")
     if len({case for case, _play in CASES}) != len(CASES):
         raise SystemExit("case ids are not unique")
 
@@ -240,6 +246,13 @@ class Team:
 
 # The person's words for each output disposition, and how they recognise the agent's option for it.
 OUTPUT_WORDS = {"show": "Mostrar sempre", "changes": "Mostrar só quando mudar", "none": "Não precisa mostrar nada"}
+# Team's Portuguese labels for its output question (protocol OUTPUT_CHOICES["pt"]), which --validate pins to Team's.
+OUTPUT_LABELS = {
+    "show": "Mostrar em todas as execuções",
+    "changes": "Mostrar somente quando mudar",
+    "none": "Não mostrar",
+    "chain": "Usar em outras ações",
+}
 OUTPUT_OPTIONS = {
     "show": r"sempre|toda|cada execu",
     "changes": r"mud|altera",
@@ -407,8 +420,8 @@ _HINTS: tuple[tuple[str, str], ...] = (
 )
 _TOPICS = ("work", "frequency", "zone", "timezone", "output")
 # Topics the agent never asks: Team owns the schedule and its limits, and the browser gives the zone.
-# Topics no one ever asks: the browser gives the zone, and Team judges the limits.
-_FORBIDDEN = {"timezone": "asked-timezone", "limits": "asked-limits"}
+# Topics the agent never asks: the browser gives the zone, Team judges the limits, and Team asks the output.
+_FORBIDDEN = {"timezone": "asked-timezone", "limits": "asked-limits", "output": "asked-output"}
 _WHICH = ("qual", "quais")
 
 
@@ -534,6 +547,10 @@ def _team_answer(person: Person, question: dict[str, object]) -> str | None:
     if code == "routine-schedule-unstated":
         person.said.add("frequency")
         return person.frequency
+    if code == "routine-output-unstated":
+        # The person presses their preference's option, whose label Admin sends in the composed answer.
+        person.said.add("output")
+        return OUTPUT_LABELS[person.output]
     if code == "routine-binding-ambiguous":
         return _target(person, list(question.get("options") or []))
     if code == OVER_BUDGET and isinstance(question.get("value"), int):
@@ -554,6 +571,7 @@ _FIXED_ANSWERS = {
 # The question line Admin shows for each Team question; Team reads only the answer of a composed answer.
 _TEAM_QUESTIONS = {
     "routine-schedule-unstated": "Com que frequência a rotina deve rodar?",
+    "routine-output-unstated": "O que a rotina deve fazer com o resultado de cada execução?",
     "routine-binding-ambiguous": "Qual destes alvos a rotina deve usar?",
     "routine-binding-unsourced": "Posso buscar esse valor de novo?",
     "routine-work-rerun": "Posso refazer o trabalho completo?",
@@ -568,6 +586,7 @@ def _already_answered(attempt: Attempt, code: str) -> bool:
     return (
         code in attempt.answered
         or (code == "routine-schedule-unstated" and person.stated)
+        or (code == "routine-output-unstated" and "output" in person.said)
         or (code == "routine-binding-ambiguous" and person.chose)
     )
 
