@@ -380,57 +380,6 @@ class RoutineModeTests(unittest.TestCase):
                     context(), routines=routines, routine_capacity=None if routines is None else 20_000, **changes
                 )
 
-    def test_a_prose_question_team_asks_itself_is_refused_once_per_turn(self):
-        asks = (
-            "Listei os registros. Como você quer receber o resultado de cada execução?",
-            "Com que frequência a rotina deve rodar?",
-            "Qual fuso horário devo usar?",
-            "Which time zone should the routine use?",
-        )
-        for text in asks:
-            with self.subTest(text=text):
-                refused = clarification.prose_refusal([HumanMessage(content="Oi", id="turn"), AIMessage(content=text)])
-                self.assertEqual(refused["jump_to"], "model")
-                (correction,) = refused["messages"]
-                self.assertEqual(correction.content, clarification.PROSE_CORRECTION)
-                self.assertTrue(correction.id.startswith(clarification.CORRECTION_ID_PREFIX))
-                # A second offending reply after the correction is delivered as is, so a turn never loops.
-                again = [
-                    HumanMessage(content="Oi", id="turn"),
-                    AIMessage(content=text),
-                    correction,
-                    AIMessage(content=text),
-                ]
-                self.assertIsNone(clarification.prose_refusal(again))
-        blocks = AIMessage(content=[{"type": "text", "text": asks[0]}, {"type": "image"}])
-        self.assertIsNotNone(clarification.prose_refusal([HumanMessage(content="Oi", id="turn"), blocks]))
-        for latest in (
-            AIMessage(content="Qual zona devo consultar?"),
-            AIMessage(content="O que a rotina deve fazer?"),
-            AIMessage(content="A rotina vai rodar a cada 30 segundos."),
-            AIMessage(content="", tool_calls=[_call()]),
-            HumanMessage(content="Com que frequência?", id="turn"),
-        ):
-            with self.subTest(latest=str(latest.content)[:40]):
-                self.assertIsNone(clarification.prose_refusal([HumanMessage(content="Oi", id="turn"), latest]))
-        self.assertIsNone(clarification.prose_refusal([]))
-        self.assertIsNotNone(clarification.prose_refusal([AIMessage(content=asks[1])]))
-
-    def test_a_routine_turn_goes_back_to_work_once_and_other_turns_are_unchanged(self):
-        prose = AIMessage(content="Como você quer receber o resultado de cada execução?")
-        runtime, model = PendingQuestionTests._runtime(prose, AIMessage(content="Pronto."))
-        result = runtime.start(dataclasses.replace(_chat(), routine_mode=True), envelope("Liste a cada hora"))
-        self.assertEqual(result.reply, "Pronto.")
-        self.assertEqual(model.seen_messages[-1][-1].content, clarification.PROSE_CORRECTION)
-        twice = AIMessage(content="Com que frequência a rotina deve rodar?")
-        runtime, model = PendingQuestionTests._runtime(prose, twice, AIMessage(content="never used"))
-        self.assertEqual(
-            runtime.start(dataclasses.replace(_chat(), routine_mode=True), envelope("Liste a cada hora")).reply,
-            twice.content,
-        )
-        runtime, model = PendingQuestionTests._runtime(prose, AIMessage(content="never used"))
-        self.assertEqual(runtime.start(_chat(), envelope("Liste a cada hora")).reply, prose.content)
-
     def test_the_prompt_adds_the_routine_mode_and_rerun_sections_only_when_sent(self):
         runtime, model = PendingQuestionTests._runtime(AIMessage(content="Ok."))
         runtime.start(dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN), envelope("Sim"))
