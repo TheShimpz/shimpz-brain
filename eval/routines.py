@@ -64,6 +64,7 @@ from pathlib import Path
 from unittest import mock
 
 BRAIN = Path(__file__).resolve().parents[1]
+# The Team worktree the eval drives; --teams names another, such as one carrying a routing change.
 TEAMS = BRAIN.parent / "teams-det"
 CONTRACT = TEAMS / "tests" / "fixtures" / "reference-assistant" / "shimpz.contract.json"
 
@@ -105,6 +106,8 @@ CALLS_PER_ATTEMPT = 10
 CALL_INPUT_TOKENS = 30_000
 CALL_OUTPUT_TOKENS = 4_000
 MODELS = (("openai", "gpt-6-luna"), ("anthropic", "claude-sonnet-5-5"))
+# Every model a Team may route a turn of each provider to: an OpenAI Team's Routine turns go to the next tier.
+ROUTED = {"openai": ("gpt-6-luna", "gpt-6.1-sol"), "anthropic": ("claude-sonnet-5-5",)}
 
 
 def _pagination(count: int) -> dict[str, int]:
@@ -187,13 +190,22 @@ def validate() -> None:
 
 @dataclasses.dataclass
 class Meter:
-    """The Brain usage Team's client reported during one attempt, summed in the eval's own counts."""
+    """The Brain usage Team's client reported during one attempt, summed per model in the eval's own counts.
 
-    usage: object = None
+    A Team may route a turn to another model of its provider, so each call is priced at the model that served it.
+    """
 
-    def add(self, counts) -> None:
+    usage: dict[str, object] = dataclasses.field(default_factory=dict)
+
+    def add(self, model: str, counts) -> None:
         current = eval_cost.Usage.of(dict(counts))
-        self.usage = current if self.usage is None else self.usage + current
+        self.usage[model] = current if model not in self.usage else self.usage[model] + current
+
+    def cost(self) -> object:
+        total = eval_cost.Cost(0.0)
+        for model, usage in self.usage.items():
+            total = total + eval_cost.cost(usage, model)
+        return total
 
 
 def _log_provider_failures(log: Path) -> None:
@@ -1181,10 +1193,11 @@ class Runner:
     def one(self, model: tuple[str, str, str], case: tuple[str, Callable], index: int) -> tuple[Outcome, object]:
         provider, model_id, key = model
         case_id, play = case
-        reservation = self.budget.reserve(
-            eval_cost.call_bound(model_id, CALL_INPUT_TOKENS, CALL_OUTPUT_TOKENS) * CALLS_PER_ATTEMPT
-        )
-        self.meter.usage = None
+        # Reserved at the dearest model the Team may route a turn of this provider to.
+        served = {model_id, *ROUTED.get(provider, ())}
+        bound = max(eval_cost.call_bound(item, CALL_INPUT_TOKENS, CALL_OUTPUT_TOKENS) for item in served)
+        reservation = self.budget.reserve(bound * CALLS_PER_ATTEMPT)
+        self.meter.usage = {}
         with tempfile.TemporaryDirectory() as directory:
             settings = (provider, model_id, f"eval-{secrets.token_hex(8)}", self.effort)
             events = None if self.trace_dir is None else []
@@ -1202,7 +1215,7 @@ class Runner:
             if outcome and case_id in VARIANT_STRATA and self.variants is None:
                 self.variants = variants(attempt)
             harness.doCleanups()
-        spent = eval_cost.Cost(0.0) if self.meter.usage is None else eval_cost.cost(self.meter.usage, model_id)
+        spent = self.meter.cost()
         self.budget.settle(reservation, spent)
         if events is not None:
             outcome_record = {
@@ -1245,7 +1258,7 @@ def run(
     runner: Runner | None = None
 
     def metered(operation, provider, model, counts) -> None:
-        runner.meter.add(counts)
+        runner.meter.add(model, counts)
         original(operation, provider, model, counts)
 
     report: dict[str, object] = {"attempts_per_case": limits[0], "effort": effort, "models": []}
@@ -1318,7 +1331,12 @@ def main() -> int:
     parser.add_argument(
         "--model", action="append", default=[], help="measurement only: PROVIDER:MODEL in place of that provider's"
     )
+    parser.add_argument("--teams", type=Path, help="the Team worktree to drive; default the sibling teams-det")
     args = parser.parse_args()
+    if args.teams is not None:
+        global TEAMS, CONTRACT
+        TEAMS = args.teams.resolve()
+        CONTRACT = TEAMS / "tests" / "fixtures" / "reference-assistant" / "shimpz.contract.json"
     if args.serve_brain:
         if args.brain_port is None or args.token_file is None:
             raise SystemExit("name the Brain's port and its new token file")
