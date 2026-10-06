@@ -2,10 +2,11 @@
 
 A Routine is never compiled. When the person asks for work to recur, the chat agent clarifies as for any task, runs the
 recurring work once in the same turn with the Team's Actions, and then calls one closed tool, ``shimpz_routine``
-``record``, with the Routine's name, schedule, timezone, what each run does with its result, the Routine it replaces,
-and the reply the person reads. The guard checks only that closed shape and ends the turn; Team builds the plan from its
-own trace of the turn's Action calls and shows the person a card to confirm. Nothing here schedules, approves, or
-authorizes anything: Brain only reports what the agent asked to record.
+``record``, with the Routine's name, what each run does with its result, the Routine it replaces, and the reply the
+person reads. The schedule and timezone are never the model's: Team derives both from the person's own words and
+asks when they are missing (ADR-0101 section 2). The guard checks only that closed shape and ends the turn; Team builds
+the plan from its own trace of the person's sends and shows the person a card to confirm, or a question. Nothing here
+schedules, approves, or authorizes anything: Brain only reports what the agent asked to record.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ MAX_REPLY_CHARS = 4000
 MAX_DAILY_STEPS = 20_000
 ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 STEP_ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
-# Mirrors the Team protocol's schedule and timezone grammar exactly; Team canonicalizes again before any card.
+# Mirrors the Team protocol's schedule and timezone grammar of a listed Routine exactly.
 TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}\Z")
 _TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
 _SCHEDULE_FIELDS = {
@@ -48,41 +49,20 @@ _SCHEDULE_FIELDS = {
 }
 MIN_CONTINUOUS_GAP_SECONDS = 5
 MAX_CONTINUOUS_GAP_SECONDS = 86_400
-MAX_DAILY_RUNS = 1000
+DAY_SECONDS = 86_400
+# Where a listed Routine's timezone came from; "none" is Team's UTC convention for a plan that needs no zone.
+TIMEZONE_SOURCES = ("browser", "person", "none")
+CALENDAR_KINDS = frozenset({"daily", "weekly", "monthly"})
 # What a recorded Routine's runs do with their result: show it every run, only when it changed, or show none of it.
 OUTPUT_MODES = ("show", "changes", "none")
 # What a listed Routine does: a recordable mode, or a decision turn that runs always or only on a change.
 LISTED_MODES = (*OUTPUT_MODES, "decide")
 DECISION_WHEN = ("always", "changes")
-_NULLABLE_INTEGER = {"type": ["integer", "null"]}
 SCHEMA = {
     "type": "object",
     "properties": {
         "op": {"type": "string", "enum": ["record"]},
         "name": {"type": "string", "description": "A short name for the Routine, at most 80 characters."},
-        "schedule": {
-            "type": "object",
-            "description": (
-                "When it runs. kind hourly with every (1 to 24 hours); daily with time HH:MM; weekly with weekday "
-                "(0 is Monday) and time; monthly with day (1 to 28) and time; or continuous with gap (5 to 86400 "
-                "seconds after each run ends) and cap (1 to 1000 runs in any 24 hours). Set every other member to null."
-            ),
-            "properties": {
-                "kind": {"type": "string", "enum": sorted(_SCHEDULE_FIELDS)},
-                "every": _NULLABLE_INTEGER,
-                "time": {"type": ["string", "null"]},
-                "weekday": _NULLABLE_INTEGER,
-                "day": _NULLABLE_INTEGER,
-                "gap": _NULLABLE_INTEGER,
-                "cap": _NULLABLE_INTEGER,
-            },
-            "required": ["kind", "every", "time", "weekday", "day", "gap", "cap"],
-            "additionalProperties": False,
-        },
-        "timezone": {
-            "type": ["string", "null"],
-            "description": "An IANA timezone the person named; null runs it in the person's own timezone.",
-        },
         "output": {
             "type": "object",
             "description": "show the result after every run, show it only when it changes, or show none of it.",
@@ -99,7 +79,7 @@ SCHEMA = {
             "description": "Your reply to the person: the result of the work you ran, in their language.",
         },
     },
-    "required": ["op", "name", "schedule", "timezone", "output", "replaces", "reply"],
+    "required": ["op", "name", "output", "replaces", "reply"],
     "additionalProperties": False,
 }
 DESCRIPTION = (
@@ -115,11 +95,6 @@ _CORRECTIONS = {
     "response ran, so repeat the calls you still need.",
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
     "name": _NOT_DONE + "Give a name of one line, at most 80 characters.",
-    "schedule": _NOT_DONE
-    + "A Routine runs every 1 to 24 hours, daily, weekly, or monthly on day 1 to 28 at a set time HH:MM, or again "
-    "and again with a pause of 5 to 86400 seconds after each run ends, at most 1 to 1000 runs in any 24 hours; set "
-    "every member its kind does not use to null.",
-    "timezone": _NOT_DONE + "Give an IANA timezone the person named, or null for their own.",
     "output": _NOT_DONE + "Choose show, changes, or none.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person a reply of at most 4000 characters.",
@@ -139,6 +114,11 @@ def valid_capacity(value: object) -> bool:
     return _whole(value, 0, MAX_DAILY_STEPS)
 
 
+def continuous_cap(gap: int) -> int:
+    """A continuous Routine's starts in any rolling 24 hours: its gap's whole day, ceil(86400 / gap), never lowered."""
+    return -(-DAY_SECONDS // gap)
+
+
 def canonical_schedule(value: object) -> dict[str, object] | None:
     kind = value.get("kind") if isinstance(value, dict) else None
     if not isinstance(kind, str) or kind not in _SCHEDULE_FIELDS or set(value) != _SCHEDULE_FIELDS[kind]:
@@ -146,8 +126,11 @@ def canonical_schedule(value: object) -> dict[str, object] | None:
     if kind == "hourly":
         return dict(value) if _whole(value["every"], 1, 24) else None
     if kind == "continuous":
-        valid = _whole(value["gap"], MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) and _whole(
-            value["cap"], 1, MAX_DAILY_RUNS
+        gap = value["gap"]
+        valid = (
+            _whole(gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
+            and type(value["cap"]) is int
+            and value["cap"] == continuous_cap(gap)
         )
         return dict(value) if valid else None
     valid = (
@@ -173,6 +156,13 @@ def _routine_step(value: object) -> dict[str, object]:
     return {"id": value["id"], "assistant": value["assistant"], "action": value["action"], "inputs": value["inputs"]}
 
 
+def _zoned(schedule: dict[str, object], timezone: str, source: object) -> bool:
+    """A listed timezone and its source: "none" is UTC by convention, never for a calendar schedule."""
+    if source not in TIMEZONE_SOURCES:
+        return False
+    return source != "none" or (timezone == "UTC" and schedule["kind"] not in CALENDAR_KINDS)
+
+
 def _listed_output(value: object) -> bool:
     """A listed Routine's output: a recordable mode, or a decision that runs always or only on a change."""
     return (
@@ -184,11 +174,21 @@ def _listed_output(value: object) -> bool:
 
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
-    """The Team's Routines as data (at most 8): id, name, schedule, zone, revision, daily steps, output, and steps.
+    """The Team's Routines as data (at most 8): id, name, schedule, zone, source, revision, daily steps, output, steps.
 
     Only a decision may list no steps.
     """
-    fields = {"routine_id", "name", "schedule", "timezone", "revision", "daily_steps", "output", "steps"}
+    fields = {
+        "routine_id",
+        "name",
+        "schedule",
+        "timezone",
+        "timezone_source",
+        "revision",
+        "daily_steps",
+        "output",
+        "steps",
+    }
     if not isinstance(value, (list, tuple)) or len(value) > MAX_ROUTINES:
         raise RoutineContractError("invalid routines")
     routines = []
@@ -205,6 +205,7 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
             or schedule is None
             or not isinstance(entry["timezone"], str)
             or TIMEZONE_RE.fullmatch(entry["timezone"]) is None
+            or not _zoned(schedule, entry["timezone"], entry["timezone_source"])
             or not _whole(entry["revision"], 1, 2**31 - 1)
             or not valid_capacity(entry["daily_steps"])
             or not _listed_output(entry["output"])
@@ -225,24 +226,10 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
     return tuple(routines)
 
 
-_SCHEDULE_MEMBERS = frozenset(SCHEMA["properties"]["schedule"]["required"])
-
-
-def _present(value: object) -> object:
-    """A schedule with exactly the tool's members, without the nulls its one structured shape carries; else None."""
-    if not isinstance(value, dict) or set(value) != _SCHEDULE_MEMBERS:
-        return None
-    return {key: item for key, item in value.items() if item is not None}
-
-
 def _reply(value: object) -> str | None:
     if not isinstance(value, str) or "\x00" in value or not value.strip() or len(value) > MAX_REPLY_CHARS:
         return None
     return value
-
-
-def _timezone(value: object) -> bool:
-    return value is None or (isinstance(value, str) and TIMEZONE_RE.fullmatch(value) is not None)
 
 
 def _output(value: object) -> bool:
@@ -254,13 +241,10 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
         return "invalid"
     name = team_memory._line(arguments["name"], MAX_NAME_CHARS)
-    schedule = canonical_schedule(_present(arguments["schedule"]))
     replaces = arguments["replaces"]
     reply = _reply(arguments["reply"])
     checks = (
         ("name", bool(name)),
-        ("schedule", schedule is not None),
-        ("timezone", _timezone(arguments["timezone"])),
         ("output", _output(arguments["output"])),
         ("replaces", replaces is None or any(item["routine_id"] == replaces for item in context.routines)),
         ("reply", reply is not None),
@@ -271,8 +255,6 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     routine = {
         "op": "record",
         "name": name,
-        "schedule": schedule,
-        "timezone": arguments["timezone"],
         "output": {"mode": arguments["output"]["mode"], "when": None},
         "notes": "",
         "decide_actions": [],

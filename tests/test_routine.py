@@ -30,12 +30,12 @@ LISTED = {
     "name": "Resumo diário",
     "schedule": {"kind": "daily", "time": "08:00"},
     "timezone": "America/Sao_Paulo",
+    "timezone_source": "browser",
     "revision": 2,
     "daily_steps": 1,
     "output": {"mode": "show", "when": None},
     "steps": [{"id": "s1", "assistant": "hello-pulse", "action": "hello", "inputs": ["name"]}],
 }
-SCHEDULE = {"kind": "continuous", "every": None, "time": None, "weekday": None, "day": None, "gap": 30, "cap": 1000}
 REPLY = "Listei os registros DNS de shimpz.com. Confira o cartão da rotina."
 
 
@@ -43,8 +43,6 @@ def _args(**changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
-        "schedule": dict(SCHEDULE),
-        "timezone": None,
         "output": {"mode": "show"},
         "replaces": None,
         "reply": REPLY,
@@ -68,8 +66,6 @@ def _wire(turn_date: datetime.date, **changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
-        "schedule": {"kind": "continuous", "gap": 30, "cap": 1000},
-        "timezone": None,
         "output": {"mode": "show", "when": None},
         "notes": "",
         "decide_actions": [],
@@ -91,8 +87,10 @@ class ContractTests(unittest.TestCase):
             {"kind": "daily", "time": "00:00"},
             {"kind": "weekly", "weekday": 6, "time": "23:59"},
             {"kind": "monthly", "day": 28, "time": "09:05"},
-            {"kind": "continuous", "gap": 5, "cap": 1},
-            {"kind": "continuous", "gap": 86400, "cap": 1000},
+            {"kind": "continuous", "gap": 5, "cap": 17280},
+            {"kind": "continuous", "gap": 30, "cap": 2880},
+            {"kind": "continuous", "gap": 7, "cap": 12343},
+            {"kind": "continuous", "gap": 86400, "cap": 1},
         ):
             with self.subTest(value=value):
                 self.assertEqual(routine.canonical_schedule(value), value)
@@ -110,8 +108,10 @@ class ContractTests(unittest.TestCase):
             {"kind": "continuous", "gap": 4, "cap": 100},
             {"kind": "continuous", "gap": 86401, "cap": 100},
             {"kind": "continuous", "gap": 5, "cap": 0},
-            {"kind": "continuous", "gap": 5, "cap": 1001},
-            {"kind": "continuous", "gap": 5.0, "cap": 100},
+            {"kind": "continuous", "gap": 30, "cap": 1000},
+            {"kind": "continuous", "gap": 30, "cap": 2881},
+            {"kind": "continuous", "gap": 30, "cap": 2880.0},
+            {"kind": "continuous", "gap": 5.0, "cap": 17280},
             {"kind": "continuous", "gap": 5},
             {"kind": "continuous", "gap": 5, "cap": 100, "time": "09:00"},
         ):
@@ -120,6 +120,11 @@ class ContractTests(unittest.TestCase):
 
     def test_listed_routines_are_closed_data(self):
         self.assertEqual(routine.canonical_routines([LISTED]), (LISTED,))
+        named = {**LISTED, "timezone": "Europe/Lisbon", "timezone_source": "person"}
+        self.assertEqual(routine.canonical_routines([named]), (named,))
+        # UTC by convention, never read as the person's zone, only for a schedule that needs none.
+        unzoned = {**LISTED, "schedule": {"kind": "hourly", "every": 1}, "timezone": "UTC", "timezone_source": "none"}
+        self.assertEqual(routine.canonical_routines([unzoned]), (unzoned,))
         deciding = {**LISTED, "output": {"mode": "decide", "when": "changes"}, "steps": []}
         self.assertEqual(routine.canonical_routines([deciding]), (deciding,))
         step = LISTED["steps"][0]
@@ -132,6 +137,10 @@ class ContractTests(unittest.TestCase):
             [{**LISTED, "name": ""}],
             [{**LISTED, "schedule": {"kind": "daily"}}],
             [{**LISTED, "timezone": "../etc"}],
+            [{key: item for key, item in LISTED.items() if key != "timezone_source"}],
+            [{**LISTED, "timezone_source": "guessed"}],
+            [{**LISTED, "timezone_source": "none"}],
+            [{**unzoned, "timezone": "America/Sao_Paulo"}],
             [{**LISTED, "revision": 0}],
             [{**LISTED, "output": {"mode": "chain", "when": None}}],
             [{**LISTED, "output": {"mode": "show", "when": "always"}}],
@@ -187,20 +196,20 @@ class RecordTests(unittest.TestCase):
         chat = _chat([LISTED])
         outcome = routine.record(_args(), chat)
         self.assertEqual(outcome, {"routine": _wire(chat.turn_date), "reply": REPLY})
-        weekly = {**SCHEDULE, "kind": "weekly", "weekday": 0, "time": "09:00", "gap": None, "cap": None}
-        changed = routine.record(
-            _args(schedule=weekly, timezone="Europe/Lisbon", output={"mode": "changes"}, replaces="a" * 32), chat
-        )
+        changed = routine.record(_args(output={"mode": "changes"}, replaces="a" * 32), chat)
         self.assertEqual(
             changed["routine"],
-            _wire(
-                chat.turn_date,
-                schedule={"kind": "weekly", "weekday": 0, "time": "09:00"},
-                timezone="Europe/Lisbon",
-                output={"mode": "changes", "when": None},
-                replaces="a" * 32,
-            ),
+            _wire(chat.turn_date, output={"mode": "changes", "when": None}, replaces="a" * 32),
         )
+
+    def test_the_schedule_and_timezone_are_never_the_models(self):
+        # Team derives both from the person's own words (ADR-0101 section 2); the tool offers neither.
+        self.assertNotIn("schedule", routine.SCHEMA["properties"])
+        self.assertNotIn("timezone", routine.SCHEMA["properties"])
+        chat = _chat([LISTED])
+        for member in ("schedule", "timezone"):
+            with self.subTest(member=member):
+                self.assertEqual(routine.record({**_args(), member: None}, chat), "invalid")
 
     def test_every_field_outside_its_closed_shape_is_refused_by_name(self):
         chat = _chat([LISTED])
@@ -212,13 +221,6 @@ class RecordTests(unittest.TestCase):
             (_args(name=""), "name"),
             (_args(name="a\nb"), "name"),
             (_args(name="x" * 81), "name"),
-            (_args(schedule={**SCHEDULE, "gap": 4}), "schedule"),
-            (_args(schedule={**SCHEDULE, "time": "09:00"}), "schedule"),
-            (_args(schedule="daily"), "schedule"),
-            (_args(schedule={**SCHEDULE, "unexpected": None}), "schedule"),
-            (_args(schedule={key: item for key, item in SCHEDULE.items() if key != "every"}), "schedule"),
-            (_args(timezone="../etc"), "timezone"),
-            (_args(timezone=1), "timezone"),
             (_args(output={"mode": "decide"}), "output"),
             (_args(output={"mode": "show", "when": "always"}), "output"),
             (_args(output="show"), "output"),
@@ -291,6 +293,7 @@ class GraphTests(unittest.TestCase):
                     "name": LISTED["name"],
                     "schedule": LISTED["schedule"],
                     "timezone": LISTED["timezone"],
+                    "timezone_source": LISTED["timezone_source"],
                     "output": LISTED["output"],
                     "steps": [["hello-pulse", "hello"]],
                 }
