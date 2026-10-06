@@ -82,13 +82,7 @@ class StaticBrainImageContractTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn(
-            "COPY --chown=brainruntime:brainruntime protocol/team/http/v1/identifiers.py "
-            "protocol/team/http/v1/payload.py \\\n"
-            "    protocol/team/http/v1/phrase.py protocol/team/http/v1/purpose.py \\\n"
-            "    protocol/team/http/v1/routine.py protocol/team/http/v1/routine_context.py \\\n"
-            "    protocol/team/http/v1/routine_notice.py protocol/team/http/v1/routine_proposal.py \\\n"
-            "    protocol/team/http/v1/turn.py /app/protocol/team/http/v1/\n",
-            dockerfile,
+            "COPY --chown=brainruntime:brainruntime protocol/team/http/v1/ /app/protocol/team/http/v1/\n", dockerfile
         )
         self.assertNotIn("egress/", dockerfile)
         self.assertNotIn("/var/log/brain-egress", dockerfile)

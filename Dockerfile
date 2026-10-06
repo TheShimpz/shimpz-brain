@@ -38,13 +38,10 @@ RUN groupadd -g 10001 brainruntime \
 
 COPY --chown=brainruntime:brainruntime action_labels.py action_purpose.py action_schema.py agent_runtime.py attachments.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py intent_route.py interface_language.py memory.py model_usage.py provider_cancel.py provider_client.py routine.py routine_recovery.py runtime_api.py runtime_errors.py structured.py tool_refusal.py turn_pins.py turn_prompt.py \
     model_catalog.json /app/
-# The generated, pinned Team protocol mirror keeps its package path; namespace packages need no __init__.py.
+# The generated, pinned Team protocol mirror keeps its package path; namespace packages need no __init__.py. Its HTTP
+# directory holds exactly the modules the sync script mirrors, so the image copies whatever that set is.
 COPY --chown=brainruntime:brainruntime protocol/team/action/v1/schema.py /app/protocol/team/action/v1/
-COPY --chown=brainruntime:brainruntime protocol/team/http/v1/identifiers.py protocol/team/http/v1/payload.py \
-    protocol/team/http/v1/phrase.py protocol/team/http/v1/purpose.py \
-    protocol/team/http/v1/routine.py protocol/team/http/v1/routine_context.py \
-    protocol/team/http/v1/routine_notice.py protocol/team/http/v1/routine_proposal.py \
-    protocol/team/http/v1/turn.py /app/protocol/team/http/v1/
+COPY --chown=brainruntime:brainruntime protocol/team/http/v1/ /app/protocol/team/http/v1/
 
 # Two allocator arenas and a fixed mmap threshold hand freed request memory back instead of keeping it in per-thread
 # arenas, so resident memory follows what runtime_api admits rather than ratcheting toward the container limit.
