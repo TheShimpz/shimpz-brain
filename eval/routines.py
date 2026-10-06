@@ -50,6 +50,7 @@ import socket
 import sys
 import tempfile
 import time
+import unicodedata
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from unittest import mock
@@ -241,7 +242,12 @@ class Person:
     chose: bool = False
 
     def says(self, topic: str) -> str:
-        return {"work": "Listar registros DNS", "frequency": self.frequency, "zone": "shimpz.com"}[topic]
+        return {
+            "work": "Listar registros DNS",
+            "frequency": self.frequency,
+            "zone": "shimpz.com",
+            "timezone": TIMEZONE,
+        }[topic]
 
 
 class Attempt:
@@ -285,8 +291,15 @@ class Attempt:
         return response
 
     def remember(self, role: str, text: str) -> None:
+        """One history entry as Admin keeps it: trimmed, empty skipped, and a long one cut to its head and tail."""
+        text = unicodedata.normalize("NFC", text).strip()
+        if not text:
+            return
         cut = len(text) > MAX_CONVERSATION_TEXT
-        self.conversation.append({"role": role, "text": text[:MAX_CONVERSATION_TEXT], "truncated": cut})
+        if cut:
+            head = (MAX_CONVERSATION_TEXT - 1) // 2
+            text = f"{text[:head]}…{text[-(MAX_CONVERSATION_TEXT - 1 - head) :]}"
+        self.conversation.append({"role": role, "text": text, "truncated": cut})
 
     def confirm(self, proposal_id: str) -> dict[str, object]:
         with self._person():
@@ -340,9 +353,10 @@ _HINTS: tuple[tuple[str | None, tuple[str, ...]], ...] = (
         ),
     ),
     ("zone", ("zona", "domínio", "dominio", "escopo")),
+    ("timezone", ("fuso", "timezone", "utc")),
     (None, ("receber", "resultado", "mostrar", "notific", "mudan")),
 )
-_TOPICS = ("work", "frequency", "zone")
+_TOPICS = ("work", "frequency", "zone", "timezone")
 _WHICH = ("qual", "quais")
 
 
@@ -356,7 +370,8 @@ def _parts(question: str, person: Person) -> tuple[list[str], bool]:
     The sentences that ask come first and the surrounding text counts only when they match nothing; with nothing
     matched, the owner's next topic not given yet answers it.
     """
-    whole = question.casefold()
+    # "Fuso horário" asks the timezone, never the hour.
+    whole = question.casefold().replace("fuso horário", "fuso").replace("fuso horario", "fuso")
     asked = " ".join(re.findall(r"[^.?!]*\?", whole)) or whole
     matched = _matched(asked) or _matched(whole)
     uncovered = None in matched
@@ -375,7 +390,8 @@ def _parts(question: str, person: Person) -> tuple[list[str], bool]:
 def _zone_choice(person: Person, text: str, options: list[dict[str, str]]) -> str | None:
     """With two zones of one name, a question about them gets the option naming the person's zone, or its id."""
     labels = [f"{item['label']} {item['description']}" for item in options]
-    if not person.choosing or not (TWIN in text or any(TWIN in label for label in labels) or "mesmo nome" in text):
+    named = TWIN in text or any(TWIN in label for label in labels)
+    if not person.choosing or not (named or re.search(r"mesmo nome|duas zonas", text.casefold())):
         return None
     person.chose = True
     return next((item["label"] for item in options if person.zone in item["label"]), f"A zona de id {person.zone}")
@@ -393,6 +409,9 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     if clarification is None:
         return "; ".join(parts) or None, False
     recommended = options[clarification["default_index"]]["label"]
+    # The person picks their own zone's option when the agent offers one, as one press sends it.
+    own = next((item["label"] for item in options if "Sao_Paulo" in item["label"] or "Brasília" in item["label"]), None)
+    parts = [own if part == TIMEZONE and own else part for part in parts]
     return "; ".join([*parts, *([recommended] if uncovered or not parts else [])]), True
 
 
