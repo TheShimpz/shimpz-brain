@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
-from eval.corpus import fingerprint, scenarios, validate_ids, validate_stratum
+from eval.corpus import scenarios, stratum_digest, validate_ids, validate_stratum
 from eval.fixtures import _DATE, _STRING, Action, Assistant, _schema
 from eval.fresh_classes_templates import TEMPLATES
 
@@ -653,21 +653,14 @@ SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
 
 def digest() -> str:
     """A fingerprint of everything that defines the stratum; any change requires a new corpus id."""
-    body = {
-        "id": CORPUS_ID,
-        "assistants": [
-            [item.id, item.genesis, item.relevant, [[a.id, a.summary, a.input_schema, a.writes] for a in item.actions]]
-            for item in ASSISTANTS.values()
-        ],
-        "user_sourced": [[*key, list(fields)] for key, fields in sorted(USER_SOURCED.items())],
-        "initial": INITIAL,
-        "templates": [
-            [t.id, t.behavior, t.needed, t.min_rounds, t.messages, t.reference, t.changes, t.expect_clarification]
-            for t in TEMPLATES
-        ],
-        "scenarios": [[s.id, s.scope, s.assistants] for s in SCENARIOS],
-    }
-    return fingerprint(body)
+    return stratum_digest(
+        CORPUS_ID,
+        ASSISTANTS,
+        INITIAL,
+        TEMPLATES,
+        SCENARIOS,
+        user_sourced=[[*key, list(fields)] for key, fields in sorted(USER_SOURCED.items())],
+    )
 
 
 def _valid_user_sourced() -> bool:

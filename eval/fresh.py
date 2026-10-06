@@ -14,7 +14,7 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 
-from eval.corpus import LOCALES, Template, fingerprint, scenarios, validate_stratum
+from eval.corpus import LOCALES, Template, scenarios, stratum_digest, validate_stratum
 from eval.fixtures import _DATE, _STRING, _TIME, RELEVANT, Action, Assistant, _schema
 from eval.fixtures import ASSISTANTS as PRECISION_ASSISTANTS
 from eval.world import ActionFailedError, World
@@ -639,20 +639,7 @@ SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
 
 def digest() -> str:
     """A fingerprint of everything that defines the stratum; any change requires a new corpus id."""
-    body = {
-        "id": CORPUS_ID,
-        "assistants": [
-            [item.id, item.genesis, item.relevant, [[a.id, a.summary, a.input_schema, a.writes] for a in item.actions]]
-            for item in ASSISTANTS.values()
-        ],
-        "initial": INITIAL,
-        "templates": [
-            [t.id, t.behavior, t.needed, t.min_rounds, t.messages, t.reference, t.changes, t.expect_clarification]
-            for t in TEMPLATES
-        ],
-        "scenarios": [[s.id, s.scope, s.assistants] for s in SCENARIOS],
-    }
-    return fingerprint(body)
+    return stratum_digest(CORPUS_ID, ASSISTANTS, INITIAL, TEMPLATES, SCENARIOS)
 
 
 def validate() -> None:

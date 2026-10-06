@@ -468,18 +468,31 @@ def oracle(scenario: Scenario, world: World, initial: Mapping[str, object] = INI
 
 def digest() -> str:
     """A fingerprint of everything that defines the corpus; any change requires a new corpus id."""
+    return stratum_digest(CORPUS_ID, ASSISTANTS, INITIAL, TEMPLATES, SCENARIOS)
+
+
+def stratum_digest(
+    corpus_id: str,
+    assistants: Mapping[str, Assistant],
+    initial: Mapping[str, object],
+    templates: Sequence[Template],
+    scenario_set: Sequence[Scenario],
+    **extra: object,
+) -> str:
+    """The fingerprint of one stratum's definition plus its own `extra` fields; any change requires a new corpus id."""
     body = {
-        "id": CORPUS_ID,
+        "id": corpus_id,
         "assistants": [
             [item.id, item.genesis, item.relevant, [[a.id, a.summary, a.input_schema, a.writes] for a in item.actions]]
-            for item in ASSISTANTS.values()
+            for item in assistants.values()
         ],
-        "initial": INITIAL,
+        "initial": initial,
         "templates": [
             [t.id, t.behavior, t.needed, t.min_rounds, t.messages, t.reference, t.changes, t.expect_clarification]
-            for t in TEMPLATES
+            for t in templates
         ],
-        "scenarios": [[s.id, s.scope, s.assistants] for s in SCENARIOS],
+        "scenarios": [[s.id, s.scope, s.assistants] for s in scenario_set],
+        **extra,
     }
     return fingerprint(body)
 
