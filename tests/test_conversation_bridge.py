@@ -12,33 +12,24 @@ import agent_runtime
 import context_budget
 import intent_route
 import provider_client
+import tool_fake
 import turn_prompt
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from tool_fake import PINGER
 
 
-class RecordingModel(FakeMessagesListChatModel):
+class RecordingModel(tool_fake.RecordingModel):
     seen: ClassVar[list[list[Any]]] = []
-
-    def bind_tools(self, tools: Sequence[Any], **_kwargs: Any):
-        return self
 
     def _generate(self, messages: list[Any], *args: Any, **kwargs: Any):
         if str(messages[-1].content) == "boom":
             raise RuntimeError("provider outage")
-        type(self).seen.append(list(messages))
         return super()._generate(messages, *args, **kwargs)
 
 
-ACTION = agent_runtime.ActionDefinition(
-    "ping",
-    "Ping a host.",
-    {"type": "object", "properties": {"host": {"type": "string"}}, "additionalProperties": False},
-)
-PINGER = agent_runtime.AssistantDefinition("pinger", "Pinger checks that hosts answer.", (ACTION,))
 WINDOW = (
     intent_route.ConversationEntry("user", "Is example.com up?", False),
     intent_route.ConversationEntry("assistant", "Install the Pinger Assistant to check hosts.", False),

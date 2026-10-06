@@ -18,28 +18,16 @@ import context_budget
 import httpx
 import provider_client
 import runtime_api
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+import tool_fake
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from protocol.team.action.v1 import schema as action_protocol
+from tool_fake import ACTION, PINGER
 
 
-class RecordingModel(FakeMessagesListChatModel):
+class RecordingModel(tool_fake.RecordingModel):
     seen: ClassVar[list[list[Any]]] = []
 
-    def bind_tools(self, tools: Sequence[Any], **_kwargs: Any):
-        return self
 
-    def _generate(self, messages: list[Any], *args: Any, **kwargs: Any):
-        type(self).seen.append(list(messages))
-        return super()._generate(messages, *args, **kwargs)
-
-
-ACTION = agent_runtime.ActionDefinition(
-    "ping",
-    "Ping a host.",
-    {"type": "object", "properties": {"host": {"type": "string"}}, "additionalProperties": False},
-)
-PINGER = agent_runtime.AssistantDefinition("pinger", "Pinger checks that hosts answer.", (ACTION,))
 TOOL = agent_runtime._tool_name("pinger", "ping")
 
 

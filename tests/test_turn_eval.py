@@ -7,8 +7,6 @@ real model behaves.
 from __future__ import annotations
 
 import unittest
-from collections.abc import Sequence
-from typing import Any
 from unittest import mock
 
 import action_labels
@@ -16,30 +14,16 @@ import agent_runtime
 import capability_plan
 import model_usage
 from eval import turns
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
-from langgraph.checkpoint.memory import InMemorySaver
-
-
-class _ToolModel(FakeMessagesListChatModel):
-    def bind_tools(self, tools: Sequence[Any], **_kwargs: Any):
-        return self
-
-
-def _call(assistant: agent_runtime.AssistantDefinition, action: str, args: dict[str, object], call_id: str) -> dict:
-    return {"name": agent_runtime._tool_name(assistant.id, action), "args": args, "id": call_id, "type": "tool_call"}
-
-
-def _runtime(*responses: AIMessage) -> agent_runtime.AgentRuntime:
-    model = _ToolModel(responses=list(responses))
-    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+from tool_fake import PROVIDER
+from tool_fake import call as _call
+from tool_fake import runtime as _runtime
 
 
 def _case(case_id: str) -> turns.TurnCase:
     return next(case for case in turns.TURN_CASES if case.id == case_id)
 
 
-PROVIDER = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "test-key-0123456789")
 EXACT = {"zone": "example.com", "type": "A", "name": "www", "content": "203.0.113.10"}
 
 
