@@ -237,6 +237,8 @@ OUTPUT_OPTIONS = {
     "changes": r"mud|altera",
     "none": r"nada|não mostr|nenhum|sem mostrar",
 }
+# The owner's fourth disposition, chaining to other Actions, which no stratum's person ever picks.
+CHAIN_OPTION = r"encade|outras? aç|outra ação|chain|acionar"
 # The whole set of topics a person states in a fully specified request.
 FULL = frozenset({"work", "zone", "frequency"})
 
@@ -468,7 +470,13 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     # The person picks the option that is their own choice when the agent offers one, as one press sends it.
     own = next((item["label"] for item in options if "Sao_Paulo" in item["label"] or "Brasília" in item["label"]), None)
     shown = next(
-        (item["label"] for item in options if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())), None
+        (
+            item["label"]
+            for item in options
+            if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())
+            and not re.search(CHAIN_OPTION, item["label"].casefold())
+        ),
+        None,
     )
     replaced = {TIMEZONE: own, OUTPUT_WORDS[person.output]: shown}
     parts = [replaced.get(part) or part for part in parts]
