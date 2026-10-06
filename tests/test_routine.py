@@ -457,6 +457,18 @@ class ContinuationFrameTests(unittest.TestCase):
         finished = runtime.resume(self._team_resume(), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
         self.assertEqual(finished.status, "completed")
         self.assertIn("If this message asks for a Routine", _system(model.seen_messages[-1]))
+        # The turn finishes on the model it started on, whatever model the resume names for the same provider.
+        self.assertEqual({config.model for config in seen}, {started.provider.model})
+
+    def test_a_resume_naming_another_provider_is_refused(self):
+        runtime, _model = GraphTests._runtime(None, AIMessage(content="", tool_calls=[_action()]))
+        suspended = runtime.start(_chat([LISTED]), envelope(MESSAGE))
+        other = dataclasses.replace(
+            self._team_resume(),
+            provider=agent_runtime.ProviderConfig(provider="anthropic", model="claude-sonnet-5-5", api_key="key"),
+        )
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            runtime.resume(other, {suspended.actions[0].interrupt_id: {"records": ["A"]}})
 
     def test_the_capacity_pin_refuses_corrupt_state(self):
         self.assertEqual(turn_pins.restore_capacity(turn_pins.record_capacity(None)), None)
@@ -464,6 +476,21 @@ class ContinuationFrameTests(unittest.TestCase):
         for value in (None, "x", "-1", "true", "20000.0", "999999999"):
             with self.subTest(capacity=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore_capacity({turn_pins.CAPACITY_METADATA: value})
+
+    def test_the_model_pin_refuses_corrupt_state(self):
+        self.assertEqual(
+            turn_pins.restore_model(turn_pins.record_model("openai", "gpt-6.1-sol")), ("openai", "gpt-6.1-sol")
+        )
+        for value in (
+            None,
+            "x",
+            "[]",
+            '{"provider": "openai"}',
+            '{"model": "m", "provider": 1}',
+            '{"model":1,"provider":"openai"}',
+        ):
+            with self.subTest(model=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_model({turn_pins.MODEL_METADATA: value})
 
 
 class PromptPinAndEndpointTests(unittest.TestCase):

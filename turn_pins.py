@@ -23,6 +23,7 @@ QUESTION_METADATA = "shimpz_turn_routine_question"
 MODE_METADATA = "shimpz_turn_routine_mode"
 RERUN_METADATA = "shimpz_turn_routine_rerun"
 CAPACITY_METADATA = "shimpz_turn_routine_capacity"
+MODEL_METADATA = "shimpz_turn_model"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
 MESSAGE_METADATA = "shimpz_turn_message"
@@ -158,6 +159,30 @@ def restore_capacity(metadata: Mapping[str, object]) -> int | None:
     if (decoded is not None and not team_routine.valid_capacity(decoded)) or _json(decoded) != value:
         raise PinError("recorded turn pins are invalid")
     return decoded
+
+
+def record_model(provider: str, model: str) -> dict[str, str]:
+    """The checkpoint entry naming the provider and model a turn started on, which every resume of it keeps."""
+    return {MODEL_METADATA: _json({"provider": provider, "model": model})}
+
+
+def restore_model(metadata: Mapping[str, object]) -> tuple[str, str]:
+    """The exact provider and model a start recorded; anything else is corrupt state."""
+    value = metadata.get(MODEL_METADATA)
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        decoded = json.loads(value)
+    except ValueError as exc:
+        raise PinError("recorded turn pins are invalid") from exc
+    if (
+        not isinstance(decoded, dict)
+        or set(decoded) != {"provider", "model"}
+        or not all(isinstance(item, str) for item in decoded.values())
+        or _json(decoded) != value
+    ):
+        raise PinError("recorded turn pins are invalid")
+    return decoded["provider"], decoded["model"]
 
 
 def record_turn(locale: str | None, message_id: str | None) -> dict[str, str]:

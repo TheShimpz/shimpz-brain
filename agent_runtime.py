@@ -324,15 +324,21 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         question = turn_pins.restore_question(metadata)
         mode, rerun = turn_pins.restore_routine_mode(metadata)
         capacity = turn_pins.restore_capacity(metadata)
+        provider, model = turn_pins.restore_model(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         commitment, charge = turn_pins.restore_attachments(metadata)
     except turn_pins.PinError as exc:
         raise RuntimeStateError("checkpoint state is invalid") from exc
+    if provider != context.provider.provider:
+        # A turn's model keeps its key; a resume under another provider's credential is never the same turn.
+        raise RuntimeContractError("model provider changed during the pending turn")
     if commitment != turn_attachments.commitment(context.attachments):
         # Team rehydrates the exact files the turn started with; anything else ends the turn explicitly (ADR-0093).
         raise RuntimeContractError("attachments changed during the pending turn")
     return replace(
         context,
+        # The turn finishes on the model it started on, whatever model the resume names (ADR-0101).
+        provider=replace(context.provider, model=model),
         turn_date=turn_date,
         memories=rules,
         skills=skills,
@@ -590,6 +596,7 @@ class AgentRuntime:
                 **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
                 **turn_pins.record_capacity(context.routine_capacity),
+                **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_attachments(
                     turn_attachments.commitment(context.attachments), context.attachment_charge
