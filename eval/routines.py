@@ -20,20 +20,25 @@ Run live: start the Brain from Brain, which writes a fresh bearer to the new tok
     cd teams && PYTHONPATH=.:tests uv run --frozen --python 3.14 python ../brain/eval/routines.py --brain-port 8791
     --token-file "$DIR/token" --openai-key-file ../.gpt-key --anthropic-key-file ../.claude-key
 
-Cases, each ``--attempts`` times per model, fixed before sampling: the owner's four turns ("Cria uma rotina pra mim",
-then the person's answers "Listar registros DNS", "A cada 30 segundos", and "shimpz.com"); a one-send daily list; and
-"do this every hour" after an ordinary turn that did the work. A case passes when the recording turn ran list-zones and
-list-dns-records for shimpz.com, its card carries the expected schedule and the zone id as a reference through the item
-whose ``name`` is "shimpz.com", "Criar rotina" creates the Routine, and one replay through Team's real claim and run
-lists shimpz.com's records and publishes a shown result. After the first passing owner attempt, two replay variants run
-with no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never dispatch
-list-dns-records. Output holds case ids, pass counts, Wilson 95% bounds, closed miss reasons, the schedules seen, and
-the estimated cost from the provider-reported usage at catalog list prices; never a message, a reply, or a key.
+Strata, each ``--attempts`` (30) times per model, fixed before sampling: the owner's four turns; a one-send daily
+list; two named zones at once (multi-zone); a zone named only in an earlier send; a request with no schedule; the
+reversed-order bait, primed (the zone was looked up in an earlier send) and unprimed (its id is known only from an
+earlier reply outside the span); two zones with the same name at creation, which must be asked about; and intervals of
+30 and 5 seconds, whose card keeps the exact gap the person last stated with cap ceil(86400 / gap). The driver answers
+the agent's questions and Team's recoverable Routine questions as the person would. A stratum passes when the card
+binds every zone the person meant through a reference (the twin stratum: the person's chosen zone by its id), carries
+the schedule the person stated, "Criar rotina" creates the Routine, and one replay through Team's real claim and run
+lists those zones' records and shows one of them. After the first passing owner attempt, two replay variants run with
+no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never dispatch list-dns-records.
+The gate exits non-zero unless every stratum of every shipped model passed every attempt and both variants held.
+Output holds stratum ids, pass counts, Wilson 95% bounds, closed miss reasons with root causes, the questions asked,
+the schedules seen, and the estimated cost; never a message, a reply, or a key (only ``--trace-dir`` writes messages).
 """
 
 from __future__ import annotations
 
 import argparse
+import collections
 import contextlib
 import dataclasses
 import importlib.util
@@ -74,7 +79,9 @@ MOVED = "7b2f31aa2c0b4c8d9e1f203142536475"
 TWIN = "5d41402abc4b2a76b9719d911017c592"
 ACCOUNT = {"id": "f" * 32, "name": "Owner"}
 OTHER_ZONES = (("9a7806061c88ada191ed06f989cc3dac", "example.com"), ("1b3f0c5e2a9d47e8b6c1d0f2a3b4c5d6", "other.org"))
-ANSWERS = ("Listar registros DNS", "A cada 30 segundos", "shimpz.com")
+EXAMPLE = OTHER_ZONES[0][0]
+ZONE_NAMES = {SHIMPZ: "shimpz.com", EXAMPLE: "example.com"}
+TIMEZONE = "America/Sao_Paulo"
 # The labels Admin's Portuguese interface composes a clarification answer with (admin/frontend/src/lib/messages.js).
 QUESTION_LABEL, ANSWER_LABEL = "Pergunta", "Resposta"
 MAX_CONVERSATION_TEXT = 512
@@ -109,10 +116,13 @@ SHIMPZ_RECORDS = (
 )
 
 
+EXAMPLE_RECORDS = ({"id": "c" * 32, "type": "A", "name": "example.com", "content": "192.0.2.2", "ttl": 300},)
+ZONE_RECORDS = {SHIMPZ: SHIMPZ_RECORDS, MOVED: SHIMPZ_RECORDS, EXAMPLE: EXAMPLE_RECORDS}
+
+
 def records(zone: str) -> dict[str, object]:
-    """list-dns-records' result for one zone: shimpz.com's own records, nothing for another zone."""
-    owned = zone in (SHIMPZ, MOVED)
-    found = [{**item, "proxied": False, "proxiable": False} for item in SHIMPZ_RECORDS] if owned else []
+    """list-dns-records' result for one zone: shimpz.com's and example.com's own records, nothing for another."""
+    found = [{**item, "proxied": False, "proxiable": False} for item in ZONE_RECORDS.get(zone, ())]
     return {"records": found, "pagination": _pagination(len(found))}
 
 
@@ -150,7 +160,7 @@ def validate() -> None:
     actions = {item["id"]: item for item in json.loads(CONTRACT.read_text(encoding="utf-8"))["actions"]}
     for value in (zones(), zones(MOVED), zones(twin=True)):
         Draft202012Validator(actions["list-zones"]["output_schema"]).validate(value)
-    for zone in (SHIMPZ, MOVED, TWIN):
+    for zone in (SHIMPZ, MOVED, TWIN, EXAMPLE):
         Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone))
     if len({case for case, _play in CASES}) != len(CASES):
         raise SystemExit("case ids are not unique")
@@ -199,6 +209,8 @@ class Outcome:
     schedule: dict[str, object] | None = None
     # A miss's structural root cause, from the shape of the attempt's sends; never message text.
     cause: str | None = None
+    # Every recoverable question Team asked during the attempt, in order.
+    questions: tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
         return self.reason is None
@@ -212,6 +224,26 @@ class Team:
     modules: object
 
 
+@dataclasses.dataclass
+class Person:
+    """What the person means and how they answer: how often, the zone they mean, and what they have said so far."""
+
+    frequency: str
+    # A continuous Routine's interval in seconds as the person last stated it; None for a calendar one.
+    gap: int | None = None
+    # The owner's topics not given yet, answered in this order when a question matches none of them.
+    pending: list[str] = dataclasses.field(default_factory=list)
+    # Whether the person has stated how often yet, in a send or an answer.
+    stated: bool = True
+    zone: str = SHIMPZ
+    # Whether two zones share the name, so a question about them gets the person's zone by its id.
+    choosing: bool = False
+    chose: bool = False
+
+    def says(self, topic: str) -> str:
+        return {"work": "Listar registros DNS", "frequency": self.frequency, "zone": "shimpz.com"}[topic]
+
+
 class Attempt:
     """One isolated Team with the reference Assistant, its own Brain thread, and the person's sends."""
 
@@ -220,10 +252,11 @@ class Attempt:
         self.fixture = fixture
         self.provider = provider
         self.key = key
+        self.person = Person("A cada hora")
         self.conversation: list[dict[str, object]] = []
-        # Each send's response kind and the Actions it called, in order; and every answer the person gave.
+        # Each send's response kind and the Actions it called, in order; and every Team question asked.
         self.sends: list[tuple[str, tuple[str, ...]]] = []
-        self.said: set[str] = set()
+        self.questions: list[str] = []
 
     def _person(self):
         audit = self.team.modules.local_audit
@@ -237,7 +270,7 @@ class Attempt:
             "conversation": list(self.conversation[-8:]),
             "locale": "pt",
             "request": {"issued_at": int(time.time()), "nonce": secrets.token_hex(16)},
-            "timezone": "America/Sao_Paulo",
+            "timezone": TIMEZONE,
         }
         before = len(self.fixture.calls)
         with self._person():
@@ -247,11 +280,11 @@ class Attempt:
         self.fixture.note(
             {"kind": "send", "message": message, "conversation": body["conversation"], "response": response}
         )
-        self._remember("user", message)
-        self._remember("assistant", str(response.get("reply", "")))
+        self.remember("user", message)
+        self.remember("assistant", str(response.get("reply", "")))
         return response
 
-    def _remember(self, role: str, text: str) -> None:
+    def remember(self, role: str, text: str) -> None:
         cut = len(text) > MAX_CONVERSATION_TEXT
         self.conversation.append({"role": role, "text": text[:MAX_CONVERSATION_TEXT], "truncated": cut})
 
@@ -285,145 +318,237 @@ class Attempt:
 
 
 def _kind(response: dict[str, object]) -> str:
-    if "routine_proposal" in response:
-        return "card"
-    if "routine_refusal" in response:
-        return "refusal"
+    for member, kind in (
+        ("routine_proposal", "card"),
+        ("routine_refusal", "refusal"),
+        ("routine_question", "question"),
+    ):
+        if member in response:
+            return kind
     return "clarification" if response.get("clarification") is not None else "prose"
 
 
-# What a question asks, by its own words only: each part the person's answers cover, and the result's delivery, which
-# none does. A bare "which" names the zone only when no part matched; an echo of an earlier answer never matches.
+# What a question asks, by its own words only: each topic the person can answer, and the result's delivery, which
+# they leave to the recommended option. A bare "which" names the zone only when no topic matched.
 _HINTS: tuple[tuple[str | None, tuple[str, ...]], ...] = (
-    (ANSWERS[0], ("trabalho", "o que", "tarefa", "repita", "repetir", "fazer")),
+    ("work", ("trabalho", "o que", "tarefa", "repita", "repetir", "fazer")),
     (
-        ANSWERS[1],
+        "frequency",
         (
             *("frequ", "com que", "quando", "intervalo", "periodicidade", "horário", "horario", "quantas vezes"),
             *("segundo", "minuto", "execuç", "limite"),
         ),
     ),
-    (ANSWERS[2], ("zona", "domínio", "dominio", "escopo")),
+    ("zone", ("zona", "domínio", "dominio", "escopo")),
     (None, ("receber", "resultado", "mostrar", "notific", "mudan")),
 )
+_TOPICS = ("work", "frequency", "zone")
 _WHICH = ("qual", "quais")
 
 
 def _matched(text: str) -> list[str | None]:
-    return [answer for answer, words in _HINTS if any(word in text for word in words)]
+    return [topic for topic, words in _HINTS if any(word in text for word in words)]
 
 
-def _parts(question: str, answers: list[str], given: tuple[str, ...]) -> tuple[list[str], bool]:
-    """The person's answers to every part the question asks, in their own order, and whether a part none covers.
+def _parts(question: str, person: Person) -> tuple[list[str], bool]:
+    """The person's answers to every topic the question asks, in their own order, and whether a part none covers.
 
-    An answer not given yet is used once; one already given is said again; with no part matched, the next answer not
-    given yet answers it.
+    The sentences that ask come first and the surrounding text counts only when they match nothing; with nothing
+    matched, the owner's next topic not given yet answers it.
     """
     whole = question.casefold()
-    # The sentences that ask come first; the surrounding text counts only when they match no part.
     asked = " ".join(re.findall(r"[^.?!]*\?", whole)) or whole
     matched = _matched(asked) or _matched(whole)
     uncovered = None in matched
-    wanted = [answer for answer in matched if answer is not None]
+    wanted = [topic for topic in matched if topic is not None]
     if not wanted and any(word in asked for word in _WHICH):
-        wanted = [ANSWERS[2]]
-    parts = [answer for answer in ANSWERS if answer in wanted and (answer in answers or answer in given)]
-    if not parts and not uncovered and answers:
-        parts = [answers[0]]
-    for answer in parts:
-        if answer in answers:
-            answers.remove(answer)
-    return parts, uncovered
+        wanted = ["zone"]
+    if not wanted and not uncovered and person.pending:
+        wanted = [person.pending[0]]
+    for topic in wanted:
+        if topic in person.pending:
+            person.pending.remove(topic)
+    person.stated = person.stated or "frequency" in wanted
+    return [person.says(topic) for topic in _TOPICS if topic in wanted], uncovered
 
 
-def _conversation_turns(attempt: Attempt, first: str, answers: list[str], frequency: str) -> dict[str, object]:
-    """Send and answer as Admin composes it until a turn records, the person has nothing left to say, or sends run out.
+def _zone_choice(person: Person, text: str, options: list[dict[str, str]]) -> str | None:
+    """With two zones of one name, a question about them gets the option naming the person's zone, or its id."""
+    labels = [f"{item['label']} {item['description']}" for item in options]
+    if not person.choosing or not (TWIN in text or any(TWIN in label for label in labels) or "mesmo nome" in text):
+        return None
+    person.chose = True
+    return next((item["label"] for item in options if person.zone in item["label"]), f"A zona de id {person.zone}")
 
-    Every part of a question gets the person's own answer to it, joined as one typed answer; a part none of their
-    answers covers gets Admin's preselected recommended option, as one press of its answer button sends it. A refusal
-    because the person never stated how often gets their own ``frequency``, as they would type it.
+
+def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bool]:
+    """The person's answer to the agent's own question, and whether Admin composes it as a clarification answer."""
+    clarification = response.get("clarification")
+    text = str(clarification["question"] if clarification else response.get("reply", ""))
+    options = clarification["options"] if clarification else []
+    chosen = _zone_choice(person, text, options)
+    if chosen is not None:
+        return chosen, clarification is not None
+    parts, uncovered = _parts(text, person)
+    if clarification is None:
+        return "; ".join(parts) or None, False
+    recommended = options[clarification["default_index"]]["label"]
+    return "; ".join([*parts, *([recommended] if uncovered or not parts else [])]), True
+
+
+def _target(person: Person, options: list[object]) -> str | None:
+    """A binding question's option whose target is the person's zone: its own text, or the zone's id."""
+    found = next((item for item in options if person.zone in json.dumps(item)), None)
+    if found is None:
+        return None
+    person.chose = True
+    return found if isinstance(found, str) else person.zone
+
+
+def _team_answer(person: Person, question: dict[str, object]) -> str | None:
+    """The person's answer to one of Team's recoverable Routine questions, as they would type it; None if none fits."""
+    code = question["code"]
+    if code == "routine-schedule-unstated":
+        person.stated = True
+        return person.frequency
+    if code == "routine-binding-ambiguous":
+        return _target(person, list(question.get("options") or []))
+    if code == "routine-interval-over-budget" and isinstance(question.get("value"), int):
+        # The person takes the shortest interval Team says fits.
+        person.gap = question["value"]
+        person.frequency = f"A cada {person.gap} segundos"
+        return person.frequency
+    return _FIXED_ANSWERS.get(code)
+
+
+# The person's own words for the questions whose answer never depends on the attempt.
+_FIXED_ANSWERS = {
+    "routine-binding-unsourced": "pode buscar de novo",
+    "routine-work-rerun": "pode buscar de novo",
+    "routine-work-split": "faça tudo de novo",
+    "routine-timezone-unstated": TIMEZONE,
+    "routine-timezone-ambiguous": TIMEZONE,
+}
+
+
+def _conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
+    """Send and answer until a turn records, the person has nothing left to say, or the sends run out.
+
+    The agent's clarification gets every part the person can answer, composed as Admin composes it, and Admin's
+    preselected recommended option for a part they leave open; a question in prose gets a typed answer; Team's
+    recoverable Routine question gets the answer the person would type, as an ordinary send.
     """
-    message, given = first, tuple(answers)
+    message = first
     response: dict[str, object] = {}
     for _send in range(MAX_SENDS):
         response = attempt.send(message)
-        refusal = response.get("routine_refusal")
-        if refusal is not None and refusal["code"] == "routine-schedule-unstated":
-            message = frequency
-            attempt.said.add(frequency)
-            continue
-        if "routine_proposal" in response or refusal is not None:
+        if "routine_proposal" in response or "routine_refusal" in response:
             return response
-        clarification = response.get("clarification")
-        if clarification is not None:
-            question = clarification["question"]
-            parts, uncovered = _parts(question, answers, given)
-            recommended = clarification["options"][clarification["default_index"]]["label"]
-            answer = "; ".join([*parts, *([recommended] if uncovered or not parts else [])])
-            message = f"{message.strip()}\n\n{QUESTION_LABEL}: {question}\n{ANSWER_LABEL}: {answer}"
+        question = response.get("routine_question")
+        if question is not None:
+            attempt.questions.append(question["code"])
+            answer, composed = _team_answer(attempt.person, question), False
         else:
-            parts, _uncovered = _parts(str(response.get("reply", "")), answers, given)
-            if not parts:
-                return response
-            message = "; ".join(parts)
-        attempt.said.update(parts)
+            answer, composed = _answer(attempt.person, response)
+        if answer is None:
+            return response
+        if composed:
+            asked = response["clarification"]["question"]
+            answer = f"{message.strip()}\n\n{QUESTION_LABEL}: {asked}\n{ANSWER_LABEL}: {answer}"
+        message = answer
     return response
 
 
-def _selector_miss(card: dict[str, object]) -> str | None:
-    """Why the card does not copy list-dns-records' zone_id from list-zones through the item named shimpz.com."""
+@dataclasses.dataclass(frozen=True)
+class Stratum:
+    """One creation stratum: how the person asks, who they are, the schedule they mean, and the zones they mean."""
+
+    id: str
+    play: Callable[[Attempt], dict[str, object] | Outcome]
+    person: Callable[[], Person]
+    schedule: Callable[[Person, dict[str, object]], bool]
+    zones: tuple[str, ...] = (SHIMPZ,)
+    twin: bool = False
+
+
+def _selector_miss(card: dict[str, object], zones_meant: tuple[str, ...]) -> str | None:
+    """Why the card does not copy each listing's zone_id from list-zones through the item named by the person."""
     positions = {step["position"]: step["action"] for step in card["steps"]}
     listings = [item for item in card["steps"] if item["action"] == "list-dns-records"]
-    if len(listings) > 1:
-        # The turn acted on every zone, so the card lists them all rather than shimpz.com alone.
+    if len(listings) > len(zones_meant):
+        # The turn acted on every zone, so the card lists them all rather than only the zones the person named.
         return "all-zones"
-    step = listings[0] if listings else None
-    zone = None if step is None else next((item for item in step["inputs"] if item["member"] == "zone_id"), None)
-    if zone is None:
+    if len(listings) < len(zones_meant):
         return "selector:no-zone-input"
-    if zone["origin"] != "selector":
-        return f"selector:origin-{zone['origin']}"
-    shaped = zone["where"] == {"member": "name", "value_json": '"shimpz.com"'} and zone["item"] == "/id"
-    return None if positions.get(zone["step"]) == "list-zones" and shaped else "selector:shape"
+    names = set()
+    for step in listings:
+        zone = next((item for item in step["inputs"] if item["member"] == "zone_id"), None)
+        if zone is None:
+            return "selector:no-zone-input"
+        if zone["origin"] != "selector":
+            return f"selector:origin-{zone['origin']}"
+        if positions.get(zone["step"]) != "list-zones" or zone["where"]["member"] != "name" or zone["item"] != "/id":
+            return "selector:shape"
+        names.add(zone["where"]["value_json"])
+    return None if names == {json.dumps(ZONE_NAMES[zone]) for zone in zones_meant} else "selector:shape"
 
 
-def _card(attempt: Attempt, response: dict[str, object], schedule: Callable[[dict], bool]) -> Outcome:
+def _twin_miss(attempt: Attempt, card: dict[str, object]) -> str | None:
+    """Two zones share the name: someone asked which, and the listing takes the person's zone by its id."""
+    if not attempt.person.chose:
+        return "twin-unasked"
+    listings = [item for item in card["steps"] if item["action"] == "list-dns-records"]
+    zone = next((item for step in listings for item in step["inputs"] if item["member"] == "zone_id"), None)
+    if len(listings) != 1 or zone is None:
+        return "twin-binding:listings"
+    return None if zone["origin"] == "request" and zone["value"] == json.dumps(SHIMPZ) else "twin-binding:value"
+
+
+def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
     """The recording turn's card, judged; a miss names its first closed reason."""
     if "routine_refusal" in response:
         return Outcome(f"refused:{response['routine_refusal']['code']}")
+    if "routine_question" in response:
+        return Outcome(f"question:{response['routine_question']['code']}")
     card = response.get("routine_proposal")
     if card is None:
         return Outcome("no-card")
     seen = dict(card["schedule"])
     calls = attempt.fixture.calls
+    binding = _twin_miss(attempt, card) if stratum.twin else _selector_miss(card, stratum.zones)
     checks = (
         ("card-invalid", attempt.team.modules.http_routine.canonical_proposal(card) == card),
-        ("calls", any(action == "list-zones" for action, _payload in calls) and attempt.fixture.listed(SHIMPZ)),
-        ("schedule", schedule(card["schedule"])),
+        (
+            "calls",
+            any(action == "list-zones" for action, _payload in calls)
+            and all(map(attempt.fixture.listed, stratum.zones)),
+        ),
+        ("invented-schedule", attempt.person.stated),
+        ("schedule", stratum.schedule(attempt.person, card["schedule"])),
         (f"output:{card['output']['mode']}", card["output"]["mode"] in ("show", "changes")),
-        (_selector_miss(card) or "selector", _selector_miss(card) is None),
+        (binding or "binding", binding is None),
     )
     failed = next((reason for reason, held in checks if not held), None)
     return Outcome(failed, seen) if failed else Outcome(None, {**seen, "proposal_id": card["proposal_id"]})
 
 
-def _judged(attempt: Attempt, response: dict[str, object], schedule: Callable[[dict], bool]) -> Outcome:
+def _judged(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
     """The card, its confirmation, and one replay through Team's real claim and run."""
-    carded = _card(attempt, response, schedule)
+    carded = _card(attempt, response, stratum)
     if not carded:
         return carded
     seen = dict(carded.schedule)
     answer = attempt.confirm(seen.pop("proposal_id"))
     if answer["status"] != "created":
         return Outcome(f"confirm:{answer['status']}", seen)
-    return Outcome(_replay_miss(attempt), seen)
+    return Outcome(_replay_miss(attempt, stratum.zones), seen)
 
 
-def _replay_miss(attempt: Attempt) -> str | None:
-    """Why one replay did not list shimpz.com's records and show exactly them from list-dns-records, or None."""
+def _replay_miss(attempt: Attempt, zones_meant: tuple[str, ...]) -> str | None:
+    """Why one replay did not list the person's zones' records and show one of them from list-dns-records, or None."""
     attempt.fixture.calls.clear()
     status, notice = attempt.replay()
-    if status != "done" or not attempt.fixture.listed(SHIMPZ):
+    if status != "done" or not all(map(attempt.fixture.listed, zones_meant)):
         return f"replay:{status}"
     output = None if notice is None else notice.detail.get("output")
     if notice is None or notice.outcome != "done" or output is None or output["state"] != "shown":
@@ -431,7 +556,7 @@ def _replay_miss(attempt: Attempt) -> str | None:
     (routine,) = attempt.team.service.routine_store.load("team_1").routines
     if routine.plan["steps"][output["step"] - 1]["action"] != "list-dns-records":
         return "replay-shown:step"
-    if _shown_records(output["value"]) != _expected_records():
+    if _shown_records(output["value"]) not in [_expected_records(zone) for zone in zones_meant]:
         return "replay-shown:records"
     return None
 
@@ -449,35 +574,125 @@ def _shown_records(value: dict[str, object]) -> set[tuple[object, ...]] | None:
     return {tuple(_fields(item).get(member, {}).get("value") for member in members) for item in listed["items"]}
 
 
-def _expected_records() -> set[tuple[object, ...]]:
-    return {(item["type"], item["name"], item["content"]) for item in SHIMPZ_RECORDS}
+def _expected_records(zone: str) -> set[tuple[object, ...]]:
+    return {(item["type"], item["name"], item["content"]) for item in ZONE_RECORDS[zone]}
 
 
-def _continuous(schedule: dict[str, object]) -> bool:
-    return schedule.get("kind") == "continuous" and schedule.get("gap") == 30 and schedule.get("cap", 0) <= 1000
+def _continuous(person: Person, schedule: dict[str, object]) -> bool:
+    """The exact interval the person last stated, running all day: its cap is ceil(86400 / gap), never lowered."""
+    gap = person.gap
+    expected = {"kind": "continuous", "gap": gap, "cap": -(-86_400 // gap)} if gap else None
+    return schedule == expected
 
 
-def owner(attempt: Attempt) -> Outcome:
-    response = _conversation_turns(attempt, "Cria uma rotina pra mim", list(ANSWERS), ANSWERS[1])
-    return _judged(attempt, response, _continuous)
+def _hourly(_person: Person, schedule: dict[str, object]) -> bool:
+    return schedule == {"kind": "hourly", "every": 1}
 
 
-def plain_list(attempt: Attempt) -> Outcome:
-    response = _conversation_turns(
-        attempt, "Todo dia às 9h, liste os registros DNS de shimpz.com", [], "Todo dia às 9h"
-    )
-    return _judged(attempt, response, lambda schedule: schedule == {"kind": "daily", "time": "09:00"})
+def _daily_nine(_person: Person, schedule: dict[str, object]) -> bool:
+    return schedule == {"kind": "daily", "time": "09:00"}
 
 
-def every_hour(attempt: Attempt) -> Outcome:
-    first = attempt.send("Liste os registros DNS de shimpz.com")
-    if "routine_proposal" in first or "routine_refusal" in first:
+def _recorded(response: dict[str, object]) -> bool:
+    return any(member in response for member in ("routine_proposal", "routine_refusal", "routine_question"))
+
+
+def _primed(attempt: Attempt, first: str, recording: str) -> dict[str, object] | Outcome:
+    """An ordinary first turn that must look the zone up without recording, then the recording request."""
+    response = attempt.send(first)
+    if _recorded(response):
         return Outcome("recorded-unasked")
-    if not attempt.fixture.listed(SHIMPZ):
+    if not any(action == "list-zones" for action, _payload in attempt.fixture.calls):
         return Outcome("first-turn-calls")
-    attempt.fixture.calls.clear()
-    response = _conversation_turns(attempt, "Faça isso a cada hora", [], "A cada hora")
-    return _judged(attempt, response, lambda schedule: schedule == {"kind": "hourly", "every": 1})
+    return _conversation_turns(attempt, recording)
+
+
+def _unprimed(attempt: Attempt) -> dict[str, object]:
+    """The zone's id is known only from an earlier assistant reply outside this span; nothing in the span ran."""
+    attempt.remember("user", "Qual é o id da zona shimpz.com?")
+    attempt.remember("assistant", f"O id da zona shimpz.com é {SHIMPZ}.")
+    return _conversation_turns(attempt, "A cada hora, liste os registros DNS dessa zona")
+
+
+def _send(first: str) -> Callable[[Attempt], dict[str, object]]:
+    return lambda attempt: _conversation_turns(attempt, first)
+
+
+def _person(frequency: str, gap: int | None = None, **changes) -> Callable[[], Person]:
+    return lambda: Person(frequency, gap, **changes)
+
+
+STRATA = (
+    Stratum(
+        "owner-4-turns",
+        _send("Cria uma rotina pra mim"),
+        _person("A cada 30 segundos", 30, pending=list(_TOPICS), stated=False),
+        _continuous,
+    ),
+    Stratum(
+        "plain-list",
+        _send("Todo dia às 9h, liste os registros DNS de shimpz.com"),
+        _person("Todo dia às 9h"),
+        _daily_nine,
+    ),
+    Stratum(
+        "multi-zone",
+        _send("A cada hora, liste os registros DNS de shimpz.com e de example.com"),
+        _person("A cada hora"),
+        _hourly,
+        zones=(SHIMPZ, EXAMPLE),
+    ),
+    Stratum(
+        "earlier-send-naming",
+        lambda attempt: _primed(attempt, "Liste os registros DNS de shimpz.com", "Faça isso a cada hora"),
+        _person("A cada hora"),
+        _hourly,
+    ),
+    Stratum(
+        "missing-schedule",
+        _send("Cria uma rotina que liste os registros DNS de shimpz.com"),
+        _person("Todo dia às 9h", stated=False),
+        _daily_nine,
+    ),
+    Stratum(
+        "reversed-order-primed",
+        lambda attempt: _primed(
+            attempt, "Qual é o id da zona shimpz.com?", "A cada hora, liste os registros DNS dessa zona"
+        ),
+        _person("A cada hora"),
+        _hourly,
+    ),
+    Stratum("reversed-order-unprimed", _unprimed, _person("A cada hora"), _hourly),
+    Stratum(
+        "twin-names-at-creation",
+        _send("A cada hora, liste os registros DNS de shimpz.com"),
+        _person("A cada hora", choosing=True),
+        _hourly,
+        twin=True,
+    ),
+    Stratum(
+        "interval-30s",
+        _send("A cada 30 segundos, liste os registros DNS de shimpz.com"),
+        _person("A cada 30 segundos", 30),
+        _continuous,
+    ),
+    Stratum(
+        "interval-5s",
+        _send("A cada 5 segundos, liste os registros DNS de shimpz.com"),
+        _person("A cada 5 segundos", 5),
+        _continuous,
+    ),
+)
+
+
+def _played(stratum: Stratum) -> Callable[[Attempt], Outcome]:
+    def play(attempt: Attempt) -> Outcome:
+        attempt.person = stratum.person()
+        attempt.fixture.twin = stratum.twin
+        response = stratum.play(attempt)
+        return response if isinstance(response, Outcome) else _judged(attempt, response, stratum)
+
+    return play
 
 
 def _lookup_cause(attempt: Attempt) -> str:
@@ -500,19 +715,16 @@ def _cause(attempt: Attempt, reason: str) -> str:
     if reason == "calls" or reason.startswith("selector"):
         return _lookup_cause(attempt)
     if reason == "schedule":
-        return "frequency-changed" if ANSWERS[1] in attempt.said or not attempt.said else "frequency-unasked"
+        return "frequency-changed"
     if reason == "no-card":
         return "sends-exhausted" if len(attempt.sends) >= MAX_SENDS else f"stopped-on-{attempt.sends[-1][0]}"
     if reason == "refused:routine-recording-empty":
         return "work-done-before-record" if any(actions for _kind, actions in attempt.sends[:-1]) else "no-work"
-    return reason if reason.startswith("replay-shown") else reason.split(":", 1)[0]
+    kept = ("replay-shown", "twin-", "question:", "invented-schedule")
+    return reason if reason.startswith(kept) else reason.split(":", 1)[0]
 
 
-CASES: tuple[tuple[str, Callable[[Attempt], Outcome]], ...] = (
-    ("owner-4-turns", owner),
-    ("plain-list", plain_list),
-    ("every-hour-after-earlier-turn", every_hour),
-)
+CASES: tuple[tuple[str, Callable[[Attempt], Outcome]], ...] = tuple((item.id, _played(item)) for item in STRATA)
 
 
 def variants(attempt: Attempt) -> dict[str, object]:
@@ -697,19 +909,26 @@ class Runner:
                 outcome = Outcome(f"team:{exc.code}")
             if not outcome:
                 outcome.cause = _cause(attempt, outcome.reason)
+            outcome.questions = tuple(attempt.questions)
             if outcome and case_id == "owner-4-turns" and self.variants is None:
                 self.variants = variants(attempt)
             harness.doCleanups()
         spent = eval_cost.Cost(0.0) if self.meter.usage is None else eval_cost.cost(self.meter.usage, model_id)
         self.budget.settle(reservation, spent)
         if events is not None:
-            outcome_record = {"reason": outcome.reason, "cause": outcome.cause, "schedule": outcome.schedule}
+            outcome_record = {
+                "reason": outcome.reason,
+                "cause": outcome.cause,
+                "schedule": outcome.schedule,
+                "questions": list(outcome.questions),
+            }
             transcript = {"model": model_id, "case": case_id, "attempt": index, "outcome": outcome_record}
             _write_trace(self.trace_dir / model_id / case_id / f"{index}.json", {**transcript, "events": events})
         return outcome, spent
 
     def case(self, model: tuple[str, str, str], case: tuple[str, Callable]) -> dict[str, object]:
         passed, misses, schedules, costs, stopped = 0, [], [], [], False
+        questions: collections.Counter[str] = collections.Counter()
         for index in range(self.attempts):
             try:
                 outcome, spent = self.one(model, case, index)
@@ -720,7 +939,8 @@ class Runner:
             passed += bool(outcome)
             misses += [] if outcome else [{"reason": outcome.reason, "cause": outcome.cause}]
             schedules.append(outcome.schedule)
-        return _summary(case[0], passed, misses, schedules, costs, stopped)
+            questions.update(outcome.questions)
+        return {**_summary(case[0], passed, misses, schedules, costs, stopped), "questions": dict(questions)}
 
 
 def run(
