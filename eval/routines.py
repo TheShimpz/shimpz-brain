@@ -55,7 +55,7 @@ from pathlib import Path
 from unittest import mock
 
 BRAIN = Path(__file__).resolve().parents[1]
-TEAMS = BRAIN.parent / "teams"
+TEAMS = BRAIN.parent / "teams-det"
 CONTRACT = TEAMS / "tests" / "fixtures" / "reference-assistant" / "shimpz.contract.json"
 
 
