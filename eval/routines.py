@@ -237,6 +237,8 @@ class Person:
     # Whether the person has stated how often yet, in a send or an answer.
     stated: bool = True
     zone: str = SHIMPZ
+    # How the person names the zones they mean when asked which.
+    zone_words: str = "shimpz.com"
     # Whether two zones share the name, so a question about them gets the person's zone by its id.
     choosing: bool = False
     chose: bool = False
@@ -245,7 +247,7 @@ class Person:
         return {
             "work": "Listar registros DNS",
             "frequency": self.frequency,
-            "zone": "shimpz.com",
+            "zone": self.zone_words,
             "timezone": TIMEZONE,
         }[topic]
 
@@ -685,7 +687,7 @@ STRATA = (
     Stratum(
         "multi-zone",
         _send("A cada hora, liste os registros DNS de shimpz.com e de example.com"),
-        _person("A cada hora"),
+        _person("A cada hora", zone_words="shimpz.com e example.com"),
         _hourly,
         zones=(SHIMPZ, EXAMPLE),
         sends=1,
