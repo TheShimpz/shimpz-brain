@@ -6,9 +6,17 @@ import json
 from collections.abc import Callable, Mapping
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 from runtime_errors import RuntimeContractError
+
+
+def messages(system: str, payload: Mapping[str, object]) -> list:
+    """One decision prompt: the system text, then the payload as compact, unsorted, non-ASCII JSON."""
+    return [
+        SystemMessage(content=system),
+        HumanMessage(content=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
+    ]
 
 
 def structured_output(model: BaseChatModel, provider: str, schema: type[BaseModel]):

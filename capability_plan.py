@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+import structured
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
 from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -151,10 +150,7 @@ def _prompt(objective: str, candidates: tuple[CapabilityCandidate, ...]) -> list
             for item in candidates
         ],
     }
-    return [
-        SystemMessage(content=system),
-        HumanMessage(content=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
-    ]
+    return structured.messages(system, payload)
 
 
 class StructuredPlan(BaseModel):

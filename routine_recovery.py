@@ -10,14 +10,13 @@ no provider retry and at most 1,024 output tokens.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 import interface_language
+import structured
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
 DECISIONS = ("retry", "ask", "pause")
@@ -60,10 +59,7 @@ def _prompt(request: RecoveryRequest) -> list[object]:
         "team_proof": request.proof,
         "diagnostics": list(request.diagnostics[:MAX_DIAGNOSTICS]),
     }
-    return [
-        SystemMessage(content=system),
-        HumanMessage(content=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
-    ]
+    return structured.messages(system, payload)
 
 
 def capped(model: BaseChatModel) -> BaseChatModel:

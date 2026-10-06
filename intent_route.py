@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
 import interface_language
+import structured
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
 from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -260,10 +259,7 @@ def _prompt(
             {"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in context.conversation
         ],
     }
-    return [
-        SystemMessage(content=f"{system}\n\n{instruction}"),
-        HumanMessage(content=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
-    ]
+    return structured.messages(f"{system}\n\n{instruction}", payload)
 
 
 def _parsed(value: object) -> StructuredRoute:

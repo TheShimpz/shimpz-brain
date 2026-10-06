@@ -7,16 +7,16 @@ started the pending turn: never from other history, Action results, Genesis, the
 
 from __future__ import annotations
 
-import json
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 import interface_language
 import memory as team_memory
+import structured
 import turn_pins
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import purpose as team_purpose
 from pydantic import BaseModel, ConfigDict
@@ -157,10 +157,7 @@ def _prompt(request: PurposeRequest) -> list[object]:
         "assistant": request.assistant_name,
         "step": request.action_summary,
     }
-    return [
-        SystemMessage(content=system),
-        HumanMessage(content=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
-    ]
+    return structured.messages(system, payload)
 
 
 def capped(model: BaseChatModel) -> BaseChatModel:
