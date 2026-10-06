@@ -248,3 +248,9 @@ class TeamOwnedQuestionTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertIsNone(self.review(_routine_question(question, ("shimpz.com", "example.com")), True))
         self.assertIsNone(self.review(_routine_question("Com que frequência a rotina deve rodar?"), False))
+
+    def test_time_options_follow_the_question_they_answer(self):
+        times = ("09:00", "18:00")
+        start = _routine_question("Which start time should the report query use?", times)
+        self.assertIsNone(self.review(start, routine_mode=True))
+        self.assertIsNotNone(self.review(_routine_question("What time?", times), routine_mode=True))
