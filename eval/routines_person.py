@@ -320,23 +320,22 @@ def _judge_question(person: Person, topics: list[str]) -> None:
         person.asked.append(topic)
 
 
-def _parts(question: str, person: Person, judged: bool = True) -> tuple[list[str], bool]:
-    """The person's answers to every topic the question asks, in their own order, and whether a part none covers.
+def _parts(question: str, person: Person, judged: bool = True) -> list[str]:
+    """The person's answers to every topic the question asks, in their own order.
 
     With nothing matched, the owner's next topic not given yet answers it. A question the agent asked is judged
     against what the person already said before it is answered.
     """
     wanted = asked_topics(question)
-    uncovered = False
     if judged:
         _judge_question(person, wanted)
-    if not wanted and not uncovered and person.pending:
+    if not wanted and person.pending:
         wanted = [person.pending[0]]
     for topic in wanted:
         if topic in person.pending:
             person.pending.remove(topic)
     person.said.update(topic for topic in wanted if topic in _TOPICS)
-    return [person.says(topic) for topic in _TOPICS if topic in wanted], uncovered
+    return [person.says(topic) for topic in _TOPICS if topic in wanted]
 
 
 def _zone_choice(person: Person, text: str, options: list[dict[str, str]]) -> str | None:
@@ -372,7 +371,7 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     if chosen is not None:
         return chosen, clarification is not None
     # Only a question is judged: a prose reply that asks nothing is not a question.
-    parts, uncovered = _parts(text, person, judged=clarification is not None or "?" in text)
+    parts = _parts(text, person, judged=clarification is not None or "?" in text)
     if clarification is None:
         return "; ".join(parts) or None, False
     default = clarification.get("default_index")
@@ -396,7 +395,7 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
     )
     replaced = {TIMEZONE: own, OUTPUT_WORDS[person.output]: shown}
     parts = [replaced.get(part) or part for part in parts]
-    return "; ".join([*parts, *([recommended] if uncovered or not parts else [])]), True
+    return "; ".join(parts or [recommended]), True
 
 
 def _target(person: Person, options: list[dict[str, str]]) -> str | None:
