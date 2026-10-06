@@ -8,6 +8,7 @@ with its bounded result.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import functools
 import hashlib
@@ -652,6 +653,9 @@ class AgentRuntime:
         asked = clarifier.recorded(list(state.get("messages", ())))
         if asked is None:
             return None
+        if context.routine_mode:
+            # Options never steer a choice about a Routine, whatever the model recommended (ADR-0101).
+            asked = dataclasses.replace(asked, default_index=None)
         reply = asked.render()
         try:
             agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})

@@ -85,8 +85,8 @@ class Option:
 class Clarification:
     question: str
     options: tuple[Option, ...]
-    # The recommended option.
-    default_index: int
+    # The recommended option, or None when the question steers no choice (a Routine turn's, ADR-0101).
+    default_index: int | None
 
     def to_dict(self) -> dict[str, object]:
         return {

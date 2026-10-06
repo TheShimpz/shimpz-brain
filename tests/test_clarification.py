@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import unittest
 from unittest import mock
 
@@ -95,6 +96,17 @@ class GraphTests(unittest.TestCase):
         self.assertIsInstance(messages[-1], AIMessage)
         self.assertEqual(messages[-1].content, result.reply)
         self.assertFalse(messages[-1].tool_calls)
+
+    def test_a_routine_turns_clarification_recommends_no_option(self):
+        # Options never steer a choice about a Routine: whatever the model recommended, nothing is marked.
+        runtime, _saver = self._runtime(AIMessage(content="", tool_calls=[_clarify(VALID)]))
+        turn = dataclasses.replace(
+            context(assistant("hello-pulse", action())), routine_mode=True, routines=(), routine_capacity=20
+        )
+        result = runtime.start(turn, "Cria uma rotina pra mim")
+        self.assertEqual(result.clarification.to_dict(), {**VALID, "default_index": None})
+        self.assertNotIn("✓", result.reply)
+        self.assertEqual(result.reply, result.clarification.render())
 
     def test_a_clarification_mixed_with_an_action_is_refused_before_either_runs(self):
         runtime, saver = self._runtime(
