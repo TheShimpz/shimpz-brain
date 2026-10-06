@@ -16,7 +16,6 @@ This module uses only the standard library.
 from __future__ import annotations
 
 import unicodedata
-from collections import Counter
 from collections.abc import Mapping
 
 from eval import fixtures, world
@@ -375,6 +374,8 @@ def _iban(value: object) -> str:
 class FreshWorld(world.World):
     """The precision World, unchanged, plus the state and behavior of the three new Assistants."""
 
+    NEW_IDS = NEW_IDS
+
     def __init__(self) -> None:
         super().__init__()
         self.assistants = ASSISTANTS
@@ -383,12 +384,6 @@ class FreshWorld(world.World):
         self.work_orders = {item[0]: dict(zip(_WORK_ORDER_FIELDS, item[1:], strict=True)) for item in WORK_ORDERS}
         self.payees = {item[0]: dict(zip(_PAYEE_FIELDS, item[1:], strict=True)) for item in PAYEES}
         self.transfers = {item[0]: dict(zip(_TRANSFER_FIELDS, item[1:], strict=True)) for item in TRANSFERS}
-        self._serial: Counter[str] = Counter()
-
-    def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
-        if assistant_id not in NEW_IDS:
-            return super().invoke(assistant_id, action_id, arguments)
-        return self._invoke_handler(ASSISTANTS[assistant_id].actions, assistant_id, action_id, arguments)
 
     def _new(self, prefix: str) -> str:
         self._serial[prefix] += 1

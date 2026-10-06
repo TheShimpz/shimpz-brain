@@ -123,6 +123,9 @@ def _fqdn(name: object, zone: str) -> str:
 class World:
     """One scenario's simulated Assistants and their state; every Action goes through ``invoke``."""
 
+    # A stratum's own Assistants, whose Actions run through their ``_<assistant>_<action>`` handlers.
+    NEW_IDS: frozenset[str] = frozenset()
+
     def __init__(self, variant: str = "a") -> None:
         """``variant`` "b" serves the arm-B contracts of ``eval.contracts`` over the same state (ADR-0094)."""
         if variant not in {"a", "b"}:
@@ -146,10 +149,16 @@ class World:
         self.foreign: Counter[str] = Counter()
         self.ledger: list[dict[str, object]] = []
         self._next = 0
+        self._serial: Counter[str] = Counter()
 
     def _id(self, prefix: str) -> str:
         self._next += 1
         return f"{prefix}-new-{self._next}"
+
+    def _new(self, prefix: str) -> str:
+        """The next id a stratum's own Assistant gives a created item, counted per prefix."""
+        self._serial[prefix] += 1
+        return f"{prefix}-new-{self._serial[prefix]}"
 
     def _invoke_handler(
         self, actions: Iterable[Action], assistant_id: str, action_id: str, arguments: Mapping[str, object]
@@ -164,6 +173,8 @@ class World:
         return ledgered(self.ledger, assistant_id, action_id, arguments, run)
 
     def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
+        if assistant_id in self.NEW_IDS:
+            return self._invoke_handler(self.assistants[assistant_id].actions, assistant_id, action_id, arguments)
         entry: dict[str, object] = {
             "assistant": assistant_id,
             "action": action_id,

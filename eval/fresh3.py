@@ -305,6 +305,8 @@ def _contains(text: object, *fields: object) -> bool:
 class FreshWorld(world.World):
     """The precision World, unchanged, plus the state and behavior of the four new Assistants."""
 
+    NEW_IDS = NEW_IDS
+
     def __init__(self) -> None:
         super().__init__()
         self.assistants = ASSISTANTS
@@ -325,16 +327,6 @@ class FreshWorld(world.World):
             for item in CLASSES
         }
         self.enrollments = {key: {"class_id": code, "student": student} for key, code, student in ENROLLMENTS}
-        self._serial: Counter[str] = Counter()
-
-    def invoke(self, assistant_id: str, action_id: str, arguments: Mapping[str, object]) -> dict[str, object]:
-        if assistant_id not in NEW_IDS:
-            return super().invoke(assistant_id, action_id, arguments)
-        return self._invoke_handler(ASSISTANTS[assistant_id].actions, assistant_id, action_id, arguments)
-
-    def _new(self, prefix: str) -> str:
-        self._serial[prefix] += 1
-        return f"{prefix}-new-{self._serial[prefix]}"
 
     @staticmethod
     def _known(items: Mapping[str, object], key: object, code: str) -> str:
