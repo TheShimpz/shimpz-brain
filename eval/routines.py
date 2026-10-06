@@ -313,7 +313,11 @@ def _conversation_turns(attempt: Attempt, first: str, answers: list[str]) -> dic
 def _selector_miss(card: dict[str, object]) -> str | None:
     """Why the card does not copy list-dns-records' zone_id from list-zones through the item named shimpz.com."""
     positions = {step["position"]: step["action"] for step in card["steps"]}
-    step = next((item for item in card["steps"] if item["action"] == "list-dns-records"), None)
+    listings = [item for item in card["steps"] if item["action"] == "list-dns-records"]
+    if len(listings) > 1:
+        # The turn acted on every zone, so the card lists them all rather than shimpz.com alone.
+        return "all-zones"
+    step = listings[0] if listings else None
     zone = None if step is None else next((item for item in step["inputs"] if item["member"] == "zone_id"), None)
     if zone is None:
         return "selector:no-zone-input"
