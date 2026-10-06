@@ -33,6 +33,7 @@ chosen zone by its id), carries the schedule the person stated, takes no more se
 After the first passing owner attempt, two replay variants run with no model: shimpz.com under a new zone id, and two
 zones named shimpz.com, which must never dispatch list-dns-records.
 The gate exits non-zero unless every stratum of every shipped model passed every attempt and both variants held.
+For the control arm, serve the Brain with SHIMPZ_ROUTINE_MODE_PROMPT=off, which drops its Routine-mode prompt section.
 Output holds stratum ids, pass counts, Wilson 95% bounds, closed miss reasons with root causes, the questions asked,
 the schedules seen, and the estimated cost; never a message, a reply, or a key (only ``--trace-dir`` writes messages).
 """
