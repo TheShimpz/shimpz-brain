@@ -122,9 +122,11 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(routine.canonical_routines([LISTED]), (LISTED,))
         named = {**LISTED, "timezone": "Europe/Lisbon", "timezone_source": "person"}
         self.assertEqual(routine.canonical_routines([named]), (named,))
-        # UTC by convention, never read as the person's zone, only for a schedule that needs none.
+        # UTC as Team's fallback when no zone was captured, for any schedule, never read as the person's zone.
         unzoned = {**LISTED, "schedule": {"kind": "hourly", "every": 1}, "timezone": "UTC", "timezone_source": "none"}
         self.assertEqual(routine.canonical_routines([unzoned]), (unzoned,))
+        calendar = {**LISTED, "timezone": "UTC", "timezone_source": "none"}
+        self.assertEqual(routine.canonical_routines([calendar]), (calendar,))
         deciding = {**LISTED, "output": {"mode": "decide", "when": "changes"}, "steps": []}
         self.assertEqual(routine.canonical_routines([deciding]), (deciding,))
         step = LISTED["steps"][0]

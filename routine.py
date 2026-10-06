@@ -50,9 +50,8 @@ _SCHEDULE_FIELDS = {
 MIN_CONTINUOUS_GAP_SECONDS = 5
 MAX_CONTINUOUS_GAP_SECONDS = 86_400
 DAY_SECONDS = 86_400
-# Where a listed Routine's timezone came from; "none" is Team's UTC convention for a plan that needs no zone.
+# Where a listed Routine's timezone came from; "none" is Team's UTC fallback when no zone was captured.
 TIMEZONE_SOURCES = ("browser", "person", "none")
-CALENDAR_KINDS = frozenset({"daily", "weekly", "monthly"})
 # What a recorded Routine's runs do with their result: show it every run, only when it changed, or show none of it.
 OUTPUT_MODES = ("show", "changes", "none")
 # What a listed Routine does: a recordable mode, or a decision turn that runs always or only on a change.
@@ -158,11 +157,9 @@ def _routine_step(value: object) -> dict[str, object]:
     return {"id": value["id"], "assistant": value["assistant"], "action": value["action"], "inputs": value["inputs"]}
 
 
-def _zoned(schedule: dict[str, object], timezone: str, source: object) -> bool:
-    """A listed timezone and its source: "none" is UTC by convention, never for a calendar schedule."""
-    if source not in TIMEZONE_SOURCES:
-        return False
-    return source != "none" or (timezone == "UTC" and schedule["kind"] not in CALENDAR_KINDS)
+def _zoned(timezone: str, source: object) -> bool:
+    """A listed timezone and its source: "none" is exactly UTC, Team's fallback for any schedule."""
+    return source in TIMEZONE_SOURCES and (source != "none" or timezone == "UTC")
 
 
 def _listed_output(value: object) -> bool:
@@ -207,7 +204,7 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
             or schedule is None
             or not isinstance(entry["timezone"], str)
             or TIMEZONE_RE.fullmatch(entry["timezone"]) is None
-            or not _zoned(schedule, entry["timezone"], entry["timezone_source"])
+            or not _zoned(entry["timezone"], entry["timezone_source"])
             or not _whole(entry["revision"], 1, 2**31 - 1)
             or not valid_capacity(entry["daily_steps"])
             or not _listed_output(entry["output"])
