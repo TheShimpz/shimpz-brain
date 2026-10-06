@@ -22,7 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
 from eval.corpus import scenarios, stratum_digest, validate_ids, validate_stratum
-from eval.fixtures import _DATE, _STRING, Action, Assistant, _schema
+from eval.fixtures import _DATE, _STRING, Assistant, _read, _schema, _write
 from eval.fresh_classes_templates import TEMPLATES
 
 CORPUS_ID = "fresh-v4-classes"
@@ -42,14 +42,6 @@ _IBAN = {
     "pattern": "^[A-Z]{2}[0-9]{2}[A-Z0-9 ]{10,40}$",
     "description": "The payee's IBAN; spaces are ignored.",
 }
-
-
-def _read(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
-    return Action(action_id, summary, schema, writes=False)
-
-
-def _write(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
-    return Action(action_id, summary, schema, writes=True)
 
 
 NEW_ASSISTANTS = (

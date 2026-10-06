@@ -24,7 +24,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
 from eval.corpus import scenarios, stratum_digest, validate_stratum
-from eval.fixtures import _DATE, _STRING, Action, Assistant, _schema
+from eval.fixtures import _DATE, _STRING, Action, Assistant, _read, _schema, _write
 from eval.fresh3_records import (
     CLASSES,
     CUSTOMERS,
@@ -46,14 +46,6 @@ _COURSE = {"type": "string", "enum": ["starter", "main", "dessert", "drink"]}
 _DAY = {"type": "string", "enum": list(DAYS)}
 _PRICE = {"type": "number", "minimum": 0.5, "maximum": 200, "description": "Price per serving in EUR."}
 _ITEM_STATUS = {"type": "string", "enum": ["available", "cleaning", "repair"]}
-
-
-def _read(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
-    return Action(action_id, summary, schema, writes=False)
-
-
-def _write(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
-    return Action(action_id, summary, schema, writes=True)
 
 
 NEW_ASSISTANTS = (

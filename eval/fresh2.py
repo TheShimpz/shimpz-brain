@@ -18,7 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from eval import fixtures, world
 from eval.corpus import LOCALES, Template, scenarios, stratum_digest, validate_stratum
-from eval.fixtures import _DATE, _STRING, Action, Assistant, _schema
+from eval.fixtures import _DATE, _STRING, Assistant, _read, _schema, _write
 
 CORPUS_ID = "fresh-v2"
 
@@ -28,14 +28,6 @@ _SHIPMENT_STATUS = {"type": "string", "enum": ["label-created", "in-transit", "d
 _CATEGORY = {"type": "string", "enum": ["travel", "meals", "office", "postage", "software", "other"]}
 _EXPENSE_STATUS = {"type": "string", "enum": ["draft", "submitted", "approved", "rejected"]}
 _AMOUNT = {"type": "number", "minimum": 0.01, "maximum": 100000, "description": "Amount in the claim's currency."}
-
-
-def _read(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
-    return Action(action_id, summary, schema, writes=False)
-
-
-def _write(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
-    return Action(action_id, summary, schema, writes=True)
 
 
 NEW_ASSISTANTS = (
