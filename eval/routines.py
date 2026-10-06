@@ -45,7 +45,7 @@ import socket
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from unittest import mock
 
@@ -123,12 +123,21 @@ class Fixture:
     shimpz: str = SHIMPZ
     twin: bool = False
     calls: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
+    # With --trace-dir, the attempt's ordered transcript, which every send, Brain turn, and Action call joins.
+    events: list[dict[str, object]] | None = None
 
     def invoke(self, _team, _assistant, action, payload, _evidence) -> dict[str, object]:
         self.calls.append((action, dict(payload)))
         if action == "list-zones":
-            return {"result": zones(self.shimpz, twin=self.twin)}
-        return {"result": records(str(payload.get("zone_id")))}
+            answer = {"result": zones(self.shimpz, twin=self.twin)}
+        else:
+            answer = {"result": records(str(payload.get("zone_id")))}
+        self.note({"kind": "action", "action": action, "input": dict(payload), "result": answer["result"]})
+        return answer
+
+    def note(self, event: dict[str, object]) -> None:
+        if self.events is not None:
+            self.events.append(event)
 
     def listed(self, zone: str) -> bool:
         return any(action == "list-dns-records" and payload.get("zone_id") == zone for action, payload in self.calls)
@@ -235,6 +244,9 @@ class Attempt:
             response = self.team.service.chat("team_1", body, self.provider, self.key)
         actions = tuple(action for action, _payload in self.fixture.calls[before:])
         self.sends.append((_kind(response), actions))
+        self.fixture.note(
+            {"kind": "send", "message": message, "conversation": body["conversation"], "response": response}
+        )
         self._remember("user", message)
         self._remember("assistant", str(response.get("reply", "")))
         return response
@@ -266,7 +278,10 @@ class Attempt:
         claimed = (claim["revision"], claim["plan_digest"], claim["mode"])
         result = service.run_routine("team_1", claim["run_id"], evidence, claimed, (self.provider, ""))
         notices = service.routine_store.load("team_1").notices
-        return result["status"], notices[-1] if notices else None
+        notice = notices[-1] if notices else None
+        shown = None if notice is None else {"outcome": notice.outcome, "detail": notice.detail}
+        self.fixture.note({"kind": "replay", "status": result["status"], "notice": shown})
+        return result["status"], notice
 
 
 def _kind(response: dict[str, object]) -> str:
@@ -560,17 +575,55 @@ def _team_modules() -> Modules:
     )
 
 
-def _attempt_team(modules: Modules, directory: str, brain: tuple[str, Path], settings) -> tuple[object, Team, Fixture]:
+# The turn context members a trace keeps: never the model key.
+_TRACED_CONTEXT = ("thread_id", "provider", "model", "effort", "locale", "knowledge_writable", "routine_capacity")
+
+
+def _turn_event(turn) -> dict[str, object]:
+    """One Brain turn as Team received it: reply, requested Action calls, question, memory, and record call."""
+    return {
+        "kind": "brain-turn",
+        "status": turn.status,
+        "reply": turn.reply,
+        "actions": [dataclasses.asdict(item) for item in turn.actions],
+        "clarification": turn.clarification,
+        "memory": list(turn.memory),
+        "record": turn.routine,
+    }
+
+
+def _traced(client, fixture: Fixture):
+    """Team's own Brain client, with every turn it starts or resumes and every turn it receives in the transcript."""
+    start, resume = client.start, client.resume
+
+    def received(turn):
+        fixture.note(_turn_event(turn))
+        return turn
+
+    def traced_start(context, message, *, conversation):
+        known = {name: getattr(context, name) for name in _TRACED_CONTEXT}
+        fixture.note({"kind": "brain-start", "message": message, "conversation": conversation, "context": known})
+        return received(start(context, message, conversation=conversation))
+
+    def traced_resume(context, results):
+        fixture.note({"kind": "brain-resume", "results": dict(results)})
+        return received(resume(context, results))
+
+    client.start, client.resume = traced_start, traced_resume
+    return client
+
+
+def _attempt_team(
+    modules: Modules, directory: str, brain: tuple[str, Path], settings, events: list | None
+) -> tuple[object, Team, Fixture]:
     """A fresh Local Team for one attempt, whose own Space gives it its own Brain thread."""
     provider, model, space = settings
     url, token_file = brain
-
+    fixture = Fixture(events=events)
+    client = modules.brain_client.BrainRuntimeClient(base_url=url, token_file=token_file)
     # The harness builds its controller as a test case does; any of its own methods names the unused test.
     case = modules.harness.LocalContractCase("_chat_controller")
-    controller = case._chat_controller(
-        directory, modules.brain_client.BrainRuntimeClient(base_url=url, token_file=token_file)
-    )
-    fixture = Fixture()
+    controller = case._chat_controller(directory, client if events is None else _traced(client, fixture))
     controller.assistant_lifecycle.invoke = fixture.invoke
     controller.space_id = controller.chat_turn_service.space_id = space
     controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model))
@@ -595,6 +648,24 @@ def _summary(case_id: str, passed: int, misses: list, schedules: list, costs: li
     }
 
 
+def _plain(value: object) -> object:
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return dataclasses.asdict(value)
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, set | frozenset):
+        return sorted(value)
+    return repr(value)
+
+
+def _write_trace(path: Path, transcript: dict[str, object]) -> None:
+    """One attempt's whole transcript as owner-only JSON; it holds the messages, never a model key."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        json.dump(transcript, handle, ensure_ascii=False, indent=1, default=_plain)
+
+
 class Runner:
     """Every case of every model in order under one hard budget, with the Brain usage Team reported per attempt."""
 
@@ -606,6 +677,7 @@ class Runner:
         self.meter = Meter()
         self.variants: dict[str, object] | None = None
         self.exhausted = False
+        self.trace_dir: Path | None = None
 
     def one(self, model: tuple[str, str, str], case: tuple[str, Callable], index: int) -> tuple[Outcome, object]:
         provider, model_id, key = model
@@ -616,7 +688,8 @@ class Runner:
         self.meter.usage = None
         with tempfile.TemporaryDirectory() as directory:
             settings = (provider, model_id, f"eval-{secrets.token_hex(8)}")
-            harness, team, fixture = _attempt_team(self.modules, directory, self.brain, settings)
+            events = None if self.trace_dir is None else []
+            harness, team, fixture = _attempt_team(self.modules, directory, self.brain, settings, events)
             attempt = Attempt(team, fixture, provider, key)
             try:
                 outcome = play(attempt)
@@ -629,6 +702,10 @@ class Runner:
             harness.doCleanups()
         spent = eval_cost.Cost(0.0) if self.meter.usage is None else eval_cost.cost(self.meter.usage, model_id)
         self.budget.settle(reservation, spent)
+        if events is not None:
+            outcome_record = {"reason": outcome.reason, "cause": outcome.cause, "schedule": outcome.schedule}
+            transcript = {"model": model_id, "case": case_id, "attempt": index, "outcome": outcome_record}
+            _write_trace(self.trace_dir / model_id / case_id / f"{index}.json", {**transcript, "events": events})
         return outcome, spent
 
     def case(self, model: tuple[str, str, str], case: tuple[str, Callable]) -> dict[str, object]:
@@ -647,7 +724,11 @@ class Runner:
 
 
 def run(
-    models: list[tuple[str, str, str]], brain: tuple[str, Path], limits: tuple[int, float], only: frozenset[str]
+    models: list[tuple[str, str, str]],
+    brain: tuple[str, Path],
+    limits: tuple[int, float],
+    only: frozenset[str],
+    trace_dir: Path | None = None,
 ) -> dict:
     modules = _team_modules()
     original = modules.brain_usage.record
@@ -665,6 +746,7 @@ def run(
         mock.patch.object(modules.brain_usage, "record", metered),
     ):
         runner = Runner(modules, brain, limits[1], limits[0])
+        runner.trace_dir = trace_dir
         for model in models:
             cases = []
             for case in CASES:
@@ -718,6 +800,7 @@ def main() -> int:
     parser.add_argument("--attempts", type=int, default=ATTEMPTS)
     parser.add_argument("--budget", type=float, default=BUDGET_USD)
     parser.add_argument("--only", action="append", default=[])
+    parser.add_argument("--trace-dir", type=Path, help="write each attempt's whole transcript to DIR/MODEL/CASE/N.json")
     args = parser.parse_args()
     if args.serve_brain:
         if args.brain_port is None or args.token_file is None:
@@ -732,7 +815,7 @@ def main() -> int:
     if not models or args.brain_port is None or args.token_file is None:
         raise SystemExit("name the Brain's port, its token file, and at least one key file")
     brain = (brain_served(args.brain_port), args.token_file)
-    report = run(models, brain, (args.attempts, args.budget), frozenset(args.only))
+    report = run(models, brain, (args.attempts, args.budget), frozenset(args.only), args.trace_dir)
     print(json.dumps(report, indent=2))
     # Any miss, skipped attempt, missing model or case, or budget stop fails the run; no caller reads it as a pass.
     return 0 if report["gate"]["passed"] else 1
