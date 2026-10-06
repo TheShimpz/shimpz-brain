@@ -39,6 +39,7 @@ import dataclasses
 import importlib.util
 import json
 import os
+import re
 import secrets
 import socket
 import sys
@@ -78,7 +79,8 @@ ANSWERS = ("Listar registros DNS", "A cada 30 segundos", "shimpz.com")
 QUESTION_LABEL, ANSWER_LABEL = "Pergunta", "Resposta"
 MAX_CONVERSATION_TEXT = 512
 MAX_SENDS = 6
-ATTEMPTS = 10
+# The owner's release gate: every case passes on every one of 30 attempts per shipped model.
+ATTEMPTS = 30
 BUDGET_USD = 3.0
 # One attempt's conservative reservation: this many Brain calls, each at most this much input and output.
 CALLS_PER_ATTEMPT = 10
@@ -186,6 +188,8 @@ def brain_served(port: int) -> str:
 class Outcome:
     reason: str | None = None
     schedule: dict[str, object] | None = None
+    # A miss's structural root cause, from the shape of the attempt's sends; never message text.
+    cause: str | None = None
 
     def __bool__(self) -> bool:
         return self.reason is None
@@ -208,6 +212,9 @@ class Attempt:
         self.provider = provider
         self.key = key
         self.conversation: list[dict[str, object]] = []
+        # Each send's response kind and the Actions it called, in order; and every answer the person gave.
+        self.sends: list[tuple[str, tuple[str, ...]]] = []
+        self.said: set[str] = set()
 
     def _person(self):
         audit = self.team.modules.local_audit
@@ -223,8 +230,11 @@ class Attempt:
             "request": {"issued_at": int(time.time()), "nonce": secrets.token_hex(16)},
             "timezone": "America/Sao_Paulo",
         }
+        before = len(self.fixture.calls)
         with self._person():
             response = self.team.service.chat("team_1", body, self.provider, self.key)
+        actions = tuple(action for action, _payload in self.fixture.calls[before:])
+        self.sends.append((_kind(response), actions))
         self._remember("user", message)
         self._remember("assistant", str(response.get("reply", "")))
         return response
@@ -259,35 +269,63 @@ class Attempt:
         return result["status"], notices[-1] if notices else None
 
 
-# What the question asks, by its own words only, tried in this order among the answers the person has not given yet:
-# frequency words are the most specific, a "which one" is the zone; an echo of an earlier answer never matches.
-_HINTS = (
-    (ANSWERS[1], ("frequ", "com que", "quando", "intervalo", "periodicidade", "horário", "horario", "quantas vezes")),
+def _kind(response: dict[str, object]) -> str:
+    if "routine_proposal" in response:
+        return "card"
+    if "routine_refusal" in response:
+        return "refusal"
+    return "clarification" if response.get("clarification") is not None else "prose"
+
+
+# What a question asks, by its own words only: each part the person's answers cover, and the result's delivery, which
+# none does. A bare "which" names the zone only when no part matched; an echo of an earlier answer never matches.
+_HINTS: tuple[tuple[str | None, tuple[str, ...]], ...] = (
     (ANSWERS[0], ("trabalho", "o que", "tarefa", "repita", "repetir", "fazer")),
-    (ANSWERS[2], ("zona", "domínio", "dominio", "escopo", "qual", "quais")),
+    (
+        ANSWERS[1],
+        (
+            *("frequ", "com que", "quando", "intervalo", "periodicidade", "horário", "horario", "quantas vezes"),
+            *("segundo", "minuto", "execuç", "limite"),
+        ),
+    ),
+    (ANSWERS[2], ("zona", "domínio", "dominio", "escopo")),
+    (None, ("receber", "resultado", "mostrar", "notific", "mudan")),
 )
+_WHICH = ("qual", "quais")
 
 
-def _pick(question: str, answers: list[str]) -> str | None:
-    """The person's answer that fits the question, else the next one they have not given, else None."""
-    lowered = question.casefold()
-    for answer, words in _HINTS:
-        if answer in answers and any(word in lowered for word in words):
+def _matched(text: str) -> list[str | None]:
+    return [answer for answer, words in _HINTS if any(word in text for word in words)]
+
+
+def _parts(question: str, answers: list[str], given: tuple[str, ...]) -> tuple[list[str], bool]:
+    """The person's answers to every part the question asks, in their own order, and whether a part none covers.
+
+    An answer not given yet is used once; one already given is said again; with no part matched, the next answer not
+    given yet answers it.
+    """
+    whole = question.casefold()
+    # The sentences that ask come first; the surrounding text counts only when they match no part.
+    asked = " ".join(re.findall(r"[^.?!]*\?", whole)) or whole
+    matched = _matched(asked) or _matched(whole)
+    uncovered = None in matched
+    wanted = [answer for answer in matched if answer is not None]
+    if not wanted and any(word in asked for word in _WHICH):
+        wanted = [ANSWERS[2]]
+    parts = [answer for answer in ANSWERS if answer in wanted and (answer in answers or answer in given)]
+    if not parts and not uncovered and answers:
+        parts = [answers[0]]
+    for answer in parts:
+        if answer in answers:
             answers.remove(answer)
-            return answer
-    return answers.pop(0) if answers else None
-
-
-def _repeated(question: str, given: tuple[str, ...]) -> str | None:
-    """A question asked again gets the person's own answer to it again, never another choice made for them."""
-    return _pick(question, [answer for answer, _words in _HINTS if answer in given])
+    return parts, uncovered
 
 
 def _conversation_turns(attempt: Attempt, first: str, answers: list[str]) -> dict[str, object]:
     """Send and answer as Admin composes it until a turn records, the person has nothing left to say, or sends run out.
 
-    A question the person already answered gets that answer again; one their answers do not cover gets Admin's
-    preselected recommended option, as one press of its answer button sends it.
+    Every part of a question gets the person's own answer to it, joined as one typed answer; a part none of their
+    answers covers gets Admin's preselected recommended option, as one press of its answer button sends it.
     """
     message, given = first, tuple(answers)
     response: dict[str, object] = {}
@@ -298,15 +336,16 @@ def _conversation_turns(attempt: Attempt, first: str, answers: list[str]) -> dic
         clarification = response.get("clarification")
         if clarification is not None:
             question = clarification["question"]
+            parts, uncovered = _parts(question, answers, given)
             recommended = clarification["options"][clarification["default_index"]]["label"]
-            answer = _pick(question, answers) or _repeated(question, given) or recommended
+            answer = "; ".join([*parts, *([recommended] if uncovered or not parts else [])])
             message = f"{message.strip()}\n\n{QUESTION_LABEL}: {question}\n{ANSWER_LABEL}: {answer}"
         else:
-            reply = str(response.get("reply", ""))
-            plain = _pick(reply, answers) or _repeated(reply, given)
-            if plain is None:
+            parts, _uncovered = _parts(str(response.get("reply", "")), answers, given)
+            if not parts:
                 return response
-            message = plain
+            message = "; ".join(parts)
+        attempt.said.update(parts)
     return response
 
 
@@ -389,6 +428,34 @@ def every_hour(attempt: Attempt) -> Outcome:
     attempt.fixture.calls.clear()
     response = _conversation_turns(attempt, "Faça isso a cada hora", [])
     return _judged(attempt, response, lambda schedule: schedule == {"kind": "hourly", "every": 1})
+
+
+def _lookup_cause(attempt: Attempt) -> str:
+    """Why the recording turn's calls give no zone reference: how its own Actions relate to the earlier sends'."""
+    recorded = attempt.sends[-1][1] if attempt.sends else ()
+    earlier = {action for _kind, actions in attempt.sends[:-1] for action in actions}
+    if "list-dns-records" not in recorded:
+        return "records-not-listed"
+    if "list-zones" not in recorded:
+        return "reused-earlier-id" if "list-zones" in earlier else "no-zone-lookup"
+    if recorded.index("list-dns-records") < recorded.index("list-zones"):
+        return "lookup-after-use"
+    return "selector-unresolved"
+
+
+def _cause(attempt: Attempt, reason: str) -> str:
+    """A miss's structural root cause, from its closed reason and the shape of the attempt's sends."""
+    if reason == "all-zones":
+        return "acted-on-every-zone"
+    if reason == "calls" or reason.startswith("selector"):
+        return _lookup_cause(attempt)
+    if reason == "schedule":
+        return "frequency-changed" if ANSWERS[1] in attempt.said or not attempt.said else "frequency-unasked"
+    if reason == "no-card":
+        return "sends-exhausted" if len(attempt.sends) >= MAX_SENDS else f"stopped-on-{attempt.sends[-1][0]}"
+    if reason == "refused:routine-recording-empty":
+        return "work-done-before-record" if any(actions for _kind, actions in attempt.sends[:-1]) else "no-work"
+    return reason.split(":", 1)[0]
 
 
 CASES: tuple[tuple[str, Callable[[Attempt], Outcome]], ...] = (
@@ -520,6 +587,8 @@ class Runner:
                 outcome = play(attempt)
             except self.modules.local_app.ApiProblem as exc:
                 outcome = Outcome(f"team:{exc.code}")
+            if not outcome:
+                outcome.cause = _cause(attempt, outcome.reason)
             if outcome and case_id == "owner-4-turns" and self.variants is None:
                 self.variants = variants(attempt)
             harness.doCleanups()
@@ -537,7 +606,7 @@ class Runner:
                 break
             costs.append(spent)
             passed += bool(outcome)
-            misses += [] if outcome else [outcome.reason]
+            misses += [] if outcome else [{"reason": outcome.reason, "cause": outcome.cause}]
             schedules.append(outcome.schedule)
         return _summary(case[0], passed, misses, schedules, costs, stopped)
 
