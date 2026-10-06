@@ -36,7 +36,6 @@ import memory as team_memory
 import provider_cancel
 import provider_client
 import routine_recovery
-import routine_words
 import turn_pins
 import turn_prompt
 from langchain_core.language_models import BaseChatModel
@@ -120,7 +119,7 @@ class ActionDefinition:
     authorization: bool = False
     # The input properties that take one attached file's id (ADR-0093).
     input_files: tuple[str, ...] = ()
-    # The reviewed output schema: only the Routine compiler reads it, never a chat tool (ADR-0092, 2026-10-05, scale).
+    # The reviewed output schema: validated with the contract, never offered to a chat tool (ADR-0092, 2026-10-05).
     output_schema: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -193,14 +192,7 @@ class TurnContext:
     skills: tuple[dict[str, object], ...] | None = None
     # The Team's Routines as data (ADR-0086), pinned like memories; None withholds the Routine tool.
     routines: tuple[dict[str, object], ...] | None = None
-    # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092, 2026-10-04), only beside
-    # ``routines``; only a start compiles, so a resume never reads them.
-    routine_earlier: tuple[str, ...] = ()
-    # The user's Routine draft as Team froze it, kinded parts oldest first, and the answer the user's composed reply
-    # gave to its last question (ADR-0092, 2026-10-05); only beside ``routines``, and only a start reads them.
-    routine_draft: tuple[tuple[str, str], ...] = ()
-    routine_answer: str | None = None
-    # The daily Action steps the Team leaves a new Routine, advisory to its compiler (ADR-0092, 2026-10-05, scale).
+    # The daily Action steps the Team leaves a new Routine, advisory only; Team clamps a cap at the card (ADR-0101).
     routine_capacity: int | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
@@ -254,15 +246,6 @@ def _admit_knowledge(context: TurnContext) -> None:
             object.__setattr__(context, "routines", team_routine.canonical_routines(context.routines))
         except team_routine.RoutineContractError as exc:
             raise RuntimeContractError("invalid routines") from exc
-    try:
-        object.__setattr__(context, "routine_earlier", routine_words.canonical_earlier(context.routine_earlier))
-        object.__setattr__(context, "routine_draft", routine_words.canonical_draft(context.routine_draft))
-        routine_words.canonical_answer(context.routine_answer)
-    except routine_words.RoutineWordsError as exc:
-        raise RuntimeContractError("invalid Routine words") from exc
-    cited = context.routine_earlier or context.routine_draft or context.routine_answer is not None
-    if cited and context.routines is None:
-        raise RuntimeContractError("invalid Routine words")
     if (context.routines is None) != (context.routine_capacity is None) or not (
         context.routine_capacity is None or team_routine.valid_capacity(context.routine_capacity)
     ):
@@ -287,7 +270,7 @@ class TurnResult:
     clarification: clarifier.Clarification | None = None
     # The memory changes this completed logical turn proposed; the Team saves them when its reply commits.
     memory: tuple[team_memory.Change, ...] = ()
-    # The one Routine change its isolated compiler produced (ADR-0092); Team admits and commits it with the reply.
+    # The Routine the agent recorded from this turn's work (ADR-0101); Team builds its card from its own trace.
     routine: dict[str, object] | None = None
 
 
@@ -616,11 +599,7 @@ class AgentRuntime:
                 *turn_attachments.middleware(context.attachments, context.turn_message_id, context.attachment_charge),
                 clarifier.guard(allowed=clarification_allowed),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
-                *(
-                    [team_routine.guard(context, self._routine_compiler(context), allowed=clarification_allowed)]
-                    if routine_tool
-                    else []
-                ),
+                *([team_routine.guard(context)] if routine_tool else []),
                 # The innermost model-call wrapper sees each provider response before any other middleware.
                 _termination_guard_class()(),
             ],
@@ -792,24 +771,17 @@ class AgentRuntime:
             lambda: self._model_factory(context.provider), context.provider.provider, structured_output
         )
 
-    def _routine_compiler(self, context: TurnContext):
-        # One billed call with no hidden provider retry, given the time and output a plan of hundreds of steps needs.
-        return team_routine.bounded_compiler(
-            lambda: self._model_factory.compile(context.provider), context.provider.provider, structured_output
-        )
-
     def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
-        """End the turn on a compiled Routine change or question, remembering exactly the reply the user is shown."""
-        finished = None if state.get("__interrupt__") else team_routine.compiled(list(state.get("messages", ())))
+        """End the turn on a recorded Routine, remembering exactly the reply the user is shown."""
+        finished = None if state.get("__interrupt__") else team_routine.recorded(list(state.get("messages", ())))
         if finished is None:
             return None
-        reply, change, asked = finished
+        reply, recorded = finished
         try:
             agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})
         except Exception as exc:
             raise RuntimeStateError("checkpoint update failed") from exc
-        question = None if asked is None else clarifier.parse(asked, routine=True)
-        return TurnResult(status="completed", reply=reply, routine=change, clarification=question)
+        return TurnResult(status="completed", reply=reply, routine=recorded)
 
     def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
         """Attach a completed turn's independently confirmed memory changes."""
@@ -849,31 +821,6 @@ class AgentRuntime:
         return routine_recovery.decide(
             functools.partial(self._single_attempt_model, provider, decision=True), provider.provider, request
         )
-
-    def routine_compile(
-        self,
-        provider: ProviderConfig,
-        message: str,
-        assistants: tuple[AssistantDefinition, ...],
-        locale: str | None,
-        draft: tuple[tuple[str, str], ...],
-        capacity: int,
-    ) -> object:
-        """Recompile a Routine from its Team-held words, with no turn, tools, or history (ADR-0092).
-
-        ``message`` is the sealed words' last part and ``draft`` every part before it; ``capacity`` is the daily
-        business steps the Team leaves the recreated Routine.
-        """
-        try:
-            draft = routine_words.canonical_sealed(draft)
-        except routine_words.RoutineWordsError as exc:
-            raise RuntimeContractError("invalid Routine words") from exc
-        if not team_routine.valid_capacity(capacity):
-            raise RuntimeContractError("invalid Routine capacity")
-        ask = team_routine.bounded_compiler(
-            functools.partial(self._model_factory.compile, provider), provider.provider, structured_output
-        )
-        return team_routine.recompile(message, assistants, locale, ask, draft, capacity)
 
     def capability_plan(
         self,
@@ -985,7 +932,9 @@ class AgentRuntime:
                 self._ensure_resume_window(context, history, results)
                 agent = self._agent(context, clarification_allowed=False)
                 state = agent.invoke(Command(resume=dict(results)), config=self._config(context))
-                result = self._settle(agent, context, state, message_offset=message_offset)
+                result = self._finish_routine(agent, context, state) or self._settle(
+                    agent, context, state, message_offset=message_offset
+                )
         except RuntimeContractError, RuntimeStateError, ProviderResponseError, ImportError:
             raise
         except turn_attachments.AttachmentContractError as exc:

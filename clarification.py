@@ -82,8 +82,8 @@ class Option:
 class Clarification:
     question: str
     options: tuple[Option, ...]
-    # The recommended option, or None for a Routine question, which recommends and preselects none (ADR-0092).
-    default_index: int | None
+    # The recommended option.
+    default_index: int
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -123,14 +123,12 @@ def _required(value: str | None) -> str:
     return value
 
 
-def _closed(arguments: object, routine: bool) -> Clarification:
+def _closed(arguments: object) -> Clarification:
     if not isinstance(arguments, dict) or set(arguments) != {"question", "options", "default_index"}:
         raise _ClarificationContractError
     question = _required(_line(arguments["question"], MAX_QUESTION_CHARS))
     raw_options = arguments["options"]
-    # A Routine question recommends nothing and may offer a single suggestion beside the free-text answer.
-    minimum = 1 if routine else MIN_OPTIONS
-    if not isinstance(raw_options, list) or not minimum <= len(raw_options) <= MAX_OPTIONS:
+    if not isinstance(raw_options, list) or not MIN_OPTIONS <= len(raw_options) <= MAX_OPTIONS:
         raise _ClarificationContractError
     options = []
     for raw in raw_options:
@@ -146,21 +144,15 @@ def _closed(arguments: object, routine: bool) -> Clarification:
     recommended = (
         not isinstance(default_index, bool) and isinstance(default_index, int) and 0 <= default_index < len(options)
     )
-    if len({option.label.casefold() for option in options}) != len(options) or (
-        default_index is not None if routine else not recommended
-    ):
+    if len({option.label.casefold() for option in options}) != len(options) or not recommended:
         raise _ClarificationContractError
     return Clarification(question, tuple(options), default_index)
 
 
-def parse(arguments: object, *, routine: bool = False) -> Clarification | None:
-    """Return the closed clarification, or None when any field breaks the contract.
-
-    An ordinary question recommends exactly one option; a Routine question (``routine``) recommends none, so its
-    ``default_index`` is null and the person's choice is never preselected (ADR-0092 amendment, 2026-10-05).
-    """
+def parse(arguments: object) -> Clarification | None:
+    """Return the closed clarification, or None when any field breaks the contract: it recommends exactly one option."""
     try:
-        return _closed(arguments, routine)
+        return _closed(arguments)
     except _ClarificationContractError:
         return None
 

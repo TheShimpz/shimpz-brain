@@ -51,7 +51,7 @@ DNS = agent_runtime.AssistantDefinition(
     # record (2026-09-28), which is sound behavior that the exact-round cases would count as a miss.
     genesis="DNS manages the user's DNS zones and records.",
     actions=(
-        # Every published Action declares its output schema, which only the Routine compiler reads (ADR-0092, scale).
+        # Every published Action declares its output schema, which Brain validates (ADR-0092, scale).
         agent_runtime.ActionDefinition(
             "list-zones",
             "List the user's DNS zones.",

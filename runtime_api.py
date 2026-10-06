@@ -26,7 +26,6 @@ import memory as team_memory
 import model_usage
 import provider_cancel
 import routine_recovery
-import routine_words
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
@@ -140,16 +139,10 @@ class TurnContextInput(ClosedInput):
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
     # The procedures the Team learned (ADR-0085); null where learning is unavailable.
     skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
-    # The Team's Routines as data (ADR-0086) and the daily Action steps it leaves a new one (ADR-0092, 2026-10-05,
-    # scale); null withholds the Routine tool.
+    # The Team's Routines as data (ADR-0086) and the daily Action steps it leaves a new one, advisory (ADR-0101); null
+    # withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
     routine_capacity: StrictInt | None
-    # The user's own earlier sends Team froze for a Routine request to cite (ADR-0092), only beside routines.
-    routine_earlier: list[str] = Field(max_length=routine_words.MAX_EARLIER)
-    # The user's Routine draft as Team froze it, and the answer a composed reply gave to its question (ADR-0092,
-    # 2026-10-05); only beside routines.
-    routine_draft: list[dict[str, Any]] = Field(max_length=routine_words.MAX_DRAFT_PARTS)
-    routine_answer: str | None = Field(max_length=routine_words.MAX_ANSWER_CHARS)
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
@@ -171,9 +164,6 @@ class TurnContextInput(ClosedInput):
             memories=_memories(self.memories),
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
-            routine_earlier=tuple(self.routine_earlier),
-            routine_draft=tuple(self.routine_draft),
-            routine_answer=self.routine_answer,
             routine_capacity=self.routine_capacity,
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
@@ -326,26 +316,6 @@ class RoutineRecoveryInput(ClosedInput):
         )
 
 
-class RoutineCompileInput(ClosedInput):
-    """A Team-held Routine creation message and the Team's current Assistant contracts, compiled from scratch."""
-
-    provider: ProviderInput
-    locale: interface_language.Locale | None
-    message: str = Field(min_length=1, max_length=team_routine.MAX_SOURCE_CHARS)
-    # Every sealed part before the message, kinded and oldest first (ADR-0092 amendments, 2026-10-04 and 2026-10-05).
-    draft: list[dict[str, Any]] = Field(max_length=routine_words.MAX_PARTS - 1)
-    # The daily Action steps the Team leaves the recreated Routine, advisory to the compiler.
-    capacity: StrictInt
-    assistants: list[AssistantInput] = Field(min_length=1, max_length=agent_runtime.MAX_ASSISTANTS)
-
-    @field_validator("assistants")
-    @classmethod
-    def unique_assistants(cls, value: list[AssistantInput]) -> list[AssistantInput]:
-        if len({assistant.id for assistant in value}) != len(value):
-            raise ValueError("duplicate Assistant id")
-        return value
-
-
 class CapabilityIntegrationInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=128)
@@ -474,16 +444,6 @@ class RuntimeLike:
     def routine_recovery(
         self, provider: agent_runtime.ProviderConfig, request: routine_recovery.RecoveryRequest
     ) -> str: ...
-
-    def routine_compile(
-        self,
-        provider: agent_runtime.ProviderConfig,
-        message: str,
-        assistants: tuple[agent_runtime.AssistantDefinition, ...],
-        locale: str | None,
-        earlier: tuple[str, ...],
-        capacity: int,
-    ) -> object: ...
 
     def intent_route(
         self,
@@ -780,35 +740,6 @@ def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], Runti
         return {"decision": decision, "usage": usage}
 
 
-def _compiled_response(outcome: object) -> dict[str, object]:
-    """One closed compile answer: the wire change, reply, and any question, or the closed refusal reason."""
-    if isinstance(outcome, dict):
-        return {
-            "routine": outcome["routine"],
-            "reply": outcome["reply"],
-            "clarification": outcome.get("clarification"),
-            "refusal": None,
-        }
-    return {"routine": None, "reply": None, "clarification": None, "refusal": outcome}
-
-
-def _register_routine_compile(app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth) -> None:
-    """A Routine compiled from scratch from its Team-held creation message, outside any turn (ADR-0092)."""
-
-    @app.post("/v1/routine-compile", dependencies=[Depends(require_auth)])
-    async def routine_compile(request: Request, body: RoutineCompileInput) -> dict[str, object]:
-        # Team's Stop or deletion closes its request; that cancels only this compile's provider I/O.
-        draft, capacity = tuple(body.draft), body.capacity
-        outcome, usage = await _cancellable(
-            request,
-            lambda: current_runtime().routine_compile(
-                body.provider.runtime(), body.message, _assistants(body.assistants), body.locale, draft, capacity
-            ),
-            "Routine compile cancelled",
-        )
-        return {**_compiled_response(outcome), "usage": usage}
-
-
 def _register_intent_route(
     app: FastAPI,
     current_runtime: Callable[[], RuntimeLike],
@@ -950,7 +881,6 @@ def create_app(
 
     _register_intent_route(app, current_runtime, require_auth)
     _register_routine_recovery(app, current_runtime, require_auth)
-    _register_routine_compile(app, current_runtime, require_auth)
 
     return app
 
