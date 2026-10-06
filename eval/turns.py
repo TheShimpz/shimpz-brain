@@ -25,7 +25,7 @@ import dataclasses
 import json
 import re
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -299,22 +299,25 @@ def language_proxy(text: str) -> str:
     return "pt" if pt > en else "en" if en > pt else ""
 
 
-def _round_matches(expected: Round, actions: tuple[agent_runtime.ActionRequest, ...]) -> bool:
-    remaining = list(expected.actions)
-    for request in actions:
-        match = next(
-            (
-                item
-                for item in remaining
-                if (item.assistant, item.action) == (request.assistant_id, request.action)
-                and (item.arguments is None or dict(request.input) == dict(item.arguments))
-            ),
-            None,
-        )
+def _item_matches(item: Expected, request: agent_runtime.ActionRequest) -> bool:
+    """The request calls this expected Action, with its exact arguments when the expectation pins them."""
+    return (item.assistant, item.action) == (request.assistant_id, request.action) and (
+        item.arguments is None or dict(request.input) == dict(item.arguments)
+    )
+
+
+def _consume_all(remaining: list[Expected], requests: Sequence[agent_runtime.ActionRequest]) -> bool:
+    """Every request consumes one distinct matching expectation, and none is left over."""
+    for request in requests:
+        match = next((item for item in remaining if _item_matches(item, request)), None)
         if match is None:
             return False
         remaining.remove(match)
     return not remaining
+
+
+def _round_matches(expected: Round, actions: tuple[agent_runtime.ActionRequest, ...]) -> bool:
+    return _consume_all(list(expected.actions), actions)
 
 
 def _reply_matches(case: TurnCase, reply: str) -> bool:
@@ -346,9 +349,7 @@ def _expected_result(case: TurnCase, request: agent_runtime.ActionRequest) -> Ma
     """The scripted result of the first expected Action this request matches, a lookup's result, or None."""
     for current in case.rounds:
         for item in current.actions:
-            if (item.assistant, item.action) == (request.assistant_id, request.action) and (
-                item.arguments is None or dict(request.input) == dict(item.arguments)
-            ):
+            if _item_matches(item, request):
                 return current.result
     return READ_ACTIONS.get((request.assistant_id, request.action))
 
@@ -358,20 +359,7 @@ def _writes_match(case: TurnCase, writes: list[agent_runtime.ActionRequest]) -> 
     remaining = [
         item for current in case.rounds for item in current.actions if (item.assistant, item.action) not in READ_ACTIONS
     ]
-    for request in writes:
-        match = next(
-            (
-                item
-                for item in remaining
-                if (item.assistant, item.action) == (request.assistant_id, request.action)
-                and (item.arguments is None or dict(request.input) == dict(item.arguments))
-            ),
-            None,
-        )
-        if match is None:
-            return False
-        remaining.remove(match)
-    return not remaining
+    return _consume_all(remaining, writes)
 
 
 def run_outcome(
