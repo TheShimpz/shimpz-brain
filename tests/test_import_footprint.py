@@ -129,24 +129,33 @@ class RuntimeImportFootprintTests(unittest.TestCase):
             with self.subTest(deferred=deferred):
                 self.assertFalse(module_states[deferred])
 
-    def test_each_provider_import_keeps_the_other_adapter_deferred(self) -> None:
-        for provider, other in (("openai", "anthropic"), ("anthropic", "openai")):
-            with self.subTest(provider=provider):
-                module_states = self._probe(provider)
+    # Each provider's probe is a test of its own, so a pooled runner starts the fresh interpreters side by side.
+    def _assert_provider_import(self, provider: str, other: str) -> None:
+        module_states = self._probe(provider)
 
-                self.assertTrue(module_states[f"langchain_{provider}"])
-                self.assertFalse(module_states[f"langchain_{other}"])
-                self.assertFalse(module_states["langchain.agents"])
+        self.assertTrue(module_states[f"langchain_{provider}"])
+        self.assertFalse(module_states[f"langchain_{other}"])
+        self.assertFalse(module_states["langchain.agents"])
 
-    def test_serving_path_loads_only_the_selected_provider_adapter(self) -> None:
-        for provider, other in (("openai", "anthropic"), ("anthropic", "openai")):
-            with self.subTest(provider=provider):
-                module_states = self._probe(f"serving-{provider}")
+    def test_the_openai_import_keeps_the_anthropic_adapter_deferred(self) -> None:
+        self._assert_provider_import("openai", "anthropic")
 
-                self.assertTrue(module_states[f"langchain_{provider}"])
-                self.assertFalse(module_states[f"langchain_{other}"])
-                self.assertTrue(module_states["langchain.agents"])
-                self.assertTrue(module_states["langgraph.types"])
+    def test_the_anthropic_import_keeps_the_openai_adapter_deferred(self) -> None:
+        self._assert_provider_import("anthropic", "openai")
+
+    def _assert_serving_path(self, provider: str, other: str) -> None:
+        module_states = self._probe(f"serving-{provider}")
+
+        self.assertTrue(module_states[f"langchain_{provider}"])
+        self.assertFalse(module_states[f"langchain_{other}"])
+        self.assertTrue(module_states["langchain.agents"])
+        self.assertTrue(module_states["langgraph.types"])
+
+    def test_the_openai_serving_path_loads_only_the_openai_adapter(self) -> None:
+        self._assert_serving_path("openai", "anthropic")
+
+    def test_the_anthropic_serving_path_loads_only_the_anthropic_adapter(self) -> None:
+        self._assert_serving_path("anthropic", "openai")
 
 
 if __name__ == "__main__":

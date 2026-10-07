@@ -426,7 +426,9 @@ class ProductionAdmissionTests(unittest.TestCase):
     def test_fifteen_small_requests_fill_the_budget(self):
         statuses, refused, read = asyncio.run(self._held([1] * 15))
         self.assertEqual((statuses, refused[0], read), ([408] * 15, 503, 0))
-        statuses, refused, read = asyncio.run(self._held([1] * 14))
+
+    def test_fourteen_small_requests_leave_room_for_one_more(self):
+        statuses, refused, _read = asyncio.run(self._held([1] * 14))
         self.assertEqual((statuses, refused[0]), ([408] * 14, 408))
 
 
