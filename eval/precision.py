@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import dataclasses
+import functools
 import hashlib
 import json
 import math
@@ -817,15 +818,19 @@ def validate() -> dict[str, object]:
 
 
 def brain_assistants(scenario: corpus.Scenario, contracts: str = "a") -> tuple:
+    return tuple(_brain_assistant(contracts, name) for name in scenario.assistants)
+
+
+@functools.cache
+def _brain_assistant(contracts: str, name: str) -> object:
+    """One contract set's Assistant as Brain admits it; the sets are constants, so each is validated once."""
     import agent_runtime
 
-    return tuple(
-        agent_runtime.AssistantDefinition(
-            assistant.id,
-            assistant.genesis,
-            tuple(agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema) for a in assistant.actions),
-        )
-        for assistant in (CONTRACTS[contracts][name] for name in scenario.assistants)
+    assistant = CONTRACTS[contracts][name]
+    return agent_runtime.AssistantDefinition(
+        assistant.id,
+        assistant.genesis,
+        tuple(agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema) for a in assistant.actions),
     )
 
 
