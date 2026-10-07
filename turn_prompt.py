@@ -315,6 +315,6 @@ def system_prompt(context: TurnContext) -> str:
         f"{_attachments_section(context.attachments)}"
         f"{_language_section(context.locale)}"
         # The date changes daily, so it stays last and everything before it remains a stable cacheable prefix.
-        f"Current date: {context.turn_date.isoformat()} (UTC). "
+        f"Current date: {context.turn_date.isoformat()} ({context.timezone}). "
         "When the user's local date could differ and it matters, say which date you used."
     )

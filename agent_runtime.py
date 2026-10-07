@@ -185,8 +185,10 @@ class TurnContext:
     team_name: str
     assistants: tuple[AssistantDefinition, ...]
     provider: ProviderConfig
-    # The trusted UTC date the logical turn reasons with; a resumed turn keeps the date its start recorded.
+    # The trusted date the logical turn reasons with and the zone it is the date in: Team's date of the person's send
+    # in the person's zone, else the UTC date today. A resumed turn keeps the date and zone its start recorded.
     turn_date: datetime.date = field(default_factory=turn_prompt.today)
+    timezone: str = turn_pins.DEFAULT_ZONE
     # What the Team remembers about the user (ADR-0084); None where memory is unavailable. A resumed turn keeps the
     # memories its start recorded.
     memories: tuple[team_memory.Memory, ...] | None = None
@@ -214,7 +216,7 @@ class TurnContext:
     attachment_charge: int = 0
 
     def __post_init__(self) -> None:
-        if type(self.turn_date) is not datetime.date:
+        if type(self.turn_date) is not datetime.date or not turn_pins.valid_zone(self.timezone):
             raise RuntimeContractError("invalid turn date")
         if not turn_pins.valid_turn(self.locale, self.turn_message_id, started=False):
             raise RuntimeContractError("invalid turn language or message")
@@ -328,6 +330,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         capacity = turn_pins.restore_capacity(metadata)
         provider, model = turn_pins.restore_model(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
+        zone = turn_pins.restore_zone(metadata)
         commitment, charge = turn_pins.restore_attachments(metadata)
     except turn_pins.PinError as exc:
         raise RuntimeStateError("checkpoint state is invalid") from exc
@@ -342,6 +345,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         # The turn finishes on the model it started on, whatever model the resume names (ADR-0101).
         provider=replace(context.provider, model=model),
         turn_date=turn_date,
+        timezone=zone,
         memories=rules,
         skills=skills,
         routines=routines,
@@ -630,6 +634,7 @@ class AgentRuntime:
                 **turn_pins.record_capacity(context.routine_capacity),
                 **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
+                **turn_pins.record_zone(context.timezone),
                 **turn_pins.record_attachments(
                     turn_attachments.commitment(context.attachments), context.attachment_charge
                 ),

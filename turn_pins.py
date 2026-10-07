@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime
 import json
 import re
+import zoneinfo
 from collections.abc import Mapping
 
 import interface_language
@@ -26,6 +27,10 @@ CAPACITY_METADATA = "shimpz_turn_routine_capacity"
 MODEL_METADATA = "shimpz_turn_model"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
+ZONE_METADATA = "shimpz_turn_zone"
+# The zone a turn's date was read in: UTC unless Team names the person's own IANA zone.
+DEFAULT_ZONE = "UTC"
+MAX_ZONE_CHARS = 64
 MESSAGE_METADATA = "shimpz_turn_message"
 ATTACHMENTS_METADATA = "shimpz_turn_attachments"
 # An ordinary turn's message id, or an attachment turn's, which the next new turn forgets whole (ADR-0093).
@@ -191,6 +196,28 @@ def restore_turn(metadata: Mapping[str, object]) -> tuple[str | None, str]:
     if not valid_turn(locale, message_id) or _json(locale) != locale_value or _json(message_id) != message_value:
         raise PinError("recorded turn pins are invalid")
     return locale, message_id
+
+
+def record_zone(zone: str) -> dict[str, str]:
+    """The checkpoint entry naming the zone the turn's pinned date was read in."""
+    return {ZONE_METADATA: _json(zone)}
+
+
+def restore_zone(metadata: Mapping[str, object]) -> str:
+    """The exact zone a start recorded; anything else, a missing pin included, is corrupt state."""
+    value = metadata.get(ZONE_METADATA)
+    zone = _decoded(value)
+    if not valid_zone(zone) or _json(zone) != value:
+        raise PinError("recorded turn pins are invalid")
+    return zone
+
+
+def valid_zone(zone: object) -> bool:
+    """Whether ``zone`` is one IANA zone name this runtime knows, exactly as written."""
+    return isinstance(zone, str) and 0 < len(zone) <= MAX_ZONE_CHARS and zone in _ZONES
+
+
+_ZONES = frozenset(zoneinfo.available_timezones()) | {DEFAULT_ZONE}
 
 
 def record_attachments(commitment: str, charge: int) -> dict[str, str]:

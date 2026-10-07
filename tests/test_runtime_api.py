@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import secrets
 import sqlite3
 import tempfile
@@ -212,6 +213,31 @@ class RuntimeApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(runtime.calls[0][1].assistants, ())
+
+    def test_a_start_reasons_with_the_persons_date_in_their_zone(self):
+        runtime = FakeRuntime(result=agent_runtime.TurnResult(status="completed", reply="ok"))
+        clock = {"date": "2026-10-06", "timezone": "America/Sao_Paulo"}
+        response = client(runtime).post("/v1/turns", json=body(turn_clock=clock), headers=AUTH)
+        self.assertEqual(response.status_code, 200)
+        started = runtime.calls[0][1]
+        self.assertEqual((started.turn_date, started.timezone), (datetime.date(2026, 10, 6), "America/Sao_Paulo"))
+        response = client(FakeRuntime()).post("/v1/turns", json=body(), headers=AUTH)
+        self.assertEqual(response.status_code, 200)
+        for invalid in (
+            {"date": "2026-10-06", "timezone": "Mars/Olympus"},
+            {"date": "2026-02-30", "timezone": "UTC"},
+            {"date": "06/10/2026", "timezone": "UTC"},
+            {"date": "2026-10-06"},
+            {"date": "2026-10-06", "timezone": "UTC", "offset": 0},
+        ):
+            with self.subTest(invalid=invalid):
+                refused = client(FakeRuntime()).post("/v1/turns", json=body(turn_clock=invalid), headers=AUTH)
+                self.assertEqual(refused.status_code, 422)
+        resume = {key: value for key, value in body().items() if key not in {"message", "conversation", "locale"}}
+        refused = client(FakeRuntime()).post(
+            "/v1/turns/resume", json={**resume, "results": {"i": {}}, "turn_clock": clock}, headers=AUTH
+        )
+        self.assertEqual(refused.status_code, 422)
 
     def test_action_request_contains_only_controller_action_data(self):
         runtime = FakeRuntime(

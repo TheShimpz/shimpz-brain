@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import gc
 import hmac
 import os
@@ -26,6 +27,7 @@ import memory as team_memory
 import model_usage
 import provider_cancel
 import routine_recovery
+import turn_pins
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
@@ -226,10 +228,32 @@ class ConversationEntryInput(ClosedInput):
         return intent_route.ConversationEntry(self.role, self.text, self.truncated)
 
 
+class TurnClockInput(ClosedInput):
+    """Team's date of the person's send in the person's own zone (ADR-0101): the date the turn reasons with."""
+
+    date: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    timezone: str = Field(min_length=1, max_length=turn_pins.MAX_ZONE_CHARS)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        if not turn_pins.valid_zone(value):
+            raise ValueError("invalid turn timezone")
+        return value
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: str) -> str:
+        datetime.date.fromisoformat(value)
+        return value
+
+
 class StartTurnInput(TurnContextInput):
     message: str = Field(min_length=1, max_length=agent_runtime.MAX_MESSAGE_CHARS)
     # The interface language this logical turn writes in (ADR-0090); null follows the user's message. Its start pins it.
     locale: interface_language.Locale | None
+    # The person's date and zone, which only a start sends; absent reasons with today's UTC date. Its start pins both.
+    turn_clock: TurnClockInput | None = None
     # Eight entries of at most 512 characters cannot exceed the 4,096-character window total.
     conversation: list[ConversationEntryInput] = Field(max_length=intent_route.MAX_CONVERSATION_ENTRIES)
 
@@ -237,7 +261,11 @@ class StartTurnInput(TurnContextInput):
         return tuple(entry.runtime_entry() for entry in self.conversation)
 
     def runtime_context(self) -> agent_runtime.TurnContext:
-        return replace(super().runtime_context(), locale=self.locale)
+        context = replace(super().runtime_context(), locale=self.locale)
+        if self.turn_clock is None:
+            return context
+        date = datetime.date.fromisoformat(self.turn_clock.date)
+        return replace(context, turn_date=date, timezone=self.turn_clock.timezone)
 
 
 class ResumeTurnInput(TurnContextInput):

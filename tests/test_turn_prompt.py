@@ -47,6 +47,14 @@ class PromptTests(unittest.TestCase):
         )
         self.assertLess(prompt.index("Enabled Assistant contracts"), prompt.index("Current date:"))
 
+    def test_the_turn_date_names_the_zone_it_is_the_date_in(self):
+        turn = dataclasses.replace(context(), turn_date=TODAY, timezone="America/Sao_Paulo")
+        self.assertIn("Current date: 2026-09-29 (America/Sao_Paulo). ", turn_prompt.system_prompt(turn))
+        self.assertEqual(context().timezone, "UTC")
+        for zone in ("Mars/Olympus", "america/sao_paulo", "", None, 1):
+            with self.subTest(zone=zone), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "turn date"):
+                dataclasses.replace(context(), timezone=zone)
+
     def test_today_is_the_current_utc_date_and_the_default_turn_date(self):
         before = datetime.datetime.now(datetime.UTC).date()
         value = turn_prompt.today()
@@ -83,6 +91,32 @@ class PinnedDateTests(unittest.TestCase):
         runtime.start(resumed, "And now?")
         dates = [system_text(messages).rsplit("Current date: ", 1)[1][:10] for messages in model.seen_messages]
         self.assertEqual(dates, ["2026-09-28", "2026-09-28", "2026-09-29"])
+
+    def test_a_turn_resumed_after_midnight_keeps_the_zone_it_started_with(self):
+        RecordingToolAwareFakeModel.seen_messages = []
+        model = RecordingToolAwareFakeModel(
+            responses=[
+                AIMessage(content="", tool_calls=[{"name": ACTION_TOOL, "args": {}, "id": "a1"}]),
+                AIMessage(content="Done."),
+            ]
+        )
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        started = dataclasses.replace(context(), turn_date=YESTERDAY, timezone="America/Sao_Paulo")
+        suspended = runtime.start(started, "Greet Ada")
+        # The resume names no zone of its own: the start's date and zone come back from its pins.
+        resumed = dataclasses.replace(started, turn_date=TODAY, timezone="UTC")
+        runtime.resume(resumed, {suspended.actions[0].interrupt_id: {"message": "hi"}})
+        dates = [system_text(messages).rsplit("Current date: ", 1)[1][:30] for messages in model.seen_messages]
+        self.assertEqual(dates, ["2026-09-28 (America/Sao_Paulo)", "2026-09-28 (America/Sao_Paulo)"])
+
+    def test_only_an_exact_recorded_zone_is_accepted(self):
+        self.assertEqual(turn_pins.restore_zone(turn_pins.record_zone("America/Sao_Paulo")), "America/Sao_Paulo")
+        self.assertEqual(turn_pins.restore_zone(turn_pins.record_zone("UTC")), "UTC")
+        for value in (None, 1, '"Mars/Olympus"', '"UTC" ', "UTC", "not json", '"' + "a" * 70 + '"'):
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_zone({turn_pins.ZONE_METADATA: value})
+        with self.assertRaises(turn_pins.PinError):
+            turn_pins.restore_zone({})
 
     def test_only_an_exact_recorded_date_is_accepted(self):
         def pins(date: object) -> dict[str, object]:
