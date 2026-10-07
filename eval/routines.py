@@ -4,8 +4,11 @@ Brain and Team each define top-level ``routine`` and ``protocol`` packages, so t
 with ``--serve-brain`` from Brain, this file serves Brain's real runtime API on loopback in its own process, with an
 in-memory checkpoint and a fresh bearer it writes to a new owner-only token file, and otherwise it drives the eval under
 Team's environment. Its Team is an in-process Local controller built by Team's test harness, its
-Brain is Team's own ``BrainRuntimeClient`` over that loopback HTTP, and its one Assistant is the reference
-Cloudflare-shaped Assistant whose Action calls a fixture answers with results its reviewed output schemas admit. Every
+Brain is Team's own ``BrainRuntimeClient`` over that loopback HTTP, and its one Assistant is the real Cloudflare
+Assistant project (``--assistant``, default ~/shimpz-cloudflare): its own manifest, Genesis, and the machine contract
+its pinned SDK generates from its source, exactly as staging generates it, admitted through Team's Local snapshot
+parsers. Only its provider is simulated: a fixture answers its reads with results its output schemas admit and fails
+any other call, so a change never passes as done. Every
 send runs as the person, with the fresh request identity an Admin send carries, and a clarification is answered exactly
 as Admin composes it.
 
@@ -50,14 +53,18 @@ import dataclasses
 import json
 import os
 import secrets
+import subprocess
 import sys
 import tempfile
+import tomllib
+import types
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from unittest import mock
 
 if __package__:
     from eval.routines_fixture import (
+        ASSISTANT,
         ATTEMPTS,
         BRAIN,
         BUDGET_USD,
@@ -74,7 +81,9 @@ if __package__:
         Fixture,
         eval_cost,
         eval_stats,
+        record,
         records,
+        zone,
         zones,
     )
     from eval.routines_person import OUTPUT_LABELS, Attempt, Outcome, Team
@@ -82,6 +91,7 @@ if __package__:
     from eval.routines_strata import CASES, VARIANT_STRATA, _cause, variants
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
+        ASSISTANT,
         ATTEMPTS,
         BRAIN,
         BUDGET_USD,
@@ -98,7 +108,9 @@ else:  # run as a script from Team, beside its sibling modules
         Fixture,
         eval_cost,
         eval_stats,
+        record,
         records,
+        zone,
         zones,
     )
     from routines_person import OUTPUT_LABELS, Attempt, Outcome, Team
@@ -110,18 +122,60 @@ else:  # run as a script from Team, beside its sibling modules
 TEAMS = BRAIN.parent / "teams"
 
 
-CONTRACT = TEAMS / "tests" / "fixtures" / "reference-assistant" / "shimpz.contract.json"
+# The real Assistant project the eval's Team runs, with its provider simulated; --assistant names another checkout.
+ASSISTANT_PROJECT = Path.home() / ASSISTANT
 
 
-def validate() -> None:
-    """Offline: every fixture result validates against the reference Assistant's reviewed output schemas."""
+@dataclasses.dataclass(frozen=True)
+class Generated:
+    """The Assistant's own manifest and the machine contract its pinned SDK generates from its source."""
+
+    manifest: bytes
+    contract: bytes
+
+
+def _isolated(python: Path, *arguments: str) -> subprocess.CompletedProcess:
+    # Isolated and without bytecode, as the CLI runs an Assistant's SDK, so no caller path can shadow it.
+    return subprocess.run([str(python), "-I", "-B", *arguments], capture_output=True, check=False)
+
+
+def generated(project: Path) -> Generated:
+    """Generate the contract exactly as staging does in the image, with the SDK version the project pins."""
+    python = project / ".venv" / "bin" / "python"
+    pins = [
+        item
+        for item in tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+        if item.startswith("shimpz==")
+    ]
+    probe = _isolated(
+        python,
+        "-c",
+        "import importlib.metadata, sys; print(*sys.version_info[:2], importlib.metadata.version('shimpz'))",
+    )
+    if len(pins) != 1 or probe.returncode != 0 or probe.stdout.split() != [b"3", b"14", pins[0][8:].encode()]:
+        raise SystemExit(f"{project}/.venv must run Python 3.14 with the SDK version its pyproject pins")
+    contract = _isolated(python, "-m", "shimpz._bridge", "contract", str(project))
+    if contract.returncode != 0:
+        raise SystemExit(f"the SDK in {project}/.venv could not generate the Assistant's machine contract")
+    return Generated((project / "shimpz.toml").read_bytes(), contract.stdout)
+
+
+def validate(assistant: Generated) -> None:
+    """Offline: every simulated result validates against the real Assistant's generated output schemas."""
     from jsonschema import Draft202012Validator
 
-    actions = {item["id"]: item for item in json.loads(CONTRACT.read_text(encoding="utf-8"))["actions"]}
+    actions = {item["id"]: item for item in json.loads(assistant.contract)["actions"]}
+    missing = {"list-zones", "list-dns-records", "get-zone", "get-dns-record"} - set(actions)
+    if missing:
+        raise SystemExit(f"the Assistant's contract has no {sorted(missing)}, which the fixture simulates")
     for value in (zones(), zones(MOVED), zones(twin=True)):
         Draft202012Validator(actions["list-zones"]["output_schema"]).validate(value)
-    for zone in (SHIMPZ, MOVED, TWIN, EXAMPLE):
-        Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone))
+        for item in value["zones"]:
+            Draft202012Validator(actions["get-zone"]["output_schema"]).validate(zone(item["id"]))
+    for zone_id in (SHIMPZ, MOVED, TWIN, EXAMPLE):
+        Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone_id))
+        for item in records(zone_id)["records"]:
+            Draft202012Validator(actions["get-dns-record"]["output_schema"]).validate(record(zone_id, item["id"]))
     from protocol.http.v1 import routine_proposal as http_routine_proposal
 
     if http_routine_proposal.OUTPUT_CHOICES["pt"] != OUTPUT_LABELS:
@@ -143,9 +197,11 @@ class Modules:
     local_authority: object
     http_routine_proposal: object
     record: object
+    # The real Assistant every attempt's Team runs, admitted once.
+    assistant: Admitted
 
 
-def _team_modules() -> Modules:
+def _team_modules(assistant: Generated) -> Modules:
     sys.path[:0] = [str(TEAMS), str(TEAMS / "tests")]
     import local_controller_harness
 
@@ -168,6 +224,7 @@ def _team_modules() -> Modules:
         local_authority,
         http_routine_proposal,
         record,
+        admitted(assistant),
     )
 
 
@@ -209,6 +266,77 @@ def _traced(client, fixture: Fixture):
     return client
 
 
+@dataclasses.dataclass(frozen=True)
+class Admitted:
+    """The real Assistant as Team's Local snapshot admission reads it: its binding's declarations, pack, and Genesis."""
+
+    declarations: dict[str, object]
+    pack: object
+    genesis: str
+
+
+def admitted(assistant: Generated) -> Admitted:
+    """Admit the generated manifest and contract through Team's own Local snapshot parsers (local/install/snapshots)."""
+    from assistant import manifest as assistant_manifest
+    from assistant import spec as assistant_spec
+    from tests import human_request_fixtures
+
+    identity = assistant_manifest.parse_manifest_identity(assistant.manifest)
+    if identity.assistant_id != ASSISTANT:
+        raise SystemExit(f"the Assistant project is {identity.assistant_id}, not {ASSISTANT}")
+    declared = assistant_manifest.parse_manifest_contract(assistant.manifest)
+    machine_contract = assistant_manifest.parse_machine_contract(
+        assistant.contract,
+        declared.integrations,
+        declared.stored_inputs,
+        summary=identity.summary,
+        allowed_hosts=declared.allowed_hosts,
+    )
+    contract = assistant_spec.runtime_contract(
+        {
+            "summary": identity.summary,
+            "allowed_hosts": list(declared.allowed_hosts),
+            "integrations": [
+                {"id": item.id, "provider": item.provider, "scopes": list(item.scopes)}
+                for item in declared.integrations
+            ],
+            "stored_inputs": [item.document() for item in declared.stored_inputs],
+            "machine_contract": machine_contract,
+        }
+    )
+    # The real catalog in an admitted pack; its non-English entries are the test harness's, not the Assistant's.
+    pack = human_request_fixtures.pack_for(machine_contract["messages"])
+    declarations = {
+        "version": identity.version,
+        "name": identity.name,
+        "summary": identity.summary,
+        "actions": contract.actions,
+        "allowed_hosts": contract.allowed_hosts,
+        "integrations": contract.integrations,
+        "stored_inputs": contract.stored_inputs,
+        "machine_contract": contract.machine_contract,
+        "pack_digest": pack.pack_digest,
+    }
+    return Admitted(declarations, pack, assistant_manifest.parse_manifest_genesis(assistant.manifest))
+
+
+def _bind_real_assistant(modules: Modules, controller, assistant: Admitted) -> None:
+    """Replace the harness's hand-written Assistant with the real one, and grant its Integrations as declared."""
+    controller.registry[ASSISTANT] = dataclasses.replace(controller.registry[ASSISTANT], **assistant.declarations)
+    for integration_id, integration in assistant.declarations["integrations"].items():
+        grant = types.SimpleNamespace(
+            access_token=modules.harness.TEST_ACCOUNT_ACCESS_TOKEN,
+            refresh_token=modules.harness.TEST_ACCOUNT_REFRESH_TOKEN,
+            scopes=integration.scopes,
+            expires_in=3600,
+        )
+        controller.assistant_integrations.put(
+            "team_1", ASSISTANT, integration_id, integration.provider, integration.scopes, grant
+        )
+    controller.assistant_lifecycle._assistant_language = lambda _active: assistant.pack
+    controller.assistant_lifecycle._active_assistant_genesis = lambda _active: assistant.genesis
+
+
 def _attempt_team(
     modules: Modules, directory: str, brain: tuple[str, Path], settings, events: list | None
 ) -> tuple[object, Team, Fixture]:
@@ -220,6 +348,7 @@ def _attempt_team(
     # The harness builds its controller as a test case does; any of its own methods names the unused test.
     case = modules.harness.LocalContractCase("_chat_controller")
     controller = case._chat_controller(directory, client if events is None else _traced(client, fixture))
+    _bind_real_assistant(modules, controller, modules.assistant)
     controller.assistant_lifecycle.invoke = fixture.invoke
     controller.space_id = controller.chat_turn_service.space_id = space
     controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model, effort))
@@ -339,8 +468,10 @@ def run(
     only: frozenset[str],
     trace_dir: Path | None = None,
     effort: str | None = None,
+    *,
+    assistant: Generated,
 ) -> dict:
-    modules = _team_modules()
+    modules = _team_modules(assistant)
     original = modules.brain_usage.record
     runner: Runner | None = None
 
@@ -419,17 +550,21 @@ def main() -> int:
         "--model", action="append", default=[], help="measurement only: PROVIDER:MODEL in place of that provider's"
     )
     parser.add_argument("--teams", type=Path, help="the Team worktree to drive; default the sibling teams")
+    parser.add_argument(
+        "--assistant", type=Path, default=ASSISTANT_PROJECT, help="the real Assistant project; default ~/" + ASSISTANT
+    )
     args = parser.parse_args()
     if args.teams is not None:
-        global TEAMS, CONTRACT
+        global TEAMS
         TEAMS = args.teams.resolve()
-        CONTRACT = TEAMS / "tests" / "fixtures" / "reference-assistant" / "shimpz.contract.json"
     if args.serve_brain:
         if args.brain_port is None or args.token_file is None:
             raise SystemExit("name the Brain's port and its new token file")
         return serve_brain(args.brain_port, args.token_file, args.brain_log)
-    validate()
+    assistant = generated(args.assistant.resolve())
+    validate(assistant)
     if args.validate:
+        _team_modules(assistant)
         print(json.dumps({"validated": [case for case, _play in CASES]}))
         return 0
     keys = {"openai": _key(args.openai_key_file), "anthropic": _key(args.anthropic_key_file)}
@@ -439,7 +574,8 @@ def main() -> int:
     if not models or args.brain_port is None or args.token_file is None:
         raise SystemExit("name the Brain's port, its token file, and at least one key file")
     brain = (brain_served(args.brain_port), args.token_file)
-    report = run(models, brain, (args.attempts, args.budget), frozenset(args.only), args.trace_dir, args.effort)
+    limits = (args.attempts, args.budget)
+    report = run(models, brain, limits, frozenset(args.only), args.trace_dir, args.effort, assistant=assistant)
     print(json.dumps(report, indent=2))
     # Any miss, skipped attempt, missing model or case, or budget stop fails the run; no caller reads it as a pass.
     return 0 if report["gate"]["passed"] else 1

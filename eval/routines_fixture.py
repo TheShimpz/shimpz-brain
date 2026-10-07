@@ -128,9 +128,30 @@ def records(zone: str) -> dict[str, object]:
     return {"records": found, "pagination": _pagination(len(found))}
 
 
+def zone(zone_id: str) -> dict[str, object] | None:
+    """get-zone's result: the zone list-zones names under that id; None for an id it never names."""
+    return next((item for item in zones(twin=True)["zones"] + zones(MOVED)["zones"] if item["id"] == zone_id), None)
+
+
+def record(zone: str, record_id: str) -> dict[str, object] | None:
+    """get-dns-record's result: the record list-dns-records lists under that id in that zone; None for another."""
+    return next((item for item in records(zone)["records"] if item["id"] == record_id), None)
+
+
+def _failure() -> Exception:
+    """The problem Team raises for a failed Action call; imported here, since only Team's environment runs a call."""
+    from http import HTTPStatus
+
+    from local.errors import ApiProblemError
+
+    return ApiProblemError(
+        HTTPStatus.BAD_GATEWAY, "the simulated provider failed this call", code="assistant-rpc-failed"
+    )
+
+
 @dataclasses.dataclass
 class Fixture:
-    """The Cloudflare-shaped Assistant: what list-zones answers, and every call it saw, in order."""
+    """The real Cloudflare Assistant's simulated provider: what its reads answer, and every call it saw, in order."""
 
     shimpz: str = SHIMPZ
     twin: bool = False
@@ -141,9 +162,21 @@ class Fixture:
     def invoke(self, _team, _assistant, action, payload, _evidence) -> dict[str, object]:
         self.calls.append((action, dict(payload)))
         if action == "list-zones":
-            answer = {"result": zones(self.shimpz, twin=self.twin)}
+            result = zones(self.shimpz, twin=self.twin)
+        elif action == "list-dns-records":
+            result = records(str(payload.get("zone_id")))
+        elif action == "get-zone":
+            result = zone(str(payload.get("zone_id")))
+        elif action == "get-dns-record":
+            result = record(str(payload.get("zone_id")), str(payload.get("record_id")))
         else:
-            answer = {"result": records(str(payload.get("zone_id")))}
+            result = None
+        if result is None:
+            # Any other Action, or an id the provider never named, fails as Team's own Action failure, which ends
+            # the attempt as a miss: a change is never simulated as done.
+            self.note({"kind": "action", "action": action, "input": dict(payload), "result": None})
+            raise _failure()
+        answer = {"result": result}
         if payload.get("page", 1) != 1:
             # Every list fits its first page, as its pagination says, so a later page is empty.
             key = "zones" if action == "list-zones" else "records"
