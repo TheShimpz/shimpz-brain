@@ -865,8 +865,7 @@ def create_app(
     async def provider_error(_request, _exc: agent_runtime.ProviderRequestError):
         return JSONResponse(status_code=502, content={"detail": "Model provider request failed"})
 
-    # Constant and non-blocking, so it stays off the worker threads that blocking turns can saturate; a Local apply
-    # probes it every second while Brain starts, so a replaced Brain is admitted as soon as it serves.
+    # Constant and non-blocking, so it stays off the worker threads that blocking turns can saturate.
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "runtime": "langgraph"}
