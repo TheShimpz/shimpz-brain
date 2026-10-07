@@ -55,6 +55,6 @@ ENV LANGCHAIN_TRACING_V2=false \
 WORKDIR /app
 USER brainruntime
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=4s --start-period=5s --start-interval=1s --retries=5 \
+HEALTHCHECK --interval=10s --timeout=4s --start-period=5s --start-interval=250ms --retries=5 \
     CMD ["/opt/venv/bin/python", "-c", "import socket; connection=socket.create_connection(('127.0.0.1',8080),2); connection.sendall(b'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n'); status=connection.recv(128).split(b'\\r\\n',1)[0]; connection.close(); raise SystemExit(0 if status in {b'HTTP/1.0 200 OK',b'HTTP/1.1 200 OK'} else 1)"]
 ENTRYPOINT ["/opt/venv/bin/uvicorn", "runtime_api:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--no-access-log", "--no-server-header", "--no-proxy-headers"]
