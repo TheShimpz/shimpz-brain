@@ -820,6 +820,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        # Only a runtime this app built is closed on shutdown; an injected one belongs to its caller.
         yield
         _close_owned_runtime(application.state.runtime, owned=owns_runtime)
 
