@@ -19,7 +19,6 @@ import structured
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, ConfigDict
 
-DECISIONS = ("retry", "ask", "pause")
 MAX_OUTPUT_TOKENS = 1024
 MAX_RESPONSE_CHARS = 4 * 1024
 MAX_DIAGNOSTICS = 8
