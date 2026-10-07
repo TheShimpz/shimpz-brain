@@ -4,14 +4,36 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import datetime
 import json
+import zoneinfo
 from collections.abc import Callable
 
 if __package__:
-    from eval.routines_fixture import EXAMPLE, MAX_SENDS, MOVED, SHIMPZ, ZONE_NAMES, ZONE_RECORDS, ZONE_SET
+    from eval.routines_fixture import (
+        EXAMPLE,
+        MAX_SENDS,
+        MOVED,
+        SHIMPZ,
+        TIMEZONE,
+        VERIFY,
+        ZONE_NAMES,
+        ZONE_RECORDS,
+        ZONE_SET,
+    )
     from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, _conversation_turns
 else:  # run as a script from Team, beside its sibling modules
-    from routines_fixture import EXAMPLE, MAX_SENDS, MOVED, SHIMPZ, ZONE_NAMES, ZONE_RECORDS, ZONE_SET
+    from routines_fixture import (
+        EXAMPLE,
+        MAX_SENDS,
+        MOVED,
+        SHIMPZ,
+        TIMEZONE,
+        VERIFY,
+        ZONE_NAMES,
+        ZONE_RECORDS,
+        ZONE_SET,
+    )
     from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, _conversation_turns
 
 
@@ -28,8 +50,10 @@ class Stratum:
     # The owner's rule, never make the person retype: the most sends it may take, its scripted sends plus one per
     # piece the person genuinely left out; an interval Team says does not fit adds the one send that chooses another.
     sends: int = 1
-    # The Action whose result the Routine shows: the records of a zone, or the zones themselves.
+    # The Action whose result the Routine shows: the records of a zone, the zones themselves, or the change it made.
     shows: str = "list-dns-records"
+    # Whether the work replaces the content of the TXT record verify.shimpz.com with each run's date.
+    changes: bool = False
 
 
 def _selector_miss(card: dict[str, object], zones_meant: tuple[str, ...]) -> str | None:
@@ -65,6 +89,47 @@ def _twin_miss(attempt: Attempt, card: dict[str, object]) -> str | None:
     return None if zone["origin"] == "request" and zone["value"] == json.dumps(SHIMPZ) else "twin-binding:value"
 
 
+# The one changing step a dated TXT update records: each input's origin, and the value or selector it must carry.
+_TXT_UPDATE = {
+    "zone_id": ("selector", "list-zones", "/zones", "name", json.dumps("shimpz.com"), "/id"),
+    "record_id": ("selector", "list-dns-records", "/records", "name", json.dumps(VERIFY["name"]), "/id"),
+    "record_type": ("request", json.dumps("TXT")),
+    "name": ("request", json.dumps(VERIFY["name"])),
+    "content": ("clock",),
+}
+
+
+def _change_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum) -> str | None:
+    """Why the card's changes are not exactly the person's dated TXT update, or None; read-only work changes nothing."""
+    changing = [step for step in card["steps"] if not step["read_only"]]
+    if not stratum.changes:
+        return "changed-unasked" if changing or attempt.fixture.performed else None
+    if [step["action"] for step in changing] != ["replace-dns-record"]:
+        return "change:actions"
+    (step,) = changing
+    positions = {item["position"]: item["action"] for item in card["steps"]}
+    inputs = {item["member"]: item for item in step["inputs"]}
+    for member, expected in _TXT_UPDATE.items():
+        found = inputs.get(member)
+        if found is None or found["origin"] != expected[0]:
+            return f"change:{member}"
+        if (
+            expected[0] == "selector"
+            and (
+                positions.get(found["step"]),
+                found["pointer"],
+                found["where"]["member"],
+                found["where"]["value_json"],
+                found["item"],
+            )
+            != expected[1:]
+        ):
+            return f"change:{member}"
+        if expected[0] == "request" and found["value"] != expected[1]:
+            return f"change:{member}"
+    return None
+
+
 def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
     """The recording turn's card, judged; a miss names its first closed reason."""
     if "routine_refusal" in response:
@@ -88,6 +153,7 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
         ("schedule", stratum.schedule(attempt.person, card["schedule"])),
         (f"output:{card['output']['mode']}", card["output"]["mode"] == attempt.person.output),
         (binding or "binding", binding is None),
+        (_change_miss(attempt, card, stratum) or "change", _change_miss(attempt, card, stratum) is None),
         (attempt.person.violations[0] if attempt.person.violations else "", not attempt.person.violations),
         (f"repeated-question:{attempt.repeated[0] if attempt.repeated else ''}", not attempt.repeated),
         ("too-many-sends", len(attempt.sends) <= stratum.sends + attempt.questions.count(OVER_BUDGET)),
@@ -111,9 +177,13 @@ def _judged(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> 
 def _replay_miss(attempt: Attempt, stratum: Stratum) -> str | None:
     """Why one replay did not run the person's work and show exactly its result from the right Action, or None."""
     attempt.fixture.calls.clear()
+    performed = len(attempt.fixture.performed)
     status, notice = attempt.replay()
     if status != "done" or not all(map(attempt.fixture.listed, stratum.zones)):
         return f"replay:{status}"
+    changed = _replayed_change_miss(attempt, stratum, performed)
+    if changed is not None:
+        return changed
     output = None if notice is None else notice.detail.get("output")
     if attempt.person.output == "none":
         # A Routine that shows nothing completes and publishes no shown result: a run notice, if any, shows nothing.
@@ -124,6 +194,24 @@ def _replay_miss(attempt: Attempt, stratum: Stratum) -> str | None:
     return _shown_miss(attempt, stratum, output)
 
 
+def _replayed_change_miss(attempt: Attempt, stratum: Stratum, performed: int) -> str | None:
+    """Why the replay did not wait for the person before its one change, then write today's date, or None."""
+    changes = attempt.fixture.performed[performed:]
+    if not stratum.changes:
+        return "replay-changed" if changes else None
+    if attempt.performed_when_frozen[-1:] != [performed]:
+        # The run must stop for the person's authorization before the provider changes anything.
+        return "replay-unauthorized"
+    today = datetime.datetime.now(zoneinfo.ZoneInfo(TIMEZONE)).date().isoformat()
+    expected = {"zone_id": SHIMPZ, "record_id": VERIFY["id"], "record_type": "TXT", "name": VERIFY["name"]}
+    if len(changes) != 1 or changes[0][0] != "replace-dns-record":
+        return "replay-change:count"
+    action_input = changes[0][1]
+    if {key: action_input.get(key) for key in expected} != expected or action_input.get("content") != today:
+        return "replay-change:input"
+    return None
+
+
 def _shown_miss(attempt: Attempt, stratum: Stratum, output: dict[str, object]) -> str | None:
     """Why a shown result is not exactly the result of the Action the Routine shows, or None."""
     (routine,) = attempt.team.service.routine_store.load("team_1").routines
@@ -131,6 +219,8 @@ def _shown_miss(attempt: Attempt, stratum: Stratum, output: dict[str, object]) -
         return "replay-shown:step"
     if stratum.shows == "list-zones":
         return None if _shown_zone_names(output["value"]) == ZONE_SET else "replay-shown:zones"
+    if stratum.changes:
+        return None
     if _shown_records(output["value"]) not in [_expected_records(zone) for zone in stratum.zones]:
         return "replay-shown:records"
     return None
@@ -204,6 +294,12 @@ def _send(first: str) -> Callable[[Attempt], dict[str, object]]:
 def _person(frequency: str, gap: int | None = None, **changes) -> Callable[[], Person]:
     """A fresh person for each attempt: every mutable member is copied, so no attempt sees another's answers."""
     return lambda: Person(frequency, gap, **{key: copy.copy(value) for key, value in changes.items()})
+
+
+# The owner's example of a Routine that changes something (2026-10-06).
+TXT_UPDATE_REQUEST = (
+    "Cria uma rotina que atualiza o registro TXT verify.shimpz.com para o valor da data de hoje todo dia às 9h"
+)
 
 
 # Each stratum's cap is its scripted sends plus one per piece the person left out of them, the output disposition
@@ -284,6 +380,15 @@ STRATA = (
         zones=(),
         sends=2,
         shows="list-zones",
+    ),
+    Stratum(
+        "txt-daily-update",
+        _send(TXT_UPDATE_REQUEST),
+        _person("Todo dia às 9h", output="show", said=set(FULL)),
+        _daily_nine,
+        sends=2,
+        shows="replace-dns-record",
+        changes=True,
     ),
 )
 

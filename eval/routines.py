@@ -28,7 +28,12 @@ list; two named zones at once (multi-zone); a zone named only in an earlier send
 reversed-order bait, primed (the zone was looked up in an earlier send) and unprimed (its id is known only from an
 earlier reply outside the span); two zones with the same name at creation, which must be asked about; and intervals of
 30 seconds (list a zone's records) and 5 seconds (one step, list the zones), whose card keeps the exact gap the person
-stated with cap ceil(86400 / gap). The driver answers the agent's questions and Team's recoverable Routine questions as
+stated with cap ceil(86400 / gap); and a Routine that changes something, the owner's daily update of the TXT record
+verify.shimpz.com to each day's date, whose real replace-dns-record Action asks for the Supervisor's password in the
+recording turn and in every run. The person authorizes each request; it passes only when the card replays
+replace-dns-record on the record its name selects with each run's date as content, the replay changes nothing before
+the person authorizes it, and the authorized run writes that day's date.
+The driver answers the agent's questions and Team's recoverable Routine questions as
 the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
 chosen zone by its id), carries the schedule the person stated, takes no more sends than its missing pieces need,
@@ -71,6 +76,7 @@ if __package__:
         CALL_INPUT_TOKENS,
         CALL_OUTPUT_TOKENS,
         CALLS_PER_ATTEMPT,
+        CHANGING,
         EXAMPLE,
         MODELS,
         MOVED,
@@ -78,7 +84,9 @@ if __package__:
         ROUTINE_KEY,
         SHIMPZ,
         TWIN,
+        VERIFY,
         Fixture,
+        changed,
         eval_cost,
         eval_stats,
         record,
@@ -98,6 +106,7 @@ else:  # run as a script from Team, beside its sibling modules
         CALL_INPUT_TOKENS,
         CALL_OUTPUT_TOKENS,
         CALLS_PER_ATTEMPT,
+        CHANGING,
         EXAMPLE,
         MODELS,
         MOVED,
@@ -105,7 +114,9 @@ else:  # run as a script from Team, beside its sibling modules
         ROUTINE_KEY,
         SHIMPZ,
         TWIN,
+        VERIFY,
         Fixture,
+        changed,
         eval_cost,
         eval_stats,
         record,
@@ -132,11 +143,12 @@ class Generated:
 
     manifest: bytes
     contract: bytes
+    project: Path
 
 
-def _isolated(python: Path, *arguments: str) -> subprocess.CompletedProcess:
+def _isolated(python: Path, *arguments: str, given: bytes = b"") -> subprocess.CompletedProcess:
     # Isolated and without bytecode, as the CLI runs an Assistant's SDK, so no caller path can shadow it.
-    return subprocess.run([str(python), "-I", "-B", *arguments], capture_output=True, check=False)
+    return subprocess.run([str(python), "-I", "-B", *arguments], input=given, capture_output=True, check=False)
 
 
 def generated(project: Path) -> Generated:
@@ -157,7 +169,7 @@ def generated(project: Path) -> Generated:
     contract = _isolated(python, "-m", "shimpz._bridge", "contract", str(project))
     if contract.returncode != 0:
         raise SystemExit(f"the SDK in {project}/.venv could not generate the Assistant's machine contract")
-    return Generated((project / "shimpz.toml").read_bytes(), contract.stdout)
+    return Generated((project / "shimpz.toml").read_bytes(), contract.stdout, project)
 
 
 def validate(assistant: Generated) -> None:
@@ -172,6 +184,10 @@ def validate(assistant: Generated) -> None:
         Draft202012Validator(actions["list-zones"]["output_schema"]).validate(value)
         for item in value["zones"]:
             Draft202012Validator(actions["get-zone"]["output_schema"]).validate(zone(item["id"]))
+    written = {"zone_id": SHIMPZ, "record_type": "TXT", "name": VERIFY["name"], "content": "2026-10-07", "ttl": 300}
+    written |= {"proxied": False, "record_id": VERIFY["id"]}
+    for action in CHANGING:
+        Draft202012Validator(actions[action]["output_schema"]).validate(changed(action, written))
     for zone_id in (SHIMPZ, MOVED, TWIN, EXAMPLE):
         Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone_id))
         for item in records(zone_id)["records"]:
@@ -273,6 +289,7 @@ class Admitted:
     declarations: dict[str, object]
     pack: object
     genesis: str
+    project: Path
 
 
 def admitted(assistant: Generated) -> Admitted:
@@ -317,7 +334,45 @@ def admitted(assistant: Generated) -> Admitted:
         "machine_contract": contract.machine_contract,
         "pack_digest": pack.pack_digest,
     }
-    return Admitted(declarations, pack, assistant_manifest.parse_manifest_genesis(assistant.manifest))
+    genesis = assistant_manifest.parse_manifest_genesis(assistant.manifest)
+    return Admitted(declarations, pack, genesis, assistant.project)
+
+
+def _asker(assistant: Admitted) -> Callable[..., object]:
+    """The request the real Action of a change makes before anything else, admitted as Team admits an RPC frame.
+
+    The Action runs with no answer, so it asks before it reads its access token: no provider is ever reached. None
+    when it asks nothing or fails.
+    """
+    from action import execution as action_execution
+    from action import human as action_human
+
+    catalog = action_human.catalog_by_id(assistant.declarations["machine_contract"])
+    python = assistant.project / ".venv" / "bin" / "python"
+
+    def ask(action: str, payload: dict[str, object], evidence) -> object:
+        declared = assistant.declarations["actions"][action]
+        invocation = {
+            "input": dict(payload),
+            "integrations": dict.fromkeys(assistant.declarations["integrations"], "eval-token-never-sent"),
+            "stored_inputs": {},
+            "files": {},
+            "operation_id": evidence.operation_id,
+        }
+        bridge = ("-m", "shimpz._bridge", "invoke", str(assistant.project), action)
+        frame = _isolated(python, *bridge, given=json.dumps(invocation).encode())
+        if frame.returncode != 0:
+            return None
+        policy = action_execution.RpcResultPolicy(
+            human_requests=declared.human_requests, declared_stored_inputs=declared.stored_inputs, catalog=catalog
+        )
+        try:
+            action_execution.project_rpc_result(json.loads(frame.stdout), {}, lambda value: value, policy)
+        except action_human.HumanRequestSuspensionError as requested:
+            return requested.request
+        return None
+
+    return ask
 
 
 def _bind_real_assistant(modules: Modules, controller, assistant: Admitted) -> None:
@@ -349,6 +404,7 @@ def _attempt_team(
     case = modules.harness.LocalContractCase("_chat_controller")
     controller = case._chat_controller(directory, client if events is None else _traced(client, fixture))
     _bind_real_assistant(modules, controller, modules.assistant)
+    fixture.ask = _asker(modules.assistant)
     controller.assistant_lifecycle.invoke = fixture.invoke
     controller.space_id = controller.chat_turn_service.space_id = space
     controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model, effort))

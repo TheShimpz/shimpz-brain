@@ -110,9 +110,14 @@ def zones(shimpz: str = SHIMPZ, *, twin: bool = False) -> dict[str, object]:
     return {"zones": items, "pagination": _pagination(len(items))}
 
 
+# The TXT record a changing Routine updates: its current content is never a date a run writes.
+VERIFY = {"id": "b" * 32, "type": "TXT", "name": "verify.shimpz.com", "content": "verified-2026", "ttl": 300}
+
+
 SHIMPZ_RECORDS = (
     {"id": "e" * 32, "type": "A", "name": "shimpz.com", "content": "192.0.2.1", "ttl": 300},
     {"id": "d" * 32, "type": "MX", "name": "shimpz.com", "content": "mail.shimpz.com", "ttl": 3600},
+    VERIFY,
 )
 
 
@@ -138,6 +143,21 @@ def record(zone: str, record_id: str) -> dict[str, object] | None:
     return next((item for item in records(zone)["records"] if item["id"] == record_id), None)
 
 
+# The Actions that change DNS: each asks its own authorization, through the real Assistant, before it changes anything.
+CHANGING = ("replace-dns-record", "ensure-dns-record", "delete-dns-record")
+
+
+def changed(action: str, payload: dict[str, object]) -> dict[str, object]:
+    """The simulated provider's result of one authorized change, in the shape the Action's output schema admits."""
+    if action == "delete-dns-record":
+        return {"record_id": payload["record_id"], "deleted": True}
+    written = {key: payload[key] for key in ("name", "content", "ttl", "proxied")}
+    written |= {"type": payload["record_type"], "proxiable": True}
+    if action == "replace-dns-record":
+        return {"id": payload["record_id"], **written}
+    return {"record": {"id": "a" * 32, **written}, "created": True}
+
+
 def _failure() -> Exception:
     """The problem Team raises for a failed Action call; imported here, since only Team's environment runs a call."""
     from http import HTTPStatus
@@ -156,10 +176,14 @@ class Fixture:
     shimpz: str = SHIMPZ
     twin: bool = False
     calls: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
+    # Each change the provider performed, only ever after the person authorized it.
+    performed: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
+    # The request the real Assistant's Action makes before a change, as Team admits it: set by the driver.
+    ask: object = None
     # With --trace-dir, the attempt's ordered transcript, which every send, Brain turn, and Action call joins.
     events: list[dict[str, object]] | None = None
 
-    def invoke(self, _team, _assistant, action, payload, _evidence) -> dict[str, object]:
+    def invoke(self, _team, _assistant, action, payload, evidence) -> dict[str, object]:
         self.calls.append((action, dict(payload)))
         if action == "list-zones":
             result = zones(self.shimpz, twin=self.twin)
@@ -169,6 +193,8 @@ class Fixture:
             result = zone(str(payload.get("zone_id")))
         elif action == "get-dns-record":
             result = record(str(payload.get("zone_id")), str(payload.get("record_id")))
+        elif action in CHANGING:
+            result = self._change(action, payload, evidence)
         else:
             result = None
         if result is None:
@@ -183,6 +209,25 @@ class Fixture:
             answer = {"result": {key: [], "pagination": {**_pagination(0), "page": payload["page"], "total_count": 0}}}
         self.note({"kind": "action", "action": action, "input": dict(payload), "result": answer["result"]})
         return answer
+
+    def _change(self, action: str, payload: dict[str, object], evidence) -> dict[str, object]:
+        """A change runs only with the person's approval of the exact request its real Action makes.
+
+        Without an answer the Action asks; an Action that asks nothing, or an answer to another request, is a miss.
+        """
+        request = self.ask(action, payload, evidence)
+        responses = evidence.transcript.responses
+        if request is not None and not responses:
+            self.note({"kind": "action", "action": action, "input": dict(payload), "result": "requested"})
+            from action.human import HumanRequestSuspensionError
+
+            raise HumanRequestSuspensionError(request)
+        exact = (request.kind, request.ordinal, request.fingerprint, True) if request is not None else None
+        if exact is None or [(item.kind, item.ordinal, item.fingerprint, item.value) for item in responses] != [exact]:
+            self.note({"kind": "action", "action": action, "input": dict(payload), "result": None})
+            raise _failure()
+        self.performed.append((action, dict(payload)))
+        return changed(action, payload)
 
     def note(self, event: dict[str, object]) -> None:
         if self.events is not None:

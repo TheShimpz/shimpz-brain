@@ -155,6 +155,10 @@ class Attempt:
         # already held its answer.
         self.answered: dict[str, str] = {}
         self.repeated: list[str] = []
+        # How many changes the person authorized in chat, and in each replay, how many changes the provider had
+        # performed when the run first waited for the person.
+        self.authorizations = 0
+        self.performed_when_frozen: list[int] = []
 
     def _person(self):
         audit = self.team.modules.local_audit
@@ -173,13 +177,31 @@ class Attempt:
         before = len(self.fixture.calls)
         with self._person():
             response = self.team.service.chat("team_1", body, self.provider, self.key)
-        actions = tuple(action for action, _payload in self.fixture.calls[before:])
-        self.sends.append((_kind(response), actions))
         self.fixture.note(
             {"kind": "send", "message": message, "conversation": body["conversation"], "response": response}
         )
+        response = self._authorized(response)
+        actions = tuple(action for action, _payload in self.fixture.calls[before:])
+        self.sends.append((_kind(response), actions))
         self.remember("user", message)
         self.remember("assistant", str(response.get("reply", "")))
+        return response
+
+    def _authorized(self, response: dict[str, object]) -> dict[str, object]:
+        """The person authorizes each change the turn asks for with their password, as Admin's prompt sends it.
+
+        The approval is Team's own human resume at the service; the Supervisor password check Admin's HTTP route
+        adds is outside this eval.
+        """
+        for _approval in range(MAX_AUTHORIZATIONS):
+            request = response.get("request")
+            if response.get("status") != "human-required" or (request or {}).get("kind") != "auth:password":
+                break
+            answer = {"challenge_id": response["challenge_id"], "decision": "submit", "value": True}
+            with self._person():
+                response = self.team.service.resume_chat_human("team_1", answer, self.provider, self.key)
+            self.authorizations += 1
+            self.fixture.note({"kind": "authorization", "answer": answer, "response": response})
         return response
 
     def remember(self, role: str, text: str) -> None:
@@ -215,11 +237,31 @@ class Attempt:
         evidence = modules.local_authority.RoutineEvidence(ROUTINE_KEY, lease, "a" * 32, 0)
         claimed = (claim["revision"], claim["plan_digest"], claim["mode"])
         result = service.run_routine("team_1", claim["run_id"], evidence, claimed, (self.provider, ""))
+        result = self._run_authorized(claim["run_id"], result)
         notices = service.routine_store.load("team_1").notices
         notice = notices[-1] if notices else None
         shown = None if notice is None else {"outcome": notice.outcome, "detail": notice.detail}
         self.fixture.note({"kind": "replay", "status": result["status"], "notice": shown})
         return result["status"], notice
+
+    def _run_authorized(self, run_id: str, result: dict[str, object]) -> dict[str, object]:
+        """A run waiting for the person's authorization: the person opens it and authorizes it, as in Admin."""
+        service = self.team.service
+        for _approval in range(MAX_AUTHORIZATIONS):
+            if result["status"] != "frozen":
+                break
+            self.performed_when_frozen.append(len(self.fixture.performed))
+            opened = service.open_routine_challenge("team_1", run_id, "pt")
+            if opened.get("request", {}).get("kind") != "auth:password":
+                break
+            answer = {"challenge_id": opened["challenge_id"], "decision": "submit", "value": True}
+            result = service.resume_routine_human("team_1", run_id, answer, self.provider, "")
+            self.fixture.note({"kind": "run-authorization", "status": result["status"]})
+        return result
+
+
+# The most authorizations one send or one run may ask for before the eval stops answering.
+MAX_AUTHORIZATIONS = 4
 
 
 def _kind(response: dict[str, object]) -> str:
