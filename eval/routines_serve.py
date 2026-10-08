@@ -6,9 +6,10 @@ stdin closes, so it never outlives the run that started it. Every provider reque
 ceiling (``eval/ceiling.py``) against the run's one shared ledger, with the production SDK retries kept: each try is
 reserved on the wire before it is sent. Each Brain response carries the request's own evidence in eval-only headers:
 how many provider rate-limit or overload answers it met (``eval-throttled``), how many responses reached the eval's
-output limit (``eval-clamped``), and, for a failed provider request, whether it failed throttled or for the budget
-(``eval-failure``). A provider request outside any Brain request is written to the Brain's events file instead, so no
-evidence is ever lost.
+output limit (``eval-clamped``), and, for a failed provider request, whether the budget refused it, the provider
+refuses every request, or it was throttled (``eval-failure``). Every throttled or clamped answer, and any provider
+answer outside a Brain request, is also written to the Brain's events file, so the run can reconcile what its attempts
+received against what its Brains met.
 """
 
 from __future__ import annotations
@@ -68,7 +69,7 @@ class Evidence:
 
     throttled: int = 0
     clamped: int = 0
-    # Why a failed provider request failed, when the eval can tell: "throttled" or "budget".
+    # Why a failed provider request failed, when the eval can tell: "budget", "terminal", or "throttled".
     failure: str | None = None
 
     def headers(self) -> list[tuple[bytes, bytes]]:
@@ -80,22 +81,34 @@ class Evidence:
 _EVIDENCE: contextvars.ContextVar[Evidence | None] = contextvars.ContextVar("routine_eval_evidence", default=None)
 
 
-def failure_of(error: BaseException) -> str | None:
-    """Why a provider failure happened, from its whole cause chain: the budget, a throttle, or None for anything else.
+# A provider failure no retry can heal: the key is refused, or the account has no credit or quota left.
+TERMINAL_STATUSES = frozenset({401, 402, 403})
+TERMINAL_WORDS = ("credit balance", "insufficient_quota", "billing")
 
-    The ceiling's refusal outranks a throttle the SDK met on an earlier try.
+
+def _terminal(error: BaseException, status: object) -> bool:
+    text = str(error).casefold()
+    return status in TERMINAL_STATUSES or (status in (400, 429) and any(word in text for word in TERMINAL_WORDS))
+
+
+def failure_of(error: BaseException) -> str | None:
+    """Why a provider failure happened, from its whole cause chain, or None for anything else.
+
+    The ceiling's refusal ("budget") outranks a provider that refuses every request ("terminal"), which outranks a
+    throttle ("throttled") the SDK met on any try.
     """
-    seen, pending, throttled = set(), [error], False
+    seen, pending, found = set(), [error], set()
     while pending:
         current = pending.pop()
         if current is None or id(current) in seen:
             continue
         seen.add(id(current))
-        if isinstance(current, eval_cost.BudgetExhaustedError):
-            return "budget"
-        throttled = throttled or getattr(current, "status_code", None) in THROTTLE_STATUSES
+        status = getattr(current, "status_code", None)
+        found |= {"budget"} if isinstance(current, eval_cost.BudgetExhaustedError) else set()
+        found |= {"terminal"} if _terminal(current, status) else set()
+        found |= {"throttled"} if status in THROTTLE_STATUSES else set()
         pending += [current.__cause__, current.__context__]
-    return "throttled" if throttled else None
+    return next((name for name in ("budget", "terminal", "throttled") if name in found), None)
 
 
 def clamped(body: object) -> bool:
@@ -114,7 +127,11 @@ def clamped(body: object) -> bool:
 
 
 class Observer:
-    """Each provider response's evidence, credited to the Brain request it belongs to, or to the events file."""
+    """Each provider response's evidence, credited to the Brain request it belongs to and written to the events file.
+
+    The file holds every throttled or clamped answer the Brain met, credited or not, so the run can prove that every
+    piece of evidence reached an attempt: a request Team cancelled at its deadline never delivers its headers.
+    """
 
     def __init__(self, events: Path) -> None:
         self.events = events
@@ -129,12 +146,13 @@ class Observer:
         except ValueError:
             stopped = False
         evidence = _EVIDENCE.get()
-        if evidence is None:
+        if evidence is not None:
+            evidence.throttled += throttled
+            evidence.clamped += stopped
+        if throttled or stopped or evidence is None:
+            line = {"status": response.status_code, "throttled": throttled, "clamped": stopped}
             with self._lock, self.events.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps({"unattributed": response.status_code, "clamped": stopped}) + "\n")
-            return
-        evidence.throttled += throttled
-        evidence.clamped += stopped
+                handle.write(json.dumps({**line, "attributed": evidence is not None}) + "\n")
 
     def install(self) -> None:
         """Observe every provider response the ceiling let through, each SDK retry included."""
@@ -288,12 +306,14 @@ class BrainFiles:
 def start_brain(python: str, files: BrainFiles) -> subprocess.Popen:
     logged = () if files.log is None else ("--brain-log", str(files.log))
     paths = ("--token-file", str(files.token), "--ledger", str(files.ledger), "--events", str(files.events))
+    # Its own session, so the run can stop it and anything it started as one group.
     return subprocess.Popen(
         [python, "-m", "eval.routines", "--serve-brain", *paths, *logged],
         cwd=BRAIN,
         env=brain_environment(),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
+        start_new_session=True,
     )
 
 

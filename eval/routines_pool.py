@@ -13,7 +13,8 @@ attempt whose Brain request failed throttled is discarded and retried after an e
 it gives up and leaves its case inconclusive; any throttled answer, even one the SDK's own retry absorbed, halves that
 provider's attempt concurrency, which then grows back by one attempt per round of clean results. A Brain's own
 capacity refusal is retried the same way without touching the provider's concurrency. The budget's refusal stops the
-run's dispatch, and a case missing any attempt is inconclusive.
+run's dispatch, a provider that refuses every request (no credit or quota left, a refused key) stops that provider's,
+and a case missing any attempt is inconclusive.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ import math
 import os
 import queue
 import random
+import signal
 import subprocess
 import threading
 import time
@@ -121,6 +123,8 @@ class ProviderState:
     throttled_answers: int = 0
     discarded: int = 0
     given_up: int = 0
+    # The provider refuses every request, as with no credit left: nothing more of it is dispatched.
+    unavailable: bool = False
 
     def report(self) -> dict[str, object]:
         return {
@@ -129,6 +133,7 @@ class ProviderState:
             "given_up": self.given_up,
             "lowest_concurrency": None if self.lowest == math.inf else int(self.lowest),
             "final_concurrency": int(self.limit),
+            "unavailable": self.unavailable,
         }
 
 
@@ -144,6 +149,8 @@ class Schedule:
         self.dispatched: set[tuple[int, str]] = set()
         self.stopped = False
         self.brain_refusals = 0
+        # Responses at the eval's output limit that any attempt received, counted or discarded.
+        self.clamped = 0
         self.peak = 0
         self.peak_by: collections.Counter[str] = collections.Counter()
         self.rng = rng or random.Random()
@@ -178,10 +185,16 @@ class Schedule:
         slot = self.running.pop(key)
         state = self.providers[slot.provider]
         state.throttled_answers += result["throttled"]
+        self.clamped += result["clamped"]
         disposition = result["disposition"]
         if disposition == "stopped":
             # The budget refused a request: nothing more is dispatched, and this slot stays unfinished.
             self.stopped = True
+            return
+        if disposition == "unavailable" or (state.unavailable and disposition != "counted"):
+            # The provider refuses every request: none of its slots runs again, and each stays unfinished.
+            state.unavailable = True
+            self.waiting = [item for item in self.waiting if item.provider != slot.provider]
             return
         if disposition == "throttled" or result["throttled"]:
             self._cut(slot, state, now)
@@ -321,10 +334,13 @@ class Pool:
 
     def _start(self) -> None:
         python, script = self.command
-        # Each process is recorded as soon as it starts, so a failure to start the next one still stops it.
+        # Each process is recorded as soon as it starts, so a failure to start the next one still stops it. Each runs
+        # in its own session, so stopping it also stops what it started, such as an Assistant's SDK.
         for number in range(self.count):
             self.brains.append(start_brain(self.python, self.brain_files(number)))
-            process = subprocess.Popen([python, script, "--worker"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            process = subprocess.Popen(
+                [python, script, "--worker"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, start_new_session=True
+            )
             self.workers.append(Worker(number, process, self.brains[-1], self.threads))
         self.readers = [
             threading.Thread(target=self._read, args=(worker,), name=f"worker-{worker.number}", daemon=True)
@@ -394,7 +410,10 @@ class Pool:
         return key, message
 
     def stop(self) -> None:
-        """Close every process's stdin, so it exits, and reap it; terminate, then kill, any that does not."""
+        """Close every process's stdin, so it exits, and reap it; terminate, then kill, any that does not.
+
+        Then kill whatever is left of each process's session, so nothing it started outlives the run.
+        """
         for process in [item.process for item in self.workers] + self.brains:
             if process.stdin is not None and not process.stdin.closed:
                 with contextlib.suppress(OSError):
@@ -407,6 +426,8 @@ class Pool:
                     break
                 except subprocess.TimeoutExpired:
                     continue
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
         for reader in self.readers:
             reader.join(timeout=STOP_SECONDS)
         for process in [item.process for item in self.workers] + self.brains:
@@ -429,6 +450,21 @@ def orchestrate(schedule: Schedule, pool: Pool, clock: Callable[[], float] = tim
             schedule.finish(*received, clock())
 
 
-def unattributed(run_dir: Path) -> int:
-    """Provider responses a Brain met outside every Brain request: evidence no attempt could carry."""
-    return sum(len(path.read_text(encoding="utf-8").splitlines()) for path in run_dir.glob("brain-*.events"))
+def evidence(run_dir: Path, schedule: Schedule) -> dict[str, int]:
+    """What every Brain met on the wire against what the attempts received: any shortfall is evidence lost.
+
+    A request outside every Brain request, or one Team cancelled at its deadline, never delivers its evidence.
+    """
+    lines = [
+        json.loads(line)
+        for path in sorted(run_dir.glob("brain-*.events"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    received = sum(state.throttled_answers for state in schedule.providers.values())
+    return {
+        "brain_throttled": sum(item["throttled"] for item in lines),
+        "brain_clamped": sum(item["clamped"] for item in lines),
+        "unattributed": sum(not item["attributed"] for item in lines),
+        "received_throttled": received,
+        "received_clamped": schedule.clamped,
+    }

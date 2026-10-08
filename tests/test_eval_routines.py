@@ -151,7 +151,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual((cases[0]["passed"], cases[0]["trials"], cases[0]["usd"]), (30, 30, 0.3))
         self.assertEqual(report["variants"], VARIANTS)
         self.assertEqual(report["budget"]["spent_usd"], 0)
-        self.assertEqual(report["throttling"]["unattributed"], 0)
+        self.assertEqual(report["throttling"]["evidence"]["unattributed"], 0)
         run = report["run"]
         self.assertEqual(
             (run["cpus"], run["workers"], run["threads"], run["capacity"], run["peak_attempts"]), (4, 2, 3, 6, 6)
@@ -169,7 +169,12 @@ class RunTests(unittest.TestCase):
                 return _counted(task, disposition="throttled", throttled=1)
             if task["case"] == "multi-zone" and task["index"] == 1:
                 return _counted(task, disposition="stopped")
-            return _counted(task, clamped=1 if task["case"] == "missing-schedule" else 0)
+            if task["case"] == "missing-schedule" and task["try"] == 0:
+                # A response at the output limit fails the gate even when its try is discarded and its retry is clean.
+                return _counted(task, disposition="brain-refused", clamped=1)
+            if task["model"] == 1 and task["case"] == "owner-4-turns":
+                return _counted(task, disposition="unavailable")
+            return _counted(task)
 
         with (
             mock.patch.object(FakePool, "answer", staticmethod(answer)),
@@ -183,8 +188,15 @@ class RunTests(unittest.TestCase):
         self.assertTrue(luna["plain-list"]["inconclusive"] and luna["multi-zone"]["inconclusive"])
         self.assertEqual(report["throttling"]["providers"]["openai"]["given_up"], 1)
         failures = report["gate"]["failures"]
-        for failure in ("attempts-below-gate", "output-clamped", "throttled", "gpt-6-luna:plain-list"):
+        for failure in ("attempts-below-gate", "throttled", "gpt-6-luna:plain-list", "provider-unavailable:anthropic"):
             self.assertIn(failure, failures)
+        # The fake Brains wrote no events, so the attempts received evidence no Brain met: never a loss.
+        self.assertEqual(report["throttling"]["evidence"]["received_clamped"], 1)
+        self.assertIn("output-clamped", failures)
+        self.assertNotIn("evidence-lost", failures)
+        # Sonnet's first slot found its provider refusing every request: no other case of it ever ran.
+        (refused,) = report["models"][1]["cases"]
+        self.assertEqual((refused["id"], refused["trials"], refused["inconclusive"]), ("owner-4-turns", 0, True))
         self.assertNotIn("cost-unknown", failures)
 
     def test_the_gate_names_every_run_failure(self):
@@ -200,11 +212,25 @@ class RunTests(unittest.TestCase):
             "models": [{"provider": "openai", "model": "gpt-6-luna", "cases": [unknown]}],
             "variants": None,
             "budget": {"unknown_settlements": 0, "unsettled_usd": 0.1},
-            "run": {"clamped_responses": 0},
-            "throttling": {"unattributed": 2, "providers": {"openai": {"given_up": 0}}},
+            "throttling": {
+                "providers": {
+                    "openai": {"given_up": 0, "unavailable": False},
+                    "anthropic": {"given_up": 1, "unavailable": True},
+                },
+                "evidence": {
+                    "brain_throttled": 3,
+                    "brain_clamped": 0,
+                    "unattributed": 0,
+                    "received_throttled": 2,
+                    "received_clamped": 0,
+                },
+            },
         }
         failures = routines.gate(report, 30)["failures"]
-        self.assertEqual(failures[:3], ["cost-unknown", "budget-unsettled", "evidence-unattributed"])
+        self.assertEqual(
+            failures[:5],
+            ["cost-unknown", "budget-unsettled", "evidence-lost", "throttled", "provider-unavailable:anthropic"],
+        )
         self.assertIn("variant:moved-zone-id", failures)
         self.assertIn("variant:twin-zone-names", failures)
         self.assertIn(f"{MODELS[0][1]}:{CASES[0][0]}", failures)

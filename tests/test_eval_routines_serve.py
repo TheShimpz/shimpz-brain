@@ -45,6 +45,18 @@ class FailureTests(unittest.TestCase):
         throttled_then_refused = _chained(StatusError(429), eval_cost.BudgetExhaustedError("cap"), RuntimeError())
         self.assertEqual(routines_serve.failure_of(throttled_then_refused), "budget")
         self.assertIsNone(routines_serve.failure_of(_chained(StatusError(500), RuntimeError())))
+        self.assertIsNone(routines_serve.failure_of(_chained(StatusError(400), RuntimeError())))
+        for status in (401, 402, 403):
+            with self.subTest(status=status):
+                self.assertEqual(routines_serve.failure_of(_chained(StatusError(status), RuntimeError())), "terminal")
+        broke = StatusError(400)
+        broke.args = ("Your credit balance is too low to access the Anthropic API",)
+        quota = StatusError(429)
+        quota.args = ("Error code: 429 - {'error': {'code': 'insufficient_quota'}}",)
+        for error in (broke, quota):
+            self.assertEqual(routines_serve.failure_of(_chained(error, RuntimeError())), "terminal")
+        refused = _chained(quota, eval_cost.BudgetExhaustedError("cap"), RuntimeError())
+        self.assertEqual(routines_serve.failure_of(refused), "budget")
         looped = RuntimeError("outer")
         inner = StatusError(400)
         inner.__context__, looped.__cause__ = looped, inner
@@ -93,7 +105,11 @@ class ObserverTests(unittest.TestCase):
             self.observer.observe(*_response(status, body))
         self.observer.observe(*_response(429, host="example.net"))
         self.assertEqual((evidence.throttled, evidence.clamped, evidence.failure), (2, 1, None))
-        self.assertFalse(self.events.exists())
+        lines = [json.loads(line) for line in self.events.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(
+            [(line["status"], line["throttled"], line["clamped"], line["attributed"]) for line in lines],
+            [(429, True, False, True), (529, True, False, True), (200, False, True, True)],
+        )
         evidence.failure = "throttled"
         self.assertEqual(
             evidence.headers(),
@@ -103,8 +119,16 @@ class ObserverTests(unittest.TestCase):
     def test_an_answer_outside_every_brain_request_is_written_down_instead(self):
         self.observer.observe(*_response(429))
         self.observer.observe(*_response(200, {"stop_reason": "max_tokens"}, host="api.anthropic.com"))
+        self.observer.observe(*_response(200, {}))
         lines = [json.loads(line) for line in self.events.read_text(encoding="utf-8").splitlines()]
-        self.assertEqual(lines, [{"unattributed": 429, "clamped": False}, {"unattributed": 200, "clamped": True}])
+        self.assertEqual(
+            lines,
+            [
+                {"status": 429, "throttled": True, "clamped": False, "attributed": False},
+                {"status": 200, "throttled": False, "clamped": True, "attributed": False},
+                {"status": 200, "throttled": False, "clamped": False, "attributed": False},
+            ],
+        )
 
     def test_install_observes_every_response_the_client_sends(self):
         self.addCleanup(setattr, httpx.Client, "send", httpx.Client.send)
@@ -153,7 +177,8 @@ class EvidenceHeadersTests(unittest.TestCase):
         )
         self.assertEqual((clean.status_code, clean.headers["eval-throttled"]), (200, "0"))
         self.assertNotIn("eval-failure", clean.headers)
-        self.assertFalse(self.events.exists())
+        (line,) = [json.loads(line) for line in self.events.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual((line["status"], line["attributed"]), (429, True))
 
     def test_a_provider_failure_outside_a_request_still_answers_brains_own_502(self):
         import asyncio
@@ -225,7 +250,9 @@ class StartTests(unittest.TestCase):
         command = popen.call_args.args[0]
         self.assertEqual(command[:4], ["/brain/python", "-m", "eval.routines", "--serve-brain"])
         self.assertEqual(command[4:], ["--token-file", "t", "--ledger", "b", "--events", "e", "--brain-log", "l"])
-        self.assertEqual(popen.call_args.kwargs["cwd"], routines_serve.BRAIN)
+        self.assertEqual(
+            (popen.call_args.kwargs["cwd"], popen.call_args.kwargs["start_new_session"]), (routines_serve.BRAIN, True)
+        )
         self.assertNotIn("PYTHONPATH", popen.call_args.kwargs["env"])
 
     def test_brain_python_is_what_uv_resolves_in_brain(self):

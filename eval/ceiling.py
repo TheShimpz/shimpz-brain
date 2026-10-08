@@ -15,14 +15,14 @@ every schema, so it sees the exact bytes that would be sent:
   allowance at the dearest input rate, and the output limit at the output rate; a request the cap cannot hold is
   refused before it is sent, and one that only has to wait for in-flight work to settle waits; a request to an
   evaluation-only model whose bound exceeds the input its price holds for is refused as unsupported;
-- the response's reported usage settles the reservation; a provider's rate-limit or overload refusal (429, 503,
-  529), which it never bills, settles at nothing; any other failed or unparsable response keeps all of it.
+- the response's reported usage settles the reservation; a provider's refusal of the request, any 4xx and an
+  overload 503 or 529, settles at nothing; any other failed or unparsable response keeps all of it.
 
 Chat models are also built with no SDK retries unless the installer keeps them (``sdk_retries``); either way each
 retry is one more request on the wire, reserved on its own. The reservations draw on one process's ``Budget`` or on a
-``SharedBudget`` every process of a run shares. The ceiling holds under two stated assumptions: a provider bills at
-most one input token per body byte plus the allowance, and it honors the output limit. A response costing more than
-its reservation is counted as ``reservations_exceeded``.
+``SharedBudget`` every process of a run shares. The ceiling holds under three stated assumptions: a provider bills at
+most one input token per body byte plus the allowance, it honors the output limit, and it bills nothing for a request
+it refuses. A response costing more than its reservation is counted as ``reservations_exceeded``.
 """
 
 from __future__ import annotations
@@ -48,8 +48,10 @@ ENDPOINTS = {
     ("api.anthropic.com", "/v1/messages"): "max_tokens",
 }
 EMBEDDINGS = ("api.openai.com", "/v1/embeddings")
-# The provider refusals for rate or overload, which bill nothing: 429 from either, OpenAI's 503, Anthropic's 529.
-UNBILLED_STATUSES = frozenset({429, 503, 529})
+# A provider's refusals for rate or overload: 429 from either, OpenAI's 503, Anthropic's 529.
+THROTTLE_STATUSES = frozenset({429, 503, 529})
+# The refusals a provider never bills: every 4xx rejection of the request, and its overload refusals.
+UNBILLED_STATUSES = frozenset(range(400, 500)) | THROTTLE_STATUSES
 
 
 class UnsupportedRequestError(RuntimeError):
@@ -126,7 +128,15 @@ class Ceiling:
         self.max_output = max_output_tokens
         self.state = state
         self.sdk_retries = sdk_retries
-        self.counts = {"requests": 0, "refused": 0, "failed": 0, "unreported": 0, "unsupported": 0, "throttled": 0}
+        self.counts = {
+            "requests": 0,
+            "refused": 0,
+            "failed": 0,
+            "unreported": 0,
+            "unsupported": 0,
+            "throttled": 0,
+            "rejected": 0,
+        }
         self.max_reservation = 0.0
         self._lock = threading.Lock()
         self._saved: list[tuple[type, str, object]] = []
@@ -202,7 +212,7 @@ class Ceiling:
         """Settle the reservation exactly once, whatever the response holds: unreadable usage keeps all of it."""
         if response is not None and response.status_code in UNBILLED_STATUSES:
             self.budget.settle(reservation, eval_cost.Cost(0.0))
-            self._count("throttled")
+            self._count("throttled" if response.status_code in THROTTLE_STATUSES else "rejected")
             self.write_state()
             return
         usage = None

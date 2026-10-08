@@ -183,6 +183,11 @@ class CeilingTests(unittest.TestCase):
         summary = ledger.summary()
         self.assertAlmostEqual(summary["spent_usd"], eval_cost.cost(usage, "gpt-6-luna").usd, places=6)
         self.assertEqual((summary["unknown_settlements"], summary["unsettled_usd"]), (0, 0))
+        # A provider's rejection of the request, such as an account without credit, bills nothing either.
+        rejected = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(400, json={})))
+        rejected.post("https://api.anthropic.com/v1/messages", json={"model": "claude-sonnet-5-5"})
+        self.assertEqual(self.ceiling.counts["rejected"], 1)
+        self.assertEqual(ledger.summary()["spent_usd"], summary["spent_usd"])
 
     def test_failed_and_unreported_requests_keep_their_reservation(self):
         with self.assertRaises(openai.InternalServerError):

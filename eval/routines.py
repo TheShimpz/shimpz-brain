@@ -51,7 +51,8 @@ replay variants run with no model: shimpz.com under a new zone id, and two zones
 dispatch list-dns-records.
 The gate exits non-zero unless every stratum of every shipped model passed every attempt and both variants held.
 The gate also fails on a counted attempt whose cost is unknown, a reservation never settled, a response that reached
-the eval's output limit, provider evidence no attempt carried, or an attempt that stayed throttled through every retry.
+the eval's output limit, provider evidence no attempt received, an attempt that stayed throttled through every retry,
+or a provider that refused every request (no credit or quota left, a refused key).
 For the control arm, run with SHIMPZ_ROUTINE_MODE_PROMPT=off, which every Brain inherits and which drops its
 Routine-mode prompt section.
 Output holds stratum ids, pass counts, Wilson 95% bounds, closed miss reasons with root causes, the questions asked,
@@ -110,7 +111,7 @@ if __package__:
     )
     from eval.routines_person import OUTPUT_LABELS, Attempt, Outcome, Team
     from eval.routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
-    from eval.routines_pool import unattributed as unattributed_evidence
+    from eval.routines_pool import evidence as wire_evidence
     from eval.routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
     from eval.routines_strata import CASES, VARIANT_STRATA, _cause, variants
 else:  # run as a script from Team, beside its sibling modules
@@ -137,7 +138,7 @@ else:  # run as a script from Team, beside its sibling modules
     )
     from routines_person import OUTPUT_LABELS, Attempt, Outcome, Team
     from routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
-    from routines_pool import unattributed as unattributed_evidence
+    from routines_pool import evidence as wire_evidence
     from routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
     from routines_strata import CASES, VARIANT_STRATA, _cause, variants
 
@@ -489,11 +490,17 @@ class Signals:
         return connection
 
     def disposition(self) -> str:
-        """What the attempt's result is: counted, or discarded and why; the budget's refusal outranks a throttle."""
+        """What the attempt's result is: counted, or else why it is discarded, the gravest reason first.
+
+        The budget's refusal outranks a provider that refuses every request, which outranks a throttle, which outranks
+        Brain's own capacity refusal.
+        """
         if self.unreadable:
             return "error"
         if "budget" in self.failures:
             return "stopped"
+        if "terminal" in self.failures:
+            return "unavailable"
         if "throttled" in self.failures:
             return "throttled"
         return "brain-refused" if self.refused else "counted"
@@ -705,7 +712,6 @@ def _cpu_seconds() -> float:
 
 def _run_report(schedule: Schedule, settings: Settings, times: tuple[float, float, float], cpus: list[int]) -> dict:
     started, ready, finished = times
-    results = schedule.results.values()
     return {
         "cpus": len(cpus),
         "workers": settings.workers,
@@ -716,7 +722,6 @@ def _run_report(schedule: Schedule, settings: Settings, times: tuple[float, floa
         "startup_seconds": round(ready - started, 1),
         "wall_seconds": round(finished - started, 1),
         "cpu_seconds": _cpu_seconds(),
-        "clamped_responses": sum(item["clamped"] for item in results),
     }
 
 
@@ -745,7 +750,7 @@ def run(models: list[tuple[str, str, str]], settings: Settings, *, assistant: Ge
         report["throttling"] = {
             "providers": {name: state.report() for name, state in schedule.providers.items()},
             "brain_refusals": schedule.brain_refusals,
-            "unattributed": unattributed_evidence(run_dir),
+            "evidence": wire_evidence(run_dir, schedule),
         }
     report["run"] = _run_report(schedule, settings, (started, ready, time.monotonic()), cpus)
     report["gate"] = gate(report, settings.attempts)
@@ -759,16 +764,18 @@ def _run_failures(report: dict[str, object]) -> list[str]:
     wire whose cost is unknown, such as one Team cancelled at its deadline, is charged its whole reservation against
     the cap instead; the budget summary counts it.
     """
-    budget, throttling = report["budget"], report["throttling"]
+    budget, providers, wire = report["budget"], report["throttling"]["providers"], report["throttling"]["evidence"]
     cases = [case for item in report["models"] for case in item["cases"]]
+    lost = wire["brain_throttled"] > wire["received_throttled"] or wire["brain_clamped"] > wire["received_clamped"]
     checks = (
         ("cost-unknown", not all(case["cost_known"] for case in cases)),
         ("budget-unsettled", budget["unsettled_usd"]),
-        ("output-clamped", report["run"]["clamped_responses"]),
-        ("evidence-unattributed", throttling["unattributed"]),
-        ("throttled", any(item["given_up"] for item in throttling["providers"].values())),
+        ("output-clamped", wire["brain_clamped"] or wire["received_clamped"]),
+        ("evidence-lost", lost or wire["unattributed"]),
+        ("throttled", any(item["given_up"] for item in providers.values())),
     )
-    return [name for name, failed in checks if failed]
+    unavailable = [f"provider-unavailable:{name}" for name, item in providers.items() if item["unavailable"]]
+    return [name for name, failed in checks if failed] + unavailable
 
 
 def gate(report: dict[str, object], attempts: int) -> dict[str, object]:

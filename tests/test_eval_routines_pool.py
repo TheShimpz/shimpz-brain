@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import random
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -33,6 +35,14 @@ def _result(slot: routines_pool.Slot, **changes) -> dict[str, object]:
         "known": True,
         "variants": None,
     } | changes
+
+
+def _alive(stat: Path) -> bool:
+    """Whether the process whose /proc stat file this is still runs: neither gone nor a zombie."""
+    try:
+        return stat.read_text(encoding="utf-8").split(") ")[1][0] not in "ZX"
+    except FileNotFoundError, ProcessLookupError:
+        return False
 
 
 class PlanTests(unittest.TestCase):
@@ -163,6 +173,25 @@ class ScheduleTests(unittest.TestCase):
         self.assertTrue(schedule.done())
         self.assertNotIn(first.key, schedule.results)
 
+    def test_a_provider_that_refuses_every_request_runs_no_more_slots(self):
+        schedule = routines_pool.Schedule(routines_pool.plan(MODELS, ["a"], 3), 3)
+        first, second, third = (schedule.take(0.0) for _ in range(3))
+        self.assertEqual([slot.provider for slot in (first, second, third)], ["openai", "anthropic", "openai"])
+        schedule.finish(second.key, _result(second, disposition="unavailable", clamped=1), 1.0)
+        self.assertEqual({slot.provider for slot in schedule.waiting}, {"openai"})
+        self.assertTrue(schedule.providers["anthropic"].report()["unavailable"])
+        late = schedule.take(1.0)
+        schedule.finish(first.key, _result(first), 1.0)
+        schedule.finish(third.key, _result(third, disposition="throttled", clamped=2), 1.0)
+        self.assertEqual((late.provider, schedule.clamped), ("openai", 3))
+        anthropic = routines_pool.Schedule(routines_pool.plan(MODELS[1:], ["a"], 3), 3)
+        running = [anthropic.take(0.0) for _ in range(3)]
+        anthropic.finish(running[0].key, _result(running[0], disposition="unavailable"), 1.0)
+        anthropic.finish(running[1].key, _result(running[1], disposition="throttled"), 1.0)
+        anthropic.finish(running[2].key, _result(running[2]), 1.0)
+        self.assertEqual((anthropic.waiting, list(anthropic.results)), ([], [running[2].key]))
+        self.assertTrue(anthropic.done())
+
     def test_wake_waits_only_for_a_backoff(self):
         schedule = self._schedule(attempts=2, capacity=1)
         self.assertIsNone(schedule.wake(0.0))
@@ -274,6 +303,20 @@ class PoolTests(unittest.TestCase):
             worker = pool.workers[0].process
         self.assertEqual(worker.returncode, -9)
 
+    def test_stop_also_stops_what_a_worker_started(self):
+        with self._pool(count=1, mode="child"):
+            marker = Path(self.run_dir, "brain-0.token.child")
+            for _ in range(500):
+                if marker.exists() and marker.read_text(encoding="utf-8"):
+                    break
+                time.sleep(0.01)
+        child = Path(f"/proc/{marker.read_text(encoding='utf-8')}/stat")
+        for _ in range(500):
+            if not _alive(child):
+                break
+            time.sleep(0.01)
+        self.assertFalse(_alive(child))
+
     def test_the_freest_worker_takes_the_next_slot_until_every_thread_is_busy(self):
         with self._pool(count=2, threads=1) as pool:
             first = pool.free()
@@ -283,10 +326,24 @@ class PoolTests(unittest.TestCase):
             self.assertEqual((first.number, second.number, pool.free()), (0, 1, None))
             first.busy = second.busy = 0
 
-    def test_unattributed_evidence_counts_every_line_of_every_brain(self):
-        Path(self.run_dir, "brain-0.events").write_text("{}\n{}\n", encoding="utf-8")
-        Path(self.run_dir, "brain-3.events").write_text("{}\n", encoding="utf-8")
-        self.assertEqual(routines_pool.unattributed(self.run_dir), 3)
+    def test_evidence_sets_what_every_brain_met_against_what_the_attempts_received(self):
+        line = {"status": 429, "throttled": True, "clamped": False, "attributed": True}
+        lines = [line, {**line, "attributed": False}, {**line, "status": 200, "throttled": False, "clamped": True}]
+        Path(self.run_dir, "brain-0.events").write_text("".join(json.dumps(item) + "\n" for item in lines[:2]))
+        Path(self.run_dir, "brain-3.events").write_text(json.dumps(lines[2]) + "\n")
+        schedule = routines_pool.Schedule(routines_pool.plan(MODELS, ["a"], 1), 2)
+        for slot in (schedule.take(0.0), schedule.take(0.0)):
+            schedule.finish(slot.key, _result(slot, throttled=1), 1.0)
+        self.assertEqual(
+            routines_pool.evidence(self.run_dir, schedule),
+            {
+                "brain_throttled": 2,
+                "brain_clamped": 1,
+                "unattributed": 1,
+                "received_throttled": 2,
+                "received_clamped": 0,
+            },
+        )
 
 
 if __name__ == "__main__":
