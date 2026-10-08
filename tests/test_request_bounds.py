@@ -43,6 +43,7 @@ class _Peer:
         self.chunks = list(chunks)
         self.then = then
         self.received = 0
+        self.waiting = asyncio.Event()
         self.sent: list[dict[str, Any]] = []
 
     async def receive(self) -> dict[str, Any]:
@@ -53,6 +54,7 @@ class _Peer:
             return {"type": "http.request", "body": chunk, "more_body": more}
         if self.then in {"disconnect", "hangup"}:
             return {"type": "http.disconnect"}
+        self.waiting.set()
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
@@ -243,7 +245,7 @@ class RequestBodyBoundTests(unittest.TestCase):
     def test_a_trickled_body_is_refused_at_the_absolute_deadline(self):
         peer = _Peer([b"{"], then="stall")
         started = time.monotonic()
-        with mock.patch.object(runtime_api, "REQUEST_BODY_SECONDS", 0.2):
+        with mock.patch.object(runtime_api, "REQUEST_BODY_SECONDS", 0.5):
             runtime = _serve(peer, _scope())
         self.assertLess(time.monotonic() - started, 2)
         self.assertEqual(peer.response(), (408, {"detail": "Request body was not received in time"}))
@@ -392,20 +394,29 @@ class ProductionAdmissionTests(unittest.TestCase):
     """The production reservation: a fixed amount per request plus a multiple of each declared byte."""
 
     def setUp(self) -> None:
-        patcher = mock.patch.object(runtime_api, "REQUEST_BODY_SECONDS", 0.2)
+        patcher = mock.patch.object(runtime_api, "REQUEST_BODY_SECONDS", 0.5)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.app = runtime_api.create_app(runtime=FakeRuntime(), token_reader=lambda: TOKEN)
 
     async def _held(self, lengths: list[int]) -> tuple[list[Any], tuple[int | None, dict[str, Any] | None], int]:
         """Hold stalled bodies of these lengths; return what each got, what one more byte got, and what it read."""
+        peers = [_Peer([], then="stall") for _ in lengths]
         holders = [
-            asyncio.create_task(_call(self.app, _Peer([], then="stall"), _scope(length=length), seconds=30))
-            for length in lengths
+            asyncio.create_task(_call(self.app, peer, _scope(length=length), seconds=30))
+            for peer, length in zip(peers, lengths, strict=True)
         ]
-        await asyncio.sleep(0.05)
+
+        async def settled(peer: _Peer, holder: asyncio.Task) -> None:
+            waiting = asyncio.create_task(peer.waiting.wait())
+            await asyncio.wait({waiting, holder}, return_when=asyncio.FIRST_COMPLETED)
+            waiting.cancel()
+
+        # Admission comes before the body is read: every holder is admitted once it waits for its body, or refused.
+        async with asyncio.timeout(5):
+            await asyncio.gather(*(settled(peer, holder) for peer, holder in zip(peers, holders, strict=True)))
         excess = _Peer([b"{"], then="stall")
-        refused = await _call(self.app, excess, _scope(length=1))
+        refused = await _call(self.app, excess, _scope(length=1), seconds=30)
         return [status for status, _detail in await asyncio.gather(*holders)], refused, excess.received
 
     def test_one_largest_request_is_admitted_beside_exactly_what_the_budget_has_left(self):
