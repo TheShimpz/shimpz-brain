@@ -19,10 +19,13 @@ def _load(name: str, path: Path):
     return module
 
 
-eval_cost = _load("routine_eval_cost", BRAIN / "eval" / "cost.py")
-
-
-eval_stats = _load("routine_eval_stats", BRAIN / "eval" / "stats.py")
+if __package__:
+    # In Brain, the one cost module its evaluation ceiling uses too, so the shared ledger's refusal is one class.
+    from eval import cost as eval_cost
+    from eval import stats as eval_stats
+else:  # run as a script from Team, which cannot import Brain's eval package
+    eval_cost = _load("routine_eval_cost", BRAIN / "eval" / "cost.py")
+    eval_stats = _load("routine_eval_stats", BRAIN / "eval" / "stats.py")
 
 
 ASSISTANT = "shimpz-cloudflare"
@@ -79,21 +82,12 @@ ATTEMPTS = 30
 BUDGET_USD = 3.0
 
 
-# One attempt's conservative reservation: this many Brain calls, each at most this much input and output.
-CALLS_PER_ATTEMPT = 10
-
-
-CALL_INPUT_TOKENS = 30_000
-
-
+# The output limit of every provider request, which the evaluation ceiling reserves and clamps to: about 25 times the
+# largest output a Routine turn was measured to use (170 tokens on 2026-10-07). A response that reaches it is counted.
 CALL_OUTPUT_TOKENS = 4_000
 
 
 MODELS = (("openai", "gpt-6-luna"), ("anthropic", "claude-sonnet-5-5"))
-
-
-# Every model a Team may route a turn of each provider to: an OpenAI Team's Routine turns go to the next tier.
-ROUTED = {"openai": ("gpt-6-luna", "gpt-6.1-sol"), "anthropic": ("claude-sonnet-5-5",)}
 
 
 def _pagination(count: int) -> dict[str, int]:
