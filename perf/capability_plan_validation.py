@@ -45,7 +45,7 @@ def _candidates(*, dense: bool, maximum_text: bool = False) -> tuple[capability_
         capability_plan.CapabilityCandidate(
             id=f"assistant-{index}",
             name="N" * 80 if maximum_text else f"Assistant {index}",
-            summary="S" * 160 if maximum_text else "Reviewed task capability.",
+            summary="S" * capability_plan.MAX_SUMMARY_CHARS if maximum_text else "Reviewed task capability.",
             actions=actions,
             integrations=integrations,
         )
