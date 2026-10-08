@@ -237,6 +237,19 @@ class RunTests(unittest.TestCase):
 
 
 class WorkerTests(unittest.TestCase):
+    def test_an_abandoned_worker_kills_its_whole_session_or_only_itself(self):
+        with (
+            mock.patch.object(routines.os, "getpgrp", return_value=41),
+            mock.patch.object(routines.os, "getpid", return_value=41),
+            mock.patch.object(routines.os, "killpg") as killed,
+            mock.patch.object(routines.os, "_exit") as exited,
+        ):
+            routines._abandon()
+            killed.assert_called_once_with(41, routines.signal.SIGKILL)
+            routines.os.getpid.return_value = 42
+            routines._abandon()
+            self.assertEqual((killed.call_count, exited.call_count), (1, 2))
+
     def test_only_the_first_passing_eligible_attempt_of_the_run_claims_the_variants(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual([routines._claim_variants(Path(directory)) for _ in range(3)], [True, False, False])

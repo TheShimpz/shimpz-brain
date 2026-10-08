@@ -631,11 +631,21 @@ def _worker_context(config: dict[str, object]) -> WorkerContext:
     return WorkerContext(_team_modules(assistant), brain, models, config["effort"], Path(config["run"]), trace_dir)
 
 
+def _abandon() -> None:
+    """Exit at once with everything this worker started, such as an Assistant SDK mid-call.
+
+    The run starts each worker as the leader of its own session, so its group holds exactly its descendants.
+    """
+    if os.getpgrp() == os.getpid():
+        os.killpg(os.getpgrp(), signal.SIGKILL)
+    os._exit(1)
+
+
 def work() -> int:
     """One worker: its configuration, then one task per stdin line and one result per stdout line, until stdin ends.
 
     Only results are written to the real stdout; anything else written there goes to stderr. Stdin ending while an
-    attempt still runs means the run stopped or died, so the worker exits at once.
+    attempt still runs means the run stopped or died, so the worker exits at once with everything it started.
     """
     protocol = os.fdopen(os.dup(1), "w", encoding="utf-8")
     os.dup2(2, 1)
@@ -667,7 +677,7 @@ def work() -> int:
         emit({"ready": True})
         running = [submit(json.loads(line)) for line in sys.stdin]
         if not all(item.done() for item in running):
-            os._exit(1)
+            _abandon()
         pool.shutdown()
     return 0
 
