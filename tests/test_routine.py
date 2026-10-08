@@ -34,7 +34,7 @@ LISTED = {
     "timezone_source": "browser",
     "revision": 2,
     "daily_steps": 1,
-    "output": {"mode": "show", "when": None},
+    "output": {"mode": "show"},
     "steps": [{"id": "s1", "assistant": "hello-pulse", "action": "hello", "inputs": ["name"]}],
 }
 REPLY = "Listei os registros DNS de shimpz.com. Confira o cartão da rotina."
@@ -90,8 +90,6 @@ def _wire(turn_date: datetime.date, **changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
-        "notes": "",
-        "decide_actions": [],
         "replaces": None,
         "turn_date": turn_date.isoformat(),
     }
@@ -161,7 +159,10 @@ class RecordTests(unittest.TestCase):
         chat = _chat([LISTED])
         cases = (
             (None, "invalid"),
+            # The retired decision members are never part of a record (ADR-0101 amendment, 2026-10-07).
             ({**_args(), "notes": "x"}, "invalid"),
+            ({**_args(), "notes": ""}, "invalid"),
+            ({**_args(), "decide_actions": []}, "invalid"),
             ({key: item for key, item in _args().items() if key != "reply"}, "invalid"),
             (_args(op="create"), "invalid"),
             (_args(name=""), "name"),

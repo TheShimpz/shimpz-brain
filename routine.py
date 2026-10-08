@@ -130,8 +130,6 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     routine = {
         "op": "record",
         "name": name,
-        "notes": "",
-        "decide_actions": [],
         "replaces": replaces,
         "turn_date": context.turn_date.isoformat(),
     }
