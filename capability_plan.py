@@ -10,15 +10,17 @@ from typing import Literal
 import structured
 from langchain_core.language_models import BaseChatModel
 from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict, Field
 
-MAX_CANDIDATES = 8
-MAX_SELECTED = 4
-MAX_OBJECTIVE_CHARS = 16_000
-MAX_NAME_CHARS = 80
-MAX_SUMMARY_CHARS = 160
-MAX_ACTIONS = 64
-MAX_INTEGRATIONS = 16
+# Every bound a capability plan request or answer crosses with Team is Team's own, read from its mirrored protocol.
+MAX_CANDIDATES = team_turn.MAX_CAPABILITY_CANDIDATES
+MAX_SELECTED = team_turn.MAX_CAPABILITY_SELECTED
+MAX_OBJECTIVE_CHARS = team_turn.MAX_OBJECTIVE_CHARS
+MAX_NAME_CHARS = team_turn.MAX_CAPABILITY_NAME_CHARS
+MAX_SUMMARY_CHARS = team_turn.MAX_CAPABILITY_SUMMARY_CHARS
+MAX_ACTIONS = team_turn.MAX_CAPABILITY_ACTIONS
+MAX_INTEGRATIONS = team_turn.MAX_CAPABILITY_INTEGRATIONS
 MAX_RESPONSE_CHARS = 4_096
 
 

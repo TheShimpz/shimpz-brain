@@ -312,6 +312,18 @@ class RuntimeApiTests(unittest.TestCase):
         response = client(FakeRuntime()).post("/v1/turns/resume", json={**payload, "locale": "en"}, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 
+    def test_a_resume_answers_at_most_the_64_action_requests_of_one_suspension(self):
+        payload = body(message=None)
+        for key in ("message", "conversation", "locale"):
+            payload.pop(key)
+        for count, status in ((64, 200), (65, 422)):
+            with self.subTest(count=count):
+                runtime = FakeRuntime()
+                results = {f"interrupt-{index}": {} for index in range(count)}
+                response = client(runtime).post("/v1/turns/resume", json={**payload, "results": results}, headers=AUTH)
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(len(runtime.calls), int(status == 200))
+
     def test_a_start_names_one_closed_interface_language_or_none(self):
         for locale in ("pt", "ar", None):
             with self.subTest(locale=locale):

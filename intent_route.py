@@ -11,18 +11,21 @@ import interface_language
 import structured
 from langchain_core.language_models import BaseChatModel
 from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import payload as team_payload
+from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict, Field
 
-MAX_CANDIDATES = 8
-MAX_SELECTED = 4
-MAX_OBJECTIVE_CHARS = 16_000
-MAX_QUERY_CHARS = 160
-MAX_NAME_CHARS = 80
-MAX_REPLY_CHARS = 240
-MAX_SUMMARY_CHARS = 160
-MAX_CONVERSATION_ENTRIES = 8
-MAX_CONVERSATION_TEXT_CHARS = 512
-MAX_CONVERSATION_CHARS = 4_096
+# Every bound an intent route request or answer crosses with Team is Team's own, read from its mirrored protocol.
+MAX_CANDIDATES = team_turn.MAX_INTENT_ROUTE_CANDIDATES
+MAX_SELECTED = team_turn.MAX_INTENT_ROUTE_SELECTED
+MAX_OBJECTIVE_CHARS = team_turn.MAX_OBJECTIVE_CHARS
+MAX_QUERY_CHARS = team_turn.MAX_INTENT_ROUTE_QUERY_CHARS
+MAX_NAME_CHARS = team_turn.MAX_INTENT_ROUTE_NAME_CHARS
+MAX_REPLY_CHARS = team_turn.MAX_INTENT_ROUTE_REPLY_CHARS
+MAX_SUMMARY_CHARS = team_turn.MAX_INTENT_ROUTE_SUMMARY_CHARS
+MAX_CONVERSATION_ENTRIES = team_payload.MAX_CONVERSATION_ENTRIES
+MAX_CONVERSATION_TEXT_CHARS = team_payload.MAX_CONVERSATION_TEXT_CHARS
+MAX_CONVERSATION_CHARS = team_payload.MAX_CONVERSATION_CHARS
 _LANGUAGE_LAYOUT_CONTROLS = frozenset({"\n", "\r", "\t"})
 
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]

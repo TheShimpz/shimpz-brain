@@ -11,10 +11,12 @@ import interface_language
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import payload as team_payload
+from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict, Field
 
-MAX_ACTION_LABELS = 64
-MAX_ACTION_LABEL_CHARS = 80
+MAX_ACTION_LABELS = team_turn.MAX_ACTION_LABELS
+MAX_ACTION_LABEL_CHARS = team_payload.MAX_ACTION_LABEL_CHARS
 MAX_ACTION_LABEL_RESPONSE_CHARS = 32 * 1024
 
 

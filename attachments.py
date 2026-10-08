@@ -25,17 +25,20 @@ from dataclasses import dataclass
 from typing import Any
 
 import provider_cancel
+from protocol.team.http.v1 import payload as team_payload
+from protocol.team.http.v1 import turn as team_turn
 
-MAX_ATTACHMENTS = 8
-MAX_IMAGES = 4
-MAX_TEXT_CHARACTERS = 32_768
-MAX_TEXT_BYTES = 128 * 1024
-MAX_TURN_TEXT_CHARACTERS = 131_072
-MAX_TURN_TEXT_BYTES = 512 * 1024
-MAX_IMAGE_EDGE = 1_568
-MAX_IMAGE_PIXELS = 1_200_000
-MAX_IMAGE_BYTES = 512 * 1024
-MAX_FIELD_BYTES = 1536 * 1024
+# The attachment content a turn carries is bounded by Team's own ceilings, read from its mirrored protocol.
+MAX_ATTACHMENTS = team_payload.MAX_CHAT_FILES
+MAX_IMAGES = team_turn.MAX_ATTACHMENT_IMAGES
+MAX_TEXT_CHARACTERS = team_turn.MAX_ATTACHMENT_TEXT_CHARS
+MAX_TEXT_BYTES = team_turn.MAX_ATTACHMENT_TEXT_BYTES
+MAX_TURN_TEXT_CHARACTERS = team_turn.MAX_ATTACHED_TEXT_CHARS
+MAX_TURN_TEXT_BYTES = team_turn.MAX_ATTACHED_TEXT_BYTES
+MAX_IMAGE_EDGE = team_turn.ATTACHMENT_IMAGE_EDGE
+MAX_IMAGE_PIXELS = team_turn.ATTACHMENT_IMAGE_PIXELS
+MAX_IMAGE_BYTES = team_turn.MAX_ATTACHMENT_IMAGE_BYTES
+MAX_FIELD_BYTES = team_turn.MAX_ATTACHMENTS_FIELD_BYTES
 MAX_FILE_TOKENS = 8_000
 MAX_CALL_TOKENS = 16_000
 MAX_TURN_TOKENS = 64_000
@@ -46,7 +49,7 @@ MAX_ATTEMPTS = 3
 ATTEMPTS_METADATA = "shimpz_attachment_attempts"
 RETRY_BACKOFF_SECONDS = 0.5
 ATTACHED_TURN_PREFIX = "shimpz-attached-"
-OPAQUE_REASONS = frozenset({"unsupported", "too_large", "encrypted", "no_text", "animated", "unreadable"})
+OPAQUE_REASONS = team_turn.ATTACHMENT_OPAQUE_REASONS
 IMAGE_TYPES = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
 _FILE_ID = re.compile(r"[0-9a-f]{32}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -107,13 +110,13 @@ def _attachment(item: object) -> Attachment:
         not isinstance(item["id"], str)
         or _FILE_ID.fullmatch(item["id"]) is None
         or not isinstance(name, str)
-        or not 1 <= len(name.encode("utf-8", "surrogatepass")) <= 255
+        or not 1 <= len(name.encode("utf-8", "surrogatepass")) <= team_payload.MAX_FILENAME_BYTES
         or any(ord(character) < 32 or ord(character) == 127 for character in name)
         or not isinstance(media_type, str)
-        or len(media_type) > 127
+        or len(media_type) > team_payload.MAX_MEDIA_TYPE_CHARS
         or _MEDIA_TYPE.fullmatch(media_type) is None
         or type(size) is not int
-        or not 1 <= size <= 25 * 1024 * 1024
+        or not 1 <= size <= team_payload.MAX_FILE_UPLOAD_BYTES
         or not isinstance(digest, str)
         or _SHA256.fullmatch(digest) is None
     ):

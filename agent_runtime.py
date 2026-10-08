@@ -44,6 +44,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from protocol.team.action.v1 import schema as action_protocol
 from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import payload as team_payload
+from protocol.team.http.v1 import turn as team_turn
 from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
 from structured import structured_output
 
@@ -60,15 +62,15 @@ TEAM_NAME_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 # total: a request carries at most 2,048 Actions, exactly what Team can admit.
 MAX_ASSISTANTS = 16
 MAX_ACTIONS_PER_ASSISTANT = 128
-# One resume answers the Action requests of one suspension, of which Team accepts at most 64.
-MAX_ACTION_RESULTS = 128
-MAX_TEAM_NAME_CHARS = 80
+# One resume answers the Action requests of one suspension, which carries at most Team's bound of them.
+MAX_ACTION_RESULTS = team_turn.MAX_ACTION_REQUESTS
+MAX_TEAM_NAME_CHARS = team_payload.MAX_TEAM_NAME_CHARS
 MAX_GENESIS_BYTES = 128 * 1024
 MAX_MESSAGE_CHARS = 64 * 1024
 # Team admits at most 32,768 JSON values in one whole machine contract, so the input and output schemas of one Assistant
 # together hold at most that many; each schema also meets the Team Action protocol's own value and byte bounds.
 MAX_ASSISTANT_SCHEMA_NODES = 32_768
-MAX_REPLY_CHARS = 60_000
+MAX_REPLY_CHARS = team_turn.MAX_REPLY_CHARS
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 # The Team's configured reasoning effort applies only to ordinary chat turns (ADR-0074).
