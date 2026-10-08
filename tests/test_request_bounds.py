@@ -36,7 +36,8 @@ class _Peer:
     """One scripted ASGI client: it sends body chunks, then stalls or disconnects, and records what it received.
 
     After its chunks, "wait" ends the body and waits, "stall" and "disconnect" leave the body unfinished, and "hangup"
-    ends the body and then disconnects.
+    ends the body and then disconnects. A stalled peer sets `waiting` once the app waits for more of its body, and
+    disconnects once `released` is set.
     """
 
     def __init__(self, chunks: list[bytes], *, then: str = "wait") -> None:
@@ -44,6 +45,7 @@ class _Peer:
         self.then = then
         self.received = 0
         self.waiting = asyncio.Event()
+        self.released = asyncio.Event()
         self.sent: list[dict[str, Any]] = []
 
     async def receive(self) -> dict[str, Any]:
@@ -55,8 +57,8 @@ class _Peer:
         if self.then in {"disconnect", "hangup"}:
             return {"type": "http.disconnect"}
         self.waiting.set()
-        await asyncio.Event().wait()
-        raise AssertionError("unreachable")
+        await self.released.wait()
+        return {"type": "http.disconnect"}
 
     async def send(self, message: dict[str, Any]) -> None:
         self.sent.append(message)
@@ -394,30 +396,36 @@ class ProductionAdmissionTests(unittest.TestCase):
     """The production reservation: a fixed amount per request plus a multiple of each declared byte."""
 
     def setUp(self) -> None:
-        patcher = mock.patch.object(runtime_api, "REQUEST_BODY_SECONDS", 0.5)
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.app = runtime_api.create_app(runtime=FakeRuntime(), token_reader=lambda: TOKEN)
 
     async def _held(self, lengths: list[int]) -> tuple[list[Any], tuple[int | None, dict[str, Any] | None], int]:
-        """Hold stalled bodies of these lengths; return what each got, what one more byte got, and what it read."""
+        """Hold stalled bodies of these lengths, send one more, then disconnect them all.
+
+        Returns what each holder and the extra request got, and how much of its body the extra one sent. A held body
+        never reaches its deadline here, so the holders keep their reservations until the test releases them;
+        AdmissionTests prove the deadline.
+        """
         peers = [_Peer([], then="stall") for _ in lengths]
-        holders = [
+        excess = _Peer([b"{"], then="stall")
+        calls = [
             asyncio.create_task(_call(self.app, peer, _scope(length=length), seconds=30))
             for peer, length in zip(peers, lengths, strict=True)
         ]
 
-        async def settled(peer: _Peer, holder: asyncio.Task) -> None:
+        async def settled(peer: _Peer, call: asyncio.Task) -> None:
             waiting = asyncio.create_task(peer.waiting.wait())
-            await asyncio.wait({waiting, holder}, return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait({waiting, call}, return_when=asyncio.FIRST_COMPLETED)
             waiting.cancel()
 
-        # Admission comes before the body is read: every holder is admitted once it waits for its body, or refused.
+        # Admission comes before the body is read: a request is admitted once it waits for its body, or refused.
         async with asyncio.timeout(5):
-            await asyncio.gather(*(settled(peer, holder) for peer, holder in zip(peers, holders, strict=True)))
-        excess = _Peer([b"{"], then="stall")
-        refused = await _call(self.app, excess, _scope(length=1), seconds=30)
-        return [status for status, _detail in await asyncio.gather(*holders)], refused, excess.received
+            await asyncio.gather(*(settled(peer, call) for peer, call in zip(peers, calls, strict=True)))
+            calls.append(asyncio.create_task(_call(self.app, excess, _scope(length=1), seconds=30)))
+            await settled(excess, calls[-1])
+        for peer in (*peers, excess):
+            peer.released.set()
+        *held, extra = await asyncio.gather(*calls)
+        return [status for status, _detail in held], extra, excess.received
 
     def test_one_largest_request_is_admitted_beside_exactly_what_the_budget_has_left(self):
         largest = runtime_api.MEMORY_PER_REQUEST + runtime_api.MAX_REQUEST_BYTES * runtime_api.MEMORY_PER_BODY_BYTE
@@ -429,18 +437,18 @@ class ProductionAdmissionTests(unittest.TestCase):
         capacity = (503, {"detail": "Brain runtime request capacity reached"})
 
         statuses, refused, read = asyncio.run(self._held([runtime_api.MAX_REQUEST_BYTES, remaining]))
-        self.assertEqual((statuses, refused, read), ([408, 408], capacity, 0))
-        # Everything was released, and one byte more than what was left is refused unread.
+        self.assertEqual((statuses, refused, read), ([None, None], capacity, 0))
+        # Disconnecting released everything, and one byte more than what was left is refused unread.
         statuses, refused, read = asyncio.run(self._held([runtime_api.MAX_REQUEST_BYTES, remaining + 1]))
-        self.assertEqual((statuses, refused[0], read), ([408, 503], 408, 1))
+        self.assertEqual((statuses, refused[0], read), ([None, 503], None, 1))
 
     def test_fifteen_small_requests_fill_the_budget(self):
         statuses, refused, read = asyncio.run(self._held([1] * 15))
-        self.assertEqual((statuses, refused[0], read), ([408] * 15, 503, 0))
+        self.assertEqual((statuses, refused[0], read), ([None] * 15, 503, 0))
 
     def test_fourteen_small_requests_leave_room_for_one_more(self):
-        statuses, refused, _read = asyncio.run(self._held([1] * 14))
-        self.assertEqual((statuses, refused[0]), ([408] * 14, 408))
+        statuses, refused, read = asyncio.run(self._held([1] * 14))
+        self.assertEqual((statuses, refused[0], read), ([None] * 14, None, 1))
 
 
 class ClosedInputTests(unittest.TestCase):
