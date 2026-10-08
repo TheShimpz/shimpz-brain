@@ -6,7 +6,8 @@ FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ce
 # The dependency layer is the runtime's base and a pure function of the pinned base, uv, and the lock (Shimpz
 # ADR-0098): no ARG SOURCE_DATE_EPOCH, WORKDIR, COPY, or ADD here, uv and the lock arrive as read-only mounts on a
 # discarded tmpfs, the uv cache is removed, bytecode is hash-checked, and every /opt timestamp is fixed. An unchanged
-# lock therefore yields the same layer bytes at every commit, with or without a build cache.
+# lock therefore yields the same layer bytes at every commit, with or without a build cache. The base ships no bytecode
+# and the read-only runtime cannot write any, so the standard library is compiled here too, with fixed timestamps.
 FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS dependencies
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,from=uv,source=/uv,target=/tmp/uv \
@@ -17,7 +18,8 @@ RUN --mount=type=tmpfs,target=/tmp \
         /tmp/uv sync --frozen --no-install-project --no-dev --python 3.14 && \
     rm -rf /opt/uv-cache && \
     find /opt/venv -type f -name '*.pyc' -delete && \
-    PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /opt/venv && \
+    PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /usr/local/lib/python3.14 /opt/venv && \
+    find /usr/local/lib/python3.14 \( -type d -o -name '*.pyc' \) -exec touch -h -d @0 {} + && \
     find /opt -depth -exec touch -h -d @0 {} +
 
 FROM dependencies AS runtime
@@ -42,6 +44,8 @@ COPY --chown=brainruntime:brainruntime action_labels.py action_purpose.py action
 # directory holds exactly the modules the sync script mirrors, so the image copies whatever that set is.
 COPY --chown=brainruntime:brainruntime protocol/team/action/v1/schema.py /app/protocol/team/action/v1/
 COPY --chown=brainruntime:brainruntime protocol/team/http/v1/ /app/protocol/team/http/v1/
+# The application is compiled like its environment, after its last copy.
+RUN PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /app
 
 # Two allocator arenas and a fixed mmap threshold hand freed request memory back instead of keeping it in per-thread
 # arenas, so resident memory follows what runtime_api admits rather than ratcheting toward the container limit.

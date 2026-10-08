@@ -35,7 +35,11 @@ class StaticBrainImageContractTests(unittest.TestCase):
         ):
             self.assertIn(mount, dependencies)
         self.assertIn("uv sync --frozen --no-install-project --no-dev --python 3.14", dependencies)
-        self.assertIn("compileall -q -f --invalidation-mode checked-hash /opt/venv", dependencies)
+        # The base ships no bytecode; the standard library, environment, and application are compiled once.
+        self.assertIn(
+            "compileall -q -f --invalidation-mode checked-hash /usr/local/lib/python3.14 /opt/venv", dependencies
+        )
+        self.assertIn("compileall -q -f --invalidation-mode checked-hash /app\n", stages["runtime"])
         self.assertTrue(dependencies.rstrip().endswith("find /opt -depth -exec touch -h -d @0 {} +"))
 
     def test_static_image_runs_only_the_non_root_http_runtime(self):
