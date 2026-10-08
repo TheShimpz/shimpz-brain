@@ -86,7 +86,7 @@ class CeilingTests(unittest.TestCase):
 
     def _openai(self, recorder: Recorder, **options) -> ChatOpenAI:
         client = httpx.Client(transport=httpx.MockTransport(recorder))
-        return ChatOpenAI(model="gpt-6-luna", api_key="sk-test-0123456789", http_client=client, **options)
+        return ChatOpenAI(model="gpt-6-luna", api_key="test-key", http_client=client, **options)
 
     def _anthropic(self, recorder: Recorder):
         model = provider_client._pooled_chat_anthropic()(model="claude-sonnet-5-5", api_key="sk-ant-test-0123456789")
@@ -161,6 +161,29 @@ class CeilingTests(unittest.TestCase):
         self.assertIsInstance(refused.exception.__cause__, eval_cost.BudgetExhaustedError)
         self.assertEqual((len(recorder.requests), self.ceiling.counts["refused"]), (3, 1))
 
+    def test_a_shared_ledger_reserves_each_kept_sdk_retry_and_a_throttle_bills_nothing(self):
+        self.ceiling.uninstall()
+        ledger = eval_cost.SharedBudget.create(Path(self.directory.name, "ledger.json"), 1.0)
+        self.ceiling = ceiling.Ceiling(0.0, 32_000, budget=ledger, sdk_retries=True)
+        self.ceiling.install()
+        answers = iter(
+            (
+                httpx.Response(429, json={"error": {"type": "rate_limit"}}, headers={"retry-after-ms": "1"}),
+                httpx.Response(200, json=OPENAI_RESPONSE),
+            )
+        )
+        client = httpx.Client(transport=httpx.MockTransport(lambda _request: next(answers)))
+        model = ChatOpenAI(
+            model="gpt-6-luna", api_key="test-key", http_client=client, max_retries=2, use_responses_api=True
+        )
+        self.assertEqual((model.max_retries, model.max_tokens), (2, 32_000))
+        model.invoke("hi")
+        self.assertEqual((self.ceiling.counts["requests"], self.ceiling.counts["throttled"]), (2, 1))
+        usage = eval_cost.Usage(model_calls=1, input_tokens=10, output_tokens=5, cache_read_tokens=4)
+        summary = ledger.summary()
+        self.assertAlmostEqual(summary["spent_usd"], eval_cost.cost(usage, "gpt-6-luna").usd, places=6)
+        self.assertEqual((summary["unknown_settlements"], summary["unsettled_usd"]), (0, 0))
+
     def test_failed_and_unreported_requests_keep_their_reservation(self):
         with self.assertRaises(openai.InternalServerError):
             self._openai(Recorder(None, 500), use_responses_api=True).invoke("hi")
@@ -171,7 +194,7 @@ class CeilingTests(unittest.TestCase):
 
         model = ChatOpenAI(
             model="gpt-6-luna",
-            api_key="sk-test-0123456789",
+            api_key="test-key",
             http_client=httpx.Client(transport=httpx.MockTransport(broken)),
         )
         with self.assertRaises(openai.APIConnectionError):

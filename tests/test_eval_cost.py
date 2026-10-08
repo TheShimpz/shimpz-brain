@@ -151,6 +151,93 @@ class BudgetTests(unittest.TestCase):
             cost.Budget(1.0).reserve(-0.1)
 
 
+class SharedBudgetTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = Path(self.directory.name, "budget.json")
+        self.budget = cost.SharedBudget.create(self.path, 1.0)
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def test_one_ledger_holds_every_holder_to_the_cap_and_settles_each_reservation_once(self):
+        other = cost.SharedBudget(self.path)
+        first = self.budget.reserve(0.6)
+        with self.assertRaises(cost.BudgetExhaustedError):
+            other.reserve(0.5)
+        other.settle(first, cost.Cost(0.2))
+        with self.assertRaisesRegex(cost.LedgerError, "no open reservation"):
+            self.budget.settle(first, cost.Cost(0.2))
+        unknown = other.reserve(0.3)
+        self.budget.settle(unknown, cost.Cost(0.1, known=False))
+        over = other.reserve(0.1)
+        other.settle(over, cost.Cost(0.15))
+        held = self.budget.reserve(0.2)
+        summary = other.summary()
+        self.assertAlmostEqual(summary.pop("spent_usd"), 0.65)
+        self.assertEqual(
+            summary,
+            {
+                "cap_usd": 1.0,
+                "unknown_settlements": 1,
+                "reservations_exceeded": 1,
+                "contention_waits": 0,
+                "unsettled_usd": held.amount,
+            },
+        )
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
+        with self.assertRaises(FileExistsError):
+            cost.SharedBudget.create(self.path, 2.0)
+
+    def test_a_reservation_waits_for_in_flight_work_and_refuses_what_can_never_fit(self):
+        held = [self.budget.reserve(0.9, wait=True)]
+        slept = []
+
+        def in_flight_work_settles(seconds: float) -> None:
+            slept.append(seconds)
+            if held:
+                cost.SharedBudget(self.path).settle(held.pop(), cost.Cost(0.3))
+
+        with mock.patch.object(cost.time, "sleep", in_flight_work_settles):
+            reservation = self.budget.reserve(0.5, wait=True)
+        self.assertEqual((reservation.amount, len(slept)), (0.5, 1))
+        self.assertTrue(cost.LEDGER_POLL_SECONDS[0] <= slept[0] <= cost.LEDGER_POLL_SECONDS[1])
+        self.assertEqual(self.budget.summary()["contention_waits"], 1)
+        with self.assertRaises(cost.BudgetExhaustedError):
+            self.budget.reserve(0.8, wait=True)
+
+    def test_an_unreadable_or_malformed_ledger_refuses_every_reservation(self):
+        valid = json.loads(self.path.read_text(encoding="utf-8"))
+        broken = (
+            "not json",
+            json.dumps([]),
+            json.dumps({**valid, "extra": 1}),
+            json.dumps({**valid, "cap": -1}),
+            json.dumps({**valid, "spent": float("inf")}),
+            json.dumps({**valid, "spent": "0"}),
+            json.dumps({**valid, "unknown": True}),
+            json.dumps({**valid, "waits": -1}),
+            json.dumps({**valid, "open": []}),
+            json.dumps({**valid, "open": {"a": -0.1}}),
+        )
+        for text in broken:
+            with self.subTest(text=text):
+                self.path.write_text(text, encoding="utf-8")
+                with self.assertRaises(cost.LedgerError):
+                    self.budget.reserve(0.1)
+        self.path.unlink()
+        with self.assertRaisesRegex(cost.LedgerError, "unreadable"):
+            self.budget.summary()
+        self.assertTrue(issubclass(cost.LedgerError, cost.BudgetExhaustedError))
+
+    def test_invalid_caps_and_reservations_are_refused(self):
+        for cap in (-1.0, float("nan"), True):
+            with self.assertRaisesRegex(ValueError, "cap"):
+                cost.SharedBudget.create(Path(self.directory.name, "other.json"), cap)
+        with self.assertRaisesRegex(ValueError, "reservation"):
+            self.budget.reserve(-0.1)
+
+
 class PerTaskTests(unittest.TestCase):
     def test_failed_attempts_count_toward_the_cost_of_each_success(self):
         summary = cost.per_task([cost.Cost(0.2), cost.Cost(0.4), cost.Cost(0.6, known=False)], successes=2)

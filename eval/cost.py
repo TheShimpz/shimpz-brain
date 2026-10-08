@@ -13,8 +13,15 @@ This module uses only the standard library so that the umbrella journey driver c
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
+import math
+import os
+import secrets
+import tempfile
 import threading
+import time
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -162,6 +169,8 @@ class BudgetExhaustedError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class Reservation:
     amount: float
+    # A shared ledger's id for this reservation, which settles it exactly once; an in-process Budget needs none.
+    key: str = ""
 
 
 class Budget:
@@ -216,6 +225,128 @@ class Budget:
                 "unknown_settlements": self.unknown,
                 "reservations_exceeded": self.exceeded,
                 "contention_waits": self.waits,
+            }
+
+
+# How long a shared reservation that has to wait for in-flight work sleeps, at least and at most, before it reads the
+# ledger again: spread at random, so hundreds of waiting requests never contend for the lock in step.
+LEDGER_POLL_SECONDS = (0.1, 0.3)
+_JITTER = secrets.SystemRandom()
+
+
+class LedgerError(BudgetExhaustedError):
+    """The shared ledger is missing, unreadable, or malformed, or a settlement names no open reservation.
+
+    Nothing is spent against a ledger that cannot be read, so it refuses like an exhausted budget.
+    """
+
+
+def _amount(value: object) -> bool:
+    return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+
+def _count(value: object) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _valid_ledger(state: object) -> bool:
+    if not isinstance(state, dict) or set(state) != {"cap", "spent", "open", "unknown", "exceeded", "waits"}:
+        return False
+    amounts = (state["cap"], state["spent"])
+    counts = (state["unknown"], state["exceeded"], state["waits"])
+    open_ = state["open"]
+    return (
+        all(map(_amount, amounts))
+        and all(map(_count, counts))
+        and isinstance(open_, dict)
+        and all(isinstance(key, str) and _amount(value) for key, value in open_.items())
+    )
+
+
+class SharedBudget:
+    """Budget's hard cap shared by every process of one run through one ledger file.
+
+    The same reserve-before, settle-after semantics as ``Budget``: a reservation that would cross the cap even after
+    all in-flight work settles is refused, and one that only has to wait for in-flight work polls the ledger until it
+    fits (``wait=True``). Each operation holds an exclusive lock on a stable lock file beside the ledger, opened anew
+    so threads of one process exclude each other too, reads and validates the whole state, and replaces it
+    atomically. Each reservation carries a unique id and settles exactly once. A reservation that is never settled,
+    as when its process dies, stays charged at its whole amount.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._lock_path = path.with_name(path.name + ".lock")
+
+    @classmethod
+    def create(cls, path: Path, cap: float) -> SharedBudget:
+        """Start a new owner-only ledger at ``path`` with nothing spent; an existing ledger is never replaced."""
+        if not _amount(cap):
+            raise ValueError("invalid budget cap")
+        state = {"cap": cap, "spent": 0.0, "open": {}, "unknown": 0, "exceeded": 0, "waits": 0}
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(state, handle)
+        return cls(path)
+
+    @contextlib.contextmanager
+    def _ledger(self) -> Iterator[dict]:
+        """The locked ledger state; whatever the block leaves in it is written back atomically."""
+        descriptor = os.open(self._lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            try:
+                state = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise LedgerError("the shared budget ledger is unreadable") from exc
+            if not _valid_ledger(state):
+                raise LedgerError("the shared budget ledger is malformed")
+            read = json.dumps(state, sort_keys=True)
+            yield state
+            if json.dumps(state, sort_keys=True) == read:
+                return
+            handle, temporary = tempfile.mkstemp(prefix=self.path.name, dir=self.path.parent)
+            with os.fdopen(handle, "w", encoding="utf-8") as written:
+                json.dump(state, written)
+            Path(temporary).replace(self.path)
+        finally:
+            os.close(descriptor)
+
+    def reserve(self, amount: float, *, wait: bool = False) -> Reservation:
+        if not amount >= 0:
+            raise ValueError("invalid reservation")
+        waited = False
+        while True:
+            with self._ledger() as state:
+                held = sum(state["open"].values())
+                if state["spent"] + held + amount <= state["cap"]:
+                    key = secrets.token_hex(16)
+                    state["open"][key] = amount
+                    state["waits"] += waited
+                    return Reservation(amount, key)
+                if not wait or state["spent"] + amount > state["cap"]:
+                    raise BudgetExhaustedError("budget cap reached")
+            waited = True
+            time.sleep(_JITTER.uniform(*LEDGER_POLL_SECONDS))
+
+    def settle(self, reservation: Reservation, spent: Cost) -> None:
+        with self._ledger() as state:
+            if state["open"].pop(reservation.key, None) != reservation.amount:
+                raise LedgerError("the settlement names no open reservation")
+            state["spent"] += spent.usd if spent.known else max(spent.usd, reservation.amount)
+            state["unknown"] += not spent.known
+            state["exceeded"] += spent.usd > reservation.amount
+
+    def summary(self) -> dict[str, object]:
+        with self._ledger() as state:
+            return {
+                "cap_usd": state["cap"],
+                "spent_usd": round(state["spent"], 6),
+                "unknown_settlements": state["unknown"],
+                "reservations_exceeded": state["exceeded"],
+                "contention_waits": state["waits"],
+                # Reservations never settled, as when a process died mid-request: charged at their whole amount.
+                "unsettled_usd": round(sum(state["open"].values()), 6),
             }
 
 
