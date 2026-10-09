@@ -4,8 +4,6 @@ Each adapter's single generation or send method is intercepted, so the adapter's
 no network, key, or provider call is used.
 """
 
-from __future__ import annotations
-
 import unittest
 from unittest import mock
 

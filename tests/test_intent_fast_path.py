@@ -1,7 +1,5 @@
 """The Jev fast path: exact request, closed response, and fallback on every non-confident or failed outcome."""
 
-from __future__ import annotations
-
 import json
 import os
 import socket

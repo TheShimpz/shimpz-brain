@@ -1,7 +1,5 @@
 """Observed model usage per Brain operation: counts only what provider responses reported (ADR-0082)."""
 
-from __future__ import annotations
-
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context

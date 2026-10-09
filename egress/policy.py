@@ -1,7 +1,5 @@
 """Fail-closed Brain provider policy: the packaged model catalog's hosts plus one fixed decision host."""
 
-from __future__ import annotations
-
 import json
 import re
 import stat

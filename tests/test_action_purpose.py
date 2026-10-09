@@ -1,7 +1,5 @@
 """Why a pending Action pauses for a person: bound to the exact interrupt, written from the turn's own message only."""
 
-from __future__ import annotations
-
 import asyncio
 import dataclasses
 import json

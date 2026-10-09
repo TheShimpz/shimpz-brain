@@ -7,8 +7,6 @@ follow 10 / 17 / 14 / 7 templates of 1-2, 3-6, 7-15, and 16-40 user turns; compo
 chain, selection, and mixed. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from eval.complex.templates_risk import S4, S5, S6
 from eval.complex.templates_work import S1, S2, S3
 

@@ -17,8 +17,6 @@ Three of three is a conservative floor for a future prompt or runtime change, no
 first complete run, including misses; never rerun only to turn a missed case green.
 """
 
-from __future__ import annotations
-
 import argparse
 import contextlib
 import dataclasses

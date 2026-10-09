@@ -6,8 +6,6 @@ This measures Assistant construction with synthetic text and one declared Action
 it makes no provider, checkpoint, Team, browser, Docker, or network request.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import math

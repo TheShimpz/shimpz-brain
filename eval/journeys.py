@@ -13,8 +13,6 @@ attempted and per successful request, and seconds; never prompts, replies, or Ac
 Cost is the cache-aware estimate of ``eval.cost``, not billing; usage a provider did not report is labelled unknown.
 """
 
-from __future__ import annotations
-
 import argparse
 import dataclasses
 import hashlib

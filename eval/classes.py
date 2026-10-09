@@ -24,8 +24,6 @@ gated, so a lookup may still use other wording than the user's. This module buil
 answers; the driver makes every call. It uses only the standard library.
 """
 
-from __future__ import annotations
-
 import datetime
 import json
 import re

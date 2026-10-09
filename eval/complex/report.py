@@ -12,8 +12,6 @@ cold and warm starts, oracle counts, and simulator limitations. Arms of one camp
 The grade is exploratory until the owner's blind labels calibrate the very judge that produced every verdict.
 """
 
-from __future__ import annotations
-
 import argparse
 import concurrent.futures
 import json

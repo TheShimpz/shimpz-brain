@@ -1,7 +1,5 @@
 """Stateless structured routing for one fresh Admin chat objective."""
 
-from __future__ import annotations
-
 import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass

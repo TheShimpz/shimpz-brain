@@ -5,8 +5,6 @@ key, or provider call is used. The checkpoint is inspected after every turn to p
 graph state.
 """
 
-from __future__ import annotations
-
 import base64
 import dataclasses
 import hashlib

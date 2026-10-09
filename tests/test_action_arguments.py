@@ -1,7 +1,5 @@
 """Malformed Action arguments are corrected inside the graph and never reach Team (ADR-0080)."""
 
-from __future__ import annotations
-
 import unittest
 from typing import Any
 from unittest import mock

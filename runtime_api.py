@@ -1,7 +1,5 @@
 """Authenticated HTTP boundary for the isolated Shimpz LangGraph runtime."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import datetime
@@ -28,13 +26,18 @@ import model_usage
 import provider_cancel
 import routine_recovery
 import turn_pins
+from action_labels import ActionLabel
+from action_purpose import PendingAction
+from capability_plan import CapabilityCandidate, CapabilityPlan
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
 from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, field_validator, model_validator
+from routine_recovery import RecoveryRequest
 
 import routine as team_routine
 
@@ -462,35 +465,33 @@ class RuntimeLike:
         provider: agent_runtime.ProviderConfig,
         locale: str,
         action_ids: tuple[str, ...],
-    ) -> tuple[action_labels.ActionLabel, ...]: ...
+    ) -> tuple[ActionLabel, ...]: ...
 
     def action_purpose(
         self,
         provider: agent_runtime.ProviderConfig,
-        pending: action_purpose.PendingAction,
+        pending: PendingAction,
     ) -> str | None: ...
 
     def capability_plan(
         self,
         provider: agent_runtime.ProviderConfig,
         objective: str,
-        candidates: tuple[capability_plan.CapabilityCandidate, ...],
-    ) -> capability_plan.CapabilityPlan: ...
+        candidates: tuple[CapabilityCandidate, ...],
+    ) -> CapabilityPlan: ...
 
-    def routine_recovery(
-        self, provider: agent_runtime.ProviderConfig, request: routine_recovery.RecoveryRequest
-    ) -> str: ...
+    def routine_recovery(self, provider: agent_runtime.ProviderConfig, request: RecoveryRequest) -> str: ...
 
     def intent_route(
         self,
         provider: agent_runtime.ProviderConfig,
         objective: str,
-        expected_intent: intent_route.LifecycleIntent | None,
-        candidates: tuple[intent_route.DirectoryCandidate, ...],
-        context: intent_route.LifecycleContext | None,
+        expected_intent: LifecycleIntent | None,
+        candidates: tuple[DirectoryCandidate, ...],
+        context: LifecycleContext | None,
         locale: str,
         decision_key: str | None = None,
-    ) -> intent_route.IntentRoute: ...
+    ) -> IntentRoute: ...
 
 
 TokenReader = Callable[[], str]

@@ -4,8 +4,6 @@ Split from ``eval.fresh3`` without any change to a value: its digest covers ever
 standard library.
 """
 
-from __future__ import annotations
-
 from eval.corpus import Template, created, messages
 
 

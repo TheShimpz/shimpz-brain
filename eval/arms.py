@@ -36,8 +36,6 @@ Nothing here is production runtime: the driver applies it in its own Team proces
 standard library.
 """
 
-from __future__ import annotations
-
 import datetime
 import json
 import re

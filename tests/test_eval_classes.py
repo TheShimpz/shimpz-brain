@@ -1,7 +1,5 @@
 """Provider-free checks for the Luna-classes mechanisms W, Q, V, and U (ADR-0094)."""
 
-from __future__ import annotations
-
 import datetime
 import json
 import unittest

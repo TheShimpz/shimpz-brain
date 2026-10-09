@@ -8,8 +8,6 @@ oracle about whether the episode succeeded. The oracle alone decides state and e
 model stack only for ``judge``.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 from collections.abc import Mapping, Sequence

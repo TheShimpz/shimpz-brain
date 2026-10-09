@@ -1,7 +1,5 @@
 """Learned Team skills in Brain: structure-only procedures quoted as data, pinned per turn (ADR-0085)."""
 
-from __future__ import annotations
-
 import dataclasses
 import json
 import unittest

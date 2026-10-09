@@ -8,8 +8,6 @@ retry is permitted at all, and repeats only the same logical operation with the 
 no provider retry and at most 1,024 output tokens.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal

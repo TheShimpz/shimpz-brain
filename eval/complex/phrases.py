@@ -6,8 +6,6 @@ identifiers, addresses, dates, and quoted titles stay as given; a parameter that
 body, a topic) is supplied per locale by the template. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from eval.corpus import LOCALES

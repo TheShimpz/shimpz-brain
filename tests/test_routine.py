@@ -1,7 +1,5 @@
 """Routines: the chat agent runs the work once and records it; Brain only checks the closed record (ADR-0101)."""
 
-from __future__ import annotations
-
 import dataclasses
 import datetime
 import json

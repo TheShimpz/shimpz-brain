@@ -10,8 +10,6 @@
 This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from eval import large_api, large_api_contract

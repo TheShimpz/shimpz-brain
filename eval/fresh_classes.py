@@ -13,8 +13,6 @@ contract, or reference requires a new corpus id.
 This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 import unicodedata
 from collections.abc import Mapping
 

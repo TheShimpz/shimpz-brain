@@ -12,8 +12,6 @@ Nouls answer in about 270 to 320 ms, and that requests cost $0.042 per million i
   other turn on the escalation model.
 """
 
-from __future__ import annotations
-
 import json
 import math
 import time

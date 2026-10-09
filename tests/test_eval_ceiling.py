@@ -1,7 +1,5 @@
 """Provider-free checks that the evaluation ceiling bounds and reserves every request on the wire (ADR-0094)."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import tempfile

@@ -4,8 +4,6 @@ The counts are what the provider responses reported: a call that failed, was can
 provider SDK reports no tokens, so the totals are a floor on billed usage, never an estimate of it.
 """
 
-from __future__ import annotations
-
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager

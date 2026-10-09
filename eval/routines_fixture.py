@@ -1,7 +1,5 @@
 """The Routine eval's fixed world: the reference Assistant's fixture results and the attempt's constants."""
 
-from __future__ import annotations
-
 import dataclasses
 import importlib.util
 import sys

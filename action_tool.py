@@ -4,8 +4,6 @@ Arguments that violate the Action's input schema never suspend the graph: the mo
 may call again within the recursion limit (ADR-0080). Team still validates every request it receives.
 """
 
-from __future__ import annotations
-
 import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any

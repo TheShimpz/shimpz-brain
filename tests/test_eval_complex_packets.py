@@ -1,7 +1,5 @@
 """Provider-free checks for the blinded precision-v3 adjudication packets (ADR-0094)."""
 
-from __future__ import annotations
-
 import io
 import json
 import runpy

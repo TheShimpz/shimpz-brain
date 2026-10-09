@@ -1,7 +1,5 @@
 """The Routine eval's strata, how each attempt is judged, and the replay variants after a passing attempt."""
 
-from __future__ import annotations
-
 import copy
 import dataclasses
 import datetime

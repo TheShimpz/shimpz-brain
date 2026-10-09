@@ -1,7 +1,5 @@
 """Provider-free checks of the Routine eval's Brain processes: evidence, failure causes, and how the run starts them."""
 
-from __future__ import annotations
-
 import io
 import itertools
 import json

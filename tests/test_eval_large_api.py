@@ -1,7 +1,5 @@
 """Provider-free checks for the large-API stratum: its 120-Action Assistant, state, oracle, and split (ADR-0094)."""
 
-from __future__ import annotations
-
 import dataclasses
 import unittest
 from collections import Counter

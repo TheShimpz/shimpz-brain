@@ -1,7 +1,5 @@
 """Provider-free checks for evaluation pricing, unknown usage, budgets, and per-task cost (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import tempfile
 import threading

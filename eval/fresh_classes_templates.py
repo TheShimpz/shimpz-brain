@@ -6,8 +6,6 @@ of the frozen corpus: ``eval.fresh_classes.digest`` covers every template, so an
 This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from eval.corpus import Template, created, messages
 
 

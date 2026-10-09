@@ -1,7 +1,5 @@
 """Provider-free checks for the large-API arms: group ranking, task-shaped contracts, recall, and Jev (ADR-0094)."""
 
-from __future__ import annotations
-
 import unittest
 
 import agent_runtime

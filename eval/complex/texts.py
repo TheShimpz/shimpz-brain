@@ -5,8 +5,6 @@ it into the locale mapping a phrase parameter accepts. Exact values (names, ids,
 tags) are never here. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from eval.corpus import LOCALES
 
 TEXTS: dict[str, tuple[str, ...]] = {

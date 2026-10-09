@@ -1,7 +1,5 @@
 """Provider-free checks for the evaluation statistics (ADR-0094)."""
 
-from __future__ import annotations
-
 import unittest
 
 from eval import stats

@@ -5,8 +5,6 @@ The validation semantics, its bounds, reference walk, and bounded RE2 matcher, a
 is no valid Draft 2020-12 schema, before the Brain offers it to a model.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Mapping
 

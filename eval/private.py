@@ -7,8 +7,6 @@ to that descriptor without following a link, must be a regular file with one lin
 made owner-only before anything is written. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import stat

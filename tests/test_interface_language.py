@@ -1,7 +1,5 @@
 """A turn writes in the interface language its start pinned, and keeps it and its start message across resumes."""
 
-from __future__ import annotations
-
 import dataclasses
 import unittest
 from unittest import mock

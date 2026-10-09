@@ -1,7 +1,5 @@
 """Provider-free checks for the experiment-only arm-B contracts and the arm C/D/E logic (ADR-0094)."""
 
-from __future__ import annotations
-
 import unittest
 
 import agent_runtime

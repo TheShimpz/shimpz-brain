@@ -7,8 +7,6 @@ A turn that carries attachments starts its message id with `ATTACHED_TURN_PREFIX
 whole exchange from semantic history.
 """
 
-from __future__ import annotations
-
 import base64
 import binascii
 import concurrent.futures

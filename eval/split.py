@@ -7,8 +7,6 @@ templates between the two sets, starting with whichever set is smaller (held-out
 tuning results; conclusions use held-out results only.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 from collections import defaultdict

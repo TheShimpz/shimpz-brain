@@ -1,7 +1,5 @@
 """Stateless capability planning over one closed public Assistant shortlist."""
 
-from __future__ import annotations
-
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass

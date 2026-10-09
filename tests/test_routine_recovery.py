@@ -1,7 +1,5 @@
 """The Brain's one decision in a held Routine run's automatic recovery (ADR-0092 section 6)."""
 
-from __future__ import annotations
-
 import json
 import unittest
 from pathlib import Path

@@ -1,7 +1,5 @@
 """Action argument patterns run on the bounded linear-time matcher, never Python's backtracking `re`."""
 
-from __future__ import annotations
-
 import time
 import unittest
 from unittest import mock

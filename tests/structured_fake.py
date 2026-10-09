@@ -1,7 +1,5 @@
 """A scripted chat model that answers provider-native structured output the way LangChain's ``include_raw`` does."""
 
-from __future__ import annotations
-
 from typing import Any, ClassVar
 
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel

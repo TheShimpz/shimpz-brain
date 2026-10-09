@@ -60,8 +60,6 @@ the schedules seen, the estimated cost, the throttling met, and the run's concur
 message, a reply, or a key (only ``--trace-dir`` writes messages, a discarded try under ``CASE/discarded/``).
 """
 
-from __future__ import annotations
-
 import argparse
 import base64
 import concurrent.futures

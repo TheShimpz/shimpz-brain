@@ -1,7 +1,5 @@
 """The Brain's generated Team protocol mirror is exactly what its pins name, and only what the Brain consumes."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import re

@@ -5,8 +5,6 @@ pending Action interrupt, the reviewed Assistant name and Action summary Team su
 started the pending turn: never from other history, Action results, Genesis, the human request, or credentials.
 """
 
-from __future__ import annotations
-
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass

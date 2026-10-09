@@ -16,8 +16,6 @@ language requires a new corpus id.
 This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections import Counter
 from collections.abc import Mapping
 

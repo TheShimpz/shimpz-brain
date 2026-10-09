@@ -7,8 +7,6 @@ input validation, prompt construction, and result validation, not provider I/O.
 Only case names and aggregate timings are printed.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import math

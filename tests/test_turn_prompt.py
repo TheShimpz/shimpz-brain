@@ -1,7 +1,5 @@
 """The turn policy prompt: acting on safe defaults, asking only open decisions, and the trusted current date."""
 
-from __future__ import annotations
-
 import dataclasses
 import datetime
 import unittest

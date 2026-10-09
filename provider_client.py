@@ -4,8 +4,6 @@ The API key is held only by the short-lived client a call builds; it never enter
 the clients share carries no credential.
 """
 
-from __future__ import annotations
-
 import functools
 from typing import TYPE_CHECKING
 

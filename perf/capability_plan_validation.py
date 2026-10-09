@@ -7,8 +7,6 @@ and the complete local planner path separately, excluding provider latency.
 Only case names and aggregate timings are printed after every result matches.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import math

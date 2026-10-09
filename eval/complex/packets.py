@@ -12,8 +12,6 @@ Experiment-only; ``python -m eval.complex.packets --transcript T --seed S --out 
 ``key.json``, and ``labels.json`` owner-only into a private directory outside every repository.
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import json

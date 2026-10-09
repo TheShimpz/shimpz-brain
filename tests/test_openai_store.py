@@ -4,8 +4,6 @@ The adapter runs over an `httpx.MockTransport`, so the bodies asserted here are 
 key, or provider call is used.
 """
 
-from __future__ import annotations
-
 import json
 import unittest
 

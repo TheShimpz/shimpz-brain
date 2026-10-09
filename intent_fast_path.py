@@ -6,8 +6,6 @@ shape failure returns ``False`` so the caller runs the LLM route unchanged. Jev 
 reply, Assistant id, or authority. The Supervisor's key is request-scoped and never logged or persisted.
 """
 
-from __future__ import annotations
-
 import json
 import math
 import threading

@@ -7,8 +7,6 @@ turn. Distractor writes succeed and are counted as foreign. ``snapshot`` is the 
 This module uses only the standard library so that the umbrella journey driver can import it.
 """
 
-from __future__ import annotations
-
 import copy
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping

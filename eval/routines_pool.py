@@ -17,8 +17,6 @@ run's dispatch, a provider that refuses every request (no credit or quota left, 
 and a case missing any attempt is inconclusive.
 """
 
-from __future__ import annotations
-
 import collections
 import contextlib
 import dataclasses

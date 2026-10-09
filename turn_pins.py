@@ -3,8 +3,6 @@
 Its date and the Team's knowledge, and its interface language and exact start message (ADR-0090).
 """
 
-from __future__ import annotations
-
 import datetime
 import json
 import re

@@ -4,8 +4,6 @@ Split from ``eval.fresh3`` without any change to a value: its digest covers ever
 ``DATA_LANGUAGES``. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 # The simulated starting state of the new Assistants. Recipes: (id, name, description, course, price in EUR).
 RECIPES = (
     (

@@ -5,8 +5,6 @@ The audit line is the security-relevant record of which public host the Brain wa
 or refused.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import sys

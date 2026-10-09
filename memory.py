@@ -6,8 +6,6 @@ stored instruction. The Team saves the
 proposals only when the turn's reply commits; memories shape style and harmless defaults, never Action authority.
 """
 
-from __future__ import annotations
-
 import dataclasses
 import functools
 import json

@@ -10,8 +10,6 @@ is a difference. Changing any message, fixture, oracle, or reference requires a 
 This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections import Counter
 from collections.abc import Mapping
 

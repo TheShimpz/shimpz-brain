@@ -7,8 +7,6 @@ running when it exits. ``results`` overrides the result of a task
 by ``CASE:INDEX:TRY``.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import signal

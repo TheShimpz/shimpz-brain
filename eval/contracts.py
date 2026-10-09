@@ -7,8 +7,6 @@ platform's per-locale translations (ADR-0091), used only by the arm-D working se
 standard library.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from eval.corpus import LOCALES

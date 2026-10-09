@@ -3,8 +3,6 @@
 This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from eval.complex.steps import (
     BUDGET,
     COM,

@@ -5,8 +5,6 @@ language-retrieval arms' counts, each over an explicit denominator. ``eval.preci
 recorded them. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 

@@ -1,7 +1,5 @@
 """Inert display labels for Action identifiers, written in the interface language by one stateless structured call."""
 
-from __future__ import annotations
-
 import json
 import unicodedata
 from collections.abc import Callable, Mapping

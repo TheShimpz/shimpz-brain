@@ -4,8 +4,6 @@ The provider request is intercepted at the adapter's single send method, so the 
 Anthropic SDK would receive; no network, key, or provider call is used.
 """
 
-from __future__ import annotations
-
 import unittest
 from unittest import mock
 

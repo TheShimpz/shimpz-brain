@@ -1,7 +1,5 @@
 """Provider-free checks for the frozen precision corpus, its simulated Assistants, and its oracle (ADR-0094)."""
 
-from __future__ import annotations
-
 import dataclasses
 import unittest
 from collections import Counter

@@ -1,7 +1,5 @@
 """Provider-free checks for judging journey attempts and building the sanitized report (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import runpy
 import stat

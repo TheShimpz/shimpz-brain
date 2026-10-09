@@ -16,8 +16,6 @@ processes; production runtime is unchanged. Each names where it would live as a 
 This module builds prompts and parses answers only; the driver makes every call. It uses only the standard library.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Mapping, Sequence
 

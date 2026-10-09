@@ -18,8 +18,6 @@ Design (deliberately minimal — no bearer, no TLS termination):
   * fail-closed: if this process is down, the brain reaches nothing external.
 """
 
-from __future__ import annotations
-
 import contextlib
 import ipaddress
 import os

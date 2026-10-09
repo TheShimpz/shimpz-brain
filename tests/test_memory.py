@@ -1,7 +1,5 @@
 """Learned Team memory: only the user's own words change it, never an Action, and it is pinned per turn (ADR-0084)."""
 
-from __future__ import annotations
-
 import dataclasses
 import json
 import unittest

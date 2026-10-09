@@ -1,7 +1,5 @@
 """The HTTP boundary bounds every request body before it is parsed and keeps health off the worker threads."""
 
-from __future__ import annotations
-
 import asyncio
 import gc
 import json

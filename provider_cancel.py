@@ -10,8 +10,6 @@ backoff, and the runtime maps every ``Exception`` to a provider failure. The gra
 exit, so checkpoint writes finish before the per-thread lock is released. A cancelled call may already be billed.
 """
 
-from __future__ import annotations
-
 import contextvars
 import os
 import socket

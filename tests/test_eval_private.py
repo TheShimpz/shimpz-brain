@@ -1,7 +1,5 @@
 """Provider-free checks that private evaluation files stay owner-only and outside every repository (ADR-0094)."""
 
-from __future__ import annotations
-
 import os
 import stat
 import tempfile

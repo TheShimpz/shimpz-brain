@@ -1,7 +1,5 @@
 """Provider-free checks of the language-retrieval experiment's mechanisms (ADR-0094): registry, planning, shaping."""
 
-from __future__ import annotations
-
 import json
 import unittest
 

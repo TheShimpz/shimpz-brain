@@ -1,7 +1,5 @@
 """Provider client construction for ordinary Brain turns and the structured route decision."""
 
-from __future__ import annotations
-
 import unittest
 from unittest import mock
 

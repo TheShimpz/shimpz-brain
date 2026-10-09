@@ -1,7 +1,5 @@
 """Whole-exchange conversation memory and the model-window guard, over the production SQLite checkpoint."""
 
-from __future__ import annotations
-
 import functools
 import json
 import sqlite3

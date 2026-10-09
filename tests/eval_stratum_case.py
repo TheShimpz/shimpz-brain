@@ -1,7 +1,5 @@
 """Arrange-and-act helpers shared by the fresh evaluation strata tests; every assertion stays in its own test."""
 
-from __future__ import annotations
-
 import dataclasses
 from collections.abc import Callable
 from types import ModuleType

@@ -1,7 +1,5 @@
 """Provider-free checks of the Routine eval driver's run: each attempt's evidence, the merged report, and the gate."""
 
-from __future__ import annotations
-
 import base64
 import json
 import socketserver

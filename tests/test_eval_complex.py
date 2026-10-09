@@ -1,7 +1,5 @@
 """Provider-free checks for precision-v3: world, phrasebook, scripted user, reference workflows, and oracle."""
 
-from __future__ import annotations
-
 import dataclasses
 import unittest
 

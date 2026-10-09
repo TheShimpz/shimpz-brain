@@ -10,8 +10,6 @@ writes to another Team's records, and the world's permission violations. Communi
 the whole trajectory. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections import Counter
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass

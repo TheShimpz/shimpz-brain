@@ -12,8 +12,6 @@ answer outside a Brain request, is also written to the Brain's events file, so t
 received against what its Brains met.
 """
 
-from __future__ import annotations
-
 import contextlib
 import contextvars
 import dataclasses

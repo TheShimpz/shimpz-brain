@@ -11,8 +11,6 @@ Usage a provider did not report, or a call that failed, makes the usage unknown:
 This module uses only the standard library so that the umbrella journey driver can load it by path.
 """
 
-from __future__ import annotations
-
 import contextlib
 import fcntl
 import json

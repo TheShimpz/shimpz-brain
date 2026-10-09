@@ -1,7 +1,5 @@
 """Provider-free checks for precision-v3 episode judging and reports (ADR-0094)."""
 
-from __future__ import annotations
-
 import io
 import json
 import runpy

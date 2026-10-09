@@ -1,7 +1,5 @@
 """Provider-free checks for the fresh stratum: its Assistants, state, reference workflows, and oracle."""
 
-from __future__ import annotations
-
 import dataclasses
 import json
 import unittest

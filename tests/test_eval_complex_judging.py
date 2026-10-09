@@ -1,7 +1,5 @@
 """Provider-free checks for whole-trajectory judging of precision-v3 episodes (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import tempfile
 import unittest

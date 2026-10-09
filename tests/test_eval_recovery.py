@@ -1,7 +1,5 @@
 """Provider-free checks for the Luna-99 search-and-recovery mechanisms (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import unittest
 

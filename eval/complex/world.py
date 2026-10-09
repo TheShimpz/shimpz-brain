@@ -8,8 +8,6 @@ occurrence), never at a model call. Every successful write records its effect ke
 SIMULATION. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 import copy
 import hashlib
 import random

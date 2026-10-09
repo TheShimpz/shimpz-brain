@@ -1,7 +1,5 @@
 """Brain-authored multiple-choice clarification: closed shape, terminal turn, and refusal before any tool runs."""
 
-from __future__ import annotations
-
 import dataclasses
 import unittest
 from unittest import mock

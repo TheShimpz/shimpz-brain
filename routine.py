@@ -9,8 +9,6 @@ the plan from its own trace of the person's sends and shows the person a card to
 schedules, approves, or authorizes anything: Brain only reports what the agent asked to record.
 """
 
-from __future__ import annotations
-
 import functools
 import json
 from collections.abc import Mapping

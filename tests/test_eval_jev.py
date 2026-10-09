@@ -1,7 +1,5 @@
 """Provider-free checks for the experiment-only Jev decisions of the engineering arms (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import time
 import unittest

@@ -4,8 +4,6 @@ A scripted fake model proves the simulator, the outcome check, the skill the har
 says nothing about how a real model behaves.
 """
 
-from __future__ import annotations
-
 import unittest
 from unittest import mock
 

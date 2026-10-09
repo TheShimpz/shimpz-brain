@@ -16,8 +16,6 @@ An attempt succeeds when its Team turn completed, the oracle passed, and the fin
 unjudged attempt is inconclusive and never counted as a failure or a success.
 """
 
-from __future__ import annotations
-
 import argparse
 import concurrent.futures
 import dataclasses

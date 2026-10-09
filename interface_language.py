@@ -1,7 +1,5 @@
 """The closed Admin interface languages that Brain-written text follows (ADR-0090)."""
 
-from __future__ import annotations
-
 from typing import Literal
 
 Locale = Literal["ar", "de", "en", "es", "fr", "ja", "pt", "zh"]

@@ -1,7 +1,5 @@
 """Provider-free checks for the fixed intent-route semantic evaluation."""
 
-from __future__ import annotations
-
 import tempfile
 import unittest
 from pathlib import Path

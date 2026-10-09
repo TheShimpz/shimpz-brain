@@ -5,8 +5,6 @@ resample whole clusters. A paired comparison uses only complete pairs, and an in
 None, never a guess. This module uses only the standard library so that the umbrella journey driver can load it.
 """
 
-from __future__ import annotations
-
 import hashlib
 import math
 import random

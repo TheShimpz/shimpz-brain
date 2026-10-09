@@ -10,8 +10,6 @@ Calibration compares a judge with the fixed adjudicated sample in ``judge_calibr
 criterion with Wilson 95% intervals.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping

@@ -1,7 +1,5 @@
 """The Routine eval's simulated person: how it answers the agent's and Team's questions, and the rules it judges."""
 
-from __future__ import annotations
-
 import dataclasses
 import json
 import re

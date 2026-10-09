@@ -5,8 +5,6 @@ so the model invents values for optional Action properties (ADR-0094). The adapt
 `httpx.MockTransport`, so the bodies asserted here are exactly what would be sent: no network, key, or provider call.
 """
 
-from __future__ import annotations
-
 import copy
 import json
 import unittest

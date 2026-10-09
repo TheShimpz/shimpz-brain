@@ -8,8 +8,6 @@ guard refuses a call whose system prompt, tools, conversation, and output reserv
 Token counts are a pessimistic byte heuristic, not a tokenizer: a preflight estimate, never an exact bound.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 

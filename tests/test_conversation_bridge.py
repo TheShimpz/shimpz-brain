@@ -1,7 +1,5 @@
 """Committed presentation history bridges a Brain thread that retains no completed exchange."""
 
-from __future__ import annotations
-
 import json
 import unittest
 from collections.abc import Sequence

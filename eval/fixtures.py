@@ -7,8 +7,6 @@ object that both Brain and Team admit. Behavior lives in ``eval.world``.
 This module uses only the standard library so that the umbrella journey driver can import it.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from dataclasses import dataclass
 

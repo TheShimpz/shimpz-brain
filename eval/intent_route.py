@@ -10,8 +10,6 @@ a statistical reliability estimate. Keep the first complete run, including
 misses; never rerun only to turn a missed case green.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

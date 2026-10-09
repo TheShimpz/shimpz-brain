@@ -6,8 +6,6 @@ the only component allowed to execute the Action and resume the graph
 with its bounded result.
 """
 
-from __future__ import annotations
-
 import contextlib
 import dataclasses
 import datetime
@@ -40,12 +38,15 @@ import provider_client
 import routine_recovery
 import turn_pins
 import turn_prompt
+from action_labels import ActionLabel
+from action_purpose import PendingAction
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from protocol.team.action.v1 import schema as action_protocol
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import turn as team_turn
+from routine_recovery import RecoveryRequest
 from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
 from structured import structured_output
 
@@ -875,7 +876,7 @@ class AgentRuntime:
         provider: ProviderConfig,
         locale: str,
         action_ids: tuple[str, ...],
-    ) -> tuple[action_labels.ActionLabel, ...]:
+    ) -> tuple[ActionLabel, ...]:
         """Create inert labels without conversation state, tools, or execution authority."""
         return action_labels.create(lambda: self._model_factory(provider), provider.provider, locale, action_ids)
 
@@ -888,7 +889,7 @@ class AgentRuntime:
         """A model built for exactly one provider attempt per call, its SDK client making no hidden retry."""
         return self._model_factory.single_attempt(provider, decision=decision)
 
-    def action_purpose(self, provider: ProviderConfig, pending: action_purpose.PendingAction) -> str | None:
+    def action_purpose(self, provider: ProviderConfig, pending: PendingAction) -> str | None:
         """Write why a pending Action pauses for a person, from its exact interrupt and the turn's own message."""
         try:
             with self._thread_lock(pending.thread_id):
@@ -898,7 +899,7 @@ class AgentRuntime:
         request = action_purpose.pending_request(checkpoint, pending)
         return action_purpose.create(functools.partial(self._decision_model, provider), provider.provider, request)
 
-    def routine_recovery(self, provider: ProviderConfig, request: routine_recovery.RecoveryRequest) -> str:
+    def routine_recovery(self, provider: ProviderConfig, request: RecoveryRequest) -> str:
         """The one decision of a held Routine run's automatic recovery: retry, ask, or pause (ADR-0092)."""
         return routine_recovery.decide(
             functools.partial(self._single_attempt_model, provider, decision=True), provider.provider, request

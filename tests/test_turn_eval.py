@@ -4,8 +4,6 @@ A scripted fake model proves the scorer's round, argument, status, and proxy che
 real model behaves.
 """
 
-from __future__ import annotations
-
 import unittest
 from unittest import mock
 

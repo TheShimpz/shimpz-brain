@@ -17,8 +17,6 @@ The language service (``.tests/perf/precision_language_service.py``) computes ta
 module only plans, parses, bounds, and shapes. It uses only the standard library.
 """
 
-from __future__ import annotations
-
 import json
 import re
 from collections import Counter

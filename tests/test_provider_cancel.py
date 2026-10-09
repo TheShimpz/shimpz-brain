@@ -1,7 +1,5 @@
 """Turn-scoped provider cancellation: a Stop wakes only its own blocked call, never another turn (ADR-0079)."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

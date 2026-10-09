@@ -11,8 +11,6 @@ false negatives (lifecycle or unresolved messages that would skip the LLM route;
 Portuguese because Jev documents English as its primary language.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import sys

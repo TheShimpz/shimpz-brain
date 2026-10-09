@@ -1,7 +1,5 @@
 """Provider-free checks of the Routine eval's run: its schedule, throttle handling, merge, and processes."""
 
-from __future__ import annotations
-
 import json
 import random
 import subprocess

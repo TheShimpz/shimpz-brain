@@ -1,7 +1,5 @@
 """Provider-free checks for the frozen tuning / held-out template split (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import tempfile
 import unittest

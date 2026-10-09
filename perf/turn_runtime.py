@@ -10,8 +10,6 @@ residual times are wall-clock; process CPU includes every thread and excludes
 I/O wait. p50 is the median and p95 uses nearest rank.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import math

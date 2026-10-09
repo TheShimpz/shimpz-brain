@@ -3,8 +3,6 @@
 They prove what the runtime does with scripted model output; they say nothing about how a real model behaves.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Any, ClassVar
 

@@ -25,8 +25,6 @@ most one input token per body byte plus the allowance, it honors the output limi
 it refuses. A response costing more than its reservation is counted as ``reservations_exceeded``.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import tempfile

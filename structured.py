@@ -1,7 +1,5 @@
 """Provider-native structured output and its closed re-validation, shared by every structured decision."""
 
-from __future__ import annotations
-
 import json
 from collections.abc import Callable, Mapping
 

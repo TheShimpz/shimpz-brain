@@ -5,8 +5,6 @@ stays paired with a result in both provider adapters, nothing executes, and the 
 own review rules and correction texts; only the refusal shape and the middleware plumbing live here.
 """
 
-from __future__ import annotations
-
 import functools
 from collections.abc import Callable, Mapping
 from typing import Any

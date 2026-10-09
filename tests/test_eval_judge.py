@@ -1,7 +1,5 @@
 """Provider-free checks for the blinded judges, their calibration sample, and the tiebreak (ADR-0094)."""
 
-from __future__ import annotations
-
 import json
 import tempfile
 import unittest

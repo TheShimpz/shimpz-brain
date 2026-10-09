@@ -9,8 +9,6 @@ call, asked after an Action already ran in the logical turn, repeated, or malfor
 correction and nothing executes.
 """
 
-from __future__ import annotations
-
 import functools
 import unicodedata
 from dataclasses import dataclass

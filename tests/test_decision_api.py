@@ -1,7 +1,5 @@
 """The stateless structured-decision endpoints: Action labels, capability plans, and intent routes."""
 
-from __future__ import annotations
-
 import unittest
 from unittest import mock
 

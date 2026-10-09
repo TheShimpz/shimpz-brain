@@ -6,8 +6,6 @@ Brain's own arguments. It prints port 40000 plus the number in its token file's 
 or ``dead`` stop Brain 1 right after it says its port.
 """
 
-from __future__ import annotations
-
 import os
 import sys
 import time

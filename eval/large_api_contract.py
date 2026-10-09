@@ -5,8 +5,6 @@ schemas, plus the precision corpus's irrelevant-domain Assistants. It is a SIMUL
 state, templates, and scenarios. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from eval.fixtures import _DATE, _OBJECT, _STRING, DISTRACTORS, Action, Assistant

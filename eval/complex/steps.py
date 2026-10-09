@@ -4,8 +4,6 @@ Each read-only turn carries the lookup a correct agent runs and what its reply m
 grow realistic history from unrelated completed work. This module uses only the standard library.
 """
 
-from __future__ import annotations
-
 from eval.complex.model import Step, Template
 from eval.complex.texts import t
 from eval.complex.world import CUSTOMERS, customer_id
