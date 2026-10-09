@@ -12,7 +12,8 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 EGRESS = ROOT / "egress"
-sys.path.insert(0, str(EGRESS))
+# The profile runs the image's neutral CONNECT transport, which the umbrella `.egress/` owns (ADR-0104).
+sys.path[:0] = [str(EGRESS), str(ROOT.parent / ".egress")]
 app = importlib.import_module("app")
 policy = importlib.import_module("policy")
 

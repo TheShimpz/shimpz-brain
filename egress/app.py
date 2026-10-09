@@ -16,55 +16,32 @@ Design (deliberately minimal — no bearer, no TLS termination):
     rotation, and the brain — having no default route — cannot even resolve external names itself
     (DNS-tunnel exfil is closed for free).
   * fail-closed: if this process is down, the brain reaches nothing external.
-  * the tunnel relays nothing until the TLS ClientHello names exactly the allowed host (`client_hello`), so another
-    server name cannot front through a provider's shared CDN address.
+
+The image's neutral CONNECT transport (`connect`, ADR-0104) resolves, connects, admits the TLS ClientHello, and
+splices; this profile owns only its policy, audit stream, and resource envelope.
 """
 
-import contextlib
 import ipaddress
 import os
-import select
-import socket
-import socketserver
 import sys
-import threading
-import time
+from pathlib import Path
 
-import audit
-import client_hello
+import connect
 import policy
+from audit_writer import AuditError, AuditWriter
 
 LISTEN_PORT = int(os.environ.get("SHIMPZ_EGRESS_PORT", "8888"))
 ALLOWED_PORTS = {443}  # HTTPS only — every legitimate brain destination is TLS
-CONNECT_TIMEOUT = 15
-HEADER_DEADLINE = CONNECT_TIMEOUT  # the whole CONNECT header, however slowly it trickles in
-IDLE_TIMEOUT = 300  # tear down a tunnel idle this long
-BUFSIZE = 65536
-MAX_CONCURRENCY = int(os.environ.get("SHIMPZ_EGRESS_MAX_CONCURRENCY", "64"))
-MAX_SOURCE_CONCURRENCY = int(os.environ.get("SHIMPZ_EGRESS_MAX_SOURCE_CONCURRENCY", "8"))
-LISTEN_BACKLOG = int(os.environ.get("SHIMPZ_EGRESS_LISTEN_BACKLOG", "16"))
-if (
-    not 1 <= MAX_CONCURRENCY <= 64
-    or not 1 <= MAX_SOURCE_CONCURRENCY <= 8
-    or MAX_SOURCE_CONCURRENCY > MAX_CONCURRENCY
-    or not 1 <= LISTEN_BACKLOG <= 16
-):
-    raise ValueError("egress proxy concurrency/backlog must stay inside the shipping resource envelope")
-# DNS resolution counts against the CONNECT deadline. Each lookup runs on its own daemon thread, and a lookup that
-# outlives its deadline keeps that thread until getaddrinfo returns. This fixed cap, independent of handler
-# concurrency, bounds those threads: handlers + resolvers + the main thread stay well inside the smallest
-# pids_limit either canonical Compose graph gives this proxy. A burst beyond the cap waits for a permit, but
-# only within the same CONNECT deadline.
-MAX_RESOLUTIONS = 8
-_RESOLVER_SLOTS = threading.BoundedSemaphore(MAX_RESOLUTIONS)
-_STATUS = {
-    200: "Connection established",
-    400: "Bad Request",
-    403: "Forbidden",
-    405: "Method Not Allowed",
-    502: "Bad Gateway",
-    503: "Service Unavailable",
-}
+MAX_CONCURRENCY, MAX_SOURCE_CONCURRENCY, LISTEN_BACKLOG = connect.envelope(
+    int(os.environ.get("SHIMPZ_EGRESS_MAX_CONCURRENCY", "64")),
+    int(os.environ.get("SHIMPZ_EGRESS_MAX_SOURCE_CONCURRENCY", "8")),
+    int(os.environ.get("SHIMPZ_EGRESS_LISTEN_BACKLOG", "16")),
+)
+# The security-relevant record of which public host the Brain was allowed to reach or refused.
+AUDIT = AuditWriter(
+    Path(os.environ.get("SHIMPZ_EGRESS_AUDIT_LOG", "/var/log/brain-egress/audit.jsonl")),
+    "egress-proxy",
+)
 
 
 def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
@@ -75,293 +52,29 @@ def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
     return canonical in allowed_hosts
 
 
-def _resolve(host: str, port: int, deadline: float) -> list:
-    """Resolve on one bounded daemon thread, waiting no longer than the remaining CONNECT deadline.
+class Handler(connect.ConnectHandler):
+    def admit(self, request: bytes) -> connect.Target | connect.Decision:
+        """Network-gated: forward only an exactly allowlisted provider or decision host."""
+        target = connect.parse_connect(request)
+        if isinstance(target, connect.Target) and not permitted(target.host, target.port, self.server.allowed_hosts):
+            return connect.refuse(403, "target-rejected", target.subject)
+        return target
 
-    Waiting for a permit spends the same deadline. The permit is released exactly once: by the lookup
-    thread when getaddrinfo returns, or here when the thread never started. Raises OSError when no permit
-    frees up in time, the thread cannot start, the lookup fails, or the deadline passes first.
-    """
-    slots = _RESOLVER_SLOTS
-    if not slots.acquire(timeout=max(0.0, deadline - time.monotonic())):
-        raise OSError("resolver capacity stayed exhausted until the CONNECT deadline")
-    answers: list[list] = []
-    done = threading.Event()
-
-    def lookup() -> None:
-        try:
-            with contextlib.suppress(OSError, ValueError):
-                answers.append(socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))
-        finally:
-            slots.release()
-            done.set()
-
-    try:
-        threading.Thread(target=lookup, name="resolver", daemon=True).start()
-    except RuntimeError:
-        slots.release()
-        raise OSError("resolver thread unavailable") from None
-    if not done.wait(max(0.0, deadline - time.monotonic())) or not answers:
-        raise OSError("resolution failed or exceeded the CONNECT deadline")
-    return answers[0]
+    @classmethod
+    def record(cls, decision: connect.Decision) -> None:
+        AUDIT.log(decision)
 
 
-def _resolve_public(host: str, port: int, deadline: float) -> tuple[tuple[int, tuple], ...] | None:
-    """Resolve host:port to its verified-PUBLIC addresses, or None if any resolves to an internal IP.
-
-    Defense in depth for the authorized Brain caller. The proxy is multi-homed across its private
-    Brain network and outbound network. A CONNECT to an internal name or literal non-global address
-    is refused, and mixed public/private answers fail closed. We connect to
-    the exact verified addresses (never a re-resolve), closing resolve→connect TOCTOU. Network separation,
-    not this destination guard, is what prevents other domains from reaching the Brain proxy.
-    """
-    try:
-        infos = _resolve(host, port, deadline)
-    except OSError:
-        return None
-    public: list[tuple[int, tuple]] = []
-    for family, _stype, _proto, _canon, sockaddr in infos:
-        try:
-            addr = ipaddress.ip_address(sockaddr[0])
-        except ValueError:
-            return None
-        if not addr.is_global:
-            return None  # any internal resolution → refuse the whole CONNECT (no partial trust)
-        public.append((family, sockaddr))
-    return tuple(public) if public else None
-
-
-def _connect_first(addresses: tuple[tuple[int, tuple], ...], deadline: float) -> tuple[socket.socket, str]:
-    """Connect to the first reachable verified address, in resolver order, under one total deadline.
-
-    Every candidate was already validated public, so a refused or unreachable endpoint falls through to
-    the next admitted one without widening trust. The deadline is the one resolution already spent from,
-    shared and never multiplied per address. Raises the last connection error when no address connects in time.
-    """
-    failure: OSError = TimeoutError("upstream connect deadline exceeded")
-    for family, sockaddr in addresses:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        upstream: socket.socket | None = None
-        try:
-            upstream = socket.socket(family, socket.SOCK_STREAM)
-            upstream.settimeout(remaining)
-            upstream.connect(sockaddr)  # the EXACT verified-public address, not a re-resolve
-        except OSError as exc:
-            if upstream is not None:
-                upstream.close()
-            failure = exc
-            continue
-        return upstream, sockaddr[0]
-    raise failure
-
-
-class Handler(socketserver.BaseRequestHandler):
-    def handle(self) -> None:
-        cli = self.request
-        cli.settimeout(CONNECT_TIMEOUT)
-        probe = self.client_address[0] == "127.0.0.1"  # the Docker HEALTHCHECK (a deliberate denied CONNECT)
-        header = self._read_request_line(cli)
-        if header is None:
-            return
-        cli.settimeout(CONNECT_TIMEOUT)
-        parts = header.split(" ")
-        if len(parts) < 2 or parts[0] != "CONNECT":
-            self._reply(cli, 405)
-            audit.log("connect", header[:80], result="denied", level="info" if probe else "warn", code=405)
-            return
-        host, port = self._split_target(parts[1])
-        if host is None:
-            self._reply(cli, 400)
-            audit.log("connect", parts[1][:80], result="denied", level="info" if probe else "warn", code=400)
-            return
-        if not permitted(host, port, self.server.allowed_hosts):
-            self._reply(cli, 403)
-            src = {"source": "loopback-probe"} if probe else {}
-            audit.log("connect", f"{host}:{port}", result="denied", level="info" if probe else "warn", code=403, **src)
-            return
-        deadline = time.monotonic() + CONNECT_TIMEOUT
-        resolved = _resolve_public(host, port, deadline)
-        if resolved is None:  # internal (RFC1918/loopback/…) or unresolvable → refuse the pivot
-            self._reply(cli, 403)
-            src = {"source": "loopback-probe"} if probe else {}
-            audit.log(
-                "connect",
-                f"{host}:{port}",
-                result="denied",
-                level="info" if probe else "warn",
-                code=403,
-                reason="internal or unresolvable destination",
-                **src,
-            )
-            return
-        try:
-            upstream, address = _connect_first(resolved, deadline)
-        except OSError as exc:
-            self._reply(cli, 502)
-            audit.log("connect", f"{host}:{port}", result="error", reason=str(exc))
-            return
-        audit.log("connect", f"{host}:{port}", result="ok", address=address)
-        self._reply(cli, 200)
-        self._relay(cli, upstream, host, f"{host}:{port}")
-
-    def _relay(self, cli: socket.socket, upstream: socket.socket, host: str, target: str) -> None:
-        """Splice only after the client's first ClientHello names exactly `host`; otherwise relay no byte.
-
-        The `ok` line records the admitted CONNECT; a refused ClientHello adds one `denied` line whose code
-        classifies it, after the 200 was sent.
-        """
-        try:
-            prefix = client_hello.admit(cli, host, time.monotonic() + CONNECT_TIMEOUT)
-            upstream.settimeout(CONNECT_TIMEOUT)
-            upstream.sendall(prefix)
-        except client_hello.RefusalError as refusal:
-            self._close(cli, upstream)
-            audit.log("connect", target, result="denied", code=403, reason=refusal.reason)
-            return
-        except OSError:
-            self._close(cli, upstream)
-            return
-        self._tunnel(cli, upstream)
-
-    @staticmethod
-    def _read_request_line(sock: socket.socket) -> str | None:
-        """Read up to the end of the CONNECT request headers; return the request line (or None)."""
-        buf = b""
-        deadline = time.monotonic() + HEADER_DEADLINE
-        while b"\r\n\r\n" not in buf:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return None
-            try:
-                sock.settimeout(remaining)
-                chunk = sock.recv(4096)
-            except OSError:
-                return None
-            if not chunk:
-                return None
-            buf += chunk
-            if len(buf) > BUFSIZE:  # a well-formed CONNECT is tiny; anything huge is junk
-                return None
-        return buf.split(b"\r\n", 1)[0].decode("latin1", "replace")
-
-    @staticmethod
-    def _split_target(target: str) -> tuple[str | None, int]:
-        host, sep, port_s = target.rpartition(":")
-        if not sep:
-            return target or None, 443
-        try:
-            return (host or None), int(port_s)
-        except ValueError:
-            return None, 0
-
-    def _reply(self, cli: socket.socket, code: int) -> None:
-        with contextlib.suppress(OSError):
-            cli.sendall(f"HTTP/1.1 {code} {_STATUS[code]}\r\n\r\n".encode())
-
-    @staticmethod
-    def _close(*sockets: socket.socket) -> None:
-        for s in sockets:
-            with contextlib.suppress(OSError):
-                s.shutdown(socket.SHUT_RDWR)
-            s.close()
-
-    @staticmethod
-    def _tunnel(a: socket.socket, b: socket.socket) -> None:
-        """Splice bytes both ways until either side closes or the tunnel goes idle."""
-        for s in (a, b):
-            s.settimeout(IDLE_TIMEOUT)
-        try:
-            while True:
-                readable, _, errored = select.select([a, b], [], [a, b], IDLE_TIMEOUT)
-                if errored or not readable:  # socket error, or idle past IDLE_TIMEOUT
-                    return
-                for src in readable:
-                    data = src.recv(BUFSIZE)
-                    if not data:
-                        return
-                    (b if src is a else a).sendall(data)
-        except OSError:
-            return
-        finally:
-            Handler._close(a, b)
-
-
-class Server(socketserver.ThreadingTCPServer):
-    """Threaded CONNECT server with admission enforced before worker creation."""
-
-    allow_reuse_address = True
-    daemon_threads = True
+class Server(connect.BoundedServer):
+    max_concurrency = MAX_CONCURRENCY
+    max_source_concurrency = MAX_SOURCE_CONCURRENCY
     request_queue_size = LISTEN_BACKLOG
 
-    def __init__(
-        self,
-        *args,
-        allowed_hosts: frozenset[str],
-        max_concurrency: int = MAX_CONCURRENCY,
-        max_source_concurrency: int = MAX_SOURCE_CONCURRENCY,
-        **kwargs,
-    ) -> None:
-        if not 1 <= max_source_concurrency <= max_concurrency <= MAX_CONCURRENCY:
-            raise ValueError("invalid egress proxy concurrency")
+    def __init__(self, *args, allowed_hosts: frozenset[str], **kwargs) -> None:
         if not allowed_hosts or "*" in allowed_hosts:
             raise ValueError("invalid Brain provider policy")
         self.allowed_hosts = allowed_hosts
-        self._request_slots = threading.BoundedSemaphore(max_concurrency)
-        self._max_source_concurrency = max_source_concurrency
-        self._source_guard = threading.Lock()
-        self._source_counts: dict[str, int] = {}
         super().__init__(*args, **kwargs)
-
-    def get_request(self):
-        request, client_address = super().get_request()
-        request.settimeout(CONNECT_TIMEOUT)
-        return request, client_address
-
-    def _acquire_request_slot(self, client_address) -> bool:
-        if not self._request_slots.acquire(blocking=False):
-            return False
-        source = str(client_address[0])
-        with self._source_guard:
-            current = self._source_counts.get(source, 0)
-            if current >= self._max_source_concurrency:
-                self._request_slots.release()
-                return False
-            self._source_counts[source] = current + 1
-        return True
-
-    def _release_request_slot(self, client_address) -> None:
-        source = str(client_address[0])
-        with self._source_guard:
-            remaining = self._source_counts[source] - 1
-            if remaining:
-                self._source_counts[source] = remaining
-            else:
-                self._source_counts.pop(source)
-        self._request_slots.release()
-
-    def process_request(self, request, client_address) -> None:
-        if not self._acquire_request_slot(client_address):
-            # Do not create a thread or wait behind a 300-second tunnel. The accepted socket already
-            # has a short timeout; best-effort overload signaling is bounded and then it is closed.
-            with contextlib.suppress(OSError):
-                request.settimeout(1)
-                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n")
-            self.shutdown_request(request)
-            return
-        try:
-            super().process_request(request, client_address)
-        except BaseException:
-            self._release_request_slot(client_address)
-            self.shutdown_request(request)
-            raise
-
-    def process_request_thread(self, request, client_address) -> None:
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self._release_request_slot(client_address)
 
 
 def main() -> None:
@@ -369,6 +82,11 @@ def main() -> None:
         provider_hosts = policy.load_provider_hosts()
     except policy.ProviderPolicyError:
         print("brain-egress: provider policy is unavailable; refusing to start", file=sys.stderr)
+        raise SystemExit(1) from None
+    try:
+        AUDIT.ensure_custody()
+    except AuditError:
+        print("brain-egress: audit custody is unavailable; refusing to start", file=sys.stderr)
         raise SystemExit(1) from None
     allowed_hosts = provider_hosts | policy.DECISION_HOSTS
     server = Server((str(ipaddress.IPv4Address(0)), LISTEN_PORT), Handler, allowed_hosts=allowed_hosts)
