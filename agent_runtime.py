@@ -59,9 +59,10 @@ MODELS_BY_PROVIDER = {
 PROVIDERS = frozenset(MODELS_BY_PROVIDER)
 IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 TEAM_NAME_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
-# Team scopes a Brain request to at most 16 Assistants of at most 128 Actions each, so these two bounds are the
-# total: a request carries at most 2,048 Actions, exactly what Team can admit.
-MAX_ASSISTANTS = 16
+# A turn names at most every Assistant its Team may have installed (Team's MAX_CHAT_ASSISTANTS, 16), each with at
+# most 128 Actions, so these two bounds are the total: a request carries at most 2,048 Actions, exactly what Team can
+# admit.
+MAX_ASSISTANTS = team_payload.MAX_CHAT_ASSISTANTS
 MAX_ACTIONS_PER_ASSISTANT = 128
 # One resume answers the Action requests of one suspension, which carries at most Team's bound of them.
 MAX_ACTION_RESULTS = team_turn.MAX_ACTION_REQUESTS
@@ -234,7 +235,7 @@ class TurnContext:
             raise RuntimeContractError("invalid conversation thread")
         object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
         if len(self.assistants) > MAX_ASSISTANTS:
-            raise RuntimeContractError("a Team may contain at most 16 Assistants")
+            raise RuntimeContractError(f"a turn may name at most {MAX_ASSISTANTS} Assistants")
         assistant_ids = [assistant.id for assistant in self.assistants]
         if len(assistant_ids) != len(set(assistant_ids)):
             raise RuntimeContractError("duplicate Assistant id")

@@ -803,7 +803,7 @@ class AgentRuntimeTests(unittest.TestCase):
             ):
                 context(team_name=invalid_name)
 
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "at most 16 Assistants"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "a turn may name at most 16 Assistants"):
             context(*(assistant(f"helper-{index}") for index in range(agent_runtime.MAX_ASSISTANTS + 1)))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "duplicate Assistant id"):
             context(assistant("same-helper"), assistant("same-helper"))
@@ -819,7 +819,7 @@ class AgentRuntimeTests(unittest.TestCase):
         # One more Action needs either a 129th Action on an Assistant or a 17th Assistant; both are refused.
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too many Actions"):
             context(*full[1:], assistant("helper-0", *actions))
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "at most 16 Assistants"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "a turn may name at most 16 Assistants"):
             context(*full, assistant("helper-overflow", action("overflow")))
 
     def test_brain_admits_exactly_the_action_bounds_team_admits(self):
