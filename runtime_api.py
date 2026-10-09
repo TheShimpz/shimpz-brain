@@ -501,9 +501,13 @@ class PruningSqliteSaver(SqliteSaver):
     """Retain only the latest self-contained checkpoint in each thread namespace."""
 
     def prune_thread(self, thread_id: str) -> None:
-        with self.lock, self.conn:
-            self.conn.execute(_PRUNE_WRITES_SQL, (thread_id, thread_id))
-            self.conn.execute(_PRUNE_CHECKPOINTS_SQL, (thread_id, thread_id))
+        with self.lock:
+            with self.conn:
+                self.conn.execute(_PRUNE_WRITES_SQL, (thread_id, thread_id))
+                self.conn.execute(_PRUNE_CHECKPOINTS_SQL, (thread_id, thread_id))
+            # Copy the committed prune into the database file and empty the write-ahead log, so the log stops
+            # holding the pruned pages as soon as the prune commits instead of until the next automatic checkpoint.
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
 
 
 def _token_from_file() -> str:
@@ -657,6 +661,7 @@ def _sqlite_runtime(path: Path = STATE_PATH) -> agent_runtime.AgentRuntime:
     path.parent.chmod(0o700)
     connection = sqlite3.connect(path, check_same_thread=False)
     path.chmod(0o600)
+    connection.execute("PRAGMA trusted_schema=OFF")
     connection.execute("PRAGMA secure_delete=ON")
     checkpointer = PruningSqliteSaver(connection)
     checkpointer.setup()

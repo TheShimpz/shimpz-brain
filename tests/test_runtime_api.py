@@ -619,6 +619,38 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(connection.execute("SELECT COUNT(*) FROM writes").fetchone(), (3,))
         connection.close()
 
+    def test_sqlite_checkpoint_connection_never_trusts_schema_functions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = runtime_api._sqlite_runtime(Path(directory) / "checkpoints.sqlite3")
+            connection = runtime._checkpointer.conn
+
+            self.assertEqual(connection.execute("PRAGMA trusted_schema").fetchone(), (0,))
+            self.assertEqual(connection.execute("PRAGMA secure_delete").fetchone(), (1,))
+            runtime.close()
+
+    def test_sqlite_checkpoint_pruning_leaves_no_pruned_page_in_the_write_ahead_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "checkpoints.sqlite3"
+            runtime = runtime_api._sqlite_runtime(path)
+            saver = runtime._checkpointer
+            connection = saver.conn
+            self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone(), ("wal",))
+            pruned = b"pruned-checkpoint-marker"
+            with connection:
+                connection.executemany(
+                    "INSERT INTO checkpoints(thread_id,checkpoint_ns,checkpoint_id,type,checkpoint,metadata) "
+                    "VALUES('thread-a','',?,'json',?,X'00')",
+                    [("001", pruned), ("002", b"kept")],
+                )
+            wal = path.with_name(path.name + "-wal")
+            self.assertIn(pruned, wal.read_bytes())
+
+            saver.prune_thread("thread-a")
+
+            self.assertEqual(connection.execute("SELECT checkpoint_id FROM checkpoints").fetchall(), [("002",)])
+            self.assertEqual(wal.stat().st_size, 0)
+            runtime.close()
+
 
 if __name__ == "__main__":
     unittest.main()
