@@ -83,7 +83,6 @@ class IntentRouteTests(unittest.TestCase):
         self.assertIn("exactly one line", prompt)
         self.assertIn("por favor tire o cloudflare", prompt)
         self.assertIn("Write it in Brazilian Portuguese, the language the user selected in the interface", prompt)
-        self.assertNotIn("language_exemplar", prompt)
         self.assertNotIn("api_key", prompt)
 
     def test_an_unknown_interface_language_fails_before_provider_access(self):

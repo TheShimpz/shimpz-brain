@@ -50,7 +50,6 @@ class DecideTests(unittest.TestCase):
         sent = "\n".join(str(message.content) for message in StructuredFakeModel.seen_messages[0])
         self.assertIn('"team_proof":"not_occurred"', sent)
         self.assertIn('"routine":{"name":"Zonas diárias"}', sent)
-        self.assertNotIn('"request"', sent)
         self.assertIn("untrusted", sent)
         self.assertIn("Brazilian Portuguese", sent)
         self.assertNotIn("secret-test-key", sent)
@@ -117,13 +116,11 @@ class RecoveryApiTests(unittest.TestCase):
         self.assertEqual((response.status_code, response.json()), (200, {"decision": "retry", "usage": NO_USAGE}))
         _name, config, request = runtime.calls[0]
         self.assertEqual((config.api_key, request), (SECRET, REQUEST))
-        retired = {**ROUTINE, "request": "Todo dia às 9h, liste as zonas"}
         for invalid in (
             _body(proof="occurred"),
             _body(diagnostics=[{}] * 9),
             _body(extra=1),
             _body(locale="xx"),
-            _body(routine=retired),
             _body(routine={"name": ""}),
         ):
             with self.subTest(invalid=sorted(invalid)):

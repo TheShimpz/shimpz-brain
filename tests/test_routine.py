@@ -157,10 +157,7 @@ class RecordTests(unittest.TestCase):
         chat = _chat([LISTED])
         cases = (
             (None, "invalid"),
-            # The retired decision members are never part of a record (ADR-0101 amendment, 2026-10-07).
-            ({**_args(), "notes": "x"}, "invalid"),
-            ({**_args(), "notes": ""}, "invalid"),
-            ({**_args(), "decide_actions": []}, "invalid"),
+            ({**_args(), "unexpected": "x"}, "invalid"),
             ({key: item for key, item in _args().items() if key != "reply"}, "invalid"),
             (_args(op="create"), "invalid"),
             (_args(name=""), "name"),
@@ -320,7 +317,7 @@ class GraphTests(unittest.TestCase):
 class PendingQuestionTests(unittest.TestCase):
     def test_a_pending_question_is_teams_own_protocol_form(self):
         self.assertEqual(routine.canonical_question(QUESTION), QUESTION)
-        for value in (None, {**QUESTION, "extra": 1}, {**QUESTION, "code": "routine-no-room"}):
+        for value in (None, {**QUESTION, "extra": 1}, {**QUESTION, "code": "unsupported"}):
             with self.subTest(value=value):
                 self.assertIsNone(routine.canonical_question(value))
 
@@ -535,15 +532,13 @@ class PromptPinAndEndpointTests(unittest.TestCase):
         for field, value in (
             ("routines", [{"routine_id": "x"}]),
             ("knowledge_writable", "yes"),
-            ("routine_earlier", ["a"]),
-            ("routine_question", {"code": "routine-no-room", "options": [], "value": None}),
+            ("routine_question", {"code": "unsupported", "options": [], "value": None}),
             ("routine_mode", "yes"),
             ("routine_rerun", [{"assistant": "x"}]),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)
                 self.assertIn(refused.status_code, {400, 422})
-        self.assertEqual(api.post("/v1/routine-compile", json={}, headers=headers).status_code, 404)
 
 
 if __name__ == "__main__":

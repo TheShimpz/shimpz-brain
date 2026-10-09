@@ -370,7 +370,7 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
         invalid = body()
-        invalid["provider"]["provider"] = "codex"
+        invalid["provider"]["provider"] = "unsupported"
         response = api.post("/v1/turns", json=invalid, headers=AUTH)
         self.assertEqual(response.status_code, 422)
 

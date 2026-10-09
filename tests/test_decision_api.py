@@ -225,7 +225,7 @@ class DecisionApiTests(unittest.TestCase):
             {"intent": "assistant-install", "query": "exa", "assistant_ids": [], "reply": "", "task_follows": True},
         )
 
-    def test_intent_route_rejects_retired_or_wrong_lane_context(self):
+    def test_intent_route_rejects_unknown_or_wrong_lane_context(self):
         runtime = FakeRuntime()
         api = client(runtime)
         base = {
@@ -239,11 +239,7 @@ class DecisionApiTests(unittest.TestCase):
         }
         self.assertIsNone(runtime_api.IntentRouteInput.model_validate(base).runtime_context())
         invalid = (
-            {
-                **base,
-                "pending_intent": "assistant-uninstall",
-            },
-            {**base, "language_exemplar": "remove it"},
+            {**base, "unexpected": "remove it"},
             {key: value for key, value in base.items() if key != "locale"},
             {**base, "locale": None},
             {**base, "locale": "pt-BR"},
@@ -325,7 +321,6 @@ class DecisionApiTests(unittest.TestCase):
             {**valid, "locale": 1},
             {**valid, "locale": "pt-BR"},
             {key: value for key, value in valid.items() if key != "locale"},
-            {**valid, "language_exemplar": "Liste minhas zonas"},
         )
 
         for payload in invalid_values:

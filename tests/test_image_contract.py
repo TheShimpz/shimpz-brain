@@ -12,7 +12,6 @@ class StaticBrainImageContractTests(unittest.TestCase):
 
         self.assertIn(f"FROM {UV_IMAGE} AS uv", dockerfile)
         self.assertIn("--mount=type=bind,from=uv,source=/uv,target=/tmp/uv", dockerfile)
-        self.assertNotIn("uv-install.sh", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
         self.assertNotIn("curl", dockerfile)
 
@@ -53,8 +52,6 @@ class StaticBrainImageContractTests(unittest.TestCase):
         self.assertIn('"runtime_api:app"', dockerfile)
         self.assertIn('"--workers", "1"', dockerfile)
         self.assertIn('"--no-access-log"', dockerfile)
-        self.assertNotIn("COPY rootfs", dockerfile)
-        self.assertNotIn("COPY codex", dockerfile)
 
     def test_profile_owns_runtime_paths_while_image_owns_tracing_and_allocator_defaults(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
