@@ -357,8 +357,8 @@ def admitted(assistant: Generated) -> Admitted:
 def _asker(assistant: Admitted) -> Callable[..., object]:
     """The request the real Action of a change makes before anything else, admitted as Team admits an RPC frame.
 
-    The Action runs with no answer, so it asks before it reads its access token: no provider is ever reached. None
-    when it asks nothing or fails.
+    The Action runs with no answer, so it asks before any provider call, which Team alone would make with the
+    Integration's token (ADR-0106): no provider is ever reached. None when it asks nothing or fails.
     """
     from action import execution as action_execution
     from action import human as action_human
@@ -368,15 +368,10 @@ def _asker(assistant: Admitted) -> Callable[..., object]:
 
     def ask(action: str, payload: dict[str, object], evidence) -> object:
         declared = assistant.declarations["actions"][action]
-        invocation = {
-            "input": dict(payload),
-            "integrations": dict.fromkeys(assistant.declarations["integrations"], "eval-token-never-sent"),
-            "stored_inputs": {},
-            "files": {},
-            "operation_id": evidence.operation_id,
-        }
+        # Team's own encoder, so the eval sends exactly the invocation Team sends.
+        invocation = action_execution.encode_rpc_invocation(dict(payload), (), evidence.operation_id)
         bridge = ("-m", "shimpz._bridge", "invoke", str(assistant.project), action)
-        frame = _isolated(python, *bridge, given=json.dumps(invocation).encode())
+        frame = _isolated(python, *bridge, given=invocation)
         if frame.returncode != 0:
             return None
         policy = action_execution.RpcResultPolicy(
