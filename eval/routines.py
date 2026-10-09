@@ -314,16 +314,20 @@ def admitted(assistant: Generated) -> Admitted:
     if identity.assistant_id != ASSISTANT:
         raise SystemExit(f"the Assistant project is {identity.assistant_id}, not {ASSISTANT}")
     declared = assistant_manifest.parse_manifest_contract(assistant.manifest)
+    presentation = assistant_manifest.parse_manifest_presentation(assistant.manifest)
     machine_contract = assistant_manifest.parse_machine_contract(
         assistant.contract,
         declared.integrations,
         declared.stored_inputs,
         summary=identity.summary,
+        description=presentation.description,
         allowed_hosts=declared.allowed_hosts,
     )
     contract = assistant_spec.runtime_contract(
         {
             "summary": identity.summary,
+            "description": presentation.description,
+            "links": dict(presentation.links),
             "allowed_hosts": list(declared.allowed_hosts),
             "integrations": [
                 {"id": item.id, "provider": item.provider, "scopes": list(item.scopes)}
