@@ -121,6 +121,7 @@ class RecoveryApiTests(unittest.TestCase):
             _body(diagnostics=[{}] * 9),
             _body(extra=1),
             _body(locale="xx"),
+            _body(routine={**ROUTINE, "unexpected": True}),
             _body(routine={"name": ""}),
         ):
             with self.subTest(invalid=sorted(invalid)):
