@@ -16,6 +16,8 @@ Design (deliberately minimal — no bearer, no TLS termination):
     rotation, and the brain — having no default route — cannot even resolve external names itself
     (DNS-tunnel exfil is closed for free).
   * fail-closed: if this process is down, the brain reaches nothing external.
+  * the tunnel relays nothing until the TLS ClientHello names exactly the allowed host (`client_hello`), so another
+    server name cannot front through a provider's shared CDN address.
 """
 
 import contextlib
@@ -29,6 +31,7 @@ import threading
 import time
 
 import audit
+import client_hello
 import policy
 
 LISTEN_PORT = int(os.environ.get("SHIMPZ_EGRESS_PORT", "8888"))
@@ -201,6 +204,25 @@ class Handler(socketserver.BaseRequestHandler):
             return
         audit.log("connect", f"{host}:{port}", result="ok", address=address)
         self._reply(cli, 200)
+        self._relay(cli, upstream, host, f"{host}:{port}")
+
+    def _relay(self, cli: socket.socket, upstream: socket.socket, host: str, target: str) -> None:
+        """Splice only after the client's first ClientHello names exactly `host`; otherwise relay no byte.
+
+        The `ok` line records the admitted CONNECT; a refused ClientHello adds one `denied` line whose code
+        classifies it, after the 200 was sent.
+        """
+        try:
+            prefix = client_hello.admit(cli, host, time.monotonic() + CONNECT_TIMEOUT)
+            upstream.settimeout(CONNECT_TIMEOUT)
+            upstream.sendall(prefix)
+        except client_hello.RefusalError as refusal:
+            self._close(cli, upstream)
+            audit.log("connect", target, result="denied", code=403, reason=refusal.reason)
+            return
+        except OSError:
+            self._close(cli, upstream)
+            return
         self._tunnel(cli, upstream)
 
     @staticmethod
@@ -239,6 +261,13 @@ class Handler(socketserver.BaseRequestHandler):
             cli.sendall(f"HTTP/1.1 {code} {_STATUS[code]}\r\n\r\n".encode())
 
     @staticmethod
+    def _close(*sockets: socket.socket) -> None:
+        for s in sockets:
+            with contextlib.suppress(OSError):
+                s.shutdown(socket.SHUT_RDWR)
+            s.close()
+
+    @staticmethod
     def _tunnel(a: socket.socket, b: socket.socket) -> None:
         """Splice bytes both ways until either side closes or the tunnel goes idle."""
         for s in (a, b):
@@ -256,10 +285,7 @@ class Handler(socketserver.BaseRequestHandler):
         except OSError:
             return
         finally:
-            for s in (a, b):
-                with contextlib.suppress(OSError):
-                    s.shutdown(socket.SHUT_RDWR)
-                s.close()
+            Handler._close(a, b)
 
 
 class Server(socketserver.ThreadingTCPServer):

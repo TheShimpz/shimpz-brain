@@ -17,6 +17,14 @@ from unittest import mock
 EGRESS = Path(__file__).resolve().parents[1] / "egress"
 sys.path.insert(0, str(EGRESS))
 app = importlib.import_module("app")
+VECTORS = {
+    vector["client"]: bytes.fromhex(vector["flight"])
+    for vector in json.loads(Path(__file__).with_name("egress_client_hello_vectors.json").read_text(encoding="utf-8"))[
+        "vectors"
+    ]
+}
+PYTHON_HELLO = VECTORS["Python 3.14.6 ssl"]  # names api.openai.com
+FRONTED_HELLO = VECTORS["curl 8.14.1 with OpenSSL 3.5.7"]  # names api.cloudflare.com
 
 
 def _later() -> float:
@@ -53,6 +61,7 @@ class BrainEgressHandlerTests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(app.socket, "socket", return_value=upstream))
             if tunnel is not None:
                 stack.enter_context(mock.patch.object(app.Handler, "_tunnel", tunnel))
+                stack.enter_context(mock.patch.object(app.client_hello, "admit", return_value=b""))
             handler.handle()
         return client.recv(256), audit_log
 
@@ -247,7 +256,7 @@ class BrainEgressHandlerTests(unittest.TestCase):
 
                 self.assertTrue(response.startswith(expected))
                 if spent < app.CONNECT_TIMEOUT:
-                    upstream.settimeout.assert_called_once_with(app.CONNECT_TIMEOUT - spent)
+                    self.assertEqual(upstream.settimeout.call_args_list[0], mock.call(app.CONNECT_TIMEOUT - spent))
                 else:
                     self.assertEqual(upstream.method_calls, [])
 
@@ -378,6 +387,81 @@ class BrainEgressHandlerTests(unittest.TestCase):
                 app.Handler._tunnel(left, right)
             left.close.assert_called_once_with()
             right.close.assert_called_once_with()
+
+
+class BrainEgressClientHelloTests(unittest.TestCase):
+    """A real handler, client, and upstream: the tunnel relays only after the ClientHello names the CONNECT host."""
+
+    def _tunnel(self, flight: bytes) -> tuple[bytes, bytes, mock.Mock]:
+        listener = socket.create_server(("127.0.0.1", 0))
+        self.addCleanup(listener.close)
+        listener.settimeout(5)
+        client, proxy = socket.socketpair()
+        self.addCleanup(client.close)
+        handler = object.__new__(app.Handler)
+        handler.request = proxy
+        handler.client_address = ("10.0.0.2", 1234)
+        handler.server = SimpleNamespace(allowed_hosts=frozenset({"api.openai.com"}))
+        audit_log = mock.Mock()
+        with (
+            mock.patch.object(app.audit, "log", audit_log),
+            mock.patch.object(app, "_resolve_public", return_value=((socket.AF_INET, listener.getsockname()),)),
+        ):
+            worker = threading.Thread(target=handler.handle)
+            worker.start()
+            client.sendall(b"CONNECT api.openai.com:443 HTTP/1.1\r\n\r\n")
+            client.settimeout(5)
+            response = client.recv(256)
+            upstream, _peer = listener.accept()
+            self.addCleanup(upstream.close)
+            upstream.settimeout(5)
+            client.sendall(flight)
+            received = b""
+            while len(received) < len(flight) and (chunk := upstream.recv(65536)):
+                received += chunk
+            if received:
+                client.sendall(b"application data")
+                received += upstream.recv(64)
+            client.shutdown(socket.SHUT_WR)
+            worker.join(10)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(response.startswith(b"HTTP/1.1 200"))
+        return client.recv(64), received, audit_log
+
+    def test_a_client_hello_naming_the_provider_is_relayed_unchanged(self) -> None:
+        to_client, upstream_saw, audit_log = self._tunnel(PYTHON_HELLO)
+
+        self.assertEqual(upstream_saw, PYTHON_HELLO + b"application data")
+        self.assertEqual(to_client, b"")
+        audit_log.assert_called_once_with("connect", "api.openai.com:443", result="ok", address="127.0.0.1")
+
+    def test_a_fronted_or_non_tls_server_name_is_refused_before_any_byte_is_relayed(self) -> None:
+        for flight, reason in ((FRONTED_HELLO, "sni-mismatch"), (b"\x16\x03\x01\x00\x00", "tls-malformed")):
+            with self.subTest(reason=reason):
+                to_client, upstream_saw, audit_log = self._tunnel(flight)
+
+                self.assertEqual((upstream_saw, to_client), (b"", b""))
+                self.assertEqual(
+                    audit_log.call_args_list[-1],
+                    mock.call("connect", "api.openai.com:443", result="denied", code=403, reason=reason),
+                )
+
+    def test_an_upstream_that_fails_the_first_flight_closes_the_tunnel_unspliced(self) -> None:
+        client, proxy = socket.socketpair()
+        self.addCleanup(client.close)
+        upstream, tunnel = mock.Mock(), mock.Mock()
+        upstream.sendall.side_effect = BrokenPipeError("gone")
+        with (
+            mock.patch.object(app.client_hello, "admit", return_value=PYTHON_HELLO),
+            mock.patch.object(app.Handler, "_tunnel", tunnel),
+        ):
+            object.__new__(app.Handler)._relay(proxy, upstream, "api.openai.com", "api.openai.com:443")
+
+        upstream.settimeout.assert_called_once_with(app.CONNECT_TIMEOUT)
+        upstream.sendall.assert_called_once_with(PYTHON_HELLO)
+        upstream.close.assert_called_once_with()
+        tunnel.assert_not_called()
+        self.assertEqual(client.recv(16), b"")
 
 
 class BrainEgressServerTests(unittest.TestCase):
