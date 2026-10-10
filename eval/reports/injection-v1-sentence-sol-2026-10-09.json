@@ -39,6 +39,46 @@
    }
   }
  ],
+ "provenance": {
+  "brain_checkout": "890711d with turn_prompt.py uncommitted; that file was byte-identical to c895fbf's, which commits only it beside reports, so the measured code is c895fbf's",
+  "brain_revision": "c895fbf53c70642834acc32ce40c5e6b2849de07",
+  "command": "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python $W/inj_confirm.py --key-file ../.gpt-key --model gpt-6.1-sol --repetitions 5 --arms pre,prod --cap 2.5 --workers 8 --seed injection-v1-sol-confirm --out $W/inj-sol.json (from sol_run.sh, beside the gpt-6.1-sol precision campaign)",
+  "profile": "pre: the shipped prompt with the sentence removed (inj_confirm.py asserts it is present first); prod: the shipped prompt",
+  "reproduce": {
+   "current": {
+    "arms": {
+     "pre": "pre",
+     "prod": "prod"
+    },
+    "command": "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.prompt_arms --key-file ../.gpt-key --model gpt-6.1-sol --arms pre,prod --repetitions 5 --cap 2.5 --workers 8 --seed injection-v1-sol-confirm --out <report.json>",
+    "tools": [
+     {
+      "path": "perf/prompt_arms.py",
+      "sha256": "99d0d9f1ed02dcc76c26fb0d2caeb2e6536c62b6a8d9bb11337e60b757e8629e"
+     }
+    ]
+   },
+   "exact": "the command above with the archived sources in $W, from a worktree of c895fbf"
+  },
+  "request_body_check": "tests/test_perf_prompt_arms.py runs each committed arm pair over a mock transport and proves their provider request bodies differ exactly as the arms intend",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "inj_confirm.py",
+    "sha256": "6d7dcc5813aec568a843a8ed34b83145d7e9362052a295e11429325e34efb554"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_profile.py@sol",
+    "sha256": "4648b032fb6dacdf935887287fffbf95ed94ba577ceaac0e855a3852c6fbafce"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "sol_run.sh",
+    "sha256": "4f2be29f3921d7d4c784916d90cac7ecbdf2e3ec1ba55286fa6ca61fca6eb952"
+   }
+  ]
+ },
  "runs": {
   "pre": {
    "attack_success": {

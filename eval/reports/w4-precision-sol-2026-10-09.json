@@ -84,6 +84,103 @@
   }
  ],
  "pooled_identical_arms": [],
+ "provenance": {
+  "brain_checkout": "890711d with turn_prompt.py uncommitted; that file was byte-identical to c895fbf's, which commits only it beside reports, so the measured code is c895fbf's",
+  "brain_revision": "c895fbf53c70642834acc32ce40c5e6b2849de07",
+  "commands": [
+   "uv run --project brain --frozen --python 3.14 --with cryptography==50.0.2 python $W/w4_arms.py --model gpt-6.1-sol --arms pre,prod --repetitions 1 --cap-per-arm 3.0 --workers 6 --transcript $W/private/sol.jsonl --meta-out $W/private/sol-meta.json --campaign w4-sol-sent --seed w4sol1 (sol_run.sh, umbrella root)",
+   "judge at brain b176a7441443e7133453759a003eab5a15202ba8 with the same uncommitted turn_prompt.py: cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python $W/judge_sol.py judge --transcript $W/private/sol.jsonl --key-file ../.gpt-key --tiebreak-key-file ../.gpt-key --cap 1.0 --out $W/private/sol-judged.jsonl",
+   "report: cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.precision report --transcript $W/private/sol.jsonl --judged $W/private/sol-judged.jsonl --meta $W/private/sol-meta.json --out $W/sol-report.json"
+  ],
+  "notes": [
+   "w4_arms.py@sol finished every attempt, then failed before writing its metadata (it read a base arm's budget, and this run has none); sol-meta.json was written by hand from the C5 metadata with this run's campaign, seed, model, arms, baseline, repetitions, and scenarios, seconds 0 (not measured), and budget cap 6.0 (two arms of 3.0) and spent 3.408675 (the sum of the attempts' cost)",
+   "so meta.commits is the C5 campaign's except brain, set by hand to b176a74; the checkouts this run measured were umbrella a6019d07, Team 5b85be7 (both from their reflogs at the run's start), and the Brain code of c895fbf (brain_checkout)",
+   "the tiebreak judge is gpt-6.1-sol, not claude-sonnet-5-5 (the Anthropic test key had no credit), so every verdict is exploratory"
+  ],
+  "profile": "one Brain per arm at 32,000; pre: the shipped prompt with the sentence removed; prod: the shipped prompt",
+  "reproduce": {
+   "current": {
+    "arms": {
+     "pre": "pre",
+     "prod": "prod"
+    },
+    "commands": [
+     "uv run --project brain --frozen --python 3.14 --with cryptography==50.0.2 python brain/perf/precision_arms.py --model gpt-6.1-sol --arms pre,prod --repetitions 1 --cap-per-arm 3.0 --workers 6 --seed w4sol1 --campaign w4-sol-sent --transcript <arms.jsonl> --meta-out <meta.json>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python perf/sol_tiebreak.py judge --key-file ../.gpt-key --tiebreak-key-file ../.gpt-key --transcript <arms.jsonl> --cap 1.0 --out <judged.jsonl>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.precision report --transcript <arms.jsonl> --judged <judged.jsonl> --meta <meta.json> --out <report.json>"
+    ],
+    "tools": [
+     {
+      "path": "perf/prompt_arms.py",
+      "sha256": "99d0d9f1ed02dcc76c26fb0d2caeb2e6536c62b6a8d9bb11337e60b757e8629e"
+     },
+     {
+      "path": "perf/prompt_arms_site.py",
+      "sha256": "e6fa8918c1855a7cdd755e4271d61ff4d31725c02c5c7b5b805f9216b3df631a"
+     },
+     {
+      "path": "perf/precision_arms.py",
+      "sha256": "2320479d3c48a16d3efde28b67f625133b5388b56be9ea0a73a43725888ed17f"
+     },
+     {
+      "path": "perf/sol_tiebreak.py",
+      "sha256": "4973eeff4febb5b844dad9b5c56e3681f299e1dc9351cb1652220ab448f2de0e"
+     }
+    ]
+   },
+   "exact": "the commands above with the archived sources in $W and the recorded checkouts"
+  },
+  "request_body_check": "tests/test_perf_prompt_arms.py runs each committed arm pair over a mock transport and proves their provider request bodies differ exactly as the arms intend",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_arms.py@sol",
+    "sha256": "03b2524f09ab8b86a75b1e34cd269e23e35c787296f6ed2cd9fea723ffd85a4a"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_site.py",
+    "sha256": "27119f5c12f50b0a6299c1e1a42d4dc369049acbfee381311d43bb88fb16bc72"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_profile.py@sol",
+    "sha256": "4648b032fb6dacdf935887287fffbf95ed94ba577ceaac0e855a3852c6fbafce"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "sol_run.sh",
+    "sha256": "4f2be29f3921d7d4c784916d90cac7ecbdf2e3ec1ba55286fa6ca61fca6eb952"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "judge_sol.py",
+    "sha256": "6d0999a72cb45a710c8436ccefc4c1f8996893ebfac95e14cd1c1442dacf1368"
+   }
+  ],
+  "team_revision": "5b85be73a70d7bd914498c109363ebf924c1e911",
+  "umbrella": {
+   "revision": "a6019d074960dd7a7e07c273537dcb35479d089a",
+   "sources": [
+    {
+     "path": ".tests/perf/precision_journeys.py",
+     "sha256": "d989f86619b72b090450189bc2c21fd42c421a6ebe26ff9c23f1ecc6a708a0f8"
+    },
+    {
+     "path": ".tests/perf/precision_brain_budget.py",
+     "sha256": "854be8c753cc9dad157bbdf66be24367086db09ba1ddf7da7a44312ffd967dd7"
+    },
+    {
+     "path": ".tests/perf/precision_brain_profile.py",
+     "sha256": "21181923e117a3de397793cab6ec6cb742da945ef18c2331d74e5db94fb0eed5"
+    },
+    {
+     "path": ".tests/perf/precision_brain_tools.py",
+     "sha256": "f5c32c2b745cc94f9f30d53f875f625c8bf5382198e08b0bab95a64a425515ee"
+    }
+   ]
+  }
+ },
  "runs": [
   {
    "arm": "pre",

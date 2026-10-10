@@ -11,6 +11,55 @@
   "C2": "Trimming a saturated history down to 16 exchanges (96,000 tokens) instead of dropping one exchange per turn keeps the cached conversation prefix, lowering cost per successful task by at least 15% with completion noninferior (-2 points)."
  },
  "method": "In-process AgentRuntime sessions on one thread each with the evaluation ceiling. Stratum sat: 24 short completed exchanges seeded without a provider, then 10 real turns that each ask for one task to be created and a final probe about the task created three turns earlier; arms base vs hyst. Stratum mem: empty history, 10 memories, one changed from turn 6, same turns; arms base vs stable (volatile data prepended to the current message, request-local). Success is exact: one create-task write with the asked title, or the probe title literally in the reply. Paired by session (same script), randomized arm order, session-cluster bootstrap.",
+ "provenance": {
+  "brain_checkout": "clean for both runs",
+  "brain_revision": "1864dcff66ec0d20fe0dc450e0bc5f10db0f9e01",
+  "commands": [
+   "exploratory: cd brain && PYTHONPATH=. timeout 3000 uv run --frozen --python 3.14 python $W/cache_exp.py --sessions 20 --turns 10 --cap 1.0 --workers 8 --out $W/cache-luna.json --seed cache-luna-1",
+   "confirmatory C2: cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python $W/cache_exp.py --strata sat --sessions 60 --turns 10 --cap 1.0 --workers 10 --out $W/cache-luna-sat60.json --seed cache-luna-sat60",
+   "analysis of each: cd brain && uv run --frozen --python 3.14 python $W/cache_analyze.py <sessions.json>"
+  ],
+  "notes": [
+   "this note was written by hand from the two analyses",
+   "limitation of both runs: the hyst arm swapped context_budget's module limits under a lock that the base arm's trim did not take, so a concurrent base-arm turn could have been trimmed at the hysteresis limits; perf/prompt_cache.py trims every arm under that lock",
+   "perf/prompt_cache.py analyze reproduces every analysis value of both runs from their private session files except the usd_per_success_change interval, whose resampler is now hash-based (the original used random.Random): the exploratory sat interval is -0.640 to -0.359 against -0.640 to -0.345 recorded, mem 0.328 to 0.772 against 0.339 to 0.793, confirmatory sat -0.395 to -0.190 against -0.399 to -0.191; the points are identical",
+   "the committed tool derives session titles and seeded notes from a hash of the seed, not random.Random, so its sessions are new samples"
+  ],
+  "reproduce": {
+   "current": {
+    "commands": [
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.prompt_cache run --key-file ../.gpt-key --sessions 20 --turns 10 --cap 1.0 --workers 8 --seed cache-luna-1 --out <sessions.json>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.prompt_cache run --key-file ../.gpt-key --strata sat --sessions 60 --turns 10 --cap 1.0 --workers 10 --seed cache-luna-sat60 --out <sessions.json>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.prompt_cache analyze <sessions.json>"
+    ],
+    "tools": [
+     {
+      "path": "perf/prompt_cache.py",
+      "sha256": "14aaf23af5175246918f2ee1c64167d718d82b72e42c2945a6c497021f450ab3"
+     }
+    ]
+   },
+   "exact": "the commands above with the archived sources in $W, from a worktree of 1864dcf"
+  },
+  "request_body_check": "tests/test_perf_prompt_arms.py proves the stable arm moves the memories and date out of the system prompt into the message and the hyst arm trims a saturated history to 16 exchanges where the base arm keeps 24",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "cache_exp.py@exploratory",
+    "sha256": "8088f69235b6d67e16b98b844aeae28461d617bf9393adf1b269897f0b61cd1a"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "cache_exp.py@confirmatory",
+    "sha256": "01fbf39e27c336ac5b5f463132df08d27483f7cd3bf0ac4579a498a9d73d3c12"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "cache_analyze.py",
+    "sha256": "2f9c8152bbdc1dcefd4e4e4be6ae96e797cbf40e7a90ae554b02a4f400012625"
+   }
+  ]
+ },
  "provider": "openai gpt-6-luna, effort low (the Anthropic test key has no credit, so the Anthropic arms could not run; OpenAI caches prefixes automatically and bills cache writes at 1.25x, so both mechanisms apply)",
  "runs": {
   "confirmatory_C2": {

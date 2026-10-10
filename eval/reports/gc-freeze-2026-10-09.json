@@ -14,6 +14,60 @@
  "hypothesis": "Collecting once and freezing after startup imports lowers the full collection BoundedBody runs after every admitted request, with no RSS growth under sustained concurrent load.",
  "method": "runtime_api served by uvicorn (1 worker) on loopback; Team's own inference client and chat orchestrator drive 2000 turns (start plus one Action round and resume, 4000 admitted requests) from 8 concurrent workers over 16 threads; the provider is a loopback stand-in for the OpenAI Responses endpoint (real ChatOpenAI and SDK path, 0.2 s per response); the timed call is the BoundedBody gc.collect; RSS sampled every 0.5 s. No provider cost.",
  "metric": "per-request gc.collect duration (p50/p95/total) and process RSS over the run",
+ "provenance": {
+  "brain_checkout": "a snapshot of 0b38d46 (git archive, identical to that tree) served by the checkout's brain/.venv interpreter",
+  "brain_revision": "0b38d46459df4fb1606432dd097d7a9d6152ea36",
+  "command": "for arm in base freeze freeze-warm: uv run --project teams --frozen --python 3.14 python $W/gc_bench.py --arm $arm --brain $W/brain-snap --turns 2000 --workers 8 --threads 16 --out $W/gc-$arm.json (gc_run.sh, umbrella root; $W/brain-snap = git -C brain archive 0b38d46)",
+  "notes": [
+   "each arm's bench process imported Team's client and orchestrator from the Team checkout at its own start, and that checkout moved during the run (team_revisions, from Team's reflog; its working tree is unrecorded); on the bench's import path only inference/config.py and protocol/http/v1/payload.py changed across those revisions, while the timed collections run in the Brain process"
+  ],
+  "profile": "base: runtime_api of 0b38d46 unchanged; freeze: gc.collect() and gc.freeze() once before uvicorn starts (the candidate; 890711d ships the same two calls in the app lifespan); freeze-warm: one gc.freeze() after the first timed collection",
+  "reproduce": {
+   "current": {
+    "arms": {
+     "base": "base (skips the shipped startup freeze)",
+     "freeze": "freeze (the shipped lifespan freeze)",
+     "freeze-warm": "freeze-warm"
+    },
+    "command": "uv run --project teams --frozen --python 3.14 python brain/perf/gc_freeze.py bench --arm <arm> --turns 2000 --workers 8 --threads 16 --out <arm.json> (umbrella root, once per arm)",
+    "tools": [
+     {
+      "path": "perf/gc_freeze.py",
+      "sha256": "5600479ef759907675f4aa1fc79511ba954eb595956497342c12dda860043de8"
+     }
+    ]
+   },
+   "exact": "the command above with the archived sources in $W"
+  },
+  "request_body_check": "not applicable: the arms change the Brain process's heap, never a provider request; the recorded frozen object counts (0, 126303, 348642) show the three arms differed",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "gc_bench.py",
+    "sha256": "9fc0c6b6ff2c838f18fceeb7a287c450f97c8d5d0d7853c7757946116ff851c2"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "gc_brain.py",
+    "sha256": "02410e13ab8ee6853b2066b03aa78e39b77bb216da9df3fc86aafdd30d07e089"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "fake_openai.py",
+    "sha256": "499ee4fdcb2fa96cca7a653cbea0e6b351d4e54d2256b3ea4d33e6d91e8e3f2c"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "gc_run.sh",
+    "sha256": "d74f3aa3eb63cd668ebf2baeff872dbfdb6049e59fae6f8586a4fe40f86bc7c7"
+   }
+  ],
+  "team_revisions": {
+   "base": "1c4bb2eb843c65bf496091b6a05616d31991d405",
+   "freeze": "c5698e3a018fd900d5464232f0b43eb9fa580dd3 or a99970b30878de27303c2e7988bc92e8e99103ed: the arm started about two seconds before a99970b was committed",
+   "freeze-warm": "1ec0c74a32efec36a5f639f31f6f75e1bc069df9"
+  }
+ },
  "results": {
   "base": {
    "collections": 4000,

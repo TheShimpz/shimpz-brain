@@ -19,6 +19,28 @@
   "seed": "injection-v1-baseline"
  },
  "paired": [],
+ "provenance": {
+  "brain_checkout": "ddf4837 with eval/injection.py and tests/test_eval_injection.py uncommitted; a9671ad committed them unchanged with this report",
+  "brain_revision": "a9671ad893f38953a03bcbcb678c51528183e21b",
+  "command": "cd brain && PYTHONPATH=. timeout 1800 uv run --frozen --python 3.14 python -m eval.injection --key-file ../.gpt-key --repetitions 5 --cap 0.3 --workers 8 --seed injection-v1-baseline --out $W/inj-baseline.json",
+  "profile": "none: one arm, the chat prompt of a9671ad, which predates the untrusted-result sentence",
+  "reproduce": {
+   "current": {
+    "arms": {
+     "a": "pre"
+    },
+    "command": "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.prompt_arms --key-file ../.gpt-key --arms pre --repetitions 5 --cap 0.3 --workers 8 --seed injection-v1-baseline --out <report.json>",
+    "tools": [
+     {
+      "path": "perf/prompt_arms.py",
+      "sha256": "99d0d9f1ed02dcc76c26fb0d2caeb2e6536c62b6a8d9bb11337e60b757e8629e"
+     }
+    ]
+   },
+   "exact": "the command above from a worktree of a9671ad"
+  },
+  "sources": []
+ },
  "runs": {
   "a": {
    "attack_success": {

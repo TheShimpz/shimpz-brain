@@ -9,6 +9,74 @@
  "hypothesis": "An explicit 32,000-token output limit on chat turns (the evaluation's limit) causes no completion regression against production's unlimited output (the model maximum, 128,000).",
  "metric": "paired whole-task success on precision-v2.1 (oracle plus judged reply), template-cluster bootstrap; criterion: lower 95% bound of cap minus base at least -2 points and no safety regression (ADR-0094 clauses 21-22)",
  "n": "120 scenarios x 5 repetitions per arm, 600 complete pairs; gpt-6-luna, effort low; arms base (128,000), cap (32,000), sent (the untrusted-result sentence), randomized order per scenario and repetition",
+ "provenance": {
+  "brain_revision": "ddf4837039b5f67b57e1872f9fe6ea0c44e6220a",
+  "derived_from": "eval/reports/w4-precision-luna-2026-10-09.json (its provenance binds the campaign)",
+  "notes": [
+   "this note was written by hand from that report; max_output_tokens_per_attempt is the largest output_tokens of any attempt per arm in the private transcript"
+  ],
+  "reproduce": {
+   "current": {
+    "arms": {
+     "base": "base-pre",
+     "cap": "pre",
+     "sent": "base"
+    },
+    "commands": [
+     "uv run --project brain --frozen --python 3.14 --with cryptography==50.0.2 python brain/perf/precision_arms.py --arms base-pre,pre,base --repetitions 5 --cap-per-arm 0.8 --workers 6 --seed w4c5s1 --campaign w4-c5-sent --transcript <arms.jsonl> --meta-out <meta.json>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python perf/sol_tiebreak.py judge --key-file ../.gpt-key --tiebreak-key-file ../.gpt-key --transcript <arms.jsonl> --cap 3.0 --out <judged.jsonl>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.precision report --transcript <arms.jsonl> --judged <judged.jsonl> --meta <meta.json> --out <report.json>"
+    ],
+    "pair": "base-pre (the C5 base) against pre (the C5 cap)",
+    "tools": [
+     {
+      "path": "perf/prompt_arms.py",
+      "sha256": "99d0d9f1ed02dcc76c26fb0d2caeb2e6536c62b6a8d9bb11337e60b757e8629e"
+     },
+     {
+      "path": "perf/prompt_arms_site.py",
+      "sha256": "e6fa8918c1855a7cdd755e4271d61ff4d31725c02c5c7b5b805f9216b3df631a"
+     },
+     {
+      "path": "perf/precision_arms.py",
+      "sha256": "2320479d3c48a16d3efde28b67f625133b5388b56be9ea0a73a43725888ed17f"
+     },
+     {
+      "path": "perf/sol_tiebreak.py",
+      "sha256": "4973eeff4febb5b844dad9b5c56e3681f299e1dc9351cb1652220ab448f2de0e"
+     }
+    ]
+   }
+  },
+  "request_body_check": "tests/test_perf_prompt_arms.py runs each committed arm pair over a mock transport and proves their provider request bodies differ exactly as the arms intend",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_arms.py@c5",
+    "sha256": "364494b79510aa08d02610707d9b0634efd5b311679f851986414a2c8a55bf4d"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_site.py",
+    "sha256": "27119f5c12f50b0a6299c1e1a42d4dc369049acbfee381311d43bb88fb16bc72"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_profile.py@c5",
+    "sha256": "10189b13a1cb126d195308f47e993a925592edf6e1804c86e01e47c8f730d1c6"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "c5_run.sh",
+    "sha256": "0401e7002b71d654dd7d3f79662361d49455600013ba1efd6e2efeea6263300f"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "judge_sol.py",
+    "sha256": "6d0999a72cb45a710c8436ccefc4c1f8996893ebfac95e14cd1c1442dacf1368"
+   }
+  ]
+ },
  "report": "eval/reports/w4-precision-luna-2026-10-09.json",
  "results": {
   "base_success": 0.8966666666666666,

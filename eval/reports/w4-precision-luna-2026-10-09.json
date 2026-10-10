@@ -123,6 +123,104 @@
   }
  ],
  "pooled_identical_arms": [],
+ "provenance": {
+  "brain_checkout": "clean",
+  "brain_revision": "ddf4837039b5f67b57e1872f9fe6ea0c44e6220a",
+  "commands": [
+   "uv run --project brain --frozen --python 3.14 --with cryptography==50.0.2 python $W/w4_arms.py --repetitions 5 --cap-per-arm 0.8 --workers 6 --transcript $W/private/c5.jsonl --meta-out $W/private/c5-meta.json --campaign w4-c5-sent --seed w4c5s1 (c5_run.sh, umbrella root)",
+   "judge at brain 1864dcff66ec0d20fe0dc450e0bc5f10db0f9e01: cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python $W/judge_sol.py judge --transcript $W/private/c5.jsonl --key-file ../.gpt-key --tiebreak-key-file ../.gpt-key --cap 3.0 --out $W/private/c5-judged.jsonl",
+   "report at brain 3d52c33871bb848df54ed49e42d55e776b55acec: cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.precision report --transcript $W/private/c5.jsonl --judged $W/private/c5-judged.jsonl --meta $W/private/c5-meta2.json --out $W/c5-report.json"
+  ],
+  "notes": [
+   "w4_arms.py@c5 also admitted Brain's provider_requests usage field in Team's parser (Team admits it since 6625cc9) and gave the umbrella journeys' Runtime context a Routine capacity of 20,000, which those journeys did not yet send",
+   "the campaign recorded only the base arm's budget; c5-meta2.json is its metadata with the budget cut to the report's metadata fields, spent_usd set to the three arms' sum (0.565664) and cap_usd to their sum (2.4)",
+   "the tiebreak judge is gpt-6.1-sol, not claude-sonnet-5-5 (the Anthropic test key had no credit), so every verdict is exploratory"
+  ],
+  "profile": "one Brain per arm; base: the chat prompt of ddf4837 at the model maximum (128,000); cap: the same prompt at 32,000; sent: that prompt with the sentence inserted after its anchor at 128,000",
+  "reproduce": {
+   "current": {
+    "arms": {
+     "base": "base-pre",
+     "cap": "pre",
+     "sent": "base"
+    },
+    "commands": [
+     "uv run --project brain --frozen --python 3.14 --with cryptography==50.0.2 python brain/perf/precision_arms.py --arms base-pre,pre,base --repetitions 5 --cap-per-arm 0.8 --workers 6 --seed w4c5s1 --campaign w4-c5-sent --transcript <arms.jsonl> --meta-out <meta.json>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python perf/sol_tiebreak.py judge --key-file ../.gpt-key --tiebreak-key-file ../.gpt-key --transcript <arms.jsonl> --cap 3.0 --out <judged.jsonl>",
+     "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.precision report --transcript <arms.jsonl> --judged <judged.jsonl> --meta <meta.json> --out <report.json>"
+    ],
+    "tools": [
+     {
+      "path": "perf/prompt_arms.py",
+      "sha256": "99d0d9f1ed02dcc76c26fb0d2caeb2e6536c62b6a8d9bb11337e60b757e8629e"
+     },
+     {
+      "path": "perf/prompt_arms_site.py",
+      "sha256": "e6fa8918c1855a7cdd755e4271d61ff4d31725c02c5c7b5b805f9216b3df631a"
+     },
+     {
+      "path": "perf/precision_arms.py",
+      "sha256": "2320479d3c48a16d3efde28b67f625133b5388b56be9ea0a73a43725888ed17f"
+     },
+     {
+      "path": "perf/sol_tiebreak.py",
+      "sha256": "4973eeff4febb5b844dad9b5c56e3681f299e1dc9351cb1652220ab448f2de0e"
+     }
+    ]
+   },
+   "exact": "the commands above with the archived sources in $W and the umbrella, Brain, and Team checkouts at the recorded revisions"
+  },
+  "request_body_check": "tests/test_perf_prompt_arms.py runs each committed arm pair over a mock transport and proves their provider request bodies differ exactly as the arms intend",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_arms.py@c5",
+    "sha256": "364494b79510aa08d02610707d9b0634efd5b311679f851986414a2c8a55bf4d"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_site.py",
+    "sha256": "27119f5c12f50b0a6299c1e1a42d4dc369049acbfee381311d43bb88fb16bc72"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_profile.py@c5",
+    "sha256": "10189b13a1cb126d195308f47e993a925592edf6e1804c86e01e47c8f730d1c6"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "c5_run.sh",
+    "sha256": "0401e7002b71d654dd7d3f79662361d49455600013ba1efd6e2efeea6263300f"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "judge_sol.py",
+    "sha256": "6d0999a72cb45a710c8436ccefc4c1f8996893ebfac95e14cd1c1442dacf1368"
+   }
+  ],
+  "team_revision": "8cf9c9187464728cfd2637e686cad5610a8d4c33",
+  "umbrella": {
+   "revision": "414fffd151eacdfb35952f76b1b4751486825f8a",
+   "sources": [
+    {
+     "path": ".tests/perf/precision_journeys.py",
+     "sha256": "d989f86619b72b090450189bc2c21fd42c421a6ebe26ff9c23f1ecc6a708a0f8"
+    },
+    {
+     "path": ".tests/perf/precision_brain_budget.py",
+     "sha256": "854be8c753cc9dad157bbdf66be24367086db09ba1ddf7da7a44312ffd967dd7"
+    },
+    {
+     "path": ".tests/perf/precision_brain_profile.py",
+     "sha256": "21181923e117a3de397793cab6ec6cb742da945ef18c2331d74e5db94fb0eed5"
+    },
+    {
+     "path": ".tests/perf/precision_brain_tools.py",
+     "sha256": "f5c32c2b745cc94f9f30d53f875f625c8bf5382198e08b0bab95a64a425515ee"
+    }
+   ]
+  }
+ },
  "runs": [
   {
    "arm": "base",

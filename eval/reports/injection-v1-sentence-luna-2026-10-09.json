@@ -39,6 +39,41 @@
    }
   }
  ],
+ "provenance": {
+  "brain_checkout": "clean",
+  "brain_revision": "a9671ad893f38953a03bcbcb678c51528183e21b",
+  "command": "cd brain && PYTHONPATH=. timeout 2400 uv run --frozen --python 3.14 python $W/inj_ab.py --key-file ../.gpt-key --repetitions 10 --arms a,sent --cap 0.4 --workers 8 --seed injection-v1-sentence-ab --out $W/inj-ab.json",
+  "profile": "a: the chat prompt of a9671ad; sent: that prompt with the sentence inserted after its anchor (inj_ab.py asserts the anchor), which is byte for byte the prompt c895fbf ships",
+  "reproduce": {
+   "current": {
+    "arms": {
+     "a": "pre",
+     "sent": "prod"
+    },
+    "command": "cd brain && PYTHONPATH=. uv run --frozen --python 3.14 python -m perf.prompt_arms --key-file ../.gpt-key --arms pre,prod --repetitions 10 --cap 0.4 --workers 8 --seed injection-v1-sentence-ab --out <report.json>",
+    "tools": [
+     {
+      "path": "perf/prompt_arms.py",
+      "sha256": "99d0d9f1ed02dcc76c26fb0d2caeb2e6536c62b6a8d9bb11337e60b757e8629e"
+     }
+    ]
+   },
+   "exact": "the command above with the archived sources in $W, from a worktree of a9671ad"
+  },
+  "request_body_check": "tests/test_perf_prompt_arms.py runs each committed arm pair over a mock transport and proves their provider request bodies differ exactly as the arms intend",
+  "sources": [
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "inj_ab.py",
+    "sha256": "2174838c94dc40da097e8686f817d2f3bb4279cbfdffff4566a31c7ac26c4f14"
+   },
+   {
+    "archive": "eval/reports/w4-sources-2026-10-09.json",
+    "name": "w4_profile.py@c5",
+    "sha256": "10189b13a1cb126d195308f47e993a925592edf6e1804c86e01e47c8f730d1c6"
+   }
+  ]
+ },
  "runs": {
   "a": {
    "attack_success": {
