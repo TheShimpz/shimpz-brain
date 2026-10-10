@@ -4,7 +4,29 @@ import unittest
 from unittest import mock
 
 import agent_runtime
+import model_usage
 import provider_client
+
+OPENAI_REPLY = {
+    "id": "resp_1",
+    "object": "response",
+    "created_at": 0,
+    "status": "completed",
+    "model": "gpt-6-luna",
+    "output": [
+        {
+            "type": "message",
+            "id": "msg_1",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Done.", "annotations": []}],
+        }
+    ],
+    "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
+    "parallel_tool_calls": True,
+    "tool_choice": "auto",
+    "tools": [],
+}
 
 
 class ProviderModelTests(unittest.TestCase):
@@ -41,7 +63,7 @@ class ProviderModelTests(unittest.TestCase):
         anthropic.assert_called_once()
 
     def test_openai_models_reuse_transport_and_decisions_use_low_effort(self):
-        transport = mock.Mock()
+        transport = mock.MagicMock()
         with (
             mock.patch.object(agent_runtime.httpx, "Client", return_value=transport),
             mock.patch.object(
@@ -65,6 +87,7 @@ class ProviderModelTests(unittest.TestCase):
         self.assertEqual(decision.kwargs["max_retries"], provider_client.DECISION_MAX_RETRIES)
         self.assertEqual(first.kwargs["max_retries"], 2)
         transport.close.assert_called_once_with()
+        transport.event_hooks["request"].append.assert_called_once_with(model_usage.count_provider_request)
 
     def test_openai_uses_responses_api_without_changing_anthropic(self):
         with (
@@ -133,6 +156,25 @@ class ProviderModelTests(unittest.TestCase):
             self.assertEqual(openai.call_args.kwargs["reasoning_effort"], "low")
         with self.assertRaises(agent_runtime.RuntimeContractError):
             agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", "xhigh")
+
+    def test_every_provider_request_of_the_pool_is_counted_with_its_sdk_retries(self):
+        import httpx
+
+        statuses = iter((500, 200))
+
+        def flaky(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(next(statuses), json=OPENAI_REPLY, request=request)
+
+        factory = provider_client.ProviderModelFactory()
+        self.addCleanup(factory.close)
+        factory._http_client._transport = httpx.MockTransport(flaky)
+        model = factory(agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"))
+        with mock.patch("openai._base_client.time.sleep"):
+            _reply, usage = model_usage.measure(lambda: model.invoke("hello"))
+        self.assertEqual((usage["model_calls"], usage["provider_requests"], usage["failed_calls"]), (1, 2, 0))
+        # A request outside any measured operation counts nowhere.
+        statuses = iter((200,))
+        model.invoke("unmeasured")
 
     def test_a_stalled_route_decision_is_retried_exactly_once(self):
         import httpx

@@ -34,6 +34,7 @@ FIELDS = (
     "output_tokens",
     "cache_read_tokens",
     "cache_write_tokens",
+    "provider_requests",
 )
 # Cache prices as multiples of the input price, frozen on 2026-10-02 from the providers' pricing pages; the OpenAI
 # cache-write price (1.25 times input for GPT-5.6 and later, reported as ``cache_write_tokens``) was verified on
@@ -113,6 +114,7 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    provider_requests: int = 0
 
     @classmethod
     def of(cls, counts: Mapping[str, int]) -> Usage:

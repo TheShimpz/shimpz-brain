@@ -56,6 +56,7 @@ class UsageTests(unittest.TestCase):
                 "output_tokens": 30,
                 "cache_read_tokens": 80,
                 "cache_write_tokens": 20,
+                "provider_requests": 0,
             },
         )
 
@@ -115,6 +116,7 @@ class EndpointTests(unittest.TestCase):
                 "output_tokens": 30,
                 "cache_read_tokens": 80,
                 "cache_write_tokens": 20,
+                "provider_requests": 0,
             },
         )
 

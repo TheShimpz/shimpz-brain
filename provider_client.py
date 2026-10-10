@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import action_tool
 import httpx
+import model_usage
 import provider_cancel
 from langchain_core.language_models import BaseChatModel
 from pydantic import SecretStr
@@ -109,6 +110,8 @@ class ProviderModelFactory:
 
     def __init__(self) -> None:
         self._http_client = provider_cancel.client()
+        # Every request the pool sends, each SDK retry included, is counted in the operation's model usage.
+        self._http_client.event_hooks["request"].append(model_usage.count_provider_request)
 
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
         return provider_model(config, http_client=self._http_client)

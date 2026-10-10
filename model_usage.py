@@ -1,7 +1,9 @@
 """Observed model usage of one Brain operation, reported to Team with the operation's result (ADR-0082).
 
 The counts are what the provider responses reported: a call that failed, was cancelled, or was retried inside the
-provider SDK reports no tokens, so the totals are a floor on billed usage, never an estimate of it.
+provider SDK reports no tokens, so the totals are a floor on billed usage, never an estimate of it. Beside the
+logical model calls, ``provider_requests`` counts every HTTP request sent to a provider over the runtime's pool, each
+SDK retry included, so a retried call is visible even though its earlier attempts report no tokens.
 """
 
 import threading
@@ -21,6 +23,7 @@ FIELDS = (
     "output_tokens",
     "cache_read_tokens",
     "cache_write_tokens",
+    "provider_requests",
 )
 
 
@@ -77,6 +80,16 @@ class Usage(BaseCallbackHandler):
 _CURRENT: ContextVar[Usage | None] = ContextVar("brain_model_usage", default=None)
 # Registered once: every LangChain run configured while a usage is current reports to it, including graph workers.
 register_configure_hook(_CURRENT, inheritable=True)
+
+
+def count_provider_request(_request: object) -> None:
+    """An httpx request hook: count one provider HTTP request, retries included, toward the current usage, if any.
+
+    The provider pool sends from the thread running the model call, which carries the operation's context.
+    """
+    usage = _CURRENT.get()
+    if usage is not None:
+        usage._add(provider_requests=1)
 
 
 @contextmanager
