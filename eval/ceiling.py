@@ -104,10 +104,16 @@ def usage_of(host: str, body: object, path: str = "") -> eval_cost.Usage | None:
     details = usage.get("input_tokens_details" if responses else "prompt_tokens_details")
     details = {} if details is None else details
     counts = _counts(usage, names, ())
-    cached = _counts(details, (), ("cached_tokens",)) if isinstance(details, dict) else None
+    cached = _counts(details, (), ("cached_tokens", "cache_write_tokens")) if isinstance(details, dict) else None
     if counts is None or cached is None:
         return None
-    return eval_cost.Usage(model_calls=1, input_tokens=counts[0], output_tokens=counts[1], cache_read_tokens=cached[0])
+    return eval_cost.Usage(
+        model_calls=1,
+        input_tokens=counts[0],
+        output_tokens=counts[1],
+        cache_read_tokens=cached[0],
+        cache_write_tokens=cached[1],
+    )
 
 
 class Ceiling:

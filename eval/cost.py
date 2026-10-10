@@ -1,10 +1,10 @@
 """Estimated provider cost of an evaluation: list prices, frozen cache prices, unknown usage, and hard budgets.
 
 Cost is an estimate from the model catalog's list prices, never billing (ADR-0094). The catalog carries no cache
-prices, so they are frozen here: a cache read costs a fraction of the input price, an Anthropic five-minute cache
-write (the only lifetime Brain requests) costs 1.25 times the input price, and OpenAI, which reports no cache writes,
-bills its cached prefix as ordinary input. Fresh input is what remains after cache reads and writes; a cache read or
-write is never priced as fresh input.
+prices, so they are frozen here: a cache read costs a fraction of the input price, and a cache write costs 1.25 times
+the input price, both for an Anthropic five-minute cache write (the only lifetime Brain requests) and for every OpenAI
+model the catalog prices (GPT-5.6 and later bill and report cache writes). Fresh input is what remains after cache
+reads and writes; a cache read or write is never priced as fresh input.
 
 Usage a provider did not report, or a call that failed, makes the usage unknown: the known part is a lower bound.
 
@@ -35,10 +35,12 @@ FIELDS = (
     "cache_read_tokens",
     "cache_write_tokens",
 )
-# Cache prices as multiples of the input price, frozen on 2026-10-02 from the providers' pricing pages.
+# Cache prices as multiples of the input price, frozen on 2026-10-02 from the providers' pricing pages; the OpenAI
+# cache-write price (1.25 times input for GPT-5.6 and later, reported as ``cache_write_tokens``) was verified on
+# 2026-10-09 against the OpenAI pricing page and prompt-caching guide.
 CACHE_READ_MULTIPLIER = {"openai": 0.1, "anthropic": 0.1}
 CACHE_READ_MULTIPLIER_BY_MODEL = {"claude-opus-5-5": 0.05, "gpt-6.1-sol": 0.05}
-CACHE_WRITE_MULTIPLIER = {"openai": 1.0, "anthropic": 1.25}
+CACHE_WRITE_MULTIPLIER = {"openai": 1.25, "anthropic": 1.25}
 # Models priced for evaluation only, which the product catalog does not offer, in US cents per million input and output
 # tokens: gpt-5.6-sol's promotional list price (listed through at least 2026-11-21, prompts up to 272k input tokens),
 # frozen on 2026-10-02. Only a disposable evaluation Brain admits them (``admit_evaluation_models``).

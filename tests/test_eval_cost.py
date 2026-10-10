@@ -24,7 +24,9 @@ class PriceTests(unittest.TestCase):
         self.assertAlmostEqual(luna.input, 0.1e-6)
         self.assertAlmostEqual(luna.output, 0.5e-6)
         self.assertAlmostEqual(luna.cache_read, 0.01e-6)
-        self.assertAlmostEqual(luna.cache_write, 0.1e-6)
+        # GPT-5.6 and later bill a cache write at 1.25 times input (OpenAI pricing page, verified 2026-10-09).
+        self.assertAlmostEqual(luna.cache_write, 0.125e-6)
+        self.assertAlmostEqual(cost.price("gpt-6.1-sol").cache_write, 2.5e-6)
         sonnet = cost.price("claude-sonnet-5-5")
         self.assertAlmostEqual(sonnet.cache_read, 0.2e-6)
         self.assertAlmostEqual(sonnet.cache_write, 2.5e-6)
@@ -63,7 +65,7 @@ class PriceTests(unittest.TestCase):
         self.assertAlmostEqual(sol.input, 4e-6)
         self.assertAlmostEqual(sol.output, 20e-6)
         self.assertAlmostEqual(sol.cache_read, 0.4e-6)
-        self.assertAlmostEqual(sol.cache_write, 4e-6)
+        self.assertAlmostEqual(sol.cache_write, 5e-6)
         self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model"):
             agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key", "low")
@@ -75,7 +77,7 @@ class PriceTests(unittest.TestCase):
 
     def test_a_call_bound_prices_every_input_token_at_the_dearest_input_rate(self):
         self.assertAlmostEqual(cost.call_bound("claude-sonnet-5-5", 1_000, 100), (1_000 * 2.5 + 100 * 10) * 1e-6)
-        self.assertAlmostEqual(cost.call_bound("gpt-6-luna", 1_000, 100), (1_000 * 0.1 + 100 * 0.5) * 1e-6)
+        self.assertAlmostEqual(cost.call_bound("gpt-6-luna", 1_000, 100), (1_000 * 0.125 + 100 * 0.5) * 1e-6)
 
     def test_an_explicit_catalog_is_read(self):
         catalog = {

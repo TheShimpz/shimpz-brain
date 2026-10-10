@@ -253,6 +253,22 @@ class CeilingTests(unittest.TestCase):
         self.assertEqual(self.ceiling.budget._reserved, 0.0)
         self.assertEqual(json.loads(admitted.content)["max_output_tokens"], 32_000)
 
+    def test_an_openai_cache_write_is_read_and_priced_as_a_cache_write(self):
+        usage = {
+            "input_tokens": 100,
+            "output_tokens": 5,
+            "input_tokens_details": {"cached_tokens": 40, "cache_write_tokens": 50},
+        }
+        reported = ceiling.usage_of("api.openai.com", {"usage": usage})
+        self.assertEqual(
+            (reported.cache_read_tokens, reported.cache_write_tokens, reported.fresh_input_tokens), (40, 50, 10)
+        )
+        self.assertAlmostEqual(
+            eval_cost.cost(reported, "gpt-6-luna").usd, (10 * 0.1 + 40 * 0.01 + 50 * 0.125 + 5 * 0.5) * 1e-6
+        )
+        malformed = {**usage, "input_tokens_details": {"cached_tokens": 40, "cache_write_tokens": "50"}}
+        self.assertIsNone(ceiling.usage_of("api.openai.com", {"usage": malformed}))
+
     def test_embeddings_reserve_input_only_and_settle_on_prompt_tokens(self):
         body = {"object": "list", "data": [], "model": "text-embedding-3-small", "usage": {"prompt_tokens": 1000}}
         recorder = Recorder(body)

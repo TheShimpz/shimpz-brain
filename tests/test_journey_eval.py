@@ -182,8 +182,8 @@ class JourneyEvalTests(unittest.TestCase):
             outcome = journeys.run_request(
                 _update(journeys._record_id("www.exemplo.com")), PROVIDER, scenario, scenario.requests[0], "j:5", []
             )
-        # Luna: 500 fresh + 400 cache reads at a tenth + 100 unreported writes as input, 10 output.
-        self.assertAlmostEqual(outcome.usd, (500 + 40 + 100) * 0.1e-6 + 10 * 0.5e-6)
+        # Luna: 500 fresh + 400 cache reads at a tenth + 100 cache writes at 1.25 times input, 10 output.
+        self.assertAlmostEqual(outcome.usd, (500 + 40 + 125) * 0.1e-6 + 10 * 0.5e-6)
         self.assertEqual((outcome.cache_write_tokens, outcome.usage_known), (100, True))
         with mock.patch.object(model_usage, "measure", lambda work: (work(), usage | {"unreported_calls": 1})):
             outcome = journeys.run_request(
