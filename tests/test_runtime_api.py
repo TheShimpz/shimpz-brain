@@ -651,6 +651,27 @@ class RuntimeApiTests(unittest.TestCase):
             self.assertEqual(wal.stat().st_size, 0)
             runtime.close()
 
+    def test_sqlite_thread_deletion_leaves_no_deleted_page_in_the_write_ahead_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "checkpoints.sqlite3"
+            runtime = runtime_api._sqlite_runtime(path)
+            connection = runtime._checkpointer.conn
+            deleted = b"deleted-conversation-marker"
+            with connection:
+                connection.executemany(
+                    "INSERT INTO checkpoints(thread_id,checkpoint_ns,checkpoint_id,type,checkpoint,metadata) "
+                    "VALUES(?,'','001','json',?,X'00')",
+                    [("team:hello:deleted", deleted), ("team:hello:kept", b"kept")],
+                )
+            wal = path.with_name(path.name + "-wal")
+            self.assertIn(deleted, wal.read_bytes())
+
+            runtime.delete_thread("team:hello:deleted")
+
+            self.assertEqual(connection.execute("SELECT thread_id FROM checkpoints").fetchall(), [("team:hello:kept",)])
+            self.assertEqual(wal.stat().st_size, 0)
+            runtime.close()
+
 
 if __name__ == "__main__":
     unittest.main()
