@@ -7,7 +7,6 @@ no network, key, or provider call is used.
 import unittest
 from unittest import mock
 
-import action_labels
 import agent_runtime
 import capability_plan
 import provider_client
@@ -24,7 +23,6 @@ CANDIDATES = (
     capability_plan.CapabilityCandidate("shimpz-cloudflare", "Shimpz Cloudflare", "Manage DNS.", ("dns.read",), ()),
 )
 PLAN = {"status": "install-required", "assistant_ids": ["shimpz-cloudflare"]}
-LABELS = {"labels": [{"id": "list-zones", "label": "Listar zonas"}]}
 
 
 def _runtime() -> agent_runtime.AgentRuntime:
@@ -59,7 +57,7 @@ class AnthropicStructuredOutputTests(unittest.TestCase):
         self.assertNotIn("tools", payloads[0])
         return result
 
-    def test_plans_and_labels_parse_the_native_schema_reply(self):
+    def test_plans_parse_the_native_schema_reply(self):
         import json
 
         plan = self._run(
@@ -67,11 +65,6 @@ class AnthropicStructuredOutputTests(unittest.TestCase):
             lambda runtime: runtime.capability_plan(self.provider, "List zones", CANDIDATES),
         )
         self.assertEqual(plan, capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)))
-        labels = self._run(
-            _anthropic_reply(json.dumps(LABELS)),
-            lambda runtime: runtime.action_labels(self.provider, "pt", ("list-zones",)),
-        )
-        self.assertEqual(labels, (action_labels.ActionLabel("list-zones", "Listar zonas"),))
 
     def test_malformed_unknown_and_refused_replies_are_response_failures(self):
         for reply in (
@@ -89,15 +82,36 @@ class AnthropicStructuredOutputTests(unittest.TestCase):
 
 
 class SchemaTests(unittest.TestCase):
-    def test_provider_schemas_carry_no_undocumented_string_limits(self):
+    def test_provider_schema_carries_no_undocumented_string_limits(self):
         import json
 
-        for schema in (capability_plan.StructuredPlan, action_labels.ActionLabelsOutput):
-            with self.subTest(schema=schema.__name__):
-                encoded = json.dumps(schema.model_json_schema())
-                self.assertNotIn("maxLength", encoded)
-                self.assertNotIn("minLength", encoded)
-                self.assertNotIn("pattern", encoded)
+        encoded = json.dumps(capability_plan.StructuredPlan.model_json_schema())
+        self.assertNotIn("maxLength", encoded)
+        self.assertNotIn("minLength", encoded)
+        self.assertNotIn("pattern", encoded)
+
+    def test_structured_value_refuses_every_unclosed_or_inconsistent_shape(self):
+        consistent = '{"status":"install-required","assistant_ids":["shimpz-cloudflare"]}'
+        oversized = consistent.replace(":[", ":[" + " " * 64)
+        for result in (
+            object(),
+            {"raw": AIMessage(content=""), "parsed": None},
+            {"raw": AIMessage(content=""), "parsed": None, "parsing_error": ValueError("not JSON")},
+            {"raw": "not a message", "parsed": PLAN, "parsing_error": None},
+            {"raw": AIMessage(content=""), "parsed": object(), "parsing_error": None},
+            {"raw": AIMessage(content=""), "parsed": {**PLAN, "extra": True}, "parsing_error": None},
+            {"raw": AIMessage(content=consistent), "parsed": {**PLAN, "status": "sufficient"}, "parsing_error": None},
+            {"raw": AIMessage(content=oversized), "parsed": PLAN, "parsing_error": None},
+        ):
+            with self.subTest(result=result), self.assertRaises(agent_runtime.RuntimeContractError):
+                structured.structured_value(result, capability_plan.StructuredPlan, "plan", len(consistent))
+        parsed = structured.structured_value(
+            {"raw": AIMessage(content=consistent), "parsed": PLAN, "parsing_error": None},
+            capability_plan.StructuredPlan,
+            "plan",
+            len(consistent),
+        )
+        self.assertEqual(parsed, capability_plan.StructuredPlan.model_validate(PLAN))
 
     def test_binding_and_raw_text_helpers_fail_closed(self):
         model = mock.Mock()
@@ -124,20 +138,14 @@ class OpenAIStructuredOutputTests(unittest.TestCase):
         with mock.patch.object(ChatOpenAI, "_generate", generate):
             result = call(_runtime())
         # A Pydantic schema reaches the OpenAI SDK's typed parse, which always requests strict JSON-schema output.
-        self.assertIn(
-            requests[0]["response_format"], {capability_plan.StructuredPlan, action_labels.ActionLabelsOutput}
-        )
+        self.assertIs(requests[0]["response_format"], capability_plan.StructuredPlan)
         return result
 
-    def test_plans_and_labels_use_the_strict_parsed_value(self):
+    def test_plans_use_the_strict_parsed_value(self):
         plan = self._run(
             {"parsed": PLAN}, lambda runtime: runtime.capability_plan(self.provider, "List zones", CANDIDATES)
         )
         self.assertEqual(plan, capability_plan.CapabilityPlan("install-required", ("shimpz-cloudflare",)))
-        labels = self._run(
-            {"parsed": LABELS}, lambda runtime: runtime.action_labels(self.provider, "pt", ("list-zones",))
-        )
-        self.assertEqual(labels, (action_labels.ActionLabel("list-zones", "Listar zonas"),))
 
     def test_refusal_and_semantic_failures_are_response_failures(self):
         for kwargs in (
@@ -148,11 +156,6 @@ class OpenAIStructuredOutputTests(unittest.TestCase):
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(agent_runtime.ProviderResponseError):
                 self._run(kwargs, lambda runtime: runtime.capability_plan(self.provider, "List zones", CANDIDATES))
-        with self.assertRaises(agent_runtime.ProviderResponseError):
-            self._run(
-                {"parsed": {"labels": [{"id": "list-zones", "label": "Listar\nzonas"}]}},
-                lambda runtime: runtime.action_labels(self.provider, "pt", ("list-zones",)),
-            )
 
 
 if __name__ == "__main__":

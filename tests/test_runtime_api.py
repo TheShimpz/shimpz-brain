@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import get_args
 from unittest import mock
 
-import action_labels
 import agent_runtime
 import capability_plan
 import clarification
@@ -89,15 +88,6 @@ class FakeRuntime:
         self.calls.append(("delete_thread", thread_id))
         if self.error:
             raise self.error
-
-    def action_labels(self, provider, locale, action_ids):
-        self.calls.append(("action_labels", provider, locale, action_ids))
-        if self.error:
-            raise self.error
-        return (
-            action_labels.ActionLabel(id="list-zones", label="Listar zonas DNS"),
-            action_labels.ActionLabel(id="get-zone", label="Consultar zona DNS"),
-        )
 
     def capability_plan(self, provider, objective, candidates):
         self.calls.append(("capability_plan", provider, objective, candidates))

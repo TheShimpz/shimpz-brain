@@ -17,7 +17,6 @@ The authenticated API is intentionally small:
   start envelope, never other history, Action results, Genesis, the human request, or credentials, and returns
   `{"purpose": string | null, "usage": ...}`; a sentence that breaks the plain-text rule is null;
 - `POST /v1/intent-route` classifies one fresh Assistant lifecycle intent with bounded untrusted conversation evidence, or resolves it against a closed candidate directory, writing its presentation-only reply in the required `locale`;
-- `POST /v1/action-labels` labels Action ids in the required `locale`;
 - `POST /v1/threads/delete` deletes one exact conversation checkpoint during Team teardown.
 
 All POST endpoints require the private bearer mounted read-only at

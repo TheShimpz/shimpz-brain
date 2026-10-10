@@ -7,7 +7,6 @@ real model behaves.
 import unittest
 from unittest import mock
 
-import action_labels
 import agent_runtime
 import capability_plan
 import model_usage
@@ -31,7 +30,7 @@ class TurnEvalTests(unittest.TestCase):
         rounds = sum(len(case.rounds) + 1 for case in turns.TURN_CASES)
         self.assertEqual(
             turns.logical_model_invocations(),
-            turns.ATTEMPTS * (2 * rounds + len(turns.PLAN_CASES) + len(turns.LABEL_CASES)),
+            turns.ATTEMPTS * (2 * rounds + len(turns.PLAN_CASES)),
         )
         self.assertTrue(any(len(current.actions) == 2 for case in turns.TURN_CASES for current in case.rounds))
         self.assertTrue(any(not case.rounds for case in turns.TURN_CASES))
@@ -130,7 +129,7 @@ class TurnEvalTests(unittest.TestCase):
         self.assertFalse(turns._reply_matches(failed, "Registro TXT criado na zona missing.dev."))
         self.assertFalse(turns._reply_matches(failed, "O registro TXT foi encontrado e criado na zona missing.dev."))
 
-    def test_plan_and_label_cases_compare_the_exact_selection(self):
+    def test_plan_cases_compare_the_exact_selection(self):
         runtime = mock.Mock()
         runtime.capability_plan.return_value = capability_plan.CapabilityPlan(
             "install-required", ("shimpz-cloudflare",)
@@ -138,27 +137,6 @@ class TurnEvalTests(unittest.TestCase):
         self.assertTrue(turns.run_plan(runtime, PROVIDER, turns.PLAN_CASES[0]))
         runtime.capability_plan.return_value = capability_plan.CapabilityPlan("sufficient")
         self.assertFalse(turns.run_plan(runtime, PROVIDER, turns.PLAN_CASES[0]))
-        labels = next(case for case in turns.LABEL_CASES if case.language == "pt")
-        runtime.action_labels.return_value = (
-            action_labels.ActionLabel("dns.create-record", "Criar registro"),
-            action_labels.ActionLabel("dns.list-zones", "Listar as zonas"),
-        )
-        self.assertTrue(turns.run_labels(runtime, PROVIDER, labels))
-        runtime.action_labels.return_value = (
-            action_labels.ActionLabel("dns.create-record", "Create the record"),
-            action_labels.ActionLabel("dns.list-zones", "List the zones"),
-        )
-        self.assertFalse(turns.run_labels(runtime, PROVIDER, labels))
-
-    def test_labels_without_a_detectable_language_fail(self):
-        runtime = mock.Mock()
-        runtime.action_labels.return_value = (
-            action_labels.ActionLabel("dns.create-record", "DNS +"),
-            action_labels.ActionLabel("dns.list-zones", "DNS ?"),
-        )
-        for case in turns.LABEL_CASES:
-            with self.subTest(case=case.id):
-                self.assertFalse(turns.run_labels(runtime, PROVIDER, case))
 
     def test_out_of_scope_and_injection_replies_must_steer_to_the_enabled_capability(self):
         silent = _runtime(AIMessage(content="Sorry, I can't do that."))
@@ -173,16 +151,13 @@ class TurnEvalTests(unittest.TestCase):
         runtime = mock.Mock()
         runtime.start.return_value = agent_runtime.TurnResult("completed", reply="ok")
         runtime.capability_plan.return_value = capability_plan.CapabilityPlan("sufficient")
-        runtime.action_labels.return_value = ()
         with (
             mock.patch.object(turns, "TURN_CASES", (turns.TURN_CASES[0],)),
             mock.patch.object(turns, "PLAN_CASES", (turns.PLAN_CASES[0],)),
-            mock.patch.object(turns, "LABEL_CASES", (turns.LABEL_CASES[0],)),
         ):
             turns.evaluate(runtime, PROVIDER)
         self.assertEqual({call.args[0].provider.effort for call in runtime.start.call_args_list}, {"low"})
         self.assertEqual({call.args[0].effort for call in runtime.capability_plan.call_args_list}, {None})
-        self.assertEqual({call.args[0].effort for call in runtime.action_labels.call_args_list}, {None})
 
     def test_scoring_counts_attempts_and_treats_provider_failures_as_misses(self):
         outcomes = iter([True, agent_runtime.ProviderResponseError("x"), False])
@@ -208,11 +183,9 @@ class TurnEvalTests(unittest.TestCase):
         runtime = mock.Mock()
         runtime.start.return_value = agent_runtime.TurnResult("completed", reply="ok")
         runtime.capability_plan.return_value = capability_plan.CapabilityPlan("sufficient")
-        runtime.action_labels.return_value = ()
         with (
             mock.patch.object(turns, "TURN_CASES", (turns.TURN_CASES[0],)),
             mock.patch.object(turns, "PLAN_CASES", ()),
-            mock.patch.object(turns, "LABEL_CASES", ()),
         ):
             report = turns.evaluate(runtime, PROVIDER)
         self.assertEqual((report["usd"], report["usd_known"]), (0, True))

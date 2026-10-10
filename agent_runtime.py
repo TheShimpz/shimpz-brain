@@ -21,7 +21,6 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-import action_labels
 import action_purpose
 import action_schema
 import action_tool
@@ -38,7 +37,6 @@ import provider_client
 import routine_recovery
 import turn_pins
 import turn_prompt
-from action_labels import ActionLabel
 from action_purpose import PendingAction
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
@@ -871,15 +869,6 @@ class AgentRuntime:
         """Attach a completed turn's independently confirmed memory changes."""
         known = team_memory.describe(context.memories, context.skills)
         return team_memory.attach(result, state, self._memory_check(context), known)
-
-    def action_labels(
-        self,
-        provider: ProviderConfig,
-        locale: str,
-        action_ids: tuple[str, ...],
-    ) -> tuple[ActionLabel, ...]:
-        """Create inert labels without conversation state, tools, or execution authority."""
-        return action_labels.create(lambda: self._model_factory(provider), provider.provider, locale, action_ids)
 
     def _decision_model(self, provider: ProviderConfig) -> BaseChatModel:
         """A short model with at most one retry for one stateless structured decision."""

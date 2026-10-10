@@ -14,7 +14,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
-import action_labels
 import action_purpose
 import agent_runtime
 import attachments as turn_attachments
@@ -26,7 +25,6 @@ import model_usage
 import provider_cancel
 import routine_recovery
 import turn_pins
-from action_labels import ActionLabel
 from action_purpose import PendingAction
 from capability_plan import CapabilityCandidate, CapabilityPlan
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -35,7 +33,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
-from protocol.team.http.v1 import identifiers as team_identifiers
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, field_validator, model_validator
 from routine_recovery import RecoveryRequest
 
@@ -308,21 +305,6 @@ class DeleteThreadInput(ClosedInput):
         return value
 
 
-class ActionLabelsInput(ClosedInput):
-    provider: ProviderInput
-    locale: interface_language.Locale
-    actions: list[str] = Field(min_length=1, max_length=action_labels.MAX_ACTION_LABELS)
-
-    @field_validator("actions")
-    @classmethod
-    def validate_actions(cls, value: list[str]) -> list[str]:
-        if any(team_identifiers.canonical_action_id(action_id) is None for action_id in value) or len(
-            set(value)
-        ) != len(value):
-            raise ValueError("invalid Action label ids")
-        return value
-
-
 class RoutineInput(ClosedInput):
     """The held run's Routine, by its name."""
 
@@ -459,13 +441,6 @@ class RuntimeLike:
     ) -> agent_runtime.TurnResult: ...
 
     def delete_thread(self, thread_id: str) -> None: ...
-
-    def action_labels(
-        self,
-        provider: agent_runtime.ProviderConfig,
-        locale: str,
-        action_ids: tuple[str, ...],
-    ) -> tuple[ActionLabel, ...]: ...
 
     def action_purpose(
         self,
@@ -695,10 +670,6 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
     }
 
 
-def _action_labels_response(labels: tuple[action_labels.ActionLabel, ...]) -> dict[str, object]:
-    return {"labels": [{"id": item.id, "label": item.label} for item in labels]}
-
-
 def _capability_plan_response(plan: capability_plan.CapabilityPlan) -> dict[str, object]:
     return {"status": plan.status, "assistant_ids": list(plan.assistant_ids)}
 
@@ -915,17 +886,6 @@ def create_app(
     def delete_thread(body: DeleteThreadInput) -> dict[str, str]:
         current_runtime().delete_thread(body.thread_id)
         return {"status": "deleted"}
-
-    @app.post("/v1/action-labels", dependencies=[Depends(require_auth)])
-    def action_labels(body: ActionLabelsInput) -> dict[str, object]:
-        labels, usage = model_usage.measure(
-            lambda: current_runtime().action_labels(
-                body.provider.runtime(),
-                body.locale,
-                tuple(body.actions),
-            )
-        )
-        return {**_action_labels_response(labels), "usage": usage}
 
     @app.post("/v1/capability-plan", dependencies=[Depends(require_auth)])
     def create_capability_plan(body: CapabilityPlanInput) -> dict[str, object]:

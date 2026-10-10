@@ -1,10 +1,10 @@
-"""Evaluate chat turns, capability plans, and Action labels against a fixed behavioral corpus.
+"""Evaluate chat turns and capability plans against a fixed behavioral corpus.
 
 Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.turns`` from Brain to validate the corpus
 without a provider. Add ``--key-file`` (and optionally ``--provider``/``--model``) for three real attempts per
 case through the real ``AgentRuntime`` with an in-memory checkpoint; ``--plan`` prints the logical model invocations
 such a run makes when every case follows its expected rounds (SDK retries can add provider HTTP attempts). Turns use
-the Team's default reasoning effort; plans and labels keep the provider default, as in production (ADR-0074).
+the Team's default reasoning effort; plans keep the provider default, as in production (ADR-0074).
 Output contains only case identifiers, pass counts, and estimated cost (``eval.cost``: cache-aware, per attempted
 and per successful attempt, unknown when a call reported no usage), never prompts, replies, or Action input.
 
@@ -147,15 +147,6 @@ class PlanCase:
     assistant_ids: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
-class LabelCase:
-    id: str
-    contract: str
-    locale: str
-    action_ids: tuple[str, ...]
-    language: str
-
-
 _ZONES = {"status": "ok", "output": {"zones": ["example.com", "shimpz.dev"]}}
 TURN_CASES = (
     TurnCase("greeting-pt", "no Action for conversation", "Olá! Tudo bem?", (DNS,), language="pt"),
@@ -267,22 +258,6 @@ PLAN_CASES = (
     ),
     PlanCase("plan-none-en", "select nothing for conversation", "Thanks, that is all for today.", "sufficient"),
 )
-LABEL_CASES = (
-    LabelCase(
-        "labels-pt",
-        "labels follow the interface language",
-        "pt",
-        ("dns.create-record", "dns.list-zones"),
-        "pt",
-    ),
-    LabelCase(
-        "labels-en",
-        "labels follow the interface language",
-        "en",
-        ("dns.create-record", "dns.list-zones"),
-        "en",
-    ),
-)
 
 
 def _words(text: str) -> list[str]:
@@ -338,7 +313,7 @@ def run_turn(
     return result.status == "completed" and not result.actions and _reply_matches(case, result.reply)
 
 
-CONTRACT_SECTIONS = ("turns", "plans", "labels")
+CONTRACT_SECTIONS = ("turns", "plans")
 # Actions without a side effect and their result in every case: an outcome run may call them freely.
 READ_ACTIONS = {("dns", "list-zones"): _ZONES}
 
@@ -387,15 +362,8 @@ def run_plan(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
     return plan.status == case.status and plan.assistant_ids == case.assistant_ids
 
 
-def run_labels(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig, case: LabelCase) -> bool:
-    labels = runtime.action_labels(provider, case.locale, case.action_ids)
-    if tuple(label.id for label in labels) != case.action_ids:
-        return False
-    return language_proxy(" ".join(label.label for label in labels)) == case.language
-
-
 def validate_corpus() -> None:
-    ids = [case.id for case in (*TURN_CASES, *PLAN_CASES, *LABEL_CASES)]
+    ids = [case.id for case in (*TURN_CASES, *PLAN_CASES)]
     if len(ids) != len(set(ids)) or not all(ids):
         raise ValueError("duplicate or empty behavioral case id")
     for case in TURN_CASES:
@@ -412,10 +380,6 @@ def validate_corpus() -> None:
             not plan.assistant_ids
         ):
             raise ValueError("invalid plan case")
-    for labels in LABEL_CASES:
-        valid = labels.locale == labels.language in {"pt", "en"}
-        if not valid or labels.action_ids != tuple(sorted(set(labels.action_ids))):
-            raise ValueError("invalid label case")
 
 
 def _offline_provider() -> agent_runtime.ProviderConfig:
@@ -424,7 +388,7 @@ def _offline_provider() -> agent_runtime.ProviderConfig:
 
 def logical_model_invocations() -> int:
     """Invocations when every case follows its expected rounds: each start and resume, twice, plus each decision."""
-    per_attempt = 2 * sum(len(case.rounds) + 1 for case in TURN_CASES) + len(PLAN_CASES) + len(LABEL_CASES)
+    per_attempt = 2 * sum(len(case.rounds) + 1 for case in TURN_CASES) + len(PLAN_CASES)
     return per_attempt * ATTEMPTS
 
 
@@ -458,7 +422,6 @@ def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
         "turns": _score(TURN_CASES, lambda case, index: run_turn(runtime, turn_provider, case, index), model),
         "outcomes": _score(TURN_CASES, lambda case, index: run_outcome(runtime, turn_provider, case, index), model),
         "plans": _score(PLAN_CASES, lambda case, _index: run_plan(runtime, provider, case), model),
-        "labels": _score(LABEL_CASES, lambda case, _index: run_labels(runtime, provider, case), model),
     }
     cases = [item for section in sections.values() for item in section]
     return {

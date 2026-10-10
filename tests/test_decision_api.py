@@ -1,4 +1,4 @@
-"""The stateless structured-decision endpoints: Action labels, capability plans, and intent routes."""
+"""The stateless structured-decision endpoints: capability plans and intent routes."""
 
 import unittest
 from unittest import mock
@@ -11,36 +11,6 @@ from test_runtime_api import AUTH, NO_USAGE, SECRET, TOKEN, FakeRuntime, body, c
 
 
 class DecisionApiTests(unittest.TestCase):
-    def test_action_labels_are_authenticated_stateless_and_closed(self):
-        runtime = FakeRuntime()
-        payload = {
-            "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
-            "locale": "pt",
-            "actions": ["list-zones", "get-zone"],
-        }
-        api = client(runtime)
-
-        self.assertEqual(api.post("/v1/action-labels", json=payload).status_code, 401)
-        response = api.post("/v1/action-labels", json=payload, headers=AUTH)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json(),
-            {
-                "labels": [
-                    {"id": "list-zones", "label": "Listar zonas DNS"},
-                    {"id": "get-zone", "label": "Consultar zona DNS"},
-                ],
-                "usage": NO_USAGE,
-            },
-        )
-        call = runtime.calls[0]
-        self.assertEqual(call[0], "action_labels")
-        self.assertEqual(call[1].api_key, SECRET)
-        self.assertEqual(call[2], "pt")
-        self.assertEqual(call[3], ("list-zones", "get-zone"))
-        self.assertNotIn(SECRET, response.text)
-
     def test_capability_plan_is_authenticated_stateless_and_closed(self):
         runtime = FakeRuntime()
         payload = {
@@ -306,29 +276,6 @@ class DecisionApiTests(unittest.TestCase):
         self.assertEqual(response.json(), {"detail": "Intent route capacity reached"})
         self.assertEqual(runtime.calls, [])
 
-    def test_action_label_input_rejects_added_duplicate_and_unsafe_values(self):
-        runtime = FakeRuntime()
-        valid = {
-            "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
-            "locale": "pt",
-            "actions": ["list-zones", "get-zone"],
-        }
-        invalid_values = (
-            {**valid, "unexpected": True},
-            {**valid, "actions": []},
-            {**valid, "actions": ["list-zones", "list-zones"]},
-            {**valid, "actions": ["../shell"]},
-            {**valid, "locale": 1},
-            {**valid, "locale": "pt-BR"},
-            {key: value for key, value in valid.items() if key != "locale"},
-        )
-
-        for payload in invalid_values:
-            with self.subTest(payload=payload):
-                response = client(runtime).post("/v1/action-labels", json=payload, headers=AUTH)
-                self.assertEqual(response.status_code, 422)
-        self.assertEqual(runtime.calls, [])
-
     def test_a_malformed_request_never_echoes_its_input_or_provider_key(self):
         missing = body()
         missing.pop("conversation")
@@ -342,14 +289,22 @@ class DecisionApiTests(unittest.TestCase):
                 self.assertNotIn("input", response.json()["detail"][0])
                 self.assertNotIn("ctx", response.json()["detail"][0])
 
-    def test_invalid_action_label_model_output_is_a_redacted_upstream_failure(self):
+    def test_invalid_decision_model_output_is_a_redacted_upstream_failure(self):
         runtime = FakeRuntime(error=agent_runtime.ProviderResponseError(f"invalid output beside {SECRET}"))
         response = client(runtime).post(
-            "/v1/action-labels",
+            "/v1/capability-plan",
             json={
                 "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
-                "locale": "pt",
-                "actions": ["list-zones"],
+                "objective": "List zones",
+                "candidates": [
+                    {
+                        "id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
+                        "summary": "Manage DNS.",
+                        "actions": ["dns.read"],
+                        "integrations": [],
+                    }
+                ],
             },
             headers=AUTH,
         )

@@ -38,7 +38,7 @@ RUN groupadd -g 10001 brainruntime \
     && chown brainruntime:brainruntime /var/lib/shimpz-brain-runtime \
     && chmod 0700 /var/lib/shimpz-brain-runtime
 
-COPY --chown=brainruntime:brainruntime action_labels.py action_purpose.py action_schema.py agent_runtime.py attachments.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py intent_route.py interface_language.py memory.py model_usage.py provider_cancel.py provider_client.py routine.py routine_recovery.py runtime_api.py runtime_errors.py structured.py tool_refusal.py turn_pins.py turn_prompt.py \
+COPY --chown=brainruntime:brainruntime action_purpose.py action_schema.py agent_runtime.py attachments.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py intent_route.py interface_language.py memory.py model_usage.py provider_cancel.py provider_client.py routine.py routine_recovery.py runtime_api.py runtime_errors.py structured.py tool_refusal.py turn_pins.py turn_prompt.py \
     model_catalog.json /app/
 # The generated, pinned Team protocol mirror keeps its package path; namespace packages need no __init__.py. Its HTTP
 # directory holds exactly the modules the sync script mirrors, so the image copies whatever that set is.
