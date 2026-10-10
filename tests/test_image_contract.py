@@ -60,6 +60,7 @@ class StaticBrainImageContractTests(unittest.TestCase):
         self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE=", dockerfile)
         self.assertNotIn("SHIMPZ_BRAIN_RUNTIME_STATE=", dockerfile)
         self.assertIn("LANGSMITH_TRACING=false", dockerfile)
+        self.assertIn("LANGGRAPH_STRICT_MSGPACK=true", dockerfile)
         self.assertIn("MALLOC_ARENA_MAX=2", dockerfile)
         self.assertIn("MALLOC_MMAP_THRESHOLD_=131072", dockerfile)
 

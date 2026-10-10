@@ -49,7 +49,10 @@ RUN PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalid
 
 # Two allocator arenas and a fixed mmap threshold hand freed request memory back instead of keeping it in per-thread
 # arenas, so resident memory follows what runtime_api admits rather than ratcheting toward the container limit.
+# LangGraph reads LANGGRAPH_STRICT_MSGPACK once at import: checkpoint reads then construct only its allowlisted types, so
+# a tampered checkpoint cannot name an arbitrary callable (tests/test_strict_checkpoint_serde.py proves the state fits).
 ENV LANGCHAIN_TRACING_V2=false \
+    LANGGRAPH_STRICT_MSGPACK=true \
     LANGSMITH_TRACING=false \
     MALLOC_ARENA_MAX=2 \
     MALLOC_MMAP_THRESHOLD_=131072 \
