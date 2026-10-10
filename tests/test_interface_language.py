@@ -10,6 +10,7 @@ import turn_pins
 import turn_prompt
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from protocol.team.http.v1 import payload as team_payload
 from test_agent_runtime import RecordingToolAwareFakeModel, action, assistant, context
 from tool_fake import system_text
 
@@ -20,7 +21,8 @@ LANGUAGE_LINE = "Write every reply, clarification question, and option in "
 
 class InterfaceLanguageTests(unittest.TestCase):
     def test_the_closed_languages_and_their_prompt_names(self):
-        self.assertEqual(set(interface_language.LANGUAGE_NAMES), {"ar", "de", "en", "es", "fr", "ja", "pt", "zh"})
+        # Every Team protocol language, and only those, has a prompt name.
+        self.assertEqual(set(interface_language.LANGUAGE_NAMES), team_payload.CHAT_LOCALES)
         self.assertEqual(interface_language.language_name("pt"), "Brazilian Portuguese")
         self.assertEqual(interface_language.language_name("zh"), "Simplified Chinese")
         for value in ("pt", "ar"):
