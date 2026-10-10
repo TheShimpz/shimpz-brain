@@ -8,7 +8,7 @@ FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ce
 # discarded tmpfs, the uv cache is removed, bytecode is hash-checked, and every /opt timestamp is fixed. An unchanged
 # lock therefore yields the same layer bytes at every commit, with or without a build cache. The base ships no bytecode
 # and the read-only runtime cannot write any, so the standard library is compiled here too, with fixed timestamps.
-FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS dependencies
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS dependencies
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,from=uv,source=/uv,target=/tmp/uv \
     --mount=type=bind,source=pyproject.toml,target=/tmp/project/pyproject.toml \

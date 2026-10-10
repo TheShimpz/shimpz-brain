@@ -5,7 +5,7 @@ requires-python = "==3.14.*"
 dependencies = [
     # Provider-neutral Team Brain.  Every agent/tool/runtime dependency is exact so a rebuilt
     # image cannot silently alter the Action boundary or checkpoint format.
-    "fastapi==0.139.2",
+    "fastapi==0.143.0",
     # RE2 matches an Action schema `pattern` in time linear in the subject and releases the GIL while it runs.
     "google-re2==1.1.20251105",
     "httpx==0.28.1",
@@ -16,8 +16,8 @@ dependencies = [
     "langchain-openai==1.3.5",
     "langgraph==1.2.9",
     "langgraph-checkpoint-sqlite==3.1.1",
-    "pydantic==2.13.4",
-    "uvicorn==0.51.0",
+    "pydantic==2.14.0",
+    "uvicorn==0.54.0",
 ]
 
 [tool.uv]
