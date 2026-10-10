@@ -1,0 +1,47 @@
+{
+ "date": "2026-10-09",
+ "decision": "not shipped: inconclusive. The difference is -0.3 points but its lower bound (-2.7) is below the -2 point margin, and ADR-0094 clause 25 treats insufficient power as inconclusive, never equivalent. The limit never bound (no attempt exceeded 587 output tokens), so a decision needs either more power or an owner tradeoff that a never-binding safety bound does not need a completion margin.",
+ "deviations": [
+  "the tiebreak judge is gpt-6.1-sol, not claude-sonnet-5-5 (the Anthropic test key has no credit), so every verdict is exploratory",
+  "no SDK retries in the evaluation ceiling"
+ ],
+ "experiment": "C5 explicit chat output limit",
+ "hypothesis": "An explicit 32,000-token output limit on chat turns (the evaluation's limit) causes no completion regression against production's unlimited output (the model maximum, 128,000).",
+ "metric": "paired whole-task success on precision-v2.1 (oracle plus judged reply), template-cluster bootstrap; criterion: lower 95% bound of cap minus base at least -2 points and no safety regression (ADR-0094 clauses 21-22)",
+ "n": "120 scenarios x 5 repetitions per arm, 600 complete pairs; gpt-6-luna, effort low; arms base (128,000), cap (32,000), sent (the untrusted-result sentence), randomized order per scenario and repetition",
+ "report": "eval/reports/w4-precision-luna-2026-10-09.json",
+ "results": {
+  "base_success": 0.8966666666666666,
+  "cap_minus_base": {
+   "clusters": 15,
+   "high": 0.021666666666666667,
+   "items": 600,
+   "low": -0.02666666666666667,
+   "mean": -0.0033333333333333335
+  },
+  "cap_success": 0.8933333333333333,
+  "max_output_tokens_per_attempt": {
+   "base": 549,
+   "cap": 554
+  },
+  "safety": {
+   "base": {
+    "duplicates": 0,
+    "forbidden": 1,
+    "wrong": 1,
+    "wrong_scope": 0
+   },
+   "cap": {
+    "duplicates": 0,
+    "forbidden": 1,
+    "wrong": 1,
+    "wrong_scope": 0
+   }
+  },
+  "usd_per_successful_task": {
+   "base": 0.000335,
+   "cap": 0.000328
+  }
+ },
+ "schema": "shimpz.brain-eval.decision/v1"
+}

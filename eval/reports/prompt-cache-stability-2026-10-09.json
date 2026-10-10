@@ -1,0 +1,183 @@
+{
+ "date": "2026-10-09",
+ "decision": {
+  "C1": "rejected: cost per successful task rose 55% (34% to 79%) because the volatile block is rewritten every turn (cache-read share 0.97 -> 0.85); a single memory change per session does not repay it.",
+  "C2": "rejected: cost per successful task fell 30% (19% to 40%) and the cache-read share rose 0.85 -> 0.96, but completion was not noninferior in the pre-registered confirmatory run (-7.4 points, -15.0 to +0.6) and duplicate create-task writes rose (218 vs 168 failing turns with two identical writes), a duplicate-effect regression that ADR-0094 clause 21 forbids. The exploratory run had pointed the other way (+11.4 points, -3.2 to +25.0)."
+ },
+ "experiment": "C1 stable-prefix layout and C2 history hysteresis (prompt-cache stability)",
+ "finding": "In long sessions of repeated create-task turns, gpt-6-luna re-requested the same create-task in about a quarter of turns under both arms (an observed duplicate-effect failure class worth its own stratum).",
+ "hypotheses": {
+  "C1": "Moving the volatile sections (memories, Routines, date) out of the system prompt into the current turn's message keeps the cached history across a memory change, lowering cost per successful task by at least 15% with completion noninferior.",
+  "C2": "Trimming a saturated history down to 16 exchanges (96,000 tokens) instead of dropping one exchange per turn keeps the cached conversation prefix, lowering cost per successful task by at least 15% with completion noninferior (-2 points)."
+ },
+ "method": "In-process AgentRuntime sessions on one thread each with the evaluation ceiling. Stratum sat: 24 short completed exchanges seeded without a provider, then 10 real turns that each ask for one task to be created and a final probe about the task created three turns earlier; arms base vs hyst. Stratum mem: empty history, 10 memories, one changed from turn 6, same turns; arms base vs stable (volatile data prepended to the current message, request-local). Success is exact: one create-task write with the asked title, or the probe title literally in the reply. Paired by session (same script), randomized arm order, session-cluster bootstrap.",
+ "provider": "openai gpt-6-luna, effort low (the Anthropic test key has no credit, so the Anthropic arms could not run; OpenAI caches prefixes automatically and bills cache writes at 1.25x, so both mechanisms apply)",
+ "runs": {
+  "confirmatory_C2": {
+   "pre_registered": "60 sessions, stratum sat only, same criteria",
+   "sat": {
+    "arms": {
+     "base": {
+      "cache_read_fraction": 0.8542,
+      "cache_read_tokens": 4684913,
+      "cache_write_tokens": 795331,
+      "errors": 0,
+      "input_tokens": 5484582,
+      "output_tokens": 47926,
+      "probe_success": 0.8166666666666667,
+      "success_rate": 0.7045454545454546,
+      "task_success": 0.6933333333333334,
+      "turns": 660,
+      "usd": 0.170662,
+      "usd_per_success": 0.000367
+     },
+     "hyst": {
+      "cache_read_fraction": 0.9586,
+      "cache_read_tokens": 5341108,
+      "cache_write_tokens": 226009,
+      "errors": 0,
+      "input_tokens": 5571617,
+      "output_tokens": 49646,
+      "probe_success": 0.8666666666666667,
+      "success_rate": 0.6303030303030303,
+      "task_success": 0.6066666666666667,
+      "turns": 660,
+      "usd": 0.106935,
+      "usd_per_success": 0.0002571
+     }
+    },
+    "paired_success_difference": {
+     "clusters": 60,
+     "high": 0.006060606060606058,
+     "items": 60,
+     "low": -0.15,
+     "mean": -0.07424242424242425
+    },
+    "session_cost_change": {
+     "clusters": 60,
+     "high": -0.3425797759538896,
+     "items": 60,
+     "low": -0.39205559810545537,
+     "mean": -0.3664626826031237
+    },
+    "sessions": 60,
+    "usd_per_success_change": {
+     "high": -0.19122686855553495,
+     "low": -0.39936275130143883,
+     "point": -0.29960550877799286
+    }
+   },
+   "seed": "cache-luna-sat60",
+   "spent_usd": 0.277598
+  },
+  "exploratory": {
+   "mem": {
+    "arms": {
+     "base": {
+      "cache_read_fraction": 0.9727,
+      "cache_read_tokens": 1484858,
+      "cache_write_tokens": 40259,
+      "errors": 0,
+      "input_tokens": 1526455,
+      "output_tokens": 14652,
+      "probe_success": 0.9,
+      "success_rate": 0.8772727272727273,
+      "task_success": 0.875,
+      "turns": 220,
+      "usd": 0.027341,
+      "usd_per_success": 0.0001417
+     },
+     "stable": {
+      "cache_read_fraction": 0.8543,
+      "cache_read_tokens": 1256215,
+      "cache_write_tokens": 212944,
+      "errors": 0,
+      "input_tokens": 1470437,
+      "output_tokens": 15178,
+      "probe_success": 0.65,
+      "success_rate": 0.9681818181818181,
+      "task_success": 1.0,
+      "turns": 220,
+      "usd": 0.046897,
+      "usd_per_success": 0.0002202
+     }
+    },
+    "paired_success_difference": {
+     "clusters": 20,
+     "high": 0.15454545454545454,
+     "items": 20,
+     "low": 0.03636363636363636,
+     "mean": 0.09090909090909091
+    },
+    "session_cost_change": {
+     "clusters": 20,
+     "high": 0.892210780871301,
+     "items": 20,
+     "low": 0.6260231620197405,
+     "mean": 0.7604856243085154
+    },
+    "sessions": 20,
+    "usd_per_success_change": {
+     "high": 0.7934005497316863,
+     "low": 0.33944899263626627,
+     "point": 0.5542175231237003
+    }
+   },
+   "sat": {
+    "arms": {
+     "base": {
+      "cache_read_fraction": 0.8583,
+      "cache_read_tokens": 1658419,
+      "cache_write_tokens": 272320,
+      "errors": 0,
+      "input_tokens": 1932251,
+      "output_tokens": 16836,
+      "probe_success": 0.95,
+      "success_rate": 0.6136363636363636,
+      "task_success": 0.58,
+      "turns": 220,
+      "usd": 0.059193,
+      "usd_per_success": 0.0004385
+     },
+     "hyst": {
+      "cache_read_fraction": 0.9571,
+      "cache_read_tokens": 1683894,
+      "cache_write_tokens": 74099,
+      "errors": 0,
+      "input_tokens": 1759430,
+      "output_tokens": 15358,
+      "probe_success": 0.8,
+      "success_rate": 0.7272727272727273,
+      "task_success": 0.72,
+      "turns": 220,
+      "usd": 0.033924,
+      "usd_per_success": 0.000212
+     }
+    },
+    "paired_success_difference": {
+     "clusters": 20,
+     "high": 0.25,
+     "items": 20,
+     "low": -0.031818181818181815,
+     "mean": 0.11363636363636365
+    },
+    "session_cost_change": {
+     "clusters": 20,
+     "high": -0.3617440065896744,
+     "items": 20,
+     "low": -0.46115733402762926,
+     "mean": -0.41555860617846163
+    },
+    "sessions": 20,
+    "usd_per_success_change": {
+     "high": -0.34545599387545434,
+     "low": -0.6403863906399145,
+     "point": -0.5164428383599926
+    }
+   },
+   "seed": "cache-luna-1",
+   "spent_usd": 0.167355
+  }
+ },
+ "schema": "shimpz.brain-eval.decision/v1"
+}
