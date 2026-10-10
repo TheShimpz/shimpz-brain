@@ -1,4 +1,5 @@
 import datetime
+import gc
 import secrets
 import sqlite3
 import tempfile
@@ -517,6 +518,16 @@ class RuntimeApiTests(unittest.TestCase):
 
                 path.write_bytes(b"  exact-token\n")
                 self.assertEqual(runtime_api._token_from_file(), "exact-token")
+
+    def test_startup_freezes_what_the_process_holds_and_requests_are_still_collected(self):
+        self.addCleanup(gc.unfreeze)
+        gc.unfreeze()
+        application = runtime_api.create_app(runtime=FakeRuntime(), token_reader=lambda: TOKEN)
+        with TestClient(application) as api:
+            self.assertGreater(gc.get_freeze_count(), 0)
+            with mock.patch.object(runtime_api.gc, "collect", wraps=gc.collect) as collect:
+                self.assertEqual(api.post("/v1/turns", json=body(), headers=AUTH).status_code, 200)
+            collect.assert_called_once_with()
 
     def test_owned_lazy_runtime_is_created_once_and_closed_with_the_app(self):
         lazy = FakeRuntime()

@@ -1,0 +1,77 @@
+{
+ "arms": {
+  "base": "unchanged",
+  "freeze": "gc.collect(); gc.freeze() once after startup imports (the shipped change)",
+  "freeze-warm": "not shipped: freeze once after the first request's collection, so the lazily imported agent and provider modules are frozen too"
+ },
+ "brain_commit": "0b38d46",
+ "date": "2026-10-09",
+ "decision": "ship freeze: p50 -18%, p95 -33%, total collection time -23%, turn p50 -13%, peak RSS unchanged (200.0 vs 200.3 MB) and the second-half RSS slope unchanged (1.15 vs 1.55 KB/s); every request is still followed by a full collection. freeze-warm is recorded as a proposal only (p50 9 ms, -93%), because it freezes whatever concurrent requests hold at that moment and its RSS slope was higher (7.3 KB/s).",
+ "host": {
+  "cpus": 96,
+  "python": "3.14.6"
+ },
+ "hypothesis": "Collecting once and freezing after startup imports lowers the full collection BoundedBody runs after every admitted request, with no RSS growth under sustained concurrent load.",
+ "method": "runtime_api served by uvicorn (1 worker) on loopback; Team's own inference client and chat orchestrator drive 2000 turns (start plus one Action round and resume, 4000 admitted requests) from 8 concurrent workers over 16 threads; the provider is a loopback stand-in for the OpenAI Responses endpoint (real ChatOpenAI and SDK path, 0.2 s per response); the timed call is the BoundedBody gc.collect; RSS sampled every 0.5 s. No provider cost.",
+ "metric": "per-request gc.collect duration (p50/p95/total) and process RSS over the run",
+ "results": {
+  "base": {
+   "collections": 4000,
+   "failures": 0,
+   "frozen": 0,
+   "gc_ms_max": 595.46,
+   "gc_ms_mean": 144.79,
+   "gc_ms_p50": 131.62,
+   "gc_ms_p95": 221.87,
+   "gc_ms_total": 579147.1,
+   "rss_kb_per_s_second_half": 1.55,
+   "rss_mb_end": 199.4,
+   "rss_mb_peak": 200.3,
+   "rss_mb_start": 88.3,
+   "seconds": 1154.7,
+   "turn_s_p50": 4.64,
+   "turn_s_p95": 5.368,
+   "turns": 2000,
+   "workers": 8
+  },
+  "freeze": {
+   "collections": 4000,
+   "failures": 0,
+   "frozen": 126303,
+   "gc_ms_max": 475.15,
+   "gc_ms_mean": 111.47,
+   "gc_ms_p50": 108.39,
+   "gc_ms_p95": 149.55,
+   "gc_ms_total": 445867.5,
+   "rss_kb_per_s_second_half": 1.15,
+   "rss_mb_end": 199.2,
+   "rss_mb_peak": 200.0,
+   "rss_mb_start": 88.1,
+   "seconds": 1027.3,
+   "turn_s_p50": 4.048,
+   "turn_s_p95": 5.005,
+   "turns": 2000,
+   "workers": 8
+  },
+  "freeze-warm": {
+   "collections": 4000,
+   "failures": 0,
+   "frozen": 348642,
+   "gc_ms_max": 181.14,
+   "gc_ms_mean": 9.17,
+   "gc_ms_p50": 9.16,
+   "gc_ms_p95": 15.19,
+   "gc_ms_total": 36695.4,
+   "rss_kb_per_s_second_half": 7.26,
+   "rss_mb_end": 202.7,
+   "rss_mb_peak": 203.5,
+   "rss_mb_start": 88.1,
+   "seconds": 684.5,
+   "turn_s_p50": 2.849,
+   "turn_s_p95": 3.05,
+   "turns": 2000,
+   "workers": 8
+  }
+ },
+ "schema": "shimpz.brain-perf.gc-freeze/v1"
+}
