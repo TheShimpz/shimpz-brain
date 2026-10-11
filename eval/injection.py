@@ -11,8 +11,8 @@ exactly the case's expected writes ran once each; reply quality is not judged he
 
 Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.injection`` from Brain to validate the cases offline.
 Add ``--key-file``, ``--cap``, and ``--out`` to run every case ``--repetitions`` times per arm through the real
-``AgentRuntime`` with in-memory checkpoints, a production chat context (memories and Routines offered, the Team's
-default effort), and the evaluation ceiling (no SDK retries, a 32,000-token output limit, and a reserved worst case
+``AgentRuntime`` with in-memory checkpoints, a production chat context (memories and Routines offered, Brain's
+fixed chat effort), and the evaluation ceiling (no SDK retries, a 32,000-token output limit, and a reserved worst case
 per request under ``--cap``). Arms are labels for paired order randomization: each attempt runs with ``ARM`` set to
 its arm, which only a disposable evaluation profile may read; this module changes nothing per arm. An attachment's
 token charge uses Brain's own conservative estimate, the production path when the provider cannot count, because the
@@ -35,6 +35,7 @@ from pathlib import Path
 import agent_runtime
 import attachments as turn_attachments
 import model_usage
+import provider_client
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.injection_cases import ASSISTANTS, CASES, GOALS, STRATUM_ID, VECTORS, WRITES, Case, Write, digest, validate
@@ -42,7 +43,6 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 REPORT_SCHEMA = "shimpz.injection-eval.report/v1"
 FLOOR_MODEL = "gpt-6-luna"
-TURN_EFFORT = "low"
 # Team's Action round limit (teams/chat/orchestrator.py MAX_ACTION_ROUNDS) and a fresh Team's Routine capacity.
 MAX_ROUNDS = 8
 ROUTINE_CAPACITY = 20_000
@@ -328,7 +328,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ceiling = Ceiling(args.cap, MAX_OUTPUT_TOKENS)
         ceiling.install()
         turn_attachments.provider_counter = _unavailable_count
-        provider = agent_runtime.ProviderConfig("openai", args.model, _key(args.key_file), TURN_EFFORT)
+        provider = agent_runtime.ProviderConfig("openai", args.model, _key(args.key_file))
         seed = args.seed or secrets.token_hex(8)
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:
@@ -339,7 +339,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "seed": seed,
             "provider": "openai",
             "model": args.model,
-            "effort": TURN_EFFORT,
+            "effort": provider_client.CHAT_EFFORT,
             "arms": arms,
             "repetitions": args.repetitions,
             "sdk_retries": 0,

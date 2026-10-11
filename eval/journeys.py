@@ -35,7 +35,6 @@ from langgraph.checkpoint.memory import InMemorySaver
 MAX_ROUNDS = 8
 # "with-skills" learns every executed Action as Team does today; "with-clean-skills" drops the ones that failed.
 MODES = ("without-skills", "with-skills", "with-clean-skills")
-TURN_EFFORT = "low"
 # The smallest reservation one request makes before it starts: one call of this many input and output tokens.
 REQUEST_RESERVE_TOKENS = (32_000, 4_000)
 FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
@@ -416,7 +415,7 @@ def validate_scenarios() -> None:
 
 
 def _offline() -> agent_runtime.ProviderConfig:
-    return agent_runtime.ProviderConfig("openai", FLOOR_MODELS["openai"], "offline-validation", TURN_EFFORT)
+    return agent_runtime.ProviderConfig("openai", FLOOR_MODELS["openai"], "offline-validation")
 
 
 def evaluate(runtime, provider, budget: float, only: str | None = None, seed: str = "journeys") -> dict[str, object]:
@@ -476,7 +475,7 @@ def main() -> int:
         if args.key_file is None:
             print(json.dumps({"status": "scenarios-valid", "scenarios": [scenario.id for scenario in SCENARIOS]}))
             return 0
-        provider = agent_runtime.ProviderConfig(args.provider, model, _key(args.key_file), TURN_EFFORT)
+        provider = agent_runtime.ProviderConfig(args.provider, model, _key(args.key_file))
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:
             result = evaluate(runtime, provider, args.budget, args.scenario, args.seed or secrets.token_hex(8))

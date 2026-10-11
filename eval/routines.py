@@ -257,7 +257,7 @@ def _team_modules(assistant: Generated) -> Modules:
 
 
 # The turn context members a trace keeps: never the model key.
-_TRACED_CONTEXT = ("thread_id", "provider", "model", "effort", "locale", "knowledge_writable", "routine_capacity")
+_TRACED_CONTEXT = ("thread_id", "provider", "model", "locale", "knowledge_writable", "routine_capacity")
 
 
 def _turn_event(turn) -> dict[str, object]:
@@ -410,7 +410,7 @@ def _attempt_team(
 
     Its Brain client reads each response's evidence into the attempt's Signals before Team reads the response.
     """
-    provider, model, space, effort = settings
+    provider, model, space = settings
     url, token_file, signals = brain
     fixture = Fixture(events=events)
     client = modules.brain_client.BrainRuntimeClient(
@@ -423,7 +423,7 @@ def _attempt_team(
     fixture.ask = _asker(modules.assistant)
     controller.assistant_lifecycle.invoke = fixture.invoke
     controller.space_id = controller.chat_turn_service.space_id = space
-    controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model, effort))
+    controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model))
     return case, Team(controller.chat_turn_service, modules), fixture
 
 
@@ -536,7 +536,6 @@ class WorkerContext:
     modules: Modules
     brain: tuple[str, Path]
     models: list[tuple[str, str, str]]
-    effort: str | None
     run_dir: Path
     trace_dir: Path | None
 
@@ -585,7 +584,7 @@ def attempt(context: WorkerContext, task: dict[str, object]) -> dict[str, object
     token = _METER.set(meter)
     try:
         with tempfile.TemporaryDirectory(dir=context.run_dir) as directory:
-            settings = (provider, model_id, f"eval-{secrets.token_hex(8)}", context.effort)
+            settings = (provider, model_id, f"eval-{secrets.token_hex(8)}")
             brain = (*context.brain, signals)
             harness, team, fixture = _attempt_team(context.modules, directory, brain, settings, events)
             try:
@@ -625,7 +624,7 @@ def _worker_context(config: dict[str, object]) -> WorkerContext:
     trace_dir = None if config["trace_dir"] is None else Path(config["trace_dir"])
     models = [tuple(item) for item in config["models"]]
     brain = (config["brain"], Path(config["token"]))
-    return WorkerContext(_team_modules(assistant), brain, models, config["effort"], Path(config["run"]), trace_dir)
+    return WorkerContext(_team_modules(assistant), brain, models, Path(config["run"]), trace_dir)
 
 
 def _abandon() -> None:
@@ -687,7 +686,6 @@ class Settings:
     budget: float
     only: frozenset[str] = frozenset()
     trace_dir: Path | None = None
-    effort: str | None = None
     cpus: int = 1
     workers: int = 1
     threads: int = DEFAULT_THREADS
@@ -705,7 +703,6 @@ def _worker_config(
         "project": str(assistant.project),
         "trace_dir": None if settings.trace_dir is None else str(settings.trace_dir.resolve()),
         "models": [list(item) for item in models],
-        "effort": settings.effort,
         "run": str(run_dir),
         "threads": settings.threads,
     }
@@ -750,7 +747,7 @@ def run(models: list[tuple[str, str, str]], settings: Settings, *, assistant: Ge
         with Pool(command, brains, settings.workers, settings.threads, configure) as pool:
             ready = time.monotonic()
             orchestrate(schedule, pool)
-        report: dict[str, object] = {"attempts_per_case": settings.attempts, "effort": settings.effort}
+        report: dict[str, object] = {"attempts_per_case": settings.attempts}
         report["models"] = merge(pairs, cases, settings.attempts, schedule)
         report["variants"] = next((item["variants"] for item in schedule.results.values() if item["variants"]), None)
         report["budget"] = ledger.summary()
@@ -831,9 +828,6 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--only", action="append", default=[])
     parser.add_argument("--trace-dir", type=Path, help="write each attempt's whole transcript to DIR/MODEL/CASE/N.json")
     parser.add_argument(
-        "--effort", choices=("low", "medium", "high"), help="the Team's reasoning effort; default Team's"
-    )
-    parser.add_argument(
         "--model", action="append", default=[], help="measurement only: PROVIDER:MODEL in place of that provider's"
     )
     parser.add_argument("--teams", type=Path, help="the Team worktree to drive; default the sibling teams")
@@ -871,7 +865,7 @@ def main() -> int:
         raise SystemExit("name at least one key file")
     workers = args.cpus if args.workers is None else args.workers
     settings = Settings(
-        args.attempts, args.budget, frozenset(args.only), args.trace_dir, args.effort, args.cpus, workers, args.threads
+        args.attempts, args.budget, frozenset(args.only), args.trace_dir, args.cpus, workers, args.threads
     )
     settings = dataclasses.replace(settings, brain_logs=args.brain_logs)
     # A stop request ends the run through its cleanup: every process it started stops and its directory goes.

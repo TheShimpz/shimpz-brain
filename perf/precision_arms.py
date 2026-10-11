@@ -77,7 +77,7 @@ def _campaign(journeys: ModuleType, args: argparse.Namespace, plan: dict[str, ob
             else:
                 with lock:
                     thread = f"precision.{name}.{next(counter)}"
-                record = journeys.run_attempt(client, "openai", model, key, scenario, thread, journeys.TURN_EFFORT)
+                record = journeys.run_attempt(client, "openai", model, key, scenario, thread)
             record |= {
                 "campaign": name,
                 "provider": "openai",

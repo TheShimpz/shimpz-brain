@@ -317,7 +317,6 @@ class PurposeApiTests(unittest.TestCase):
         self.assertEqual(response.json(), {"purpose": purpose, "usage": NO_USAGE})
         _name, config, request = runtime.calls[0]
         self.assertEqual(config.api_key, SECRET)
-        self.assertIsNone(config.effort)
         self.assertEqual(
             request,
             action_purpose.PendingAction(
@@ -340,7 +339,7 @@ class PurposeApiTests(unittest.TestCase):
             _body(locale="pt"),
             _body(message="Traga as notícias"),
             _body(assistant_name="x" * 81),
-            _body(provider={"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET, "effort": "low"}),
+            _body(provider={"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET, "region": "us"}),
         ):
             with self.subTest(fields=sorted(request)):
                 response = client(runtime).post("/v1/turns/purpose", json=request, headers=HEADERS)

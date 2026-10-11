@@ -146,19 +146,6 @@ class TurnEvalTests(unittest.TestCase):
         vague = _runtime(AIMessage(content="I can help with many things."))
         self.assertFalse(turns.run_turn(vague, PROVIDER, _case("genesis-injection-en"), 0))
 
-    def test_turns_carry_the_team_default_effort_and_decisions_do_not(self):
-        # The umbrella pins TURN_EFFORT to Team's default; this standalone repository proves only its use.
-        runtime = mock.Mock()
-        runtime.start.return_value = agent_runtime.TurnResult("completed", reply="ok")
-        runtime.capability_plan.return_value = capability_plan.CapabilityPlan("sufficient")
-        with (
-            mock.patch.object(turns, "TURN_CASES", (turns.TURN_CASES[0],)),
-            mock.patch.object(turns, "PLAN_CASES", (turns.PLAN_CASES[0],)),
-        ):
-            turns.evaluate(runtime, PROVIDER)
-        self.assertEqual({call.args[0].provider.effort for call in runtime.start.call_args_list}, {"low"})
-        self.assertEqual({call.args[0].effort for call in runtime.capability_plan.call_args_list}, {None})
-
     def test_scoring_counts_attempts_and_treats_provider_failures_as_misses(self):
         outcomes = iter([True, agent_runtime.ProviderResponseError("x"), False])
 

@@ -130,6 +130,29 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(result.reply, "Hello, Supervisor.")
         self.assertEqual(result.actions, ())
 
+    def test_turns_and_memory_checks_build_chat_models_and_capability_planning_a_plain_one(self):
+        built: list[str] = []
+        model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Supervisor.")])
+
+        class Factory:
+            def __call__(self, _config):
+                built.append("plain")
+                return mock.Mock()
+
+            def chat(self, _config):
+                built.append("chat")
+                return model
+
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=Factory())
+        runtime.start(context(), "Say hello")
+        self.assertEqual(built, ["chat"])
+        with self.assertRaises(agent_runtime.team_memory.CheckUnavailableError):
+            runtime._memory_check(context())("Confirm nothing.")
+        self.assertEqual(built, ["chat", "chat"])
+        with mock.patch.object(agent_runtime.capability_planner, "create", lambda factory, *_args: factory()):
+            runtime.capability_plan(context().provider, "Configure DNS", ())
+        self.assertEqual(built, ["chat", "chat", "plain"])
+
     def test_prunes_checkpoint_history_before_each_provider_turn(self):
         class PruningSaver(InMemorySaver):
             def __init__(self):

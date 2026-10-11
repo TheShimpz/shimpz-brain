@@ -15,7 +15,7 @@ def _action(assistant_id: str, action_id: str):
 
 class ContractTests(unittest.TestCase):
     def test_arm_b_contracts_are_admitted_and_searchable_in_every_locale(self):
-        provider = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "offline-validation-key-0123", "low")
+        provider = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "offline-validation-key-0123")
         definitions = tuple(
             agent_runtime.AssistantDefinition(
                 a.id,

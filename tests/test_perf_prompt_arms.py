@@ -22,7 +22,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from perf import prompt_arms, prompt_cache
 
-CONFIG = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "test-key", "low")
+CONFIG = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "test-key")
 REPLY = {
     "id": "resp_1",
     "object": "response",

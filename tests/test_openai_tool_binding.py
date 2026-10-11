@@ -95,7 +95,7 @@ def _sent_tools(provider: str) -> list[dict]:
         runtime = agent_runtime.AgentRuntime(
             InMemorySaver(), model_factory=lambda config: provider_client.provider_model(config, http_client=client)
         )
-        config = agent_runtime.ProviderConfig(provider, MODELS[provider], "sk-test-0123456789abcdef", "low")
+        config = agent_runtime.ProviderConfig(provider, MODELS[provider], "sk-test-0123456789abcdef")
         context = agent_runtime.TurnContext(
             f"binding-{provider}", "DNS Team", (DNS,), config, memories=(), routines=(), routine_capacity=20_000
         )

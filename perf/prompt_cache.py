@@ -288,7 +288,7 @@ def _run(args: argparse.Namespace) -> None:
     ceiling = Ceiling(args.cap, MAX_OUTPUT_TOKENS)
     ceiling.install()
     install()
-    provider = agent_runtime.ProviderConfig(args.provider, MODELS[args.provider], _key(args.key_file), "low")
+    provider = agent_runtime.ProviderConfig(args.provider, MODELS[args.provider], _key(args.key_file))
     PROVIDER.set(args.provider)
     runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=Factory(provider_client.ProviderModelFactory()))
     sessions = [

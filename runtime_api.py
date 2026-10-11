@@ -109,13 +109,6 @@ class ProviderInput(ClosedInput):
         return agent_runtime.ProviderConfig(self.provider, self.model, self.api_key.get_secret_value())
 
 
-class ChatProviderInput(ProviderInput):
-    effort: Literal["low", "medium", "high"]
-
-    def runtime(self) -> agent_runtime.ProviderConfig:
-        return replace(super().runtime(), effort=self.effort)
-
-
 class ActionInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     summary: str = Field(min_length=1, max_length=2_000)
@@ -136,7 +129,7 @@ class TurnContextInput(ClosedInput):
     thread_id: str = Field(min_length=1, max_length=256)
     team_name: str = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_NAME_CHARS)
     assistants: list[AssistantInput] = Field(max_length=agent_runtime.MAX_ASSISTANTS)
-    provider: ChatProviderInput
+    provider: ProviderInput
     # What the Team remembers (ADR-0084); null where memory is unavailable, which also withholds the memory tool.
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
     # The procedures the Team learned (ADR-0085); null where learning is unavailable.

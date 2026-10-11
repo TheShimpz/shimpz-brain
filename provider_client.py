@@ -18,6 +18,10 @@ from runtime_errors import RuntimeContractError
 if TYPE_CHECKING:
     from agent_runtime import ProviderConfig
 
+# Brain owns the reasoning effort (ADR-0113): ordinary chat turns and their memory check reason low, as does a
+# structured decision; capability planning and attachment token counting send none and keep the provider default.
+CHAT_EFFORT = "low"
+DECISION_EFFORT = "low"
 DECISION_TIMEOUT_SECONDS = 10.0
 # One retry recovers a rare stalled or failed structured route call; the call is stateless and tool-free (ADR-0071).
 DECISION_MAX_RETRIES = 1
@@ -28,9 +32,13 @@ def provider_model(
     *,
     http_client: httpx.Client | None = None,
     decision: bool = False,
+    chat: bool = False,
     retries: int | None = None,
 ) -> BaseChatModel:
-    """Create one direct provider client; the API key is never put in graph state."""
+    """Create one direct provider client; the API key is never put in graph state.
+
+    A decision or chat model reasons at its fixed effort; any other model sends none.
+    """
     secret = SecretStr(config.api_key)
     common = {
         "model": config.model,
@@ -38,19 +46,17 @@ def provider_model(
         "timeout": DECISION_TIMEOUT_SECONDS if decision else 60.0,
         "max_retries": retries if retries is not None else DECISION_MAX_RETRIES if decision else 2,
     }
+    effort = DECISION_EFFORT if decision else CHAT_EFFORT if chat else None
     if config.provider == "openai":
         # The owner keeps no conversation on OpenAI's side: every Responses call is unstored, and reasoning is carried
         # between tool calls as encrypted content the adapter replays.
         openai = {**common, "use_responses_api": True, "store": False, "include": ["reasoning.encrypted_content"]}
-        if decision:
-            openai["reasoning_effort"] = "low"
-        elif config.effort is not None:
-            openai["reasoning_effort"] = config.effort
+        if effort is not None:
+            openai["reasoning_effort"] = effort
         if http_client is not None:
             openai["http_client"] = http_client
         return _action_chat_openai()(**openai)
     if config.provider == "anthropic":
-        effort = "low" if decision else config.effort
         anthropic = {**common, **({"effort": effort} if effort is not None else {})}
         model = _pooled_chat_anthropic()(**anthropic)
         model._http_client = http_client
@@ -114,16 +120,21 @@ class ProviderModelFactory:
         self._http_client.event_hooks["request"].append(model_usage.count_provider_request)
 
     def __call__(self, config: ProviderConfig) -> BaseChatModel:
+        """A helper model, such as capability planning's, at the provider's default reasoning effort."""
         return provider_model(config, http_client=self._http_client)
 
-    def single_attempt(self, config: ProviderConfig, *, decision: bool = False) -> BaseChatModel:
+    def chat(self, config: ProviderConfig) -> BaseChatModel:
+        """The model of an ordinary chat turn and its memory check."""
+        return provider_model(config, http_client=self._http_client, chat=True)
+
+    def single_attempt(self, config: ProviderConfig, *, decision: bool = False, chat: bool = False) -> BaseChatModel:
         """A chat model whose SDK client never retries a call by itself.
 
         An attachment turn retries explicitly, reserving its budget per attempt (ADR-0093); a Routine recovery
         decision is exactly one billed call (ADR-0092). The retry count is fixed when the SDK client is built,
         so a copy of a retrying model cannot become a single-attempt one.
         """
-        return provider_model(config, http_client=self._http_client, decision=decision, retries=0)
+        return provider_model(config, http_client=self._http_client, decision=decision, chat=chat, retries=0)
 
     def decision(self, config: ProviderConfig) -> BaseChatModel:
         """Build a short model with at most one retry for one structured routing decision."""

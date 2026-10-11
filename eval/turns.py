@@ -4,7 +4,7 @@ Run ``PYTHONPATH=. uv run --frozen --python 3.14 python -m eval.turns`` from Bra
 without a provider. Add ``--key-file`` (and optionally ``--provider``/``--model``) for three real attempts per
 case through the real ``AgentRuntime`` with an in-memory checkpoint; ``--plan`` prints the logical model invocations
 such a run makes when every case follows its expected rounds (SDK retries can add provider HTTP attempts). Turns use
-the Team's default reasoning effort; plans keep the provider default, as in production (ADR-0074).
+Brain's fixed chat reasoning effort; plans keep the provider default, as in production (ADR-0113).
 Output contains only case identifiers, pass counts, and estimated cost (``eval.cost``: cache-aware, per attempted
 and per successful attempt, unknown when a call reported no usage), never prompts, replies, or Action input.
 
@@ -19,7 +19,6 @@ first complete run, including misses; never rerun only to turn a missed case gre
 
 import argparse
 import contextlib
-import dataclasses
 import json
 import re
 import sys
@@ -30,6 +29,7 @@ from pathlib import Path
 import agent_runtime
 import capability_plan
 import model_usage
+import provider_client
 from eval import cost as eval_cost
 from eval.intent_route import _key
 from langgraph.checkpoint.memory import InMemorySaver
@@ -37,8 +37,6 @@ from langgraph.checkpoint.memory import InMemorySaver
 ATTEMPTS = 3
 # Team's Action round limit (teams/chat/orchestrator.py MAX_ACTION_ROUNDS).
 OUTCOME_ROUNDS = 8
-# The Team's default chat-turn effort (teams/inference/config.py DEFAULT_EFFORT, pinned by a test).
-TURN_EFFORT = "low"
 # Least expensive model per provider in the umbrella model catalog on 2026-09-28.
 FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 
@@ -416,11 +414,10 @@ def _score(cases, attempt: Callable[[object, int], bool], model: str) -> list[di
 
 
 def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.ProviderConfig) -> dict[str, object]:
-    turn_provider = dataclasses.replace(provider, effort=TURN_EFFORT)
     model = provider.model
     sections = {
-        "turns": _score(TURN_CASES, lambda case, index: run_turn(runtime, turn_provider, case, index), model),
-        "outcomes": _score(TURN_CASES, lambda case, index: run_outcome(runtime, turn_provider, case, index), model),
+        "turns": _score(TURN_CASES, lambda case, index: run_turn(runtime, provider, case, index), model),
+        "outcomes": _score(TURN_CASES, lambda case, index: run_outcome(runtime, provider, case, index), model),
         "plans": _score(PLAN_CASES, lambda case, _index: run_plan(runtime, provider, case), model),
     }
     cases = [item for section in sections.values() for item in section]
@@ -430,7 +427,7 @@ def evaluate(runtime: agent_runtime.AgentRuntime, provider: agent_runtime.Provid
         "provider": provider.provider,
         "model": provider.model,
         "attempts_per_case": ATTEMPTS,
-        "turn_effort": TURN_EFFORT,
+        "turn_effort": provider_client.CHAT_EFFORT,
         **sections,
         # Contract cases; outcome cases are counted apart so that neither score can mask the other.
         "passing_cases": sum(item["passed"] == ATTEMPTS for name in CONTRACT_SECTIONS for item in sections[name]),

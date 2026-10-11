@@ -68,10 +68,10 @@ class PriceTests(unittest.TestCase):
         self.assertAlmostEqual(sol.cache_write, 5e-6)
         self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model"):
-            agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key", "low")
+            agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key")
         with mock.patch.dict(agent_runtime.MODELS_BY_PROVIDER):
             cost.admit_evaluation_models(agent_runtime.MODELS_BY_PROVIDER)
-            self.assertEqual(agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key", "low").effort, "low")
+            self.assertEqual(agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key").model, "gpt-5.6-sol")
             self.assertIn("gpt-6.1-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
         self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
 

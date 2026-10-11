@@ -280,7 +280,7 @@ class DecisionApiTests(unittest.TestCase):
         missing = body()
         missing.pop("conversation")
         wrong = body()
-        wrong["provider"]["effort"] = SECRET
+        wrong["provider"]["region"] = SECRET
         for request_body in (missing, wrong):
             with self.subTest(fields=sorted(request_body)):
                 response = client(FakeRuntime()).post("/v1/turns", json=request_body, headers=AUTH)

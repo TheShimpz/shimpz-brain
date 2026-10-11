@@ -39,7 +39,7 @@ class GroupTests(unittest.TestCase):
 
 class TaskContractTests(unittest.TestCase):
     def test_task_shaped_contracts_are_admitted_and_reach_the_same_state(self):
-        provider = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "offline-validation-key-0123", "low")
+        provider = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "offline-validation-key-0123")
         actions = tuple(
             agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema) for a in large.TASK_EDGE.actions
         )

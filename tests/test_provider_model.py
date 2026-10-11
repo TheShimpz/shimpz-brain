@@ -130,32 +130,26 @@ class ProviderModelTests(unittest.TestCase):
             self.assertEqual(options["timeout"], provider_client.DECISION_TIMEOUT_SECONDS)
             self.assertEqual(options["max_retries"], provider_client.DECISION_MAX_RETRIES)
 
-    def test_chat_models_use_the_configured_effort_and_other_models_keep_the_provider_default(self):
+    def test_chat_models_reason_low_and_other_models_keep_the_provider_default(self):
+        openai_config = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key")
+        anthropic_config = agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
         with (
+            mock.patch.object(agent_runtime.httpx, "Client", return_value=mock.MagicMock()),
             mock.patch.object(provider_client, "_action_chat_openai", return_value=(openai := mock.Mock())),
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
-            for effort in ("low", "medium", "high"):
-                provider_client.provider_model(
-                    agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", effort)
-                )
-                self.assertEqual(openai.call_args.kwargs["reasoning_effort"], effort)
-                provider_client.provider_model(
-                    agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key", effort)
-                )
-                self.assertEqual(anthropic.call_args.kwargs["effort"], effort)
-            provider_client.provider_model(agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key"))
+            factory = provider_client.ProviderModelFactory()
+            for build in (factory.chat, lambda config: factory.single_attempt(config, chat=True)):
+                build(openai_config)
+                self.assertEqual(openai.call_args.kwargs["reasoning_effort"], provider_client.CHAT_EFFORT)
+                build(anthropic_config)
+                self.assertEqual(anthropic.call_args.kwargs["effort"], provider_client.CHAT_EFFORT)
+            factory(openai_config)
             self.assertNotIn("reasoning_effort", openai.call_args.kwargs)
-            provider_client.provider_model(
-                agent_runtime.ProviderConfig("anthropic", "claude-sonnet-5-5", "secret-test-key")
-            )
+            factory(anthropic_config)
             self.assertNotIn("effort", anthropic.call_args.kwargs)
-            provider_client.provider_model(
-                agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", "high"), decision=True
-            )
-            self.assertEqual(openai.call_args.kwargs["reasoning_effort"], "low")
-        with self.assertRaises(agent_runtime.RuntimeContractError):
-            agent_runtime.ProviderConfig("openai", "gpt-6-luna", "secret-test-key", "xhigh")
+            factory.close()
+        self.assertEqual(provider_client.CHAT_EFFORT, "low")
 
     def test_every_provider_request_of_the_pool_is_counted_with_its_sdk_retries(self):
         import httpx

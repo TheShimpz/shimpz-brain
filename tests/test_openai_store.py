@@ -22,7 +22,7 @@ SCHEMA = {
 DNS = agent_runtime.AssistantDefinition(
     "dns", "DNS reads zones.", (agent_runtime.ActionDefinition("read-zone", "Read one zone.", SCHEMA),)
 )
-CONFIG = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef", "low")
+CONFIG = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef")
 REASONING = {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAAA-sealed-reasoning"}
 
 

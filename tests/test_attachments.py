@@ -83,7 +83,7 @@ def _context(provider: str, model: str, *items: dict[str, object]) -> agent_runt
         "attachments-thread",
         "Docs Team",
         (ASSISTANT,),
-        agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789abcdef", "low"),
+        agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789abcdef"),
         memories=(),
         skills=(),
         routines=(),
@@ -101,8 +101,11 @@ class _Factory:
     def __call__(self, config: agent_runtime.ProviderConfig):
         return provider_client.provider_model(config, http_client=self.client)
 
-    def single_attempt(self, config: agent_runtime.ProviderConfig):
-        return provider_client.provider_model(config, http_client=self.client, retries=0)
+    def chat(self, config: agent_runtime.ProviderConfig):
+        return provider_client.provider_model(config, http_client=self.client, chat=True)
+
+    def single_attempt(self, config: agent_runtime.ProviderConfig, *, chat: bool = False):
+        return provider_client.provider_model(config, http_client=self.client, chat=chat, retries=0)
 
 
 class _Provider:
@@ -592,7 +595,7 @@ class RefusalEdgeTests(unittest.TestCase):
     def test_the_production_factory_builds_a_model_without_hidden_retries(self) -> None:
         factory = provider_client.ProviderModelFactory()
         self.addCleanup(factory.close)
-        config = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef", "low")
+        config = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef")
         self.assertEqual(factory.single_attempt(config).max_retries, 0)
 
     def test_an_image_whose_base64_is_not_canonical_is_refused(self) -> None:

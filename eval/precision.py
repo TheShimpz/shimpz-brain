@@ -788,7 +788,7 @@ def validate() -> dict[str, object]:
     large_api.validate()
     for module in BLIND.values():
         module.validate()
-    provider = agent_runtime.ProviderConfig("openai", judge.JUDGE_MODELS["openai"], "offline-validation-key", "low")
+    provider = agent_runtime.ProviderConfig("openai", judge.JUDGE_MODELS["openai"], "offline-validation-key")
     checks = [(scenario, set_name) for scenario in corpus.SCENARIOS for set_name in ("a", "b")]
     checks += [(scenario, set_name) for scenario in large_api.SCENARIOS for set_name in ("large", "large-tasks")]
     checks += [(scenario, stratum) for stratum, module in BLIND.items() for scenario in module.SCENARIOS]

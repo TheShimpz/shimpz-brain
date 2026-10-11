@@ -73,8 +73,6 @@ MAX_ASSISTANT_SCHEMA_NODES = 32_768
 MAX_REPLY_CHARS = team_turn.MAX_REPLY_CHARS
 DEFAULT_RECURSION_LIMIT = 12
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
-# The Team's configured reasoning effort applies only to ordinary chat turns (ADR-0074).
-CHAT_EFFORTS = frozenset({"low", "medium", "high"})
 
 
 def normalize_team_name(value: str) -> str:
@@ -92,11 +90,8 @@ class ProviderConfig:
     provider: str
     model: str
     api_key: str
-    effort: str | None = None
 
     def __post_init__(self) -> None:
-        if self.effort is not None and self.effort not in CHAT_EFFORTS:
-            raise RuntimeContractError("unsupported reasoning effort")
         if self.provider not in PROVIDERS:
             raise RuntimeContractError("unsupported model provider")
         if self.model not in MODELS_BY_PROVIDER[self.provider]:
@@ -650,9 +645,9 @@ class AgentRuntime:
         # An attachment turn retries explicitly, reserving its charge per attempt, so its model makes no hidden retry.
         single = getattr(self._model_factory, "single_attempt", None)
         model = (
-            single(context.provider)
+            single(context.provider, chat=True)
             if context.attachments and callable(single)
-            else self._model_factory(context.provider)
+            else self._chat_model(context.provider)
         )
         exposed = turn_attachments.exposed(context.assistants, context.attachments)
         tools = [
@@ -850,7 +845,7 @@ class AgentRuntime:
 
     def _memory_check(self, context: TurnContext):
         return team_memory.checker(
-            lambda: self._model_factory(context.provider), context.provider.provider, structured_output
+            lambda: self._chat_model(context.provider), context.provider.provider, structured_output
         )
 
     def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
@@ -869,6 +864,11 @@ class AgentRuntime:
         """Attach a completed turn's independently confirmed memory changes."""
         known = team_memory.describe(context.memories, context.skills)
         return team_memory.attach(result, state, self._memory_check(context), known)
+
+    def _chat_model(self, provider: ProviderConfig) -> BaseChatModel:
+        """The model of an ordinary chat turn and its memory check, at Brain's fixed chat reasoning effort."""
+        chat_factory = getattr(self._model_factory, "chat", None)
+        return chat_factory(provider) if callable(chat_factory) else self._model_factory(provider)
 
     def _decision_model(self, provider: ProviderConfig) -> BaseChatModel:
         """A short model with at most one retry for one stateless structured decision."""

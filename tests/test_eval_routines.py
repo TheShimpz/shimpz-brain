@@ -255,7 +255,7 @@ class WorkerTests(unittest.TestCase):
     def test_a_discarded_try_is_traced_beside_its_slot_never_in_its_place(self):
         with tempfile.TemporaryDirectory() as directory:
             context = routines.WorkerContext(
-                None, ("u", Path("t")), [("openai", "gpt-6-luna", "k")], None, Path(directory), Path(directory)
+                None, ("u", Path("t")), [("openai", "gpt-6-luna", "k")], Path(directory), Path(directory)
             )
             task = {"model": 0, "case": "plain-list", "index": 4, "try": 2}
             result = {"disposition": "throttled", "reason": None, "cause": None, "schedule": None, "questions": []}
