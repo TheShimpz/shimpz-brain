@@ -6,7 +6,6 @@ measured one configuration twice.
 """
 
 import contextvars
-import functools
 import json
 import unittest
 from unittest import mock
@@ -72,7 +71,8 @@ def _bodies(limit: int, install, turn) -> list[dict]:
         ceiling.install()
         try:
             install()
-            real = functools.partial(provider_client.provider_model, http_client=client)
+            with mock.patch.object(provider_client.provider_cancel, "client", return_value=client):
+                real = provider_client.ProviderModelFactory()
             runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=prompt_cache.Factory(real))
             contextvars.copy_context().run(turn, runtime)
         finally:
@@ -120,6 +120,8 @@ class PromptArmTests(unittest.TestCase):
         self.assertNotEqual(production, limited)
         self.assertEqual({body["max_output_tokens"] for body in production}, {prompt_arms.MODEL_MAXIMUM})
         self.assertEqual({body["max_output_tokens"] for body in limited}, {prompt_arms.EVALUATION_LIMIT})
+        # The benchmark's turns reason at the low effort Brain sends for every chat turn.
+        self.assertEqual({body["reasoning"]["effort"] for body in production + limited}, {"low"})
         unlimited = [body | {"max_output_tokens": 0} for body in production]
         self.assertEqual(unlimited, [body | {"max_output_tokens": 0} for body in limited])
 

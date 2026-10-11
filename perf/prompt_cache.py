@@ -181,12 +181,16 @@ def _fake_model() -> object:
 class Factory:
     """The real provider model, except while a session seeds its history: then a fake that answers "Noted."."""
 
-    def __init__(self, real: Callable[[agent_runtime.ProviderConfig], object]) -> None:
+    def __init__(self, real: provider_client.ProviderModelFactory) -> None:
         self.real = real
         self.fake = _fake_model()
 
     def __call__(self, config: agent_runtime.ProviderConfig) -> object:
         return self.fake if SEEDING.get() else self.real(config)
+
+    def chat(self, config: agent_runtime.ProviderConfig) -> object:
+        """A chat turn's model, at the low effort Brain sends for every chat turn."""
+        return self.fake if SEEDING.get() else self.real.chat(config)
 
 
 def _pick(*parts: object) -> int:
