@@ -18,6 +18,7 @@ import action_purpose
 import agent_runtime
 import attachments as turn_attachments
 import capability_plan
+import intent_fast_path
 import intent_route
 import interface_language
 import memory as team_memory
@@ -383,6 +384,14 @@ class LifecycleReferenceInput(ClosedInput):
         return intent_route.LifecycleReference(id=self.id, name=self.name)
 
 
+class InstallableAssistantInput(ClosedInput):
+    name: str = Field(min_length=1, max_length=intent_route.MAX_INSTALLABLE_NAME_CHARS)
+    summary: str = Field(min_length=1, max_length=intent_route.MAX_INSTALLABLE_SUMMARY_CHARS)
+
+    def runtime_assistant(self) -> intent_route.InstallableAssistant:
+        return intent_route.InstallableAssistant(name=self.name, summary=self.summary)
+
+
 class DecisionProviderInput(ClosedInput):
     """The Supervisor's request-scoped TypeSafe key for the classification fast path."""
 
@@ -400,6 +409,11 @@ class IntentRouteInput(ClosedInput):
     conversation: list[ConversationEntryInput] = Field(max_length=intent_route.MAX_CONVERSATION_ENTRIES)
     # The interface language the presentation-only reply is written in (ADR-0090).
     locale: interface_language.Locale
+    # Only with a decision provider: the Assistants the Team could install, which ask whether the task is
+    # capability-free.
+    installable: list[InstallableAssistantInput] | None = Field(
+        default=None, min_length=1, max_length=intent_route.MAX_INSTALLABLE
+    )
 
     @model_validator(mode="after")
     def validate_lifecycle_context(self) -> Self:
@@ -407,12 +421,22 @@ class IntentRouteInput(ClosedInput):
             self.lifecycle_reference is not None or self.conversation or self.decision_provider is not None
         ):
             raise ValueError("selection cannot include lifecycle state or a decision provider")
+        if self.installable is not None and self.decision_provider is None:
+            raise ValueError("installable Assistants are described only to a decision provider")
         if sum(len(entry.text) for entry in self.conversation) > intent_route.MAX_CONVERSATION_CHARS:
             raise ValueError("conversation window is too large")
         return self
 
     def runtime_candidates(self) -> tuple[intent_route.DirectoryCandidate, ...]:
         return tuple(item.runtime_candidate() for item in self.candidates)
+
+    def runtime_decision(self) -> intent_fast_path.Decision | None:
+        if self.decision_provider is None:
+            return None
+        return intent_fast_path.Decision(
+            self.decision_provider.api_key.get_secret_value(),
+            tuple(item.runtime_assistant() for item in self.installable or ()),
+        )
 
     def runtime_context(self) -> intent_route.LifecycleContext | None:
         reference = None if self.lifecycle_reference is None else self.lifecycle_reference.runtime_reference()
@@ -458,7 +482,7 @@ class RuntimeLike:
         candidates: tuple[DirectoryCandidate, ...],
         context: LifecycleContext | None,
         locale: str,
-        decision_key: str | None = None,
+        decision: intent_fast_path.Decision | None = None,
     ) -> IntentRoute: ...
 
 
@@ -667,14 +691,18 @@ def _capability_plan_response(plan: capability_plan.CapabilityPlan) -> dict[str,
     return {"status": plan.status, "assistant_ids": list(plan.assistant_ids)}
 
 
-def _intent_route_response(route: intent_route.IntentRoute) -> dict[str, object]:
-    return {
+def _intent_route_response(route: intent_route.IntentRoute, *, capability: bool = False) -> dict[str, object]:
+    """The route answer; a request that described installable Assistants also learns whether it is capability-free."""
+    response: dict[str, object] = {
         "intent": route.intent,
         "query": route.query,
         "assistant_ids": list(route.assistant_ids),
         "reply": route.reply,
         "task_follows": route.task_follows,
     }
+    if capability:
+        response["capability"] = "not-needed" if route.capability_free else "possible"
+    return response
 
 
 def _run_capability_plan(
@@ -705,7 +733,6 @@ def _run_intent_route(
     if not slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Intent route capacity reached")
     try:
-        decision = body.decision_provider
         route, usage = model_usage.measure(
             lambda: runtime.intent_route(
                 body.provider.runtime(),
@@ -714,10 +741,10 @@ def _run_intent_route(
                 body.runtime_candidates(),
                 body.runtime_context(),
                 body.locale,
-                decision_key=None if decision is None else decision.api_key.get_secret_value(),
+                decision=body.runtime_decision(),
             )
         )
-        return {**_intent_route_response(route), "usage": usage}
+        return {**_intent_route_response(route, capability=body.installable is not None), "usage": usage}
     finally:
         slots.release()
 

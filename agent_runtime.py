@@ -824,24 +824,26 @@ class AgentRuntime:
         except context_budget.ContextWindowError as exc:
             raise RuntimeContractError(str(exc)) from exc
 
-    def _confident_ordinary(
+    def _fast_path(
         self,
-        decision_key: str,
+        decision: intent_fast_path.Decision,
         objective: str,
         expected_intent: intent_router.LifecycleIntent | None,
+        candidates: tuple[intent_router.DirectoryCandidate, ...],
         context: intent_router.LifecycleContext | None,
-    ) -> bool:
+    ) -> intent_fast_path.FastPath:
         if expected_intent is not None:
             raise RuntimeContractError("the decision fast path applies only to classification")
         try:
-            task, _, _, admitted = intent_router.validate_inputs(objective, None, (), context)
+            task, _, _, admitted = intent_router.validate_inputs(objective, None, candidates, context)
+            installable = intent_router.admit_installable(decision.installable, None)
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError(str(exc)) from exc
         with self._decision_client_guard:
             if self._decision_client is None:
                 self._decision_client = provider_cancel.client(provider_cancel.DECISION_CONNECTIONS)
             client = self._decision_client
-        return intent_fast_path.confident_ordinary(client, decision_key, task, admitted)
+        return intent_fast_path.classify(client, replace(decision, installable=installable), task, admitted)
 
     def _memory_check(self, context: TurnContext):
         return team_memory.checker(
@@ -915,15 +917,18 @@ class AgentRuntime:
         candidates: tuple[intent_router.DirectoryCandidate, ...],
         context: intent_router.LifecycleContext | None,
         locale: str,
-        decision_key: str | None = None,
+        decision: intent_fast_path.Decision | None = None,
     ) -> intent_router.IntentRoute:
         """Classify or resolve lifecycle intent without conversation or lifecycle authority.
 
         With a Supervisor-configured decision key, classification first asks the Jev fast path; only a confident
-        ordinary task skips the LLM route, which otherwise runs unchanged.
+        ordinary task skips the LLM route, which otherwise runs unchanged. Installable Assistants reach only that
+        fast path, which then also says whether the task is capability-free; the LLM route never claims it is.
         """
-        if decision_key is not None and self._confident_ordinary(decision_key, objective, expected_intent, context):
-            return intent_router.IntentRoute("ordinary-task")
+        if decision is not None:
+            fast = self._fast_path(decision, objective, expected_intent, candidates, context)
+            if fast.ordinary:
+                return intent_router.IntentRoute("ordinary-task", capability_free=fast.capability_free)
 
         with _decision_failures(intent_router.IntentRouteError, intent_router.IntentRouteResponseError):
             model = functools.partial(self._decision_model, provider)

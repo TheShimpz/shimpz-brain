@@ -24,6 +24,10 @@ MAX_SUMMARY_CHARS = team_turn.MAX_INTENT_ROUTE_SUMMARY_CHARS
 MAX_CONVERSATION_ENTRIES = team_payload.MAX_CONVERSATION_ENTRIES
 MAX_CONVERSATION_TEXT_CHARS = team_payload.MAX_CONVERSATION_TEXT_CHARS
 MAX_CONVERSATION_CHARS = team_payload.MAX_CONVERSATION_CHARS
+# The installable Assistants a classification may describe to the decision fast path are the planner's candidates.
+MAX_INSTALLABLE = team_turn.MAX_CAPABILITY_CANDIDATES
+MAX_INSTALLABLE_NAME_CHARS = team_turn.MAX_CAPABILITY_NAME_CHARS
+MAX_INSTALLABLE_SUMMARY_CHARS = team_turn.MAX_CAPABILITY_SUMMARY_CHARS
 _LANGUAGE_LAYOUT_CONTROLS = frozenset({"\n", "\r", "\t"})
 
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
@@ -81,12 +85,22 @@ class LifecycleContext:
 
 
 @dataclass(frozen=True, slots=True)
+class InstallableAssistant:
+    """An Assistant the Team could install, as untrusted discovery text: its public name and one-line summary."""
+
+    name: str
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
 class IntentRoute:
     intent: Intent
     query: str = ""
     assistant_ids: tuple[str, ...] = ()
     reply: str = ""
     task_follows: bool = False
+    # Only a confident decision fast-path answer sets it: the message needs nothing beyond conversation.
+    capability_free: bool = False
 
 
 def _text(value: object, maximum: int, label: str, *, empty: bool = False, layout: bool = False) -> str:
@@ -200,6 +214,25 @@ def validate_inputs(
     if tuple(item.id for item in admitted) != tuple(sorted({item.id for item in admitted})):
         raise IntentRouteError("invalid directory candidate order")
     return task, expected_intent, admitted, _selection_context(admitted_context)
+
+
+def admit_installable(value: object, expected_intent: LifecycleIntent | None) -> tuple[InstallableAssistant, ...]:
+    """Validate the installable Assistants a classification may describe; selection never carries them."""
+    if not isinstance(value, tuple) or len(value) > MAX_INSTALLABLE:
+        raise IntentRouteError("invalid installable Assistants")
+    if value and expected_intent is not None:
+        raise IntentRouteError("directory selection cannot include installable Assistants")
+    admitted = []
+    for item in value:
+        if not isinstance(item, InstallableAssistant):
+            raise IntentRouteError("invalid installable Assistant")
+        admitted.append(
+            InstallableAssistant(
+                name=_text(item.name, MAX_INSTALLABLE_NAME_CHARS, "installable Assistant name"),
+                summary=_text(item.summary, MAX_INSTALLABLE_SUMMARY_CHARS, "installable Assistant summary"),
+            )
+        )
+    return tuple(admitted)
 
 
 def _prompt(

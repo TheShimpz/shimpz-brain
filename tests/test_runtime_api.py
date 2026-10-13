@@ -110,13 +110,14 @@ class FakeRuntime:
             raise self.error
         return "Para trazer as notícias de hoje, preciso pesquisar na web com o Exa."
 
-    def intent_route(self, provider, objective, expected_intent, candidates, context, locale, decision_key=None):
+    def intent_route(self, provider, objective, expected_intent, candidates, context, locale, decision=None):
         self.calls.append(("intent_route", provider, objective, expected_intent, candidates, context, locale))
-        self.decision_key = decision_key
+        self.decision = decision
+        self.decision_key = None if decision is None else decision.key
         if self.error:
             raise self.error
         if expected_intent is None:
-            return intent_route.IntentRoute("assistant-uninstall", "cloudflare")
+            return getattr(self, "classification", intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
         return intent_route.IntentRoute(expected_intent, assistant_ids=("shimpz-cloudflare",))
 
 

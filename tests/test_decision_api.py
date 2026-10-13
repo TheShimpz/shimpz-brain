@@ -121,6 +121,61 @@ class DecisionApiTests(unittest.TestCase):
                     client(FakeRuntime()).post("/v1/intent-route", json=refused, headers=headers).status_code, 422
                 )
 
+    def test_installable_assistants_ask_the_decision_provider_whether_the_task_is_capability_free(self):
+        route = {
+            "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
+            "objective": "Oi, tudo bem?",
+            "expected_intent": None,
+            "candidates": [],
+            "lifecycle_reference": None,
+            "conversation": [],
+            "locale": "pt",
+            "decision_provider": {"provider": "typesafe", "api_key": "decision-test-key"},
+        }
+        installable = [
+            {"name": "Cloudflare", "summary": "Set up your domains' DNS."},
+            {"name": "Meta Ads", "summary": "Find where your ads pay off."},
+        ]
+        for classification, capability in (
+            (intent_route.IntentRoute("ordinary-task", capability_free=True), "not-needed"),
+            (intent_route.IntentRoute("ordinary-task"), "possible"),
+            (intent_route.IntentRoute("assistant-install", "cloudflare"), "possible"),
+        ):
+            runtime = FakeRuntime()
+            runtime.classification = classification
+            response = client(runtime).post(
+                "/v1/intent-route", json={**route, "installable": installable}, headers=AUTH
+            )
+            with self.subTest(capability=capability):
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["capability"], capability)
+                self.assertEqual(
+                    runtime.decision.installable,
+                    (
+                        intent_route.InstallableAssistant("Cloudflare", "Set up your domains' DNS."),
+                        intent_route.InstallableAssistant("Meta Ads", "Find where your ads pay off."),
+                    ),
+                )
+        # Without installable Assistants the answer keeps its exact shape, even when the fast path decided it.
+        runtime = FakeRuntime()
+        runtime.classification = intent_route.IntentRoute("ordinary-task", capability_free=True)
+        response = client(runtime).post("/v1/intent-route", json=route, headers=AUTH)
+        self.assertNotIn("capability", response.json())
+        self.assertEqual(runtime.decision.installable, ())
+        without_key = {key: value for key, value in route.items() if key != "decision_provider"}
+        for refused in (
+            {**without_key, "installable": installable},
+            {**route, "installable": []},
+            {**route, "installable": installable * 5},
+            {**route, "installable": [{**installable[0], "id": "shimpz-cloudflare"}]},
+            {**route, "installable": [{"name": "Cloudflare", "summary": ""}]},
+            {**route, "installable": [{"name": "Cloudflare", "summary": "S" * 81}]},
+        ):
+            with self.subTest(body=str(refused.get("installable"))[:60]):
+                self.assertEqual(
+                    client(FakeRuntime()).post("/v1/intent-route", json=refused, headers=AUTH).status_code, 422
+                )
+
     def test_intent_route_is_authenticated_stateless_and_closed(self):
         runtime = FakeRuntime()
         api = client(runtime)

@@ -407,6 +407,28 @@ class IntentRouteTests(unittest.TestCase):
         factory.assert_not_called()
         model.with_structured_output.assert_not_called()
 
+    def test_only_classification_admits_bounded_printable_installable_assistants(self):
+        installable = (
+            intent_route.InstallableAssistant("Cloudflare", "Set up your domains' DNS."),
+            intent_route.InstallableAssistant("Meta Ads", "Find where your ads pay off."),
+        )
+        self.assertEqual(intent_route.admit_installable(installable, None), installable)
+        self.assertEqual(intent_route.admit_installable((), "assistant-install"), ())
+        too_many = (installable[0],) * (intent_route.MAX_INSTALLABLE + 1)
+        long_name = intent_route.InstallableAssistant("N" * (intent_route.MAX_INSTALLABLE_NAME_CHARS + 1), "DNS.")
+        for value, expected_intent in (
+            (installable, "assistant-install"),
+            (list(installable), None),
+            (too_many, None),
+            ((SimpleNamespace(name="Cloudflare", summary="DNS."),), None),
+            ((intent_route.InstallableAssistant("Cloudflare", ""),), None),
+            ((intent_route.InstallableAssistant("Cloud\nflare", "DNS."),), None),
+            ((intent_route.InstallableAssistant(" Cloudflare", "DNS."),), None),
+            ((long_name,), None),
+        ):
+            with self.subTest(value=str(value)[:80]), self.assertRaises(intent_route.IntentRouteError):
+                intent_route.admit_installable(value, expected_intent)
+
     def test_input_contract_rejects_wrong_types_identifiers_and_intents(self):
         invalid = (
             (1, None, ()),

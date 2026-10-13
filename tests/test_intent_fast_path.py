@@ -16,12 +16,29 @@ import intent_route
 import provider_cancel
 
 KEY = "tsk-test-0123456789abcdef"
+DECISION = intent_fast_path.Decision(KEY)
+INSTALLABLE = (
+    intent_route.InstallableAssistant("Cloudflare", "Set up your domains' DNS."),
+    intent_route.InstallableAssistant("WhatsApp", "Notify your customers on WhatsApp."),
+)
 PROBABILITIES = {"ordinary-task": 0.9, "assistant-install": 0.05, "assistant-uninstall": 0.03, "unresolved": 0.02}
 
 
 def _answer(choice: str = "ordinary-task", confidence: float = 0.9, **overrides: object) -> dict[str, object]:
     answer = {"type": "choice", "choice": choice, "confidence": confidence, "probabilities": dict(PROBABILITIES)}
     return {"model": intent_fast_path.MODEL, "answers": {"intent": answer}, "usage": {"input_tokens": 9}, **overrides}
+
+
+def _with_need(need: str = "conversation", need_confidence: float = 0.9, **intent: object) -> dict[str, object]:
+    probabilities = {need: need_confidence, ({*intent_fast_path.NEEDS} - {need}).pop(): 1 - need_confidence}
+    value = _answer(**intent)
+    value["answers"]["capability"] = {
+        "type": "choice",
+        "choice": need,
+        "confidence": need_confidence,
+        "probabilities": probabilities,
+    }
+    return value
 
 
 class _CountingStream(httpx.SyncByteStream):
@@ -119,9 +136,9 @@ class RequestAndParseTests(unittest.TestCase):
         )
 
     def test_only_the_exact_choice_shape_parses(self):
-        self.assertEqual(intent_fast_path.parse(_answer()), ("ordinary-task", 0.9))
+        self.assertEqual(intent_fast_path.parse(_answer()), {"intent": ("ordinary-task", 0.9)})
         self.assertEqual(
-            intent_fast_path.parse({k: v for k, v in _answer().items() if k != "usage"})[0], "ordinary-task"
+            intent_fast_path.parse({k: v for k, v in _answer().items() if k != "usage"})["intent"][0], "ordinary-task"
         )
         broken = []
         for mutate in (
@@ -167,7 +184,7 @@ class RequestAndParseTests(unittest.TestCase):
 class ConfidentOrdinaryTests(unittest.TestCase):
     def _ask(self, handler) -> bool:
         with _client(handler) as client:
-            return intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext())
+            return intent_fast_path.classify(client, DECISION, "Oi!", intent_route.LifecycleContext()).ordinary
 
     def test_only_a_confident_ordinary_task_takes_the_fast_path(self):
         seen: list[httpx.Request] = []
@@ -243,7 +260,9 @@ class ConfidentOrdinaryTests(unittest.TestCase):
     def test_an_exchange_that_starts_after_its_deadline_never_sends(self):
         with _client(lambda _request: self.fail("a late exchange must not send")) as client:
             self.assertIsNone(
-                intent_fast_path._exchange(client, KEY, "Oi!", intent_route.LifecycleContext(), time.monotonic())
+                intent_fast_path._exchange(
+                    client, KEY, intent_fast_path.request_body("Oi!", intent_route.LifecycleContext()), time.monotonic()
+                )
             )
 
     def test_a_delayed_resolver_cannot_hold_the_caller_past_the_deadline(self):
@@ -267,7 +286,9 @@ class ConfidentOrdinaryTests(unittest.TestCase):
             mock.patch.object(intent_fast_path, "ENDPOINT", f"http://jev.test:{server.port}/"),
             mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.05),
         ):
-            self.assertFalse(intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext()))
+            self.assertFalse(
+                intent_fast_path.classify(client, DECISION, "Oi!", intent_route.LifecycleContext()).ordinary
+            )
             self.assertLess(time.monotonic() - started, 0.2)
             # The late work resolves, finds its scope cancelled, and never sends the request.
             time.sleep(0.5)
@@ -286,7 +307,9 @@ class ConfidentOrdinaryTests(unittest.TestCase):
             mock.patch.object(intent_fast_path, "ENDPOINT", f"http://127.0.0.1:{server.port}/"),
             mock.patch.object(intent_fast_path, "TIMEOUT_SECONDS", 0.4),
         ):
-            self.assertFalse(intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext()))
+            self.assertFalse(
+                intent_fast_path.classify(client, DECISION, "Oi!", intent_route.LifecycleContext()).ordinary
+            )
         self.assertLess(time.monotonic() - started, 0.5)
         self.assertTrue(server.finished.wait(5))
         self.assertLess(time.monotonic() - started, 0.6)
@@ -307,7 +330,7 @@ class ConfidentOrdinaryTests(unittest.TestCase):
         self.addCleanup(client.close)
 
         def ask() -> bool:
-            return intent_fast_path.confident_ordinary(client, KEY, "Oi!", intent_route.LifecycleContext())
+            return intent_fast_path.classify(client, DECISION, "Oi!", intent_route.LifecycleContext()).ordinary
 
         with (
             mock.patch.object(intent_fast_path, "_EXCHANGES", executor),
@@ -331,6 +354,94 @@ class ConfidentOrdinaryTests(unittest.TestCase):
             self.assertTrue(_eventually(ask))
 
 
+def _lifecycle_with_need() -> dict[str, object]:
+    value = _with_need()
+    value["answers"]["intent"] = {
+        "type": "choice",
+        "choice": "assistant-install",
+        "confidence": 1.0,
+        "probabilities": {
+            "ordinary-task": 0.0,
+            "assistant-install": 1.0,
+            "assistant-uninstall": 0.0,
+            "unresolved": 0.0,
+        },
+    }
+    return value
+
+
+class CapabilityQuestionTests(unittest.TestCase):
+    def test_installable_assistants_add_their_summaries_and_the_capability_question_to_the_same_request(self):
+        bare = intent_fast_path.request_body("Oi!", intent_route.LifecycleContext())
+        self.assertEqual(set(bare["questions"]), {"intent"})
+        described = intent_fast_path.request_body("Oi!", intent_route.LifecycleContext(), INSTALLABLE)
+        self.assertEqual(
+            described["state"],
+            {
+                "current_message": "Oi!",
+                "installable_assistants": [
+                    {"name": "Cloudflare", "summary": "Set up your domains' DNS."},
+                    {"name": "WhatsApp", "summary": "Notify your customers on WhatsApp."},
+                ],
+            },
+        )
+        self.assertEqual(described["questions"]["intent"], bare["questions"]["intent"])
+        self.assertEqual(set(described["questions"]["capability"]["criteria"]), set(intent_fast_path.NEEDS))
+
+    def test_a_response_must_answer_exactly_the_asked_questions(self):
+        asked = ("intent", "capability")
+        self.assertEqual(
+            intent_fast_path.parse(_with_need(), asked),
+            {"intent": ("ordinary-task", 0.9), "capability": ("conversation", 0.9)},
+        )
+        broken = [_answer(), _with_need(need="delete-everything")]
+        for mutate in (
+            lambda value: value["answers"]["capability"].update(type="noul"),
+            lambda value: value["answers"]["capability"]["probabilities"].pop("capability"),
+            lambda value: value["answers"]["capability"].update(probabilities={"conversation": 0.1, "capability": 0.9}),
+        ):
+            value = _with_need()
+            mutate(value)
+            broken.append(value)
+        for value in broken:
+            with self.subTest(value=str(value)[-120:]), self.assertRaises(intent_fast_path.FastPathResponseError):
+                intent_fast_path.parse(value, asked)
+        # An unasked capability answer is as invalid as a missing one.
+        with self.assertRaises(intent_fast_path.FastPathResponseError):
+            intent_fast_path.parse(_with_need())
+
+    def test_only_a_confident_ordinary_conversation_is_capability_free(self):
+        seen: list[httpx.Request] = []
+
+        def ask(body: dict[str, object]) -> intent_fast_path.FastPath:
+            def respond(request: httpx.Request) -> httpx.Response:
+                seen.append(request)
+                return httpx.Response(200, json=body)
+
+            with _client(respond) as client:
+                decision = intent_fast_path.Decision(KEY, INSTALLABLE)
+                return intent_fast_path.classify(client, decision, "Oi!", intent_route.LifecycleContext())
+
+        free = intent_fast_path.FastPath(ordinary=True, capability_free=True)
+        self.assertEqual(ask(_with_need()), free)
+        self.assertEqual(json.loads(seen[0].content)["state"]["installable_assistants"][0]["name"], "Cloudflare")
+        below = intent_fast_path.CAPABILITY_THRESHOLD - 0.01
+        for body, expected in (
+            (_with_need(need_confidence=below), intent_fast_path.FastPath(ordinary=True)),
+            (_with_need(need="capability"), intent_fast_path.FastPath(ordinary=True)),
+            (_lifecycle_with_need(), intent_fast_path.FastPath()),
+            (_with_need(confidence=intent_fast_path.CONFIDENCE_THRESHOLD - 0.01), intent_fast_path.FastPath()),
+            # Asked but unanswered: the whole response is refused and the LLM route stays authoritative.
+            (_answer(), intent_fast_path.FastPath()),
+        ):
+            with self.subTest(answers=str(body["answers"])[:120]):
+                self.assertEqual(ask(body), expected)
+        self.assertEqual(intent_fast_path.decide(None), intent_fast_path.FastPath())
+
+    def test_the_decision_never_shows_its_key(self):
+        self.assertNotIn(KEY, repr(intent_fast_path.Decision(KEY, INSTALLABLE)))
+
+
 class RuntimeFastPathTests(unittest.TestCase):
     provider = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789")
 
@@ -341,11 +452,12 @@ class RuntimeFastPathTests(unittest.TestCase):
 
     def test_a_confident_ordinary_task_skips_the_llm_route(self):
         runtime, factory = self._runtime()
-        with mock.patch.object(intent_fast_path, "confident_ordinary", return_value=True) as ask:
-            route = runtime.intent_route(self.provider, "Oi!", None, (), None, "pt", decision_key=KEY)
-            runtime.intent_route(self.provider, "Tudo certo?", None, (), None, "pt", decision_key=KEY)
+        ordinary = intent_fast_path.FastPath(ordinary=True)
+        with mock.patch.object(intent_fast_path, "classify", return_value=ordinary) as ask:
+            route = runtime.intent_route(self.provider, "Oi!", None, (), None, "pt", decision=DECISION)
+            runtime.intent_route(self.provider, "Tudo certo?", None, (), None, "pt", decision=DECISION)
         self.assertEqual(route, intent_route.IntentRoute("ordinary-task"))
-        self.assertEqual(ask.call_args_list[0].args[1:3], (KEY, "Oi!"))
+        self.assertEqual(ask.call_args_list[0].args[1:3], (DECISION, "Oi!"))
         # Both classifications reuse one pooled decision client, held to the decision pool's share of egress tunnels.
         self.assertIs(ask.call_args_list[0].args[0], ask.call_args_list[1].args[0])
         self.assertEqual(
@@ -355,14 +467,24 @@ class RuntimeFastPathTests(unittest.TestCase):
         runtime.close()
         self.assertTrue(runtime._decision_client.is_closed)
 
+    def test_a_capability_free_answer_reaches_the_route_with_the_admitted_assistants(self):
+        runtime, _factory = self._runtime()
+        self.addCleanup(runtime.close)
+        free = intent_fast_path.FastPath(ordinary=True, capability_free=True)
+        decision = intent_fast_path.Decision(KEY, INSTALLABLE)
+        with mock.patch.object(intent_fast_path, "classify", return_value=free) as ask:
+            route = runtime.intent_route(self.provider, "Oi!", None, (), None, "pt", decision=decision)
+        self.assertEqual(route, intent_route.IntentRoute("ordinary-task", capability_free=True))
+        self.assertEqual(ask.call_args.args[1], decision)
+
     def test_any_other_fast_path_outcome_runs_the_unchanged_llm_route(self):
         runtime, _factory = self._runtime()
         llm = intent_route.IntentRoute("assistant-install", "cloudflare")
         with (
-            mock.patch.object(intent_fast_path, "confident_ordinary", return_value=False),
+            mock.patch.object(intent_fast_path, "classify", return_value=intent_fast_path.FastPath()),
             mock.patch.object(intent_route, "create", return_value=llm) as create,
         ):
-            route = runtime.intent_route(self.provider, "Instala o Cloudflare", None, (), None, "pt", KEY)
+            route = runtime.intent_route(self.provider, "Instala o Cloudflare", None, (), None, "pt", DECISION)
             self.assertEqual(route, llm)
         create.assert_called_once()
         with mock.patch.object(intent_route, "create", return_value=llm) as create:
@@ -371,11 +493,21 @@ class RuntimeFastPathTests(unittest.TestCase):
 
     def test_selection_and_invalid_input_never_reach_the_fast_path(self):
         runtime, _factory = self._runtime()
-        with mock.patch.object(intent_fast_path, "confident_ordinary") as ask:
+        candidate = intent_route.DirectoryCandidate("shimpz-cloudflare", "Cloudflare", "DNS.")
+        unprintable = intent_fast_path.Decision(KEY, (intent_route.InstallableAssistant("Cloud\x00flare", "DNS."),))
+        with mock.patch.object(intent_fast_path, "classify") as ask:
             with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "only to classification"):
-                runtime.intent_route(self.provider, "cloudflare", "assistant-install", (), None, "pt", decision_key=KEY)
-            with self.assertRaises(agent_runtime.RuntimeContractError):
-                runtime.intent_route(self.provider, "   ", None, (), None, "pt", decision_key=KEY)
+                runtime.intent_route(self.provider, "cloudflare", "assistant-install", (), None, "pt", DECISION)
+            for objective, candidates, decision in (
+                ("   ", (), DECISION),
+                ("Oi!", (candidate,), DECISION),
+                ("Oi!", (), unprintable),
+            ):
+                with (
+                    self.subTest(objective=objective, decision=decision),
+                    self.assertRaises(agent_runtime.RuntimeContractError),
+                ):
+                    runtime.intent_route(self.provider, objective, None, candidates, None, "pt", decision)
         ask.assert_not_called()
 
 
