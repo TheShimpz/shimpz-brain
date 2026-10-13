@@ -23,9 +23,17 @@ import httpx
 # Provider traffic first reaches the local egress proxy, so connecting or waiting for a pooled connection is brief.
 CONNECT_TIMEOUT_SECONDS = 5.0
 POOL_TIMEOUT_SECONDS = 5.0
-MAX_CONNECTIONS = 100
-MAX_KEEPALIVE_CONNECTIONS = 20
-KEEPALIVE_EXPIRY_SECONDS = 5.0
+# A pooled connection is a CONNECT tunnel plus TLS; keeping it across a person's think time spares the next model or
+# decision call that setup. It stays well inside the egress tunnel's 300-second idle bound, and a pooled connection
+# its peer is seen to have closed is dropped rather than reused.
+KEEPALIVE_EXPIRY_SECONDS = 60.0
+# Local Brain egress admits at most eight tunnels from Brain at once, idle ones included. Together the provider pool
+# and the Jev decision pool hold at most seven connections, and each may keep all of them idle: a call over its pool's
+# bound waits for a connection instead of being refused by the egress, and a full pool closes an idle connection to
+# another host to make room. A retired connection's tunnel stays open briefly while its replacement connects; the
+# eighth slot absorbs that overlap, and an egress refusal is still retried or falls back like any connect failure.
+PROVIDER_CONNECTIONS = 5
+DECISION_CONNECTIONS = 2
 
 
 class ProviderCallCancelled(BaseException):
@@ -202,12 +210,12 @@ class _Backend(httpcore.SyncBackend):
 class _Transport(httpx.HTTPTransport):
     """The default HTTP/1.1 transport over the cancellable backend; pinned to httpx 0.28's pool attribute."""
 
-    def __init__(self, proxy: str | None) -> None:
+    def __init__(self, proxy: str | None, connections: int) -> None:
         super().__init__()
         options = {
             "ssl_context": httpx.create_ssl_context(),
-            "max_connections": MAX_CONNECTIONS,
-            "max_keepalive_connections": MAX_KEEPALIVE_CONNECTIONS,
+            "max_connections": connections,
+            "max_keepalive_connections": connections,
             "keepalive_expiry": KEEPALIVE_EXPIRY_SECONDS,
             "network_backend": _Backend(),
         }
@@ -234,7 +242,7 @@ class _Transport(httpx.HTTPTransport):
             raise
 
 
-def client() -> httpx.Client:
-    """Build one credential-free provider pool whose calls a turn's scope can cancel."""
+def client(connections: int = PROVIDER_CONNECTIONS) -> httpx.Client:
+    """Build one credential-free pool of at most ``connections`` whose calls a turn's scope can cancel."""
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or None
-    return httpx.Client(transport=_Transport(proxy), trust_env=False)
+    return httpx.Client(transport=_Transport(proxy, connections), trust_env=False)

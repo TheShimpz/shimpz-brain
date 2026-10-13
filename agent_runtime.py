@@ -839,7 +839,7 @@ class AgentRuntime:
             raise RuntimeContractError(str(exc)) from exc
         with self._decision_client_guard:
             if self._decision_client is None:
-                self._decision_client = provider_cancel.client()
+                self._decision_client = provider_cancel.client(provider_cancel.DECISION_CONNECTIONS)
             client = self._decision_client
         return intent_fast_path.confident_ordinary(client, decision_key, task, admitted)
 

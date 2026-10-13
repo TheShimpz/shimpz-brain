@@ -346,8 +346,11 @@ class RuntimeFastPathTests(unittest.TestCase):
             runtime.intent_route(self.provider, "Tudo certo?", None, (), None, "pt", decision_key=KEY)
         self.assertEqual(route, intent_route.IntentRoute("ordinary-task"))
         self.assertEqual(ask.call_args_list[0].args[1:3], (KEY, "Oi!"))
-        # Both classifications reuse one pooled decision client.
+        # Both classifications reuse one pooled decision client, held to the decision pool's share of egress tunnels.
         self.assertIs(ask.call_args_list[0].args[0], ask.call_args_list[1].args[0])
+        self.assertEqual(
+            ask.call_args_list[0].args[0]._transport._pool._max_connections, provider_cancel.DECISION_CONNECTIONS
+        )
         factory.decision.assert_not_called()
         runtime.close()
         self.assertTrue(runtime._decision_client.is_closed)

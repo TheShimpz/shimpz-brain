@@ -227,6 +227,86 @@ class CancellableTransportTests(unittest.TestCase):
         self.assertFalse(proxied._trust_env)
 
 
+class _SlowServer:
+    """A keep-alive HTTP server that answers each request after a pause and records its peak open connections."""
+
+    def __init__(self) -> None:
+        self.accepted = 0
+        self.peak = 0
+        self._open = 0
+        self._lock = threading.Lock()
+        self._listener = socket.create_server(("127.0.0.1", 0))
+        self.url = f"http://127.0.0.1:{self._listener.getsockname()[1]}/"
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        while True:
+            try:
+                connection, _address = self._listener.accept()
+            except OSError:
+                return
+            with self._lock:
+                self.accepted += 1
+                self._open += 1
+                self.peak = max(self.peak, self._open)
+            threading.Thread(target=self._handle, args=(connection,), daemon=True).start()
+
+    def _handle(self, connection: socket.socket) -> None:
+        with connection:
+            buffer = b""
+            try:
+                while True:
+                    while b"\r\n\r\n" not in buffer:
+                        chunk = connection.recv(65536)
+                        if not chunk:
+                            return
+                        buffer += chunk
+                    _headers, _separator, buffer = buffer.partition(b"\r\n\r\n")
+                    time.sleep(0.2)
+                    connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+            finally:
+                with self._lock:
+                    self._open -= 1
+
+    def close(self) -> None:
+        self._listener.close()
+
+
+class PoolBoundTests(unittest.TestCase):
+    # Local Brain egress admits at most this many tunnels from Brain at once (SHIMPZ_EGRESS_MAX_SOURCE_CONCURRENCY).
+    EGRESS_SOURCE_TUNNELS = 8
+
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ, NO_PROXY_ENV)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_provider_and_decision_pools_together_fit_the_egress_source_limit(self):
+        connections = (provider_cancel.PROVIDER_CONNECTIONS, provider_cancel.DECISION_CONNECTIONS)
+        # One tunnel stays free for a retired connection's brief overlap with its replacement.
+        self.assertLess(sum(connections), self.EGRESS_SOURCE_TUNNELS)
+        for bound in connections:
+            built = provider_cancel.client(bound)
+            self.addCleanup(built.close)
+            pool = built._transport._pool
+            self.assertEqual((pool._max_connections, pool._max_keepalive_connections), (bound, bound))
+            self.assertEqual(pool._keepalive_expiry, provider_cancel.KEEPALIVE_EXPIRY_SECONDS)
+        self.assertLess(provider_cancel.KEEPALIVE_EXPIRY_SECONDS, 300)
+
+    def test_concurrent_calls_wait_for_a_pooled_connection_and_idle_ones_are_reused(self):
+        server = _SlowServer()
+        self.addCleanup(server.close)
+        built = provider_cancel.client()
+        self.addCleanup(built.close)
+        bound = provider_cancel.PROVIDER_CONNECTIONS
+        with ThreadPoolExecutor(max_workers=bound + 4) as executor:
+            calls = [executor.submit(built.get, server.url) for _ in range(bound + 4)]
+            self.assertEqual({call.result(10).status_code for call in calls}, {200})
+        self.assertEqual((server.accepted, server.peak), (bound, bound))
+        self.assertEqual(built.get(server.url).status_code, 200)
+        self.assertEqual(server.accepted, bound)
+
+
 class NestedScopeTests(unittest.TestCase):
     def test_the_turn_reaches_a_nested_scope_and_leaving_it_cancels_only_the_nested_work(self):
         turn = provider_cancel.CancelScope()
