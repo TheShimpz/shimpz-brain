@@ -2,6 +2,7 @@ import datetime
 import gc
 import secrets
 import sqlite3
+import sys
 import tempfile
 import threading
 import unittest
@@ -502,6 +503,8 @@ class RuntimeApiTests(unittest.TestCase):
         application = runtime_api.create_app(runtime=FakeRuntime(), token_reader=lambda: TOKEN)
         with TestClient(application) as api:
             self.assertGreater(gc.get_freeze_count(), 0)
+            # The modules requests import lazily are loaded before the freeze, so collections never rescan them.
+            self.assertTrue(all(name in sys.modules for name in runtime_api.WARM_IMPORTS))
             with mock.patch.object(runtime_api.gc, "collect", wraps=gc.collect) as collect:
                 self.assertEqual(api.post("/v1/turns", json=body(), headers=AUTH).status_code, 200)
             collect.assert_called_once_with()

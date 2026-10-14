@@ -5,6 +5,7 @@ import contextlib
 import datetime
 import gc
 import hmac
+import importlib
 import os
 import sqlite3
 import threading
@@ -38,6 +39,20 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, Strict
 from routine_recovery import RecoveryRequest
 
 import routine as team_routine
+
+# The modules requests import lazily (provider SDKs, LangChain, LangGraph), loaded before the startup freeze.
+WARM_IMPORTS = (
+    "anthropic",
+    "openai",
+    "langchain.agents",
+    "langchain.agents.middleware",
+    "langchain_anthropic",
+    "langchain_anthropic.middleware",
+    "langchain_core.messages",
+    "langchain_core.utils.function_calling",
+    "langchain_openai",
+    "langgraph.types",
+)
 
 TOKEN_FILE = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_TOKEN_FILE", "/run/shimpz-brain-runtime/token"))
 STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-brain-runtime/checkpoints.sqlite3"))
@@ -828,6 +843,10 @@ def create_app(
         # What the process holds once its startup imports are done lives as long as the process: collect once and
         # move it out of every later collection, so the full collection after each admitted request (BoundedBody)
         # scans what requests allocated. Garbage of any request is still collected before its reservation returns.
+        # The provider and agent modules a request imports lazily load first, so they are frozen too: imported after
+        # the freeze, they made every request's collection take 35 to 53 ms on the event loop.
+        for module in WARM_IMPORTS:
+            importlib.import_module(module)
         gc.collect()
         gc.freeze()
         # Only a runtime this app built is closed on shutdown; an injected one belongs to its caller.
