@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -41,6 +42,11 @@ MAX_FILE_TOKENS = 8_000
 MAX_CALL_TOKENS = 16_000
 MAX_TURN_TOKENS = 64_000
 COUNT_SECONDS = 8.0
+# Files counted at once across every turn of the process: each count holds one connection of the shared provider pool,
+# so counting never holds more than two and leaves the rest to the models.
+MAX_COUNT_WORKERS = 2
+_COUNTING = threading.BoundedSemaphore(MAX_COUNT_WORKERS)
+_SLOT_POLL_SECONDS = 0.05
 # An attachment turn's model makes no hidden SDK retries: this middleware retries explicitly, reserving the
 # attachment charge before every attempt and recording each reply's attempts in the persisted reply (ADR-0093).
 MAX_ATTEMPTS = 3
@@ -230,6 +236,24 @@ def estimated_charge(attachment: Attachment) -> int:
     return len(_canonical(blocks(attachment)).encode())
 
 
+def _count_before(
+    count: Callable[[list[dict[str, object]], float], int], content: list[dict[str, object]], deadline: float
+) -> int | None:
+    """One count with whatever time is left once it holds a counting slot; none is left past the deadline."""
+    # Waiting for a slot stays stoppable: the wait is cut into short polls of the turn's scope.
+    while not _COUNTING.acquire(timeout=min(_SLOT_POLL_SECONDS, max(0.0, deadline - time.monotonic()))):
+        scope = provider_cancel._SCOPE.get()
+        if scope is not None:
+            scope.check()
+        if time.monotonic() >= deadline:
+            return None
+    try:
+        remaining = deadline - time.monotonic()
+        return count(content, remaining) if remaining > 0 else None
+    finally:
+        _COUNTING.release()
+
+
 def charges(
     attachments: Sequence[Attachment],
     count: Callable[[list[dict[str, object]], float], int] | None,
@@ -242,20 +266,37 @@ def charges(
     the scope, so a slow count's I/O is terminated and its worker has finished before this returns.
     """
     deadline = time.monotonic() + COUNT_SECONDS
+    countable = [
+        index for index, item in enumerate(attachments) if count is not None and item.content["type"] != "opaque"
+    ]
     counted: list[int] = []
+    # The files are counted together, so the deadline bounds the slowest count rather than their sum.
+    workers = max(1, min(len(countable), MAX_COUNT_WORKERS))
     with (
-        concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="attachment-count") as worker,
+        concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="attachment-count") as worker,
         provider_cancel.nested() as scope,
     ):
-        for attachment in attachments:
-            remaining = deadline - time.monotonic()
+        futures = {
+            index: worker.submit(
+                contextvars.copy_context().run,
+                scope.run,
+                functools.partial(_count_before, count, blocks(attachments[index]), deadline),
+            )
+            for index in countable
+        }
+        done, _pending = concurrent.futures.wait(futures.values(), timeout=max(0.0, deadline - time.monotonic()))
+        # A count that ended because the turn was stopped ends the turn before any estimate could refuse an image.
+        for future in done:
+            failure = future.exception()
+            if failure is not None and not isinstance(failure, CountUnavailableError):
+                raise failure
+        for index, attachment in enumerate(attachments):
+            future = futures.get(index)
             value = None
-            if count is not None and remaining > 0 and attachment.content["type"] != "opaque":
-                work = functools.partial(count, blocks(attachment), remaining)
-                future = worker.submit(contextvars.copy_context().run, scope.run, work)
+            if future is not None and future in done:
                 try:
-                    value = future.result(timeout=remaining)
-                except TimeoutError, CountUnavailableError:
+                    value = future.result()
+                except CountUnavailableError:
                     value = None
             counted.append(value if type(value) is int and value >= 0 else estimated_charge(attachment))
     return tuple(counted)

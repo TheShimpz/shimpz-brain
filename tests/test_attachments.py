@@ -376,8 +376,58 @@ class ReservationTests(unittest.TestCase):
             started = time.monotonic()
             charged = turn_attachments.charges(attachments, hanging)
         self.assertLess(time.monotonic() - started, 2.0)
-        self.assertEqual(len(calls), 1)
+        # The counting slots' files started at once and ended with the one deadline; the third never got a slot.
+        self.assertEqual(len(calls), turn_attachments.MAX_COUNT_WORKERS)
         self.assertEqual(charged, tuple(turn_attachments.estimated_charge(item) for item in attachments))
+        self._assert_no_counting_worker()
+
+    def test_files_are_counted_together_so_the_deadline_bounds_the_slowest_not_their_sum(self) -> None:
+        attachments = turn_attachments.admit([_attachment("text", f"{index:032x}") for index in range(3)])
+        # The first two counts wait for each other: counted one after another, neither could finish.
+        together = threading.Barrier(turn_attachments.MAX_COUNT_WORKERS)
+
+        def count(blocks: list, timeout: float) -> int:
+            if "0" * 31 + "2" not in json.dumps(blocks):
+                together.wait(timeout=min(timeout, 5))
+            return 7
+
+        self.assertEqual(turn_attachments.charges(attachments, count), (7, 7, 7))
+        self._assert_no_counting_worker()
+
+    def test_a_count_waiting_for_a_slot_stops_with_its_turn_or_gives_up_at_the_deadline(self) -> None:
+        count = mock.Mock(return_value=7)
+        for _ in range(turn_attachments.MAX_COUNT_WORKERS):
+            self.assertTrue(turn_attachments._COUNTING.acquire(blocking=False))
+        try:
+            # Every slot is held: past its deadline the count gives up and the file is estimated.
+            self.assertIsNone(turn_attachments._count_before(count, [], time.monotonic() + 0.1))
+            # A stopped turn ends the wait at once instead of at the deadline.
+            stopped = provider_cancel.CancelScope()
+            stopped.cancel()
+            token = provider_cancel._SCOPE.set(stopped)
+            try:
+                with self.assertRaises(provider_cancel.ProviderCallCancelled):
+                    turn_attachments._count_before(count, [], time.monotonic() + 30)
+            finally:
+                provider_cancel._SCOPE.reset(token)
+        finally:
+            for _ in range(turn_attachments.MAX_COUNT_WORKERS):
+                turn_attachments._COUNTING.release()
+        # A slot taken with no time left counts nothing, and gives the slot back.
+        self.assertIsNone(turn_attachments._count_before(count, [], time.monotonic() - 1))
+        count.assert_not_called()
+        self.assertEqual(turn_attachments._count_before(count, [], time.monotonic() + 5), 7)
+
+    def test_a_stopped_count_ends_the_turn_before_an_uncounted_image_could_refuse_it(self) -> None:
+        attachments = turn_attachments.admit([_attachment("image", "a" * 32), _attachment("text", "b" * 32)])
+
+        def count(blocks: list, _timeout: float) -> int:
+            if any(block.get("type") == "image" for block in blocks):
+                raise turn_attachments.CountUnavailableError("no count")
+            raise provider_cancel.ProviderCallCancelled
+
+        with self.assertRaises(provider_cancel.ProviderCallCancelled):
+            turn_attachments.charges(attachments, count)
         self._assert_no_counting_worker()
 
     def test_stopping_the_turn_reaches_a_count_blocked_on_the_provider(self) -> None:
