@@ -5,6 +5,7 @@ The validation semantics, its bounds, reference walk, and bounded RE2 matcher, a
 is no valid Draft 2020-12 schema, before the Brain offers it to a model.
 """
 
+import functools
 import json
 from collections.abc import Mapping
 
@@ -28,8 +29,15 @@ def bound_problem(schema: object) -> str | None:
         return "not JSON"
     if len(encoded) > action_protocol.MAX_BYTES:
         return "too large"
+    return None if _valid_draft(encoded) else "invalid"
+
+
+# Checking a schema against the Draft 2020-12 metaschema takes milliseconds, and every turn start and resume re-checks
+# each Action's schemas: the answer is kept for the exact canonical bytes, a bounded number of schemas at most.
+@functools.lru_cache(maxsize=128)
+def _valid_draft(encoded: bytes) -> bool:
     try:
-        Draft202012Validator.check_schema(dict(schema))
+        Draft202012Validator.check_schema(json.loads(encoded))
     except SchemaError:
-        return "invalid"
-    return None
+        return False
+    return True
