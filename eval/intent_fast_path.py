@@ -809,9 +809,13 @@ def validate_corpus() -> None:
         intent_route.admit_installable(installable, None)
 
 
-def metrics(results: list[tuple[Case, str, float]]) -> dict[str, object]:
-    """Score each threshold: only a confident ordinary-task answer skips the LLM route."""
-    ordinary = sum(case.intent == "ordinary-task" for case, _, _ in results)
+def metrics(results: list[tuple[Case, str, float]], attempted: tuple[Case, ...] | None = None) -> dict[str, object]:
+    """Score each threshold: only a confident ordinary-task answer skips the LLM route.
+
+    Coverage counts every ordinary case `attempted`, so one whose exchange failed counts as not covered.
+    """
+    cases = attempted if attempted is not None else tuple(case for case, _, _ in results)
+    ordinary = sum(case.intent == "ordinary-task" for case in cases)
     report: dict[str, object] = {}
     for threshold in THRESHOLDS:
         fast = [
@@ -858,6 +862,15 @@ class _Exchanges:
         }
 
 
+# A run whose Jev exchanges failed more often than this proves nothing about Jev's answers: its gate fails as
+# inconclusive instead of scoring only the answers that happened to arrive.
+MAX_FAILED_EXCHANGE_RATE = 0.02
+
+
+def _conclusive(failed: int, attempted: int) -> bool:
+    return attempted > 0 and failed <= MAX_FAILED_EXCHANGE_RATE * attempted
+
+
 def _interval(successes: int, trials: int) -> list[float] | None:
     interval = stats.wilson(successes, trials)
     return None if interval is None else [round(interval[0], 3), round(interval[1], 3)]
@@ -873,14 +886,17 @@ def _intent_run(exchanges: _Exchanges, installable: tuple[intent_route.Installab
             continue
         choice, confidence = answers["intent"]
         results.append((case, choice, confidence))
-    effective = metrics(results)[str(intent_fast_path.CONFIDENCE_THRESHOLD)]
+    scored = metrics(results, CASES)
+    effective = scored[str(intent_fast_path.CONFIDENCE_THRESHOLD)]
+    conclusive = _conclusive(len(failed), len(CASES))
     return {
         "cases": len(CASES),
         "failed_exchanges": sorted(failed),
+        "conclusive": conclusive,
         "intent_accuracy": round(sum(case.intent == choice for case, choice, _ in results) / max(1, len(results)), 3),
         "misclassified": sorted(case.id for case, choice, _ in results if case.intent != choice),
-        "thresholds": metrics(results),
-        "gate_passed": not effective["lifecycle_false_negatives"],
+        "thresholds": scored,
+        "gate_passed": conclusive and not effective["lifecycle_false_negatives"],
     }
 
 
@@ -951,12 +967,14 @@ def _capability_run(exchanges: _Exchanges, name: str, repeats: int) -> dict[str,
         stratum: _capability_cell([row for row in rows if row[0].stratum == stratum])
         for stratum in ("adr-0066", "paraphrase", "conversation", "websearch", "referential")
     }
+    conclusive = _conclusive(sum(answers is None for _case, answers in rows), len(rows))
     return {
         "repeats": repeats,
         "strata": strata,
         "all": _capability_cell(rows),
         "thresholds": _sweep(rows),
-        "gate_passed": not any(cell["false_skips"] for cell in strata.values()),
+        "conclusive": conclusive,
+        "gate_passed": conclusive and not any(cell["false_skips"] for cell in strata.values()),
     }
 
 
