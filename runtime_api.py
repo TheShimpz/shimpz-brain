@@ -720,20 +720,27 @@ def _intent_route_response(route: intent_route.IntentRoute, *, capability: bool 
     return response
 
 
-def _run_capability_plan(
-    runtime: RuntimeLike,
+async def _run_capability_plan(
+    request: Request,
+    current_runtime: Callable[[], RuntimeLike],
     slots: threading.BoundedSemaphore,
     body: CapabilityPlanInput,
 ) -> dict[str, object]:
+    """One plan in its own capacity lane; Team's deadline closing the request cancels its provider I/O (ADR-0079).
+
+    The lane frees only once the worker has unwound, so a cancelled plan never holds more than its slot.
+    """
     if not slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Capability planner capacity reached")
     try:
-        plan, usage = model_usage.measure(
-            lambda: runtime.capability_plan(
+        plan, usage = await _cancellable(
+            request,
+            lambda: current_runtime().capability_plan(
                 body.provider.runtime(),
                 body.objective,
                 body.runtime_candidates(),
-            )
+            ),
+            "Capability plan cancelled",
         )
         return {**_capability_plan_response(plan), "usage": usage}
     finally:
@@ -927,12 +934,8 @@ def create_app(
         return {"status": "deleted"}
 
     @app.post("/v1/capability-plan", dependencies=[Depends(require_auth)])
-    def create_capability_plan(body: CapabilityPlanInput) -> dict[str, object]:
-        return _run_capability_plan(
-            current_runtime(),
-            app.state.capability_plan_slots,
-            body,
-        )
+    async def create_capability_plan(request: Request, body: CapabilityPlanInput) -> dict[str, object]:
+        return await _run_capability_plan(request, current_runtime, app.state.capability_plan_slots, body)
 
     _register_intent_route(app, current_runtime, require_auth)
     _register_routine_recovery(app, current_runtime, require_auth)
