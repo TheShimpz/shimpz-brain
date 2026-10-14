@@ -5,13 +5,21 @@ The validation semantics, its bounds, reference walk, and bounded RE2 matcher, a
 is no valid Draft 2020-12 schema, before the Brain offers it to a model.
 """
 
-import functools
+import hashlib
 import json
+import threading
+from collections import OrderedDict
 from collections.abc import Mapping
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from protocol.team.action.v1 import schema as action_protocol
+from protocol.team.http.v1 import payload as team_payload
+
+MAX_ACTIONS_PER_ASSISTANT = 128
+# Every Action schema one turn may carry: each of its Assistants with its most Actions, an input and an output schema
+# each. A smaller bound let a Team of more than 64 Actions miss on every schema of every turn.
+MAX_CHECKED_SCHEMAS = 2 * team_payload.MAX_CHAT_ASSISTANTS * MAX_ACTIONS_PER_ASSISTANT
 
 
 def bound_problem(schema: object) -> str | None:
@@ -33,11 +41,27 @@ def bound_problem(schema: object) -> str | None:
 
 
 # Checking a schema against the Draft 2020-12 metaschema takes milliseconds, and every turn start and resume re-checks
-# each Action's schemas: the answer is kept for the exact canonical bytes, a bounded number of schemas at most.
-@functools.lru_cache(maxsize=128)
+# each Action's schemas: the answer is kept per SHA-256 of the exact canonical bytes, never the bytes themselves, for at
+# most MAX_CHECKED_SCHEMAS schemas, the oldest used dropped first.
+_CHECKED: OrderedDict[bytes, bool] = OrderedDict()
+_CHECKED_LOCK = threading.Lock()
+
+
 def _valid_draft(encoded: bytes) -> bool:
+    digest = hashlib.sha256(encoded).digest()
+    with _CHECKED_LOCK:
+        known = _CHECKED.get(digest)
+        if known is not None:
+            _CHECKED.move_to_end(digest)
+            return known
     try:
         Draft202012Validator.check_schema(json.loads(encoded))
     except SchemaError:
-        return False
-    return True
+        valid = False
+    else:
+        valid = True
+    with _CHECKED_LOCK:
+        _CHECKED[digest] = valid
+        while len(_CHECKED) > MAX_CHECKED_SCHEMAS:
+            _CHECKED.popitem(last=False)
+    return valid

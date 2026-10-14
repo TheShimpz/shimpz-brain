@@ -61,7 +61,7 @@ TEAM_NAME_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 # most 128 Actions, so these two bounds are the total: a request carries at most 2,048 Actions, exactly what Team can
 # admit.
 MAX_ASSISTANTS = team_payload.MAX_CHAT_ASSISTANTS
-MAX_ACTIONS_PER_ASSISTANT = 128
+MAX_ACTIONS_PER_ASSISTANT = action_schema.MAX_ACTIONS_PER_ASSISTANT
 # One resume answers the Action requests of one suspension, which carries at most Team's bound of them.
 MAX_ACTION_RESULTS = team_turn.MAX_ACTION_REQUESTS
 MAX_TEAM_NAME_CHARS = team_payload.MAX_TEAM_NAME_CHARS
