@@ -65,7 +65,9 @@ MAX_ACTIONS_PER_ASSISTANT = 128
 # One resume answers the Action requests of one suspension, which carries at most Team's bound of them.
 MAX_ACTION_RESULTS = team_turn.MAX_ACTION_REQUESTS
 MAX_TEAM_NAME_CHARS = team_payload.MAX_TEAM_NAME_CHARS
-MAX_GENESIS_BYTES = 128 * 1024
+# An Assistant's Genesis is bounded in code points by its producers (Developers' manifest schema and Team's
+# assistant/manifest.py MAX_GENESIS_LENGTH), never in bytes: a long Japanese Genesis is as admissible as an English one.
+MAX_GENESIS_CHARS = 65_536
 MAX_MESSAGE_CHARS = 64 * 1024
 # Team admits at most 32,768 JSON values in one whole machine contract, so the input and output schemas of one Assistant
 # together hold at most that many; each schema also meets the Team Action protocol's own value and byte bounds.
@@ -152,13 +154,13 @@ class AssistantDefinition:
         if team_identifiers.canonical_assistant_id(self.id) is None:
             raise RuntimeContractError("invalid Assistant id")
         try:
-            genesis_size = len(self.genesis.encode("utf-8"))
+            self.genesis.encode("utf-8")
         except (AttributeError, UnicodeEncodeError) as exc:
             raise RuntimeContractError("invalid Assistant Genesis") from exc
         if (
             not self.genesis
             or self.genesis.strip() != self.genesis
-            or genesis_size > MAX_GENESIS_BYTES
+            or len(self.genesis) > MAX_GENESIS_CHARS
             or not self.genesis.replace("\n", "").replace("\t", "").isprintable()
         ):
             raise RuntimeContractError("invalid Assistant Genesis")

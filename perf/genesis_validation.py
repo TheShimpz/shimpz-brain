@@ -31,8 +31,7 @@ def _ascii_genesis(size: int) -> str:
 
 
 def _precomposed_genesis(size: int) -> str:
-    remaining = size - len(b"A\n\tA")
-    return "A\n\t" + "é" * (remaining // 2) + "A" * (remaining % 2) + "A"
+    return "A\n\t" + "é" * (size - len("A\n\tA")) + "A"
 
 
 def _summary(values: list[int]) -> dict[str, float]:
@@ -46,7 +45,7 @@ def _summary(values: list[int]) -> dict[str, float]:
 def _case(count: int, genesis: str, samples: int) -> dict[str, object]:
     encoded_size = len(genesis.encode("utf-8"))
     if (
-        not 0 < encoded_size <= agent_runtime.MAX_GENESIS_BYTES
+        not 0 < len(genesis) <= agent_runtime.MAX_GENESIS_CHARS
         or genesis.strip() != genesis
         or "\n" not in genesis
         or "\t" not in genesis
@@ -84,8 +83,8 @@ def main() -> None:
     if not 20 <= args.samples <= 200:
         parser.error("samples must be between 20 and 200")
     typical = _ascii_genesis(TYPICAL_BYTES)
-    maximum = _ascii_genesis(agent_runtime.MAX_GENESIS_BYTES)
-    precomposed = _precomposed_genesis(agent_runtime.MAX_GENESIS_BYTES)
+    maximum = _ascii_genesis(agent_runtime.MAX_GENESIS_CHARS)
+    precomposed = _precomposed_genesis(agent_runtime.MAX_GENESIS_CHARS)
     cases = {
         "typical": _case(1, typical, args.samples),
         "typical_team": _case(16, typical, args.samples),

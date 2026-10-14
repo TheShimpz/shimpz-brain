@@ -742,6 +742,12 @@ class AgentRuntimeTests(unittest.TestCase):
             ):
                 agent_runtime._result(state, **boundaries)
 
+    def test_a_genesis_is_bounded_in_code_points_as_its_producers_bound_it(self):
+        # 65,536 three-byte characters: 196,608 bytes, as admissible as 65,536 ASCII ones.
+        japanese = "日" * agent_runtime.MAX_GENESIS_CHARS
+        definition = agent_runtime.AssistantDefinition("hello-pulse", japanese, (action("hello"),))
+        self.assertEqual(len(definition.genesis.encode()), 3 * agent_runtime.MAX_GENESIS_CHARS)
+
     def test_invalid_genesis_fails_closed(self):
         valid = assistant("hello-pulse", action("hello"))
         invalid_values = (
@@ -751,8 +757,8 @@ class AgentRuntimeTests(unittest.TestCase):
             "hidden\x00instruction",
             "hidden\rinstruction",
             "hidden\u202einstruction",
-            "x" * (agent_runtime.MAX_GENESIS_BYTES + 1),
-            "é" * ((agent_runtime.MAX_GENESIS_BYTES // 2) + 1),
+            "x" * (agent_runtime.MAX_GENESIS_CHARS + 1),
+            "é" * (agent_runtime.MAX_GENESIS_CHARS + 1),
             "invalid-surrogate-\ud800",
         )
         for genesis in invalid_values:

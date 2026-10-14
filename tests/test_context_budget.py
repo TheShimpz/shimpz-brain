@@ -364,7 +364,7 @@ class RuntimeBudgetTests(unittest.TestCase):
         agent.update_state.assert_called_once()
 
     def test_maximum_genesis_fits_but_maximum_schemas_are_refused_before_a_provider_call(self):
-        genesis = "g" * agent_runtime.MAX_GENESIS_BYTES
+        genesis = "g" * agent_runtime.MAX_GENESIS_CHARS
         largest = tuple(
             agent_runtime.AssistantDefinition(f"assistant-{index}", genesis, (ACTION,))
             for index in range(agent_runtime.MAX_ASSISTANTS)

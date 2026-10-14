@@ -137,7 +137,7 @@ class ActionInput(ClosedInput):
 
 class AssistantInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
-    genesis: str = Field(min_length=1, max_length=agent_runtime.MAX_GENESIS_BYTES)
+    genesis: str = Field(min_length=1, max_length=agent_runtime.MAX_GENESIS_CHARS)
     actions: list[ActionInput] = Field(max_length=agent_runtime.MAX_ACTIONS_PER_ASSISTANT)
 
 
