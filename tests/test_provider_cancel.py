@@ -618,5 +618,15 @@ class PooledAnthropicTests(unittest.TestCase):
         self.assertIs(type(model), provider_client._pooled_chat_anthropic())
 
 
+class SharedPoolCookieTests(unittest.TestCase):
+    def test_a_shared_pool_never_stores_a_cookie_a_provider_sets(self) -> None:
+        pool = provider_cancel.client(1)
+        self.addCleanup(pool.close)
+        request = httpx.Request("GET", "https://api.openai.com/v1/models")
+        answer = httpx.Response(200, headers={"set-cookie": "__cf_bm=one; Path=/; Domain=.openai.com"}, request=request)
+        pool.cookies.extract_cookies(answer)
+        self.assertEqual(len(pool.cookies.jar), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

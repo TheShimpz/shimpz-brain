@@ -11,6 +11,7 @@ exit, so checkpoint writes finish before the per-thread lock is released. A canc
 """
 
 import contextvars
+import http.cookiejar
 import os
 import socket
 import threading
@@ -245,4 +246,7 @@ class _Transport(httpx.HTTPTransport):
 def client(connections: int = PROVIDER_CONNECTIONS) -> httpx.Client:
     """Build one credential-free pool of at most ``connections`` whose calls a turn's scope can cancel."""
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or None
-    return httpx.Client(transport=_Transport(proxy, connections), trust_env=False)
+    # The pool serves every Team's calls with each one's own key: it stores no cookie a provider sets, so nothing one
+    # Team's call received is ever sent on another's.
+    no_cookies = http.cookiejar.CookieJar(policy=http.cookiejar.DefaultCookiePolicy(allowed_domains=()))
+    return httpx.Client(transport=_Transport(proxy, connections), trust_env=False, cookies=no_cookies)
