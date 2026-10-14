@@ -11,7 +11,6 @@ import sqlite3
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
@@ -171,7 +170,8 @@ class TurnContextInput(ClosedInput):
             return value
         return agent_runtime.normalize_team_name(value)
 
-    def runtime_context(self) -> agent_runtime.TurnContext:
+    def runtime_context(self, **turn: Any) -> agent_runtime.TurnContext:
+        """The turn's context, built once: a start's own fields come in `turn`, so its knowledge is admitted once."""
         return agent_runtime.TurnContext(
             thread_id=self.thread_id,
             team_name=self.team_name,
@@ -186,6 +186,7 @@ class TurnContextInput(ClosedInput):
             routine_rerun=None if self.routine_rerun is None else tuple(self.routine_rerun),
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
+            **turn,
         )
 
 
@@ -270,11 +271,13 @@ class StartTurnInput(TurnContextInput):
         return tuple(entry.runtime_entry() for entry in self.conversation)
 
     def runtime_context(self) -> agent_runtime.TurnContext:
-        context = replace(super().runtime_context(), locale=self.locale)
         if self.turn_clock is None:
-            return context
-        date = datetime.date.fromisoformat(self.turn_clock.date)
-        return replace(context, turn_date=date, timezone=self.turn_clock.timezone)
+            return super().runtime_context(locale=self.locale)
+        return super().runtime_context(
+            locale=self.locale,
+            turn_date=datetime.date.fromisoformat(self.turn_clock.date),
+            timezone=self.turn_clock.timezone,
+        )
 
 
 class ResumeTurnInput(TurnContextInput):

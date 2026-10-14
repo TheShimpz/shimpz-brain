@@ -4,12 +4,15 @@ Arguments that violate the Action's input schema never suspend the graph: the mo
 may call again within the recursion limit (ADR-0080). Team still validates every request it receives.
 """
 
+import functools
 import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from protocol.team.action.v1 import schema as action_protocol
+from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from agent_runtime import ActionDefinition
@@ -20,8 +23,20 @@ MAX_LISTED_NAMES = 16
 _PLAIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}")
 
 
+class _ActionInput(BaseModel):
+    """Any Action's arguments, which the tool validates against the Action's own schema."""
+
+    model_config = ConfigDict(extra="allow")
+
+
 class ActionTool(StructuredTool):
     """A declared Action's request tool, typed so a provider binding can tell it apart from Brain's own tools."""
+
+    def get_input_schema(self, config: RunnableConfig | None = None) -> type[BaseModel]:
+        # The provider sees the Action's own JSON schema (`tool_call_schema`); this model is read only for injected
+        # arguments, which an Action never has. One shared model spares every turn's tool node a model per tool, which
+        # LangChain otherwise builds again for every tool once a Space has more than its 256-name cache holds.
+        return _ActionInput
 
 
 def correction(tool_name: str, action: ActionDefinition) -> str:
@@ -54,12 +69,15 @@ def request_action(tool_name: str, assistant_id: str, action: ActionDefinition) 
     from langgraph.types import interrupt
     from referencing.exceptions import Unresolvable
 
-    validator = action_schema_validator(action.input_schema)
+    # A turn calls few of the Actions it offers, so each validator is built only when its Action is first called.
+    @functools.cache
+    def validator():
+        return action_schema_validator(action.input_schema)
 
     def suspend_for_controller(**payload):
         try:
             with action_protocol.pattern_work_budget():
-                invalid = next(validator.iter_errors(payload), None) is not None
+                invalid = next(validator().iter_errors(payload), None) is not None
         except RecursionError, Unresolvable, action_protocol.PatternError:
             # An unresolvable reference, validation deeper than the recursion limit, an argument that is not valid
             # Unicode, or matching beyond its work budget cannot complete: refuse it like any invalid argument.

@@ -131,6 +131,18 @@ class ToolPreflightTests(unittest.TestCase):
                 id="broken", summary="Broken schema.", input_schema={"type": "object", "properties": 3}
             )
 
+    def test_tools_share_one_input_model_and_build_their_validator_when_first_called(self):
+        with mock.patch.object(
+            action_tool, "action_schema_validator", wraps=action_tool.action_schema_validator
+        ) as built:
+            first = action_tool.request_action(TOOL, "shimpz-exa", ACTION)
+            second = action_tool.request_action("other_tool", "shimpz-exa", ACTION)
+            self.assertIs(first.get_input_schema(), second.get_input_schema())
+            self.assertEqual(built.call_count, 0)
+            first.func(query="harbour")
+            first.func(query="dusk")
+        self.assertEqual(built.call_count, 1)
+
 
 class GraphCorrectionTests(unittest.TestCase):
     def test_the_model_corrects_itself_and_only_the_valid_call_suspends(self):
