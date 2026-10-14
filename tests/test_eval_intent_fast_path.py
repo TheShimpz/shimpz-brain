@@ -1,8 +1,11 @@
 """The Jev fast-path eval's gate: failed exchanges never pass as evidence (ADR-0077)."""
 
+import dataclasses
 import unittest
+from unittest import mock
 
 from eval import intent_fast_path as fast_path_eval
+from eval import intent_fast_path_cases as cases
 
 
 class _Answering:
@@ -46,6 +49,29 @@ class EvalGateTests(unittest.TestCase):
         self.assertTrue(fast_path_eval._conclusive(2, 100))
         self.assertFalse(fast_path_eval._conclusive(3, 100))
         self.assertFalse(fast_path_eval._conclusive(0, 0))
+
+
+class CorpusTests(unittest.TestCase):
+    def test_the_frozen_corpora_are_valid(self) -> None:
+        cases.validate_corpus()
+
+    def test_every_malformed_corpus_is_refused(self) -> None:
+        first, capability = cases.CASES[0], cases.CAPABILITY_CASES[0]
+        refused = (
+            ("CASES", (first, first)),
+            ("CASES", (dataclasses.replace(first, message="  "),)),
+            ("CASES", (dataclasses.replace(first, intent="not-an-intent"),)),
+            ("CAPABILITY_CASES", (capability, capability)),
+            ("CAPABILITY_CASES", (dataclasses.replace(capability, message=" "),)),
+            ("CAPABILITY_CASES", tuple(case for case in cases.CAPABILITY_CASES if case.stratum != "websearch")),
+        )
+        for name, value in refused:
+            with (
+                self.subTest(name=name, size=len(value)),
+                mock.patch.object(cases, name, value),
+                self.assertRaises(ValueError),
+            ):
+                cases.validate_corpus()
 
 
 if __name__ == "__main__":
