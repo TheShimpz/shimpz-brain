@@ -313,6 +313,16 @@ class Checkpointer(Protocol):
 ModelFactory = Callable[[ProviderConfig], BaseChatModel]
 
 
+def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, str]:
+    """What one turn's model is offered: its Assistants, its memory and Routine tools, and the system prompt.
+
+    The agent and the context budget both read it here, so they never count a different set.
+    """
+    exposed = turn_attachments.exposed(context.assistants, context.attachments)
+    memory_tool, routine_tool = _knowledge_tools(context)
+    return exposed, memory_tool, routine_tool, turn_prompt.system_prompt(replace(context, assistants=exposed))
+
+
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
     """Whether this turn offers the memory and the Routine tool; a Routine run's knowledge is read-only."""
     # A turn that carries attachments learns nothing and changes no Routine (ADR-0093).
@@ -651,14 +661,13 @@ class AgentRuntime:
             if context.attachments and callable(single)
             else self._chat_model(context.provider)
         )
-        exposed = turn_attachments.exposed(context.assistants, context.attachments)
+        exposed, memory_tool, routine_tool, prompt = _turn_surface(context)
         tools = [
             action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)
             for assistant in exposed
             for action in assistant.actions
         ]
         tools.append(clarifier.tool())
-        memory_tool, routine_tool = _knowledge_tools(context)
         if memory_tool:
             tools.append(team_memory.tool())
         if routine_tool:
@@ -668,7 +677,7 @@ class AgentRuntime:
         return create_agent(
             model=model,
             tools=tools,
-            system_prompt=turn_prompt.system_prompt(replace(context, assistants=exposed)),
+            system_prompt=prompt,
             checkpointer=self._checkpointer,
             middleware=[
                 *_prompt_caching(context.provider),
@@ -753,18 +762,16 @@ class AgentRuntime:
 
     @staticmethod
     def _fixed_tokens(context: TurnContext) -> int:
-        exposed = turn_attachments.exposed(context.assistants, context.attachments)
+        exposed, memory_tool, routine_tool, prompt = _turn_surface(context)
         tools = [
             {"name": _tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
             for assistant in exposed
             for action in assistant.actions
         ]
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
-        memory_tool, routine_tool = _knowledge_tools(context)
         for included, module in ((memory_tool, team_memory), (routine_tool, team_routine)):
             if included:
                 tools.append({"name": module.TOOL_NAME, "summary": module.DESCRIPTION, "schema": module.SCHEMA})
-        prompt = turn_prompt.system_prompt(replace(context, assistants=exposed))
         # Every provider call of an attachment turn carries the attachments, so their charge is fixed context too.
         return context_budget.fixed_tokens(prompt, tools) + context.attachment_charge
 
