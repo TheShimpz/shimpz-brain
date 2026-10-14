@@ -66,6 +66,7 @@ def _args(**changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
+        "description": "A cada 30 segundos, lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
         "replaces": None,
         "reply": REPLY,
     }
@@ -88,6 +89,7 @@ def _wire(turn_date: datetime.date, **changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
+        "description": "A cada 30 segundos, lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
         "replaces": None,
         "turn_date": turn_date.isoformat(),
     }
@@ -131,7 +133,7 @@ class ContractTests(unittest.TestCase):
         tool = routine.tool()
         self.assertEqual(tool.name, routine.TOOL_NAME)
         self.assertEqual(tool.args_schema, routine.SCHEMA)
-        self.assertEqual(routine.SCHEMA["required"], ["op", "name", "replaces", "reply"])
+        self.assertEqual(routine.SCHEMA["required"], ["op", "name", "description", "replaces", "reply"])
         self.assertFalse(routine.SCHEMA["additionalProperties"])
         with self.assertRaises(routine.RoutineContractError):
             tool.func(**_args())
@@ -163,6 +165,10 @@ class RecordTests(unittest.TestCase):
             (_args(name=""), "name"),
             (_args(name="a\nb"), "name"),
             (_args(name="x" * 81), "name"),
+            (_args(description=""), "description"),
+            (_args(description="Lista as zonas.\nDepois lê o DNS."), "description"),
+            (_args(description="x" * 601), "description"),
+            (_args(description=None), "description"),
             (_args(replaces="b" * 32), "replaces"),
             (_args(reply=""), "reply"),
             (_args(reply="   "), "reply"),

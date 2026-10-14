@@ -2,11 +2,11 @@
 
 A Routine is never compiled. When the person asks for work to recur, the chat agent clarifies as for any task, runs the
 recurring work once in the same turn with the Team's Actions, and then calls one closed tool, ``shimpz_routine``
-``record``, with the Routine's name, what each run does with its result, the Routine it replaces, and the reply the
-person reads. The schedule and timezone are never the model's: Team derives both from the person's own words and
-asks when they are missing (ADR-0101 section 2). The guard checks only that closed shape and ends the turn; Team builds
-the plan from its own trace of the person's sends and shows the person a card to confirm, or a question. Nothing here
-schedules, approves, or authorizes anything: Brain only reports what the agent asked to record.
+``record``, with the Routine's name, a plain-language description of the work for the card, the Routine it replaces,
+and the reply the person reads. The schedule and timezone are never the model's: Team derives both from the person's
+own words and asks when they are missing (ADR-0101 section 2). The guard checks only that closed shape and ends the
+turn; Team builds the plan from its own trace of the person's sends and shows the person a card to confirm, or a
+question. Nothing here schedules, approves, or authorizes anything: Brain only reports what the agent asked to record.
 """
 
 import functools
@@ -27,6 +27,7 @@ TOOL_NAME = "shimpz_routine"
 MAX_ROUTINES = team_routine_protocol.MAX_ROUTINES
 MAX_STEPS = team_routine_protocol.MAX_ROUTINE_STEPS
 MAX_NAME_CHARS = team_routine_protocol.MAX_ROUTINE_NAME_CHARS
+MAX_DESCRIPTION_CHARS = team_routine_protocol.MAX_ROUTINE_DESCRIPTION_CHARS
 # Brain's own request bound on the listing: each Routine's steps, encoded, at most 256 KiB, and the Team's together
 # 1 MiB, as Team's plans are bounded, so a listing never outgrows the turn request Brain admits.
 MAX_LISTED_STEPS_BYTES = 256 * 1024
@@ -40,6 +41,14 @@ SCHEMA = {
     "properties": {
         "op": {"type": "string", "enum": ["record"]},
         "name": {"type": "string", "description": "A short name for the Routine, at most 80 characters."},
+        "description": {
+            "type": "string",
+            "description": (
+                "One plain paragraph, at most 600 characters, for a person who is not technical: what every run "
+                "will do and on what, in everyday words. Describe only the work you ran, say plainly when a run "
+                "changes something, and never promise how the result reaches the person."
+            ),
+        },
         "replaces": {
             "type": ["string", "null"],
             "description": "The routine_id of the listed Routine this one changes; null for a new Routine.",
@@ -49,7 +58,7 @@ SCHEMA = {
             "description": "Your reply to the person: the result of the work you ran, in their language.",
         },
     },
-    "required": ["op", "name", "replaces", "reply"],
+    "required": ["op", "name", "description", "replaces", "reply"],
     "additionalProperties": False,
 }
 DESCRIPTION = (
@@ -68,6 +77,7 @@ _CORRECTIONS = {
     "response ran, so repeat the calls you still need.",
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
     "name": _NOT_DONE + "Give a name of one line, at most 80 characters.",
+    "description": _NOT_DONE + "Give a description of one plain paragraph, at most 600 characters.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person a reply of at most 4000 characters.",
 }
@@ -115,10 +125,12 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
         return "invalid"
     name = team_memory._line(arguments["name"], MAX_NAME_CHARS)
+    description = arguments["description"]
     replaces = arguments["replaces"]
     reply = _reply(arguments["reply"])
     checks = (
         ("name", bool(name)),
+        ("description", team_routine_protocol.canonical_description(description) is not None),
         ("replaces", replaces is None or any(item["routine_id"] == replaces for item in context.routines)),
         ("reply", reply is not None),
     )
@@ -128,6 +140,7 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     routine = {
         "op": "record",
         "name": name,
+        "description": description,
         "replaces": replaces,
         "turn_date": context.turn_date.isoformat(),
     }
