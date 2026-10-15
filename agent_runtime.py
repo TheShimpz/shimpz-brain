@@ -131,7 +131,7 @@ class ActionDefinition:
             or not all(isinstance(properties, Mapping) and name in properties for name in self.input_files)
         ):
             raise RuntimeContractError("invalid Action file or authorization declaration")
-        if not self.summary.strip() or len(self.summary) > 2_000:
+        if not self.summary.strip() or len(self.summary) > action_purpose.MAX_ACTION_SUMMARY_CHARS:
             raise RuntimeContractError("invalid Action summary")
         if self.input_schema.get("type") != "object":
             raise RuntimeContractError("Action input schema must describe an object")

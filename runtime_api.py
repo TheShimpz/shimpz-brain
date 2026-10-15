@@ -124,7 +124,7 @@ class ProviderInput(ClosedInput):
 
 class ActionInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
-    summary: str = Field(min_length=1, max_length=2_000)
+    summary: str = Field(min_length=1, max_length=action_purpose.MAX_ACTION_SUMMARY_CHARS)
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     # Whether the Action declares an authorization capability, and which input properties take a file (ADR-0093).
