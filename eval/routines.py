@@ -22,7 +22,7 @@ Run live, the one command, from Team; it starts every Brain and worker it needs 
     --openai-key-file ../.gpt-key --anthropic-key-file ../.claude-key --budget 8
 
 The run (``routines_pool``) confines itself to its CPU budget (``--cpus``, default half the machine's processors) and
-starts ``--workers`` (default one per budgeted processor) Team driver processes, each beside its own Brain
+starts ``--workers`` (default one per budgeted processor) Team runner processes, each beside its own Brain
 (``routines_serve``) and each running ``--threads`` attempts at once, every attempt pinned to its worker's Brain. Every
 provider request on the wire is reserved under one hard ``--budget`` before it is sent, across every Brain, and the
 budget's refusal stops the run. A provider's rate-limit or overload answer is never a model's miss and never a pass:
@@ -38,14 +38,15 @@ verify.shimpz.com to each day's date, whose real replace-dns-record Action asks 
 recording turn and in every run. The person authorizes each request; it passes only when the card replays
 replace-dns-record on the record its name selects with each run's date as content, the replay changes nothing before
 the person authorizes it, and the authorized run writes that day's date.
-The driver answers the agent's questions and Team's recoverable Routine questions as
+The harness answers the agent's questions and Team's recoverable Routine questions as
 the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
 chosen zone by its id), carries the schedule the person stated, takes no more sends than its missing pieces need,
 "Criar rotina" creates the Routine, and one replay through Team's real claim and run shows that work's exact result.
 One frequency question and one output question are each allowed, from the agent or Team, whichever comes first, while
 the person has not stated it; asking it again, after it was stated, or by both is a miss, as is any timezone or limits
-question. Team's output question gets its protocol label as the answer, and the card must carry the person's choice.
+question. Team's output question gets its protocol label as the answer, and the card's description must state the
+person's choice, exactly the output Team persisted.
 After the first passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records, two
 replay variants run with no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never
 dispatch list-dns-records.

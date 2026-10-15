@@ -2,7 +2,7 @@
 
 One command starts every process the run needs and stops them all on any exit. The run confines itself, and so every
 process it starts, to its CPU budget: half the processors the machine reports, or all of them on a GitHub Actions
-runner. It starts one Brain per worker (``routines_serve``) and one worker process per Brain, each a Team driver that
+runner. It starts one Brain per worker (``routines_serve``) and one worker process per Brain, each a Team runner that
 runs up to ``threads`` attempts at once, every one of them pinned to its worker's Brain, whose checkpoint lives in
 that process. Workers speak JSON lines: their configuration, model keys included, arrives on stdin, never in argv or
 the environment; each attempt goes in as one task and comes back as one result.

@@ -9,7 +9,7 @@ BRAIN = Path(__file__).resolve().parents[1]
 
 
 def _load(name: str, path: Path):
-    """A standard-library Brain eval helper loaded by path, as the umbrella journey driver loads it."""
+    """A standard-library Brain eval helper loaded by path, as the umbrella journey runner loads it."""
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -171,7 +171,7 @@ class Fixture:
     calls: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
     # Each change the provider performed, only ever after the person authorized it.
     performed: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
-    # The request the real Assistant's Action makes before a change, as Team admits it: set by the driver.
+    # The request the real Assistant's Action makes before a change, as Team admits it: set by the harness.
     ask: object = None
     # With --trace-dir, the attempt's ordered transcript, which every send, Brain turn, and Action call joins.
     events: list[dict[str, object]] | None = None

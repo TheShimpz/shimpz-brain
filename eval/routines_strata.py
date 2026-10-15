@@ -166,14 +166,17 @@ def _defined_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum, r
     """Why the confirmed Routine does not run when and how the person said, as its card's description says, or None.
 
     The card leaves its schedule and output to its description, so they are read from the Routine its confirmation
-    committed.
+    committed, and the description must state exactly both, also after an answer the person composed.
     """
     mode = routine.plan["output"]["mode"]
+    phrase = attempt.team.modules.phrase
     checks = (
         ("schedule", stratum.schedule(attempt.person, routine.schedule)),
         # The description the person confirmed says how often it runs, exactly as Team scheduled it.
-        ("description-schedule", attempt.team.modules.phrase.stated(card["description"]) == (routine.schedule,)),
+        ("description-schedule", phrase.stated(card["description"]) == (routine.schedule,)),
         (f"output:{mode}", mode == attempt.person.output),
+        # And what each run does with its result, exactly as Team persisted it.
+        (f"description-output:{mode}", phrase.outputs(card["description"]) == (mode,)),
     )
     return next((reason for reason, held in checks if not held), None)
 
