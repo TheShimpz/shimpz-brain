@@ -12,7 +12,7 @@ import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal, Protocol, Self
 
 import action_purpose
 import agent_runtime
@@ -427,8 +427,8 @@ class IntentRouteInput(ClosedInput):
         return intent_route.LifecycleContext(reference, conversation)
 
 
-class RuntimeLike:
-    """Structural documentation for the injected runtime used by the API and tests."""
+class RuntimeLike(Protocol):
+    """The runtime the API serves: ``AgentRuntime``, or a test double with the same methods."""
 
     def start(self, context: agent_runtime.TurnContext, message: str) -> agent_runtime.TurnResult: ...
 
