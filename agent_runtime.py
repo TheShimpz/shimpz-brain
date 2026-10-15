@@ -302,9 +302,17 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
 
     The agent and the context budget both read it here, so they never count a different set.
     """
-    exposed = turn_attachments.exposed(context.assistants, context.attachments)
+    # An answer to Team's output question only records again: its work already ran, and repeating it would repeat its
+    # changes, so the turn is offered no Action at all.
+    exposed = () if _records_only(context) else turn_attachments.exposed(context.assistants, context.attachments)
     memory_tool, routine_tool = _knowledge_tools(context)
     return exposed, memory_tool, routine_tool, turn_prompt.system_prompt(replace(context, assistants=exposed))
+
+
+def _records_only(context: TurnContext) -> bool:
+    """Whether the turn answers Team's output question: Team read the output from it, so the work already ran."""
+    question = context.routine_question
+    return question is not None and question["code"] == "routine-output-unstated" and context.routine_output is not None
 
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:

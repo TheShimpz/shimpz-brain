@@ -473,7 +473,9 @@ class RoutineModeTests(unittest.TestCase):
         for output in (None, "changes"):
             with self.subTest(output=output):
                 self.assertEqual(turn_pins.restore_output(turn_pins.record_output(output)), output)
-        for value in (None, "not json", '"sometimes"', "1"):
+        # No output read from the person records no entry, and no entry restores as none.
+        self.assertEqual((turn_pins.record_output(None), turn_pins.restore_output({})), ({}, None))
+        for value in ("null", "not json", '"sometimes"', "1"):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore_output({turn_pins.OUTPUT_METADATA: value})
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
@@ -497,6 +499,11 @@ class RoutineModeTests(unittest.TestCase):
         # The thread keeps the description the card shows, never an empty assistant message.
         state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
         self.assertEqual(state["channel_values"]["messages"][-1].content, said)
+        # An answer Team read the output from is offered no Action at all, so its work can never run again.
+        self.assertEqual(agent_runtime._turn_surface(chat)[0], ())
+        unread = dataclasses.replace(chat, routine_output=None)
+        self.assertEqual(agent_runtime._turn_surface(unread)[0], agent_runtime._turn_surface(_chat([LISTED]))[0])
+        self.assertTrue(agent_runtime._turn_surface(unread)[0])
         # The output question asks for a record alone, unlike any other question.
         prompts = [
             turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=question))
