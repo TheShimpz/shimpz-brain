@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
-from test_memory import envelope
 from test_runtime_api import TOKEN, body
 from tool_fake import system_text
+from turn_envelope import envelope
 
 import routine
 
