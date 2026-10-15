@@ -29,7 +29,7 @@ from tool_fake import FixedFactory
 NO_PROXY_ENV = {"HTTPS_PROXY": "", "https_proxy": ""}
 
 
-class _Server:
+class GatedServer:
     """A local HTTP server that answers only when its ``respond`` flag says so."""
 
     def __init__(self, *, respond: bool) -> None:
@@ -74,7 +74,7 @@ class _Server:
         self._listener.close()
 
 
-def _run(scope: provider_cancel.CancelScope, work) -> Future:
+def run_in_scope(scope: provider_cancel.CancelScope, work) -> Future:
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(scope.run, work)
     executor.shutdown(wait=False)
@@ -89,8 +89,8 @@ class CancellableTransportTests(unittest.TestCase):
         self.client = provider_cancel.client()
         self.addCleanup(self.client.close)
 
-    def _server(self, *, respond: bool) -> _Server:
-        server = _Server(respond=respond)
+    def _server(self, *, respond: bool) -> GatedServer:
+        server = GatedServer(respond=respond)
         self.addCleanup(server.close)
         return server
 
@@ -98,7 +98,7 @@ class CancellableTransportTests(unittest.TestCase):
         hanging = self._server(respond=False)
         answering = self._server(respond=True)
         scope = provider_cancel.CancelScope()
-        outcome = _run(scope, lambda: self.client.get(hanging.url(), timeout=30))
+        outcome = run_in_scope(scope, lambda: self.client.get(hanging.url(), timeout=30))
         self.assertTrue(hanging.received.wait(5))
 
         # An unscoped call on the same client completes while the scoped one is blocked.
@@ -118,7 +118,7 @@ class CancellableTransportTests(unittest.TestCase):
         answering = self._server(respond=True)
         scope = provider_cancel.CancelScope()
         # The server never answers the ClientHello, so the real ssl handshake blocks.
-        outcome = _run(scope, lambda: self.client.get(f"https://127.0.0.1:{stalled.port}/", timeout=30))
+        outcome = run_in_scope(scope, lambda: self.client.get(f"https://127.0.0.1:{stalled.port}/", timeout=30))
         while not scope._sockets:
             time.sleep(0.01)
         self.assertEqual(self.client.get(answering.url()).text, "ok")
@@ -384,7 +384,7 @@ class StreamScopeTests(unittest.TestCase):
     def test_a_blocked_tls_handshake_is_cancelled(self):
         stream, _peer = self._pair()
         scope = provider_cancel.CancelScope()
-        outcome = _run(scope, lambda: stream.start_tls(None, "api.anthropic.com"))
+        outcome = run_in_scope(scope, lambda: stream.start_tls(None, "api.anthropic.com"))
         while not scope._sockets:
             time.sleep(0.01)
         scope.cancel()
@@ -476,7 +476,7 @@ class RuntimeCancellationTests(unittest.TestCase):
                 runtime._checkpointer, model_factory=FixedFactory(lambda _config: _CancellableModel(responses=[]))
             )
             scope = provider_cancel.CancelScope()
-            outcome = _run(scope, lambda: cancelling.start(turn, "Please wait"))
+            outcome = run_in_scope(scope, lambda: cancelling.start(turn, "Please wait"))
             self.assertTrue(_CancellableModel.entered.wait(5))
             scope.cancel()
             self.assertIsInstance(outcome.exception(5), provider_cancel.ProviderCallCancelled)
@@ -492,7 +492,7 @@ class RuntimeCancellationTests(unittest.TestCase):
             sqlite3.connect(path).execute("PRAGMA integrity_check").fetchone()
 
 
-async def _asgi_turn(
+async def asgi_post(
     app, payload: dict[str, object], *, disconnect: asyncio.Event | None, path: str = "/v1/turns"
 ) -> dict[str, Any]:
     raw = json.dumps(payload).encode()
@@ -559,11 +559,11 @@ class DisconnectTests(unittest.TestCase):
 
         async def scenario():
             disconnect = asyncio.Event()
-            turn = asyncio.create_task(_asgi_turn(app, body(), disconnect=disconnect))
+            turn = asyncio.create_task(asgi_post(app, body(), disconnect=disconnect))
             self.assertTrue(await asyncio.to_thread(runtime.entered.wait, 5))
             disconnect.set()
             cancelled = await asyncio.wait_for(turn, 5)
-            following = await asyncio.wait_for(_asgi_turn(app, body(), disconnect=None), 5)
+            following = await asyncio.wait_for(asgi_post(app, body(), disconnect=None), 5)
             return cancelled, following
 
         cancelled, following = asyncio.run(scenario())
@@ -598,7 +598,7 @@ class CapabilityPlanDisconnectTests(unittest.TestCase):
 
         async def scenario():
             disconnect = asyncio.Event()
-            plan = asyncio.create_task(_asgi_turn(app, payload, disconnect=disconnect, path="/v1/capability-plan"))
+            plan = asyncio.create_task(asgi_post(app, payload, disconnect=disconnect, path="/v1/capability-plan"))
             self.assertTrue(await asyncio.to_thread(runtime.entered.wait, 5))
             disconnect.set()
             return await asyncio.wait_for(plan, 5)

@@ -18,7 +18,7 @@ import runtime_api
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.serde import _msgpack
 from langgraph.checkpoint.serde.event_hooks import register_serde_event_listener
-from test_attachments import _ActionProvider, _attachment, _context
+from test_attachments import ActionProvider, team_attachment, turn_context
 
 
 def _scenario(path: Path) -> None:
@@ -27,8 +27,8 @@ def _scenario(path: Path) -> None:
     if not _msgpack.STRICT_MSGPACK_ENABLED:
         raise AssertionError("the scenario must run with strict msgpack enabled")
 
-    provider = _ActionProvider("openai")
-    attached = _context("openai", "gpt-6.1-sol", _attachment("text"))
+    provider = ActionProvider("openai")
+    attached = turn_context("openai", "gpt-6.1-sol", team_attachment("text"))
     first = runtime_api._sqlite_runtime(path)
     paused = provider.runtime(first._checkpointer).start(attached, '{"files":[],"message":"Store the report"}')
     if paused.status != "action-required" or len(paused.actions) != 1:
@@ -40,7 +40,7 @@ def _scenario(path: Path) -> None:
     resumed = agent.resume(attached, {paused.actions[0].interrupt_id: {"stored": True}})
     if (resumed.status, resumed.reply) != ("completed", "Read it."):
         raise AssertionError(f"the resumed turn did not complete: {resumed.status}")
-    following = agent.start(_context("openai", "gpt-6.1-sol"), '{"files":[],"message":"And now?"}')
+    following = agent.start(turn_context("openai", "gpt-6.1-sol"), '{"files":[],"message":"And now?"}')
     if following.reply != "Read it." or "Quarterly total" in json.dumps(provider.turns()[-1]["input"]):
         raise AssertionError("the next turn did not drop the attachment exchange")
     reopened.close()

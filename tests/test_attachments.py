@@ -27,7 +27,7 @@ import turn_pins
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
-from test_provider_cancel import NO_PROXY_ENV, _run, _Server
+from test_provider_cancel import NO_PROXY_ENV, GatedServer, run_in_scope
 from test_runtime_api import TOKEN, body
 
 PNG = base64.b64decode(
@@ -53,7 +53,7 @@ ASSISTANT = agent_runtime.AssistantDefinition(
 )
 
 
-def _attachment(kind: str, file_id: str = "a" * 32) -> dict[str, object]:
+def team_attachment(kind: str, file_id: str = "a" * 32) -> dict[str, object]:
     content: dict[str, object]
     if kind == "text":
         content = {"type": "text", "text": "Quarterly total: 1000", "pdf": True}
@@ -78,7 +78,7 @@ def _attachment(kind: str, file_id: str = "a" * 32) -> dict[str, object]:
     }
 
 
-def _context(provider: str, model: str, *items: dict[str, object]) -> agent_runtime.TurnContext:
+def turn_context(provider: str, model: str, *items: dict[str, object]) -> agent_runtime.TurnContext:
     return agent_runtime.TurnContext(
         "attachments-thread",
         "Docs Team",
@@ -183,7 +183,7 @@ class ProviderPayloadTests(unittest.TestCase):
         saver = InMemorySaver()
         runtime = provider.runtime(saver)
         result = runtime.start(
-            _context("openai", "gpt-6.1-sol", _attachment("text"), _attachment("image", "b" * 32)),
+            turn_context("openai", "gpt-6.1-sol", team_attachment("text"), team_attachment("image", "b" * 32)),
             '{"files":[],"message":"Summarize the files"}',
         )
         self.assertEqual(result.reply, "Read it.")
@@ -201,7 +201,7 @@ class ProviderPayloadTests(unittest.TestCase):
         provider = _Provider("anthropic")
         saver = InMemorySaver()
         provider.runtime(saver).start(
-            _context("anthropic", "claude-sonnet-5-5", _attachment("image")),
+            turn_context("anthropic", "claude-sonnet-5-5", team_attachment("image")),
             '{"files":[],"message":"What is in the picture?"}',
         )
         (turn,) = provider.turns()
@@ -216,8 +216,10 @@ class ProviderPayloadTests(unittest.TestCase):
         provider = _Provider("openai")
         saver = InMemorySaver()
         runtime = provider.runtime(saver)
-        runtime.start(_context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read it"}')
-        runtime.start(_context("openai", "gpt-6.1-sol"), '{"files":[],"message":"And now?"}')
+        runtime.start(
+            turn_context("openai", "gpt-6.1-sol", team_attachment("text")), '{"files":[],"message":"Read it"}'
+        )
+        runtime.start(turn_context("openai", "gpt-6.1-sol"), '{"files":[],"message":"And now?"}')
         second = provider.turns()[1]
         sent = json.dumps(second["input"])
         self.assertNotIn("Read it", sent)
@@ -225,7 +227,7 @@ class ProviderPayloadTests(unittest.TestCase):
         self.assertIn("And now?", sent)
 
 
-class _ActionProvider(_Provider):
+class ActionProvider(_Provider):
     """An OpenAI provider whose first turn call requests the authorizing file Action."""
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -254,20 +256,20 @@ class _ActionProvider(_Provider):
 
 class ResumeTests(unittest.TestCase):
     def test_every_resume_carries_the_same_attachments_and_a_changed_set_is_refused(self) -> None:
-        provider = _ActionProvider("openai")
+        provider = ActionProvider("openai")
         saver = InMemorySaver()
         runtime = provider.runtime(saver)
-        context = _context("openai", "gpt-6.1-sol", _attachment("text"))
+        context = turn_context("openai", "gpt-6.1-sol", team_attachment("text"))
         paused = runtime.start(context, '{"files":[],"message":"Store the report"}')
         self.assertEqual(paused.status, "action-required")
         (request,) = paused.actions
         self.assertEqual((request.action, dict(request.input)), ("store", {"document": "a" * 32}))
         self.assertNotIn("Quarterly total", _checkpoint_text(saver))
 
-        changed = _attachment("text")
+        changed = team_attachment("text")
         changed["content"]["text"] = "Quarterly total: 2000"
         with self.assertRaises(agent_runtime.RuntimeContractError):
-            runtime.resume(_context("openai", "gpt-6.1-sol", changed), {request.interrupt_id: {"stored": True}})
+            runtime.resume(turn_context("openai", "gpt-6.1-sol", changed), {request.interrupt_id: {"stored": True}})
 
         result = runtime.resume(context, {request.interrupt_id: {"stored": True}})
         self.assertEqual(result.reply, "Read it.")
@@ -306,7 +308,7 @@ class ReservationTests(unittest.TestCase):
         provider = _FlakyProvider("openai", failures=1)
         saver = InMemorySaver()
         result = provider.runtime(saver).start(
-            _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+            turn_context("openai", "gpt-6.1-sol", team_attachment("text")), '{"files":[],"message":"Read"}'
         )
         self.assertEqual(result.reply, "Read it.")
         # Exactly two dispatches: no hidden SDK retry multiplied them.
@@ -320,12 +322,12 @@ class ReservationTests(unittest.TestCase):
         provider = _FlakyProvider("openai", failures=10)
         with self.assertRaises(agent_runtime.ProviderRequestError):
             provider.runtime(InMemorySaver()).start(
-                _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+                turn_context("openai", "gpt-6.1-sol", team_attachment("text")), '{"files":[],"message":"Read"}'
             )
         self.assertEqual(len(provider.turns()), turn_attachments.MAX_ATTEMPTS)
 
         reserved: list[int] = []
-        middleware = turn_attachments.projection(turn_attachments.admit([_attachment("text")]), "turn", 16_000)
+        middleware = turn_attachments.projection(turn_attachments.admit([team_attachment("text")]), "turn", 16_000)
         failing = mock.Mock(side_effect=openai_server_error())
         request = SimpleNamespace(messages=[_human("turn"), _ai(2), _ai(1)], override=lambda **kwargs: kwargs)
         with (
@@ -342,16 +344,16 @@ class ReservationTests(unittest.TestCase):
     def test_counting_makes_one_attempt_and_falls_back_when_the_provider_fails(self) -> None:
         provider = _FlakyProvider("openai", failures=0, count_status=500)
         provider.runtime(InMemorySaver()).start(
-            _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+            turn_context("openai", "gpt-6.1-sol", team_attachment("text")), '{"files":[],"message":"Read"}'
         )
         self.assertEqual(len(provider.counts()), 1)
 
-    def _hanging_count(self) -> tuple[_Server, list[float], object]:
+    def _hanging_count(self) -> tuple[GatedServer, list[float], object]:
         """A count that blocks on a real provider socket until a cancellation shuts it down."""
         patcher = mock.patch.dict(os.environ, NO_PROXY_ENV)
         patcher.start()
         self.addCleanup(patcher.stop)
-        server = _Server(respond=False)
+        server = GatedServer(respond=False)
         self.addCleanup(server.close)
         client = provider_cancel.client()
         self.addCleanup(client.close)
@@ -369,7 +371,7 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual([thread for thread in threading.enumerate() if thread.name.startswith("attachment-count")], [])
 
     def test_counting_stops_at_one_overall_deadline_and_terminates_the_request(self) -> None:
-        attachments = turn_attachments.admit([_attachment("text", f"{index:032x}") for index in range(3)])
+        attachments = turn_attachments.admit([team_attachment("text", f"{index:032x}") for index in range(3)])
         _server, calls, hanging = self._hanging_count()
         with mock.patch.object(turn_attachments, "COUNT_SECONDS", 0.3):
             started = time.monotonic()
@@ -381,7 +383,7 @@ class ReservationTests(unittest.TestCase):
         self._assert_no_counting_worker()
 
     def test_files_are_counted_together_so_the_deadline_bounds_the_slowest_not_their_sum(self) -> None:
-        attachments = turn_attachments.admit([_attachment("text", f"{index:032x}") for index in range(3)])
+        attachments = turn_attachments.admit([team_attachment("text", f"{index:032x}") for index in range(3)])
         # The first two counts wait for each other: counted one after another, neither could finish.
         together = threading.Barrier(turn_attachments.MAX_COUNT_WORKERS)
 
@@ -418,7 +420,7 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(turn_attachments._count_before(count, [], time.monotonic() + 5), 7)
 
     def test_a_stopped_count_ends_the_turn_before_an_uncounted_image_could_refuse_it(self) -> None:
-        attachments = turn_attachments.admit([_attachment("image", "a" * 32), _attachment("text", "b" * 32)])
+        attachments = turn_attachments.admit([team_attachment("image", "a" * 32), team_attachment("text", "b" * 32)])
 
         def count(blocks: list, _timeout: float) -> int:
             if any(block.get("type") == "image" for block in blocks):
@@ -430,11 +432,11 @@ class ReservationTests(unittest.TestCase):
         self._assert_no_counting_worker()
 
     def test_stopping_the_turn_reaches_a_count_blocked_on_the_provider(self) -> None:
-        attachments = turn_attachments.admit([_attachment("text")])
+        attachments = turn_attachments.admit([team_attachment("text")])
         server, _calls, hanging = self._hanging_count()
         turn = provider_cancel.CancelScope()
         started = time.monotonic()
-        future = _run(turn, lambda: turn_attachments.charges(attachments, hanging))
+        future = run_in_scope(turn, lambda: turn_attachments.charges(attachments, hanging))
         self.assertTrue(server.received.wait(5))
         turn.cancel()
         with self.assertRaises(provider_cancel.ProviderCallCancelled):
@@ -443,19 +445,19 @@ class ReservationTests(unittest.TestCase):
         self._assert_no_counting_worker()
 
     def test_a_stopped_turn_never_starts_counting(self) -> None:
-        attachments = turn_attachments.admit([_attachment("text")])
+        attachments = turn_attachments.admit([team_attachment("text")])
         server, _calls, hanging = self._hanging_count()
         turn = provider_cancel.CancelScope()
         turn.cancel()
         with self.assertRaises(provider_cancel.ProviderCallCancelled):
-            _run(turn, lambda: turn_attachments.charges(attachments, hanging)).result(timeout=5)
+            run_in_scope(turn, lambda: turn_attachments.charges(attachments, hanging)).result(timeout=5)
         self.assertEqual(server.accepted, 0)
 
     def test_an_uncounted_image_refuses_the_turn_before_any_model_call(self) -> None:
         provider = _FlakyProvider("openai", failures=0, count_status=500)
         with self.assertRaises(agent_runtime.RuntimeContractError):
             provider.runtime(InMemorySaver()).start(
-                _context("openai", "gpt-6.1-sol", _attachment("image")), '{"files":[],"message":"Look"}'
+                turn_context("openai", "gpt-6.1-sol", team_attachment("image")), '{"files":[],"message":"Look"}'
             )
         self.assertEqual(provider.turns(), [])
 
@@ -490,7 +492,7 @@ class ExposureTests(unittest.TestCase):
     def test_content_offers_only_authorizing_actions_and_no_learning_or_routines(self) -> None:
         provider = _Provider("openai")
         provider.runtime(InMemorySaver()).start(
-            _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Store it"}'
+            turn_context("openai", "gpt-6.1-sol", team_attachment("text")), '{"files":[],"message":"Store it"}'
         )
         (turn,) = provider.turns()
         names = [tool["name"] for tool in turn["tools"]]
@@ -505,15 +507,15 @@ class ExposureTests(unittest.TestCase):
     def test_an_opaque_file_keeps_every_action(self) -> None:
         provider = _Provider("openai")
         provider.runtime(InMemorySaver()).start(
-            _context("openai", "gpt-6.1-sol", _attachment("opaque")), '{"files":[],"message":"Store it"}'
+            turn_context("openai", "gpt-6.1-sol", team_attachment("opaque")), '{"files":[],"message":"Store it"}'
         )
         names = [tool["name"] for tool in provider.turns()[0]["tools"]]
         self.assertEqual(len([name for name in names if name.startswith("a_docs")]), 2)
 
     def test_knowledge_tools_are_withheld_while_files_are_attached(self) -> None:
-        context = _context("openai", "gpt-6.1-sol", _attachment("opaque"))
+        context = turn_context("openai", "gpt-6.1-sol", team_attachment("opaque"))
         self.assertEqual(agent_runtime._knowledge_tools(context), (False, False))
-        self.assertEqual(agent_runtime._knowledge_tools(_context("openai", "gpt-6.1-sol")), (True, True))
+        self.assertEqual(agent_runtime._knowledge_tools(turn_context("openai", "gpt-6.1-sol")), (True, True))
 
 
 class ChargeTests(unittest.TestCase):
@@ -521,12 +523,12 @@ class ChargeTests(unittest.TestCase):
         provider = _Provider("openai", count=turn_attachments.MAX_FILE_TOKENS + 1)
         with self.assertRaises(agent_runtime.RuntimeContractError):
             provider.runtime(InMemorySaver()).start(
-                _context("openai", "gpt-6.1-sol", _attachment("text")), '{"files":[],"message":"Read"}'
+                turn_context("openai", "gpt-6.1-sol", team_attachment("text")), '{"files":[],"message":"Read"}'
             )
         self.assertEqual(provider.turns(), [])
 
     def test_a_count_failure_falls_back_to_a_conservative_estimate(self) -> None:
-        attachment = turn_attachments.admit([_attachment("text")])[0]
+        attachment = turn_attachments.admit([team_attachment("text")])[0]
 
         def failing(_blocks: list, _timeout: float) -> int:
             raise turn_attachments.CountUnavailableError("down")
@@ -534,7 +536,7 @@ class ChargeTests(unittest.TestCase):
         estimated = turn_attachments.charges((attachment,), failing)
         self.assertEqual(estimated, (turn_attachments.estimated_charge(attachment),))
         self.assertEqual(turn_attachments.charges((attachment,), lambda _blocks, _timeout: 42), (42,))
-        image = turn_attachments.admit([_attachment("image")])[0]
+        image = turn_attachments.admit([team_attachment("image")])[0]
         with self.assertRaises(turn_attachments.AttachmentContractError):
             turn_attachments.charges((image,), None)
 
@@ -542,12 +544,12 @@ class ChargeTests(unittest.TestCase):
         # The largest metadata the contract admits: every quote in the name is escaped twice in the estimate.
         widest = []
         for index in range(turn_attachments.MAX_ATTACHMENTS):
-            item = _attachment("opaque", f"{index:032x}")
+            item = team_attachment("opaque", f"{index:032x}")
             item.update(name='"' * 255, media_type="application/" + "x" * 115, size=25 * 1024 * 1024)
             widest.append(item)
         provider = _Provider("openai")
         result = provider.runtime(InMemorySaver()).start(
-            _context("openai", "gpt-6.1-sol", *widest), '{"files":[],"message":"Store them"}'
+            turn_context("openai", "gpt-6.1-sol", *widest), '{"files":[],"message":"Store them"}'
         )
         self.assertEqual(result.reply, "Read it.")
         self.assertEqual(provider.counts(), [])
@@ -559,7 +561,7 @@ class ChargeTests(unittest.TestCase):
         turn_attachments.admit_call(sum(charged), 3)
 
         counted: list[list[dict[str, object]]] = []
-        mixed = turn_attachments.admit([_attachment("opaque"), _attachment("text", "b" * 32)])
+        mixed = turn_attachments.admit([team_attachment("opaque"), team_attachment("text", "b" * 32)])
         self.assertEqual(
             turn_attachments.charges(mixed, lambda blocks, _timeout: counted.append(blocks) or 42),
             (turn_attachments.estimated_charge(mixed[0]), 42),
@@ -569,7 +571,7 @@ class ChargeTests(unittest.TestCase):
     def test_the_text_fallback_never_undercounts_a_byte_level_tokenizer(self) -> None:
         # 16,000 characters across scripts: a byte-level BPE such as o200k_base emits at most one token per byte.
         mixed = ("Relatório 東京 ⚙ 𝔘 " * 1_000)[:16_000]
-        item = _attachment("text")
+        item = team_attachment("text")
         item["content"]["text"] = mixed
         attachment = turn_attachments.admit([item])[0]
         projected_bytes = len(json.dumps(turn_attachments.blocks(attachment), ensure_ascii=False).encode())
@@ -590,19 +592,19 @@ class ChargeTests(unittest.TestCase):
 
 class AdmissionTests(unittest.TestCase):
     def test_only_the_closed_bounded_shapes_are_admitted(self) -> None:
-        self.assertEqual(len(turn_attachments.admit([_attachment("text"), _attachment("image", "b" * 32)])), 2)
-        wrong_digest = _attachment("image")
+        self.assertEqual(len(turn_attachments.admit([team_attachment("text"), team_attachment("image", "b" * 32)])), 2)
+        wrong_digest = team_attachment("image")
         wrong_digest["content"]["sha256"] = "0" * 64
-        too_wide = _attachment("image")
+        too_wide = team_attachment("image")
         too_wide["content"]["width"] = 1_569
-        gif = _attachment("image")
+        gif = team_attachment("image")
         gif["content"]["media_type"] = "image/gif"
-        extra = {**_attachment("text"), "path": "secret"}
-        empty = _attachment("text")
+        extra = {**team_attachment("text"), "path": "secret"}
+        empty = team_attachment("text")
         empty["content"]["text"] = "   "
-        reason = _attachment("opaque")
+        reason = team_attachment("opaque")
         reason["content"]["reason"] = "maybe"
-        five_images = [_attachment("image", f"{index:032x}") for index in range(5)]
+        five_images = [team_attachment("image", f"{index:032x}") for index in range(5)]
         for raw in (
             [wrong_digest],
             [too_wide],
@@ -610,24 +612,24 @@ class AdmissionTests(unittest.TestCase):
             [extra],
             [empty],
             [reason],
-            [_attachment("text"), _attachment("text")],
+            [team_attachment("text"), team_attachment("text")],
             five_images,
-            [_attachment("text", "A" * 32)],
+            [team_attachment("text", "A" * 32)],
             "not a list",
         ):
             with self.subTest(raw=str(raw)[:60]), self.assertRaises(turn_attachments.AttachmentContractError):
                 turn_attachments.admit(raw)
 
     def test_the_commitment_binds_the_exact_prepared_content(self) -> None:
-        first = turn_attachments.admit([_attachment("text")])
-        changed = _attachment("text")
+        first = turn_attachments.admit([team_attachment("text")])
+        changed = team_attachment("text")
         changed["content"]["text"] = "Quarterly total: 2000"
         self.assertNotEqual(
             turn_attachments.commitment(first), turn_attachments.commitment(turn_attachments.admit([changed]))
         )
         self.assertEqual(
             turn_attachments.commitment(first),
-            turn_attachments.commitment(turn_attachments.admit([_attachment("text")])),
+            turn_attachments.commitment(turn_attachments.admit([team_attachment("text")])),
         )
 
 
@@ -636,7 +638,7 @@ class RefusalEdgeTests(unittest.TestCase):
         for authorization, input_files in ((True, ("missing",)), ("yes", ()), (True, ("document", "document"))):
             with self.subTest(input_files=input_files), self.assertRaises(agent_runtime.RuntimeContractError):
                 agent_runtime.ActionDefinition("store", "Store it.", FILE_SCHEMA, authorization, input_files)
-        context = _context("openai", "gpt-6.1-sol", _attachment("text"))
+        context = turn_context("openai", "gpt-6.1-sol", team_attachment("text"))
         for change in ({"attachments": ("text",)}, {"attachment_charge": -1}, {"attachment_charge": True}):
             with self.subTest(change=change), self.assertRaises(agent_runtime.RuntimeContractError):
                 dataclasses.replace(context, **change)
@@ -648,13 +650,13 @@ class RefusalEdgeTests(unittest.TestCase):
         self.assertEqual(factory.single_attempt(config).max_retries, 0)
 
     def test_an_image_whose_base64_is_not_canonical_is_refused(self) -> None:
-        image = _attachment("image")
+        image = team_attachment("image")
         image["content"]["base64"] = "!" * 8
         with self.assertRaises(turn_attachments.AttachmentContractError):
             turn_attachments.admit([image])
 
     def test_projection_leaves_other_calls_alone_and_refuses_a_missing_turn_message(self) -> None:
-        attachments = turn_attachments.admit([_attachment("text")])
+        attachments = turn_attachments.admit([team_attachment("text")])
         messages = [HumanMessage(content="Earlier", id="earlier"), AIMessage(content="Done", id="reply")]
         self.assertEqual(turn_attachments.project(messages, None, attachments), messages)
         self.assertEqual(turn_attachments.project(messages, "turn", ()), messages)
@@ -671,9 +673,9 @@ class RefusalEdgeTests(unittest.TestCase):
         self.assertFalse(turn_attachments.retryable(ValueError("not a provider failure")))
 
     def test_a_turn_past_its_token_ceiling_is_refused_at_start_and_at_resume(self) -> None:
-        provider = _ActionProvider("openai")
+        provider = ActionProvider("openai")
         runtime = provider.runtime(InMemorySaver())
-        context = _context("openai", "gpt-6.1-sol", _attachment("text"))
+        context = turn_context("openai", "gpt-6.1-sol", team_attachment("text"))
         with (
             mock.patch.object(turn_attachments, "MAX_TURN_TOKENS", 1),
             self.assertRaises(agent_runtime.RuntimeContractError),
@@ -711,13 +713,13 @@ class TurnEndpointTests(unittest.TestCase):
         )
         api = TestClient(runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN))
         headers = {"Authorization": f"Bearer {TOKEN}"}
-        attached = body(attachments=[_attachment("image")])
+        attached = body(attachments=[team_attachment("image")])
         self.assertEqual(api.post("/v1/turns", json=attached, headers=headers).status_code, 200)
         resume = {key: value for key, value in attached.items() if key not in {"message", "conversation", "locale"}}
         resume["results"] = {"interrupt-1": {"ok": True}}
         self.assertEqual(api.post("/v1/turns/resume", json=resume, headers=headers).status_code, 200)
         self.assertEqual([len(context.attachments) for context in contexts], [1, 1])
-        bad = _attachment("image")
+        bad = team_attachment("image")
         bad["content"]["sha256"] = "0" * 64
         refused = api.post("/v1/turns", json=body(attachments=[bad]), headers=headers)
         self.assertEqual((refused.status_code, refused.json()), (400, {"detail": "invalid attachments"}))
