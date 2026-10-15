@@ -12,7 +12,6 @@ from unittest import mock
 
 import action_purpose
 import agent_runtime
-import memory
 import provider_cancel
 import provider_client
 import runtime_api
@@ -23,16 +22,13 @@ from provider_replies import provider
 from structured_fake import StructuredFakeModel
 from test_agent_runtime import ToolAwareFakeModel, action, assistant, context
 from test_runtime_api import NO_USAGE, SECRET, TOKEN, FakeRuntime, client
+from turn_envelope import MALFORMED, envelope
 
 ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
 PURPOSE = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
 MESSAGE = "Traga as notícias de IA de hoje"
 FILE = {"id": "f" * 32, "name": "segredo-interno.pdf", "media_type": "application/pdf", "size": 3}
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
-
-
-def envelope(message: str = MESSAGE, files: list | None = None) -> str:
-    return json.dumps({"files": [FILE] if files is None else files, "message": message}, ensure_ascii=False)
 
 
 class DecisionOnly:
@@ -58,7 +54,7 @@ def suspended(locale: str | None = "pt", message: str | None = None):
     saver = InMemorySaver()
     runtime = agent_runtime.AgentRuntime(saver, model_factory=factory)
     turn = dataclasses.replace(context(assistant("hello-pulse", action())), locale=locale)
-    result = runtime.start(turn, envelope() if message is None else message)
+    result = runtime.start(turn, envelope(MESSAGE, (FILE,)) if message is None else message)
     return runtime, saver, factory, turn, result.actions[0]
 
 
@@ -157,7 +153,7 @@ class PendingRequestTests(unittest.TestCase):
             real._replace(
                 checkpoint={
                     **real.checkpoint,
-                    "channel_values": {"messages": [SystemMessage(content=envelope(), id=message_id)]},
+                    "channel_values": {"messages": [SystemMessage(content=envelope(MESSAGE, (FILE,)), id=message_id)]},
                 },
             ),
         )
@@ -169,17 +165,7 @@ class PendingRequestTests(unittest.TestCase):
         _runtime, saver, _factory, turn, request = suspended()
         real = saver.get_tuple({"configurable": {"thread_id": turn.thread_id}})
         message_id = json.loads(real.metadata["shimpz_turn_message"])
-        for content in (
-            "not json",
-            json.dumps(["files", "message"]),
-            json.dumps({"message": MESSAGE}),
-            json.dumps({"files": [], "message": MESSAGE, "extra": 1}),
-            json.dumps({"files": {}, "message": MESSAGE}),
-            json.dumps({"files": [], "message": 1}),
-            json.dumps({"files": [], "message": "   "}),
-            json.dumps({"files": [], "message": "x" * (memory.MAX_TURN_MESSAGE_CHARS + 1)}),
-            [{"type": "text", "text": envelope()}],
-        ):
+        for content in MALFORMED:
             checkpoint = real._replace(
                 checkpoint={
                     **real.checkpoint,
