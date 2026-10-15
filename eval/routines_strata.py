@@ -237,7 +237,7 @@ def _dated_text_miss(attempt: Attempt, content: object) -> str | None:
     (routine,) = attempt.team.service.routine_store.load("team_1").routines
     (step,) = [item for item in routine.plan["steps"] if item["action"] == "replace-dns-record"]
     source = step["input"]["content"]
-    later = modules.plan.clock_value(source, now + datetime.timedelta(days=1), routine.plan["timezone"])
+    later = modules.dates.clock_value(source, now + datetime.timedelta(days=1), routine.plan["timezone"])
     return None if later != content and dated(later, tomorrow) else "replay-change:next-day"
 
 
