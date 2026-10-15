@@ -210,12 +210,10 @@ def validate_inputs(
     return task, expected_intent, admitted, _selection_context(admitted_context)
 
 
-def admit_installable(value: object, expected_intent: LifecycleIntent | None) -> tuple[InstallableAssistant, ...]:
-    """Validate the installable Assistants a classification may describe; selection never carries them."""
+def admit_installable(value: object) -> tuple[InstallableAssistant, ...]:
+    """Validate the installable Assistants a classification may describe; only classification passes them."""
     if not isinstance(value, tuple) or len(value) > MAX_INSTALLABLE:
         raise IntentRouteError("invalid installable Assistants")
-    if value and expected_intent is not None:
-        raise IntentRouteError("directory selection cannot include installable Assistants")
     admitted = []
     for item in value:
         if not isinstance(item, InstallableAssistant):

@@ -776,4 +776,4 @@ def validate_corpus() -> None:
     for case in CAPABILITY_CASES:
         intent_route.validate_inputs(case.message, None, (), case.context)
     for installable in INSTALLABLE.values():
-        intent_route.admit_installable(installable, None)
+        intent_route.admit_installable(installable)

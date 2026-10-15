@@ -815,7 +815,7 @@ class AgentRuntime:
             raise RuntimeContractError("the decision fast path applies only to classification")
         try:
             task, _, _, admitted = intent_router.validate_inputs(objective, None, candidates, context)
-            installable = intent_router.admit_installable(decision.installable, None)
+            installable = intent_router.admit_installable(decision.installable)
         except intent_router.IntentRouteError as exc:
             raise RuntimeContractError(str(exc)) from exc
         with self._decision_client_guard:
