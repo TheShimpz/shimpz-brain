@@ -8,7 +8,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import model_usage
 from eval import arms, corpus, judge, large_api, precision, private, split
 from eval import cost as eval_cost
 from eval import signals as eval_signals
@@ -76,15 +75,6 @@ class JudgingTests(unittest.TestCase):
         attempt = _attempt("dns-create.en")
         self.assertEqual(precision.attempt_key(attempt), "c|openai|gpt-6-luna|a|0|dns-create.en")
         self.assertEqual(precision.judge_item(attempt).scenario.id, "dns-create.en")
-
-    def test_metered_judgments_record_what_each_call_reported(self):
-        spend: list[eval_cost.Cost] = []
-        with mock.patch.object(model_usage, "measure", lambda work: (work(), USAGE)):
-            verdict = precision.metered("gpt-6-luna", lambda _item: GOOD, spend)(
-                precision.judge_item(_attempt("dns-create.en"))
-            )
-        self.assertEqual(verdict, GOOD)
-        self.assertAlmostEqual(spend[0].usd, 1000 * 0.1e-6 + 50 * 0.5e-6)
 
     def test_only_completed_attempts_are_judged_and_failed_judgments_stay_unjudged(self):
         attempts = [
@@ -714,7 +704,6 @@ class CommandTests(unittest.TestCase):
             with (
                 mock.patch.object(judge, "judge_model", return_value=structured),
                 mock.patch.object(judge, "judge", return_value=GOOD) as judged,
-                mock.patch.object(model_usage, "measure", lambda work: (work(), USAGE)),
                 mock.patch("builtins.print"),
             ):
                 self.assertEqual(precision.main(["validate"]), 0)

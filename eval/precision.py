@@ -89,18 +89,6 @@ def judge_item(attempt: Mapping[str, object]) -> judge.Item:
 Judgment = Callable[[judge.Item], judge.Verdict]
 
 
-def metered(model: str, verdict: Callable[[judge.Item], judge.Verdict], spend: list[eval_cost.Cost]) -> Judgment:
-    """Record what each judge call reported; the installed ``eval.ceiling`` bounds and reserves the request itself."""
-    import model_usage
-
-    def run(item: judge.Item) -> judge.Verdict:
-        result, counts = model_usage.measure(lambda: verdict(item))
-        spend.append(eval_cost.cost(eval_cost.Usage.of(counts), model))
-        return result
-
-    return run
-
-
 def judge_attempts(
     attempts: Iterable[Mapping[str, object]], primary: Judgment, tiebreak: Judgment, workers: int = WORKERS
 ) -> list[dict[str, object]]:
@@ -799,13 +787,9 @@ def _brain_assistant(contracts: str, name: str) -> object:
     )
 
 
-def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[Judgment, Judgment]:
+def _judges(args: argparse.Namespace) -> tuple[Judgment, Judgment]:
     return judgments.judge_pair(
-        args.key_file,
-        args.tiebreak_key_file,
-        lambda model, provider: metered(
-            judge.JUDGE_MODELS[provider], lambda item: judge.judge(model, provider, item), spend
-        ),
+        args.key_file, args.tiebreak_key_file, lambda model, provider: lambda item: judge.judge(model, provider, item)
     )
 
 
@@ -822,7 +806,7 @@ def _report(args: argparse.Namespace) -> None:
 
 def _paid(args: argparse.Namespace, budget) -> str:
     """The text of one paid command: both judges' calibration with the budget, or the transcript's verdicts."""
-    primary, tiebreak = _judges(args, [])
+    primary, tiebreak = _judges(args)
     if args.command == "calibrate":
         return (
             json.dumps({**calibrate(primary, tiebreak), "judge_budget": budget.summary()}, indent=1, sort_keys=True)
