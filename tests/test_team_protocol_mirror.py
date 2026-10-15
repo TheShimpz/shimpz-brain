@@ -57,13 +57,12 @@ class TeamProtocolMirrorTests(unittest.TestCase):
         for name, digest in digests.items():
             self.assertEqual(hashlib.sha256((MIRROR / "action" / "v1" / name).read_bytes()).hexdigest(), digest)
 
-    def test_the_http_modules_match_their_pin_from_the_same_team_commit(self) -> None:
+    def test_the_http_modules_match_their_pin(self) -> None:
+        # Each mirror keeps its own pin: a Team commit that changed only one protocol leaves the other's pin valid.
         pin = json.loads((MIRROR / "http" / "upstream.json").read_bytes())
-        action = json.loads((MIRROR / "action" / "upstream.json").read_bytes())
         self.assertEqual(set(pin), {"repository", "commit", "path", "files"})
-        self.assertEqual(
-            (pin["repository"], pin["path"], pin["commit"]), (REPOSITORY, "protocol/http/v1", action["commit"])
-        )
+        self.assertEqual((pin["repository"], pin["path"]), (REPOSITORY, "protocol/http/v1"))
+        self.assertRegex(pin["commit"], r"\A[0-9a-f]{40}\Z")
         self.assertEqual(set(pin["files"]), _files(MIRROR / "http" / "v1"))
         for name, digest in pin["files"].items():
             self.assertEqual(hashlib.sha256((MIRROR / "http" / "v1" / name).read_bytes()).hexdigest(), digest)
