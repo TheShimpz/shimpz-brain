@@ -403,12 +403,12 @@ class ReservationTests(unittest.TestCase):
             # A stopped turn ends the wait at once instead of at the deadline.
             stopped = provider_cancel.CancelScope()
             stopped.cancel()
-            token = provider_cancel._SCOPE.set(stopped)
+            token = provider_cancel.SCOPE.set(stopped)
             try:
                 with self.assertRaises(provider_cancel.ProviderCallCancelled):
                     turn_attachments._count_before(count, [], time.monotonic() + 30)
             finally:
-                provider_cancel._SCOPE.reset(token)
+                provider_cancel.SCOPE.reset(token)
         finally:
             for _ in range(turn_attachments.MAX_COUNT_WORKERS):
                 turn_attachments._COUNTING.release()

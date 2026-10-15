@@ -63,11 +63,11 @@ class CancelScope:
             return self._cancelled
 
     def run[T](self, work: Callable[[], T]) -> T:
-        token = _SCOPE.set(self)
+        token = SCOPE.set(self)
         try:
             return work()
         finally:
-            _SCOPE.reset(token)
+            SCOPE.reset(token)
 
     def cancel(self) -> None:
         # Shutting down under the lock keeps every registered socket from leaving the scope, and so from returning
@@ -120,7 +120,8 @@ class CancelScope:
         self.cancel()
 
 
-_SCOPE: contextvars.ContextVar[CancelScope | None] = contextvars.ContextVar("provider_cancel_scope", default=None)
+# The scope of the provider work running in this context, if any.
+SCOPE: contextvars.ContextVar[CancelScope | None] = contextvars.ContextVar("provider_cancel_scope", default=None)
 
 
 @contextmanager
@@ -130,7 +131,7 @@ def nested() -> Iterator[CancelScope]:
     The current turn's cancellation reaches it, and leaving the block cancels it, so no request it started outlives the
     block: a blocked read is woken and every later connect or request fails before it starts.
     """
-    parent = _SCOPE.get()
+    parent = SCOPE.get()
     scope = CancelScope()
     if parent is not None:
         parent._adopt(scope)
@@ -143,7 +144,7 @@ def nested() -> Iterator[CancelScope]:
 
 
 def _guard(stream: httpcore.NetworkStream) -> AbstractContextManager[None]:
-    scope = _SCOPE.get()
+    scope = SCOPE.get()
     if scope is None:
         return nullcontext()
     return scope.io(stream.get_extra_info("socket"))
@@ -165,7 +166,7 @@ class _Stream(httpcore.NetworkStream):
         self._inner.close()
 
     def start_tls(self, ssl_context, server_hostname: str | None = None, timeout: float | None = None):
-        scope = _SCOPE.get()
+        scope = SCOPE.get()
         if scope is None:
             return _Stream(self._inner.start_tls(ssl_context, server_hostname, timeout))
         # wrap_socket detaches this socket object and handshakes on a new one, so the scope holds a duplicate
@@ -192,7 +193,7 @@ def _bounded(timeout: float | None, bound: float) -> float:
 
 class _Backend(httpcore.SyncBackend):
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
-        scope = _SCOPE.get()
+        scope = SCOPE.get()
         if scope is not None:
             scope.check()
         try:
@@ -228,7 +229,7 @@ class _Transport(httpx.HTTPTransport):
         )
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        scope = _SCOPE.get()
+        scope = SCOPE.get()
         if scope is not None:
             scope.check()
         timeout = dict(request.extensions.get("timeout", {}))

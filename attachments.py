@@ -242,7 +242,7 @@ def _count_before(
     """One count with whatever time is left once it holds a counting slot; none is left past the deadline."""
     # Waiting for a slot stays stoppable: the wait is cut into short polls of the turn's scope.
     while not _COUNTING.acquire(timeout=min(_SLOT_POLL_SECONDS, max(0.0, deadline - time.monotonic()))):
-        scope = provider_cancel._SCOPE.get()
+        scope = provider_cancel.SCOPE.get()
         if scope is not None:
             scope.check()
         if time.monotonic() >= deadline:

@@ -456,7 +456,7 @@ class _CancellableModel(FakeMessagesListChatModel):
         return self
 
     def _generate(self, messages, *args, **kwargs):
-        scope = provider_cancel._SCOPE.get()
+        scope = provider_cancel.SCOPE.get()
         if scope is None:
             raise AssertionError("the turn scope did not reach the graph worker")
         type(self).entered.set()
@@ -546,7 +546,7 @@ class _BlockingRuntime:
         if self.calls > 1:
             return agent_runtime.TurnResult(status="completed", reply="Next turn.")
         self.entered.set()
-        scope = provider_cancel._SCOPE.get()
+        scope = provider_cancel.SCOPE.get()
         while not scope.cancelled:
             time.sleep(0.01)
         raise provider_cancel.ProviderCallCancelled
@@ -578,7 +578,7 @@ class _BlockingPlanner:
 
     def capability_plan(self, _provider, _objective, _candidates):
         self.entered.set()
-        scope = provider_cancel._SCOPE.get()
+        scope = provider_cancel.SCOPE.get()
         while not scope.cancelled:
             time.sleep(0.01)
         raise provider_cancel.ProviderCallCancelled

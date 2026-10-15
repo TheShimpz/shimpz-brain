@@ -349,7 +349,7 @@ class PurposeApiTests(unittest.TestCase):
         class Blocking(FakeRuntime):
             def action_purpose(self, provider, pending):
                 entered.set()
-                scope = provider_cancel._SCOPE.get()
+                scope = provider_cancel.SCOPE.get()
                 while not scope.cancelled:
                     time.sleep(0.01)
                 raise provider_cancel.ProviderCallCancelled
