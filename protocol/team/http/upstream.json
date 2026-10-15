@@ -1,10 +1,10 @@
 {
   "repository": "https://github.com/TheShimpz/shimpz-teams",
-  "commit": "fce51891492ad2e081bd00492a2df8af93c0d2b5",
+  "commit": "52b2e6e417e53dd3a18ac09c1cecf4de25073aff",
   "path": "protocol/http/v1",
   "files": {
     "identifiers.py": "29d382154e787e2e8d3ad5224d1440db6408ef81783b6d04a7c84bc810762f6e",
-    "payload.py": "13dcc13c110366ae51909fc7dcc1a6d0db8197810796d61339e47d1d9ff037eb",
+    "payload.py": "39562f6914b4a912cda0033a5d7088f3be0a65a5bbd6c43980963d28ceab1219",
     "phrase.py": "1718616beb6f7c91adf5b2cf409944c65f1eb67a521f23c359954dc0a2245231",
     "purpose.py": "317aa40e43d2b714a51a6d3cb54754d3ea750910e2b2c242f6757f0e26ab2f29",
     "routine.py": "66a25777e9b3801008e7ce9d613cd8337cb3ea5fb100d6bf67cacc3b6ab5885b",
