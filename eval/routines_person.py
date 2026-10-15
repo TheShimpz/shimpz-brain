@@ -472,7 +472,6 @@ OVER_BUDGET = "routine-interval-over-budget"
 _FIXED_ANSWERS = {
     "routine-binding-unsourced": "pode buscar de novo",
     "routine-work-rerun": "pode buscar de novo",
-    "routine-work-split": "faça tudo de novo",
 }
 
 
@@ -483,7 +482,6 @@ _TEAM_QUESTIONS = {
     "routine-binding-ambiguous": "Qual destes alvos a rotina deve usar?",
     "routine-binding-unsourced": "Posso buscar esse valor de novo?",
     "routine-work-rerun": "Posso refazer o trabalho completo?",
-    "routine-work-split": "Posso refazer o trabalho completo de uma vez?",
     OVER_BUDGET: "Esse intervalo não cabe no orçamento diário. Qual intervalo a rotina deve usar?",
 }
 

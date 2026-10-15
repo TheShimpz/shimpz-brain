@@ -385,7 +385,7 @@ class RoutineModeTests(unittest.TestCase):
         self.assertIn("If this message asks for a Routine", system)
         self.assertIn("what to do with each run's result from the user's words and asks about them itself", system)
         self.assertIn("when none is listed, look the value up with an Action that returns it", system)
-        self.assertIn("The Team needs this work run again exactly as listed", system)
+        self.assertIn("The Team needs this work run again before it can record", system)
         self.assertIn(json.dumps(list(RERUN), ensure_ascii=False), system)
         runtime, model = _runtime(AIMessage(content="Ok."))
         runtime.start(_chat(), envelope("Oi"))
