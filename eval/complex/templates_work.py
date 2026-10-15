@@ -391,7 +391,6 @@ S2 = (
     ),
 )
 
-ANA_LISBON, ANA_PORTO = customer_id("Ana Souza", "Lisbon"), customer_id("Ana Souza", "Porto")
 S3 = (
     tpl(
         "s3-near-match",
