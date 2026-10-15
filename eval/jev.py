@@ -214,11 +214,11 @@ def simple(decision: Decision) -> bool:
     return choice in SIMPLE and confidence >= ROUTE_THRESHOLD
 
 
-def http_transport(api_key: str, client: object | None = None, timeout: float = 5.0) -> Transport:
+def http_transport(api_key: str, client: object | None = None) -> Transport:
     """Send a decision request over HTTPS; ``client`` is an ``httpx.Client`` (tests pass a mock transport)."""
     import httpx
 
-    session = client if client is not None else httpx.Client(timeout=timeout)
+    session = client if client is not None else httpx.Client(timeout=5.0)
 
     def send(body: dict[str, object]) -> dict[str, object]:
         try:
