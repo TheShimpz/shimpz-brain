@@ -12,6 +12,7 @@ import runtime_api
 import turn_pins
 import turn_prompt
 from fastapi.testclient import TestClient
+from protocol.team.http.v1 import turn as team_turn
 from test_agent_runtime import context
 from test_runtime_api import TOKEN, body
 
@@ -20,7 +21,7 @@ STEPS = [
     {"assistant_id": "shimpz-cloudflare", "action": "list-zones", "inputs": []},
     {"assistant_id": "shimpz-cloudflare", "action": "ensure-dns-record", "inputs": ["content", "name", "zone_id"]},
 ]
-SKILL = {"key": memory._skill_key(CONTRACTS, STEPS), "contracts": CONTRACTS, "steps": STEPS, "usable": True}
+SKILL = {"key": team_turn.skill_key(CONTRACTS, STEPS), "contracts": CONTRACTS, "steps": STEPS, "usable": True}
 
 
 class SkillContractTests(unittest.TestCase):

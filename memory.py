@@ -106,7 +106,6 @@ def _line(value: object, maximum: int) -> str | None:
 
 
 _CONTRACT_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_skill_key = team_turn.skill_key
 
 
 def _step_admitted(step: object) -> bool:
@@ -136,7 +135,7 @@ def _skill_admitted(skill: object) -> bool:
         and set(contracts) == {step["assistant_id"] for step in steps}
         and all(isinstance(digest, str) and _CONTRACT_RE.fullmatch(digest) for digest in contracts.values())
         and list(contracts) == sorted(contracts)
-        and skill["key"] == _skill_key(contracts, steps)
+        and skill["key"] == team_turn.skill_key(contracts, steps)
     )
 
 

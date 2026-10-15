@@ -19,6 +19,7 @@ import runtime_api
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import turn as team_turn
 from test_agent_runtime import ToolAwareFakeModel
 from test_runtime_api import TOKEN, FakeRuntime, body, client
 from tool_fake import FixedFactory
@@ -121,7 +122,7 @@ def _skill(index: int) -> dict[str, object]:
         for step in range(16)
     ]
     contracts = {step["assistant_id"]: "sha256:" + "0" * 64 for step in steps}
-    return {"key": team_memory._skill_key(contracts, steps), "contracts": contracts, "steps": steps, "usable": False}
+    return {"key": team_turn.skill_key(contracts, steps), "contracts": contracts, "steps": steps, "usable": False}
 
 
 def _largest_uncounted() -> dict[str, object]:
