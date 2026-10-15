@@ -81,8 +81,19 @@ def _action(call_id: str = "a1") -> dict:
     return {"name": ACTION_TOOL, "args": {}, "id": call_id, "type": "tool_call"}
 
 
-def _chat(routines=()):
-    return dataclasses.replace(context(), memories=(), routines=tuple(routines), routine_capacity=20_000, locale="pt")
+# The schedule Team read from the person's "a cada 30 segundos", which the default description says.
+EVERY_30_SECONDS = {"kind": "continuous", "gap": 30, "cap": 2880}
+
+
+def _chat(routines=(), schedule=EVERY_30_SECONDS):
+    return dataclasses.replace(
+        context(),
+        memories=(),
+        routines=tuple(routines),
+        routine_capacity=20_000,
+        locale="pt",
+        routine_schedule=schedule,
+    )
 
 
 def _wire(turn_date: datetime.date, **changes) -> dict:
@@ -180,6 +191,25 @@ class RecordTests(unittest.TestCase):
             with self.subTest(refused=refused, arguments=arguments):
                 self.assertEqual(routine.record(arguments, chat), refused)
                 self.assertTrue(routine._CORRECTIONS[refused].startswith("Not done: nothing was recorded."))
+
+    def test_a_description_says_how_often_exactly_as_team_read_it_from_the_person(self) -> None:
+        listed = {**LISTED, "schedule": {"kind": "daily", "time": "09:00"}}
+        cases = (
+            ({}, EVERY_30_SECONDS, None),
+            ({"description": "A cada hora, lista as zonas da sua Cloudflare."}, EVERY_30_SECONDS, "schedule"),
+            ({"description": "Lista as zonas da sua Cloudflare."}, EVERY_30_SECONDS, "schedule"),
+            ({"description": "Lista as zonas da sua Cloudflare."}, None, None),
+            ({}, None, "unstated-schedule"),
+            # A replacement may keep saying its own listed schedule, and nothing else, when the person states none.
+            ({"description": "Todo dia às 9h, lista as zonas.", "replaces": listed["routine_id"]}, None, None),
+            ({"replaces": listed["routine_id"]}, None, "unstated-schedule"),
+        )
+        for changes, schedule, refused in cases:
+            with self.subTest(changes=changes, schedule=schedule):
+                outcome = routine.record(_args(**changes), _chat([listed], schedule=schedule))
+                self.assertEqual(outcome if isinstance(outcome, str) else None, refused)
+        for code in ("schedule", "unstated-schedule"):
+            self.assertTrue(routine._CORRECTIONS[code].startswith("Not done: nothing was recorded."))
 
     def test_a_review_reads_only_the_latest_routine_call(self):
         chat = _chat()
@@ -419,6 +449,21 @@ class RoutineModeTests(unittest.TestCase):
         with self.assertRaises(turn_pins.PinError):
             turn_pins.restore_routine_mode({turn_pins.MODE_METADATA: [], turn_pins.RERUN_METADATA: None})
 
+    def test_the_persons_schedule_is_pinned_for_the_logical_turn(self):
+        for schedule in (None, EVERY_30_SECONDS):
+            with self.subTest(schedule=schedule):
+                self.assertEqual(turn_pins.restore_schedule(turn_pins.record_schedule(schedule)), schedule)
+        for value in (
+            None,
+            "not json",
+            '{"kind": "continuous", "gap": 30}',
+            '{"cap":2880,"kind":"continuous","gap":30}',
+        ):
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_schedule({turn_pins.SCHEDULE_METADATA: value})
+        with self.assertRaises(agent_runtime.RuntimeContractError):
+            dataclasses.replace(_chat(), routines=None, routine_capacity=None, routine_schedule=EVERY_30_SECONDS)
+
     def test_a_resumed_turn_keeps_the_mode_and_rerun_its_start_pinned(self):
         runtime, model = GraphTests._runtime(
             None, AIMessage(content="", tool_calls=[_action()]), AIMessage(content="Ok.")
@@ -531,7 +576,11 @@ class PromptPinAndEndpointTests(unittest.TestCase):
         model = ToolAwareFakeModel(responses=[AIMessage(content="", tool_calls=[_call()])])
         runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
         api = TestClient(runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN))
-        response = api.post("/v1/turns", json=body(message=envelope(MESSAGE), routines=[LISTED]), headers=headers)
+        response = api.post(
+            "/v1/turns",
+            json=body(message=envelope(MESSAGE), routines=[LISTED], routine_schedule=EVERY_30_SECONDS),
+            headers=headers,
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["routine"]["op"], "record")
         self.assertEqual(response.json()["reply"], REPLY)
@@ -541,6 +590,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             ("routine_question", {"code": "unsupported", "options": [], "value": None}),
             ("routine_mode", "yes"),
             ("routine_rerun", [{"assistant": "x"}]),
+            ("routine_schedule", {"kind": "continuous", "gap": 30}),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)

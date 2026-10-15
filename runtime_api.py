@@ -158,6 +158,8 @@ class TurnContextInput(ClosedInput):
     # Whether Team read that this chat is about a Routine (advisory), and the work a pending question asks to run again.
     routine_mode: StrictBool
     routine_rerun: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_STEPS)] | None
+    # The one schedule Team read from the person's own words, which the record call's description must say.
+    routine_schedule: dict[str, Any] | None
     # False in a Routine run, whose knowledge is read-only.
     knowledge_writable: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
@@ -184,6 +186,7 @@ class TurnContextInput(ClosedInput):
             routine_question=self.routine_question,
             routine_mode=self.routine_mode,
             routine_rerun=None if self.routine_rerun is None else tuple(self.routine_rerun),
+            routine_schedule=self.routine_schedule,
             knowledge_writable=self.knowledge_writable,
             attachments=_attachments(self.attachments),
             **turn,

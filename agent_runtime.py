@@ -203,6 +203,9 @@ class TurnContext:
     # or rerun question asks to run again; both pinned like the question (ADR-0101).
     routine_mode: bool = False
     routine_rerun: tuple[dict[str, object], ...] | None = None
+    # The one schedule Team read from the person's own words, which the record call's description must say; None when
+    # the person stated none or several (ADR-0101); pinned like the question.
+    routine_schedule: dict[str, object] | None = None
     # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
     knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
@@ -278,6 +281,11 @@ def _admit_routines(context: TurnContext) -> None:
         if rerun is None:
             raise RuntimeContractError("invalid Routine rerun")
         object.__setattr__(context, "routine_rerun", rerun)
+    if context.routine_schedule is not None:
+        schedule = None if context.routines is None else team_routine.canonical_schedule(context.routine_schedule)
+        if schedule is None:
+            raise RuntimeContractError("invalid Routine schedule")
+        object.__setattr__(context, "routine_schedule", schedule)
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +345,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         question = turn_pins.restore_question(metadata)
         mode, rerun = turn_pins.restore_routine_mode(metadata)
         capacity = turn_pins.restore_capacity(metadata)
+        schedule = turn_pins.restore_schedule(metadata)
         provider, model = turn_pins.restore_model(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         zone = turn_pins.restore_zone(metadata)
@@ -362,6 +371,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         routine_question=question,
         routine_mode=mode,
         routine_rerun=rerun,
+        routine_schedule=schedule,
         knowledge_writable=writable,
         locale=locale,
         turn_message_id=turn_message_id,
@@ -641,6 +651,7 @@ class AgentRuntime:
                 **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
                 **turn_pins.record_capacity(context.routine_capacity),
+                **turn_pins.record_schedule(context.routine_schedule),
                 **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_zone(context.timezone),

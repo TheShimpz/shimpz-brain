@@ -22,6 +22,7 @@ QUESTION_METADATA = "shimpz_turn_routine_question"
 MODE_METADATA = "shimpz_turn_routine_mode"
 RERUN_METADATA = "shimpz_turn_routine_rerun"
 CAPACITY_METADATA = "shimpz_turn_routine_capacity"
+SCHEDULE_METADATA = "shimpz_turn_routine_schedule"
 MODEL_METADATA = "shimpz_turn_model"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
@@ -145,6 +146,21 @@ def restore_routine_mode(metadata: Mapping[str, object]) -> tuple[bool, tuple[di
     if (decoded is not None and work is None) or _json(None if work is None else list(work)) != rerun:
         raise PinError("recorded turn pins are invalid")
     return mode == "true", work
+
+
+def record_schedule(schedule: dict[str, object] | None) -> dict[str, str]:
+    """The checkpoint entry holding the one schedule Team read from the person, which a description must say."""
+    return {SCHEDULE_METADATA: _json(schedule)}
+
+
+def restore_schedule(metadata: Mapping[str, object]) -> dict[str, object] | None:
+    """The exact schedule a start recorded; anything else is corrupt state."""
+    value = metadata.get(SCHEDULE_METADATA)
+    decoded = _decoded(value)
+    schedule = None if decoded is None else team_routine.canonical_schedule(decoded)
+    if (decoded is not None and schedule is None) or _json(schedule) != value:
+        raise PinError("recorded turn pins are invalid")
+    return schedule
 
 
 def record_capacity(capacity: int | None) -> dict[str, str]:

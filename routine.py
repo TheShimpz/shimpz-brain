@@ -18,6 +18,7 @@ import clarification
 import memory as team_memory
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
@@ -40,13 +41,21 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "op": {"type": "string", "enum": ["record"]},
-        "name": {"type": "string", "description": "A short name for the Routine, at most 80 characters."},
+        "name": {
+            "type": "string",
+            "description": (
+                "A short name for the Routine's work, at most 80 characters, without the word Routine or how often "
+                "it runs."
+            ),
+        },
         "description": {
             "type": "string",
             "description": (
-                "One plain paragraph, at most 600 characters, for a person who is not technical: what every run "
-                "will do and on what, in everyday words. Describe only the work you ran, say plainly when a run "
-                "changes something, and never promise how the result reaches the person."
+                "One plain paragraph, at most 600 characters, written as the person's own request for this Routine, "
+                "in everyday words for a person who is not technical: how often it runs, in the person's own words, "
+                "what every run does and on what, and what is done with each run's result only as the person said "
+                "it. Describe only the work you ran, say plainly when a run changes something, and never promise how "
+                "the result reaches the person."
             ),
         },
         "replaces": {
@@ -78,6 +87,10 @@ _CORRECTIONS = {
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
     "name": _NOT_DONE + "Give a name of one line, at most 80 characters.",
     "description": _NOT_DONE + "Give a description of one plain paragraph, at most 600 characters.",
+    "schedule": _NOT_DONE + "Say in the description how often the Routine runs in the person's own words, and no other "
+    "schedule.",
+    "unstated-schedule": _NOT_DONE + "The person has not said how often it runs yet: leave how often out of the "
+    "description; the Team asks them.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person a reply of at most 4000 characters.",
 }
@@ -120,6 +133,24 @@ def _reply(value: object) -> str | None:
     return value
 
 
+def canonical_schedule(value: object) -> dict[str, object] | None:
+    """A schedule in Team's closed form, as Team's protocol admits it, or None."""
+    return team_routine_protocol.canonical_schedule(value)
+
+
+def _schedule_miss(description: str, schedule: object, replaced: object) -> str:
+    """Whether a description says how often the Routine runs as Team read it from the person, "" when it does.
+
+    Team's own reading is the authority: with one schedule, the description must state exactly it; with none, it
+    states none, except a replacement's own listed schedule, which it keeps.
+    """
+    stated = team_phrase.stated(description)
+    if schedule is not None:
+        return "" if stated == (schedule,) else "schedule"
+    kept = () if replaced is None else (replaced["schedule"],)
+    return "" if stated in ((), kept) else "unstated-schedule"
+
+
 def record(arguments: object, context: Any) -> dict[str, object] | str:
     """The recorded outcome and reply of one valid call, or the closed correction of the first invalid field."""
     if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
@@ -128,15 +159,19 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     description = arguments["description"]
     replaces = arguments["replaces"]
     reply = _reply(arguments["reply"])
+    replaced = next((item for item in context.routines if item["routine_id"] == replaces), None)
     checks = (
         ("name", bool(name)),
         ("description", team_routine_protocol.canonical_description(description) is not None),
-        ("replaces", replaces is None or any(item["routine_id"] == replaces for item in context.routines)),
+        ("replaces", replaces is None or replaced is not None),
         ("reply", reply is not None),
     )
     refused = next((field for field, valid in checks if not valid), None)
     if refused is not None:
         return refused
+    missed = _schedule_miss(description, context.routine_schedule, replaced)
+    if missed:
+        return missed
     routine = {
         "op": "record",
         "name": name,
