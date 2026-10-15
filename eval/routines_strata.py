@@ -153,6 +153,8 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
         ),
         ("invented-schedule", attempt.person.stated),
         ("schedule", stratum.schedule(attempt.person, card["schedule"])),
+        # The description the person confirms says how often it runs, exactly as the card schedules it.
+        ("description-schedule", attempt.team.modules.phrase.stated(card["description"]) == (card["schedule"],)),
         (f"output:{card['output']['mode']}", card["output"]["mode"] == attempt.person.output),
         (binding or "binding", binding is None),
         (_change_miss(attempt, card, stratum) or "change", _change_miss(attempt, card, stratum) is None),
