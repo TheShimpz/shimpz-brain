@@ -1,7 +1,6 @@
 """Routines: the chat agent runs the work once and records it; Brain only checks the closed record (ADR-0101)."""
 
 import dataclasses
-import datetime
 import json
 import unittest
 from unittest import mock
@@ -95,13 +94,12 @@ def _chat(routines=(), schedule=EVERY_30_SECONDS):
     )
 
 
-def _wire(turn_date: datetime.date, **changes) -> dict:
+def _wire(**changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
         "description": "A cada 30 segundos, lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
         "replaces": None,
-        "turn_date": turn_date.isoformat(),
     }
     return {**fields, **changes}
 
@@ -153,9 +151,9 @@ class RecordTests(unittest.TestCase):
     def test_a_valid_call_records_exactly_its_closed_outcome(self):
         chat = _chat([LISTED])
         outcome = routine.record(_args(), chat)
-        self.assertEqual(outcome, {"routine": _wire(chat.turn_date), "reply": REPLY})
+        self.assertEqual(outcome, {"routine": _wire(), "reply": REPLY})
         changed = routine.record(_args(replaces="a" * 32), chat)
-        self.assertEqual(changed["routine"], _wire(chat.turn_date, replaces="a" * 32))
+        self.assertEqual(changed["routine"], _wire(replaces="a" * 32))
 
     def test_the_schedule_timezone_and_output_are_never_the_models(self):
         # Team derives all three from the person's own words (ADR-0101 section 2); the tool offers none of them.
@@ -258,7 +256,7 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(suspended.status, "action-required")
         finished = runtime.resume(chat, {suspended.actions[0].interrupt_id: {"records": ["A"]}})
         self.assertEqual((finished.status, finished.reply), ("completed", REPLY))
-        self.assertEqual(finished.routine, _wire(chat.turn_date))
+        self.assertEqual(finished.routine, _wire())
         self.assertIn(routine.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
         system = system_text(model.seen_messages[-1])
         self.assertIn("This Team's Routines", system)
@@ -305,7 +303,7 @@ class GraphTests(unittest.TestCase):
                 self.assertEqual(corrections, {routine._CORRECTIONS[refused]})
 
     def test_a_failed_checkpoint_write_never_returns_the_record(self):
-        content = json.dumps({"routine": _wire(datetime.date(2026, 10, 5)), "reply": "Ok."})
+        content = json.dumps({"routine": _wire(), "reply": "Ok."})
         tool = ToolMessage(content=content, tool_call_id="r1", name=routine.TOOL_NAME)
         agent = mock.Mock(update_state=mock.Mock(side_effect=RuntimeError("disk")))
         runtime, _model = self._runtime()

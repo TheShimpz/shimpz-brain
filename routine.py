@@ -188,13 +188,7 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     missed = _schedule_miss(description, context.routine_schedule, replaced)
     if missed:
         return missed
-    routine = {
-        "op": "record",
-        "name": name,
-        "description": description,
-        "replaces": replaces,
-        "turn_date": context.turn_date.isoformat(),
-    }
+    routine = {"op": "record", "name": name, "description": description, "replaces": replaces}
     return {"routine": routine, "reply": reply}
 
 
