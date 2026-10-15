@@ -121,7 +121,7 @@ class ProviderModelTests(unittest.TestCase):
             mock.patch.object(provider_client, "_pooled_chat_anthropic", return_value=(anthropic := mock.Mock())),
         ):
             factory = provider_client.ProviderModelFactory()
-            for build in (factory.chat, lambda config: factory.single_attempt(config, chat=True)):
+            for build in (factory.chat, factory.single_attempt):
                 build(openai_config)
                 self.assertEqual(openai.call_args.kwargs["reasoning_effort"], provider_client.CHAT_EFFORT)
                 build(anthropic_config)

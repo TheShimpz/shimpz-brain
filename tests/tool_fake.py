@@ -35,7 +35,7 @@ class FixedFactory:
     def decision(self, config: agent_runtime.ProviderConfig) -> Any:
         return self.build(config)
 
-    def single_attempt(self, config: agent_runtime.ProviderConfig, *, chat: bool = False) -> Any:
+    def single_attempt(self, config: agent_runtime.ProviderConfig) -> Any:
         return self.build(config)
 
 

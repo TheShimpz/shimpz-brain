@@ -64,7 +64,7 @@ class FixedFactory:
 
     chat = decision = __call__
 
-    def single_attempt(self, _provider: agent_runtime.ProviderConfig, *, chat: bool = False) -> FixedModel:
+    def single_attempt(self, _provider: agent_runtime.ProviderConfig) -> FixedModel:
         return self.model
 
 

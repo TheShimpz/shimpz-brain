@@ -103,8 +103,8 @@ class _Factory:
     def chat(self, config: agent_runtime.ProviderConfig):
         return provider_client.provider_model(config, http_client=self.client, chat=True)
 
-    def single_attempt(self, config: agent_runtime.ProviderConfig, *, chat: bool = False):
-        return provider_client.provider_model(config, http_client=self.client, chat=chat, retries=0)
+    def single_attempt(self, config: agent_runtime.ProviderConfig):
+        return provider_client.provider_model(config, http_client=self.client, chat=True, retries=0)
 
 
 class _Provider:

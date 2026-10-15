@@ -292,7 +292,7 @@ class ModelFactory(Protocol):
 
     def decision(self, config: ProviderConfig) -> BaseChatModel: ...
 
-    def single_attempt(self, config: ProviderConfig, *, chat: bool = False) -> BaseChatModel: ...
+    def single_attempt(self, config: ProviderConfig) -> BaseChatModel: ...
 
 
 def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, str]:
@@ -627,7 +627,7 @@ class AgentRuntime:
 
         # An attachment turn retries explicitly, reserving its charge per attempt, so its model makes no hidden retry.
         model = (
-            self._model_factory.single_attempt(context.provider, chat=True)
+            self._model_factory.single_attempt(context.provider)
             if context.attachments
             else self._chat_model(context.provider)
         )
