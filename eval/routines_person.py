@@ -153,9 +153,7 @@ class Attempt:
         # already held its answer.
         self.answered: dict[str, str] = {}
         self.repeated: list[str] = []
-        # How many changes the person authorized in chat, and in each replay, how many changes the provider had
-        # performed when the run first waited for the person.
-        self.authorizations = 0
+        # In each replay, how many changes the provider had performed when the run first waited for the person.
         self.performed_when_frozen: list[int] = []
 
     def _person(self):
@@ -198,7 +196,6 @@ class Attempt:
             answer = {"challenge_id": response["challenge_id"], "decision": "submit", "value": True}
             with self._person():
                 response = self.team.service.resume_chat_human("team_1", answer, self.provider, self.key)
-            self.authorizations += 1
             self.fixture.note({"kind": "authorization", "answer": answer, "response": response})
         return response
 
