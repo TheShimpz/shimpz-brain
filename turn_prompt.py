@@ -158,11 +158,15 @@ def _routines_section(routines: tuple | None) -> str:
     )
 
 
-def _question_section(question: dict | None) -> str:
-    """The Routine question Team asked the user before this message, which the message may answer; nothing if none."""
+def _question_section(question: dict | None, records_only: bool) -> str:
+    """The Routine question Team asked the user before this message, which the message may answer; nothing if none.
+
+    ``records_only`` is Team's mark that the message is exactly the person's output choice: only then is the turn told
+    to run nothing, matching the Actions it is offered.
+    """
     if question is None:
         return ""
-    if question["code"] == "routine-output-unstated":
+    if records_only:
         # The work already ran; repeating it would repeat its changes, so an output answer only records again.
         answered = (
             f"If the user's message answers it, run no Action: call {routine.TOOL_NAME} record again at once, with "
@@ -318,7 +322,7 @@ def system_prompt(context: TurnContext) -> str:
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
         f"{_routines_section(None if context.attachments else context.routines)}"
-        f"{_question_section(None if context.attachments else context.routine_question)}"
+        f"{_question_section(None if context.attachments else context.routine_question, context.routine_output_answer)}"
         f"{_routine_mode_section(context.routine_mode and not context.attachments)}"
         f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
         f"{_attachments_section(context.attachments)}"

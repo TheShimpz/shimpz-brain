@@ -514,11 +514,19 @@ class RoutineModeTests(unittest.TestCase):
                 self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output answer"),
             ):
                 dataclasses.replace(chat, **changes)
-        # The output question asks for a record alone, unlike any other question.
+        # The bare output choice is asked for a record alone, unlike any other answer; a mixed answer is told to run work.
         prompts = [
-            turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=question))
-            for question in (asked, QUESTION)
+            turn_prompt.system_prompt(dataclasses.replace(chat, routine_question=asked)),
+            turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=QUESTION)),
         ]
+        self.assertEqual(
+            turn_prompt.system_prompt(dataclasses.replace(mixed, routine_question=asked)).replace(
+                json.dumps(asked, ensure_ascii=False), ""
+            ),
+            turn_prompt.system_prompt(dataclasses.replace(mixed, routine_question=QUESTION)).replace(
+                json.dumps(QUESTION, ensure_ascii=False), ""
+            ),
+        )
         self.assertNotEqual(
             *(
                 prompt.replace(json.dumps(question, ensure_ascii=False), "")
