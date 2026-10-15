@@ -136,7 +136,7 @@ def _largest_uncounted() -> dict[str, object]:
         "routines": [
             {
                 "routine_id": f"{index:032x}",
-                "name": WIDE * team_routine.MAX_NAME_CHARS,
+                "name": WIDE * team_routine.team_routine_protocol.MAX_ROUTINE_NAME_CHARS,
                 "schedule": {"kind": "monthly", "day": 28, "time": "23:59"},
                 "timezone": "/".join(letter * 32 for letter in "ABC"),
                 "timezone_source": "browser",

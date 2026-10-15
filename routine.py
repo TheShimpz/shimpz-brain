@@ -14,7 +14,6 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-import memory as team_memory
 import tool_refusal
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
@@ -27,8 +26,6 @@ TOOL_NAME = "shimpz_routine"
 # Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
 MAX_ROUTINES = team_routine_protocol.MAX_ROUTINES
 MAX_STEPS = team_routine_protocol.MAX_ROUTINE_STEPS
-MAX_NAME_CHARS = team_routine_protocol.MAX_ROUTINE_NAME_CHARS
-MAX_DESCRIPTION_CHARS = team_routine_protocol.MAX_ROUTINE_DESCRIPTION_CHARS
 # Brain's own request bound on the listing: each Routine's steps, encoded, at most 256 KiB, and the Team's together
 # 1 MiB, as Team's plans are bounded, so a listing never outgrows the turn request Brain admits.
 MAX_LISTED_STEPS_BYTES = 256 * 1024
@@ -171,7 +168,7 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     """The recorded outcome and reply of one valid call, or the closed correction of the first invalid field."""
     if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
         return "invalid"
-    name = team_memory._line(arguments["name"], MAX_NAME_CHARS)
+    name = team_routine_protocol.canonical_name(arguments["name"])
     description = arguments["description"]
     replaces = arguments["replaces"]
     reply = _reply(arguments["reply"])
