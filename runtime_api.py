@@ -9,7 +9,7 @@ import importlib
 import os
 import sqlite3
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
@@ -684,6 +684,17 @@ def _intent_route_response(route: intent_route.IntentRoute, *, capability: bool 
     return response
 
 
+@contextlib.contextmanager
+def _lane(slots: threading.BoundedSemaphore, detail: str) -> Iterator[None]:
+    """Hold one slot of a decision's own capacity lane for the operation, or refuse it at once when the lane is full."""
+    if not slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail=detail)
+    try:
+        yield
+    finally:
+        slots.release()
+
+
 async def _run_capability_plan(
     request: Request,
     current_runtime: Callable[[], RuntimeLike],
@@ -694,9 +705,7 @@ async def _run_capability_plan(
 
     The lane frees only once the worker has unwound, so a cancelled plan never holds more than its slot.
     """
-    if not slots.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="Capability planner capacity reached")
-    try:
+    with _lane(slots, "Capability planner capacity reached"):
         plan, usage = await _cancellable(
             request,
             lambda: current_runtime().capability_plan(
@@ -706,9 +715,7 @@ async def _run_capability_plan(
             ),
             "Capability plan cancelled",
         )
-        return {**_capability_plan_response(plan), "usage": usage}
-    finally:
-        slots.release()
+    return {**_capability_plan_response(plan), "usage": usage}
 
 
 def _run_intent_route(
@@ -716,9 +723,7 @@ def _run_intent_route(
     slots: threading.BoundedSemaphore,
     body: IntentRouteInput,
 ) -> dict[str, object]:
-    if not slots.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="Intent route capacity reached")
-    try:
+    with _lane(slots, "Intent route capacity reached"):
         route, usage = model_usage.measure(
             lambda: runtime.intent_route(
                 body.provider.runtime(),
@@ -730,9 +735,7 @@ def _run_intent_route(
                 decision=body.runtime_decision(),
             )
         )
-        return {**_intent_route_response(route, capability=body.installable is not None), "usage": usage}
-    finally:
-        slots.release()
+    return {**_intent_route_response(route, capability=body.installable is not None), "usage": usage}
 
 
 def _close_owned_runtime(runtime: object, *, owned: bool) -> None:
@@ -753,20 +756,18 @@ async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError)
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
 
 
-def _register_intent_route(
-    app: FastAPI,
-    current_runtime: Callable[[], RuntimeLike],
-    require_auth: Callable[[], None],
+def _register_decisions(
+    app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth: Callable[[], None]
 ) -> None:
-    """Register the independent structured-decision capacity boundary."""
+    """Register the stateless structured decisions, each in its own capacity lane."""
+
+    @app.post("/v1/capability-plan", dependencies=[Depends(require_auth)])
+    async def create_capability_plan(request: Request, body: CapabilityPlanInput) -> dict[str, object]:
+        return await _run_capability_plan(request, current_runtime, app.state.capability_plan_slots, body)
 
     @app.post("/v1/intent-route", dependencies=[Depends(require_auth)])
     def create_intent_route(body: IntentRouteInput) -> dict[str, object]:
-        return _run_intent_route(
-            current_runtime(),
-            app.state.intent_route_slots,
-            body,
-        )
+        return _run_intent_route(current_runtime(), app.state.intent_route_slots, body)
 
 
 async def _cancellable[T](request: Request, work: Callable[[], T], cancelled: str) -> tuple[T, dict[str, object]]:
@@ -883,12 +884,7 @@ def create_app(
         current_runtime().delete_thread(body.thread_id)
         return {"status": "deleted"}
 
-    @app.post("/v1/capability-plan", dependencies=[Depends(require_auth)])
-    async def create_capability_plan(request: Request, body: CapabilityPlanInput) -> dict[str, object]:
-        return await _run_capability_plan(request, current_runtime, app.state.capability_plan_slots, body)
-
-    _register_intent_route(app, current_runtime, require_auth)
-
+    _register_decisions(app, current_runtime, require_auth)
     return app
 
 
