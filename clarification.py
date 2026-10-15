@@ -17,6 +17,7 @@ from typing import Any
 import tool_refusal
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import turn as team_turn
 
@@ -91,12 +92,7 @@ class Clarification:
 
     def render(self) -> str:
         """The plain reply shown and remembered: the question and numbered options, a recommended default marked ✓."""
-        lines = [self.question, ""]
-        for index, option in enumerate(self.options):
-            mark = " ✓" if index == self.default_index else ""
-            detail = f" — {option.description}" if option.description else ""
-            lines.append(f"{index + 1}. {option.label}{mark}{detail}")
-        return "\n".join(lines)
+        return team_payload.render_clarification(self.to_dict())
 
 
 def _line(value: object, maximum: int, *, empty: bool = False) -> str | None:
