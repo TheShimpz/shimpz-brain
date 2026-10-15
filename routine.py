@@ -4,7 +4,7 @@ A Routine is never compiled. When the person asks for work to recur, the chat ag
 recurring work once in the same turn with the Team's Actions, and then calls one closed tool, ``shimpz_routine``
 ``record``, with the Routine's name, a plain-language description of the work for the card, the Routine it replaces,
 and the reply the person reads. The schedule, timezone, and output are never the model's: Team derives them from the
-person's own words and asks when they are missing (ADR-0101 section 2), and the description must say the schedule and
+person's own words and asks when they are missing (ADR-0101), and the description must say the schedule and
 output exactly as Team read them. The guard checks that closed shape and ends the turn; Team builds the plan from its
 own trace of the person's sends and shows the person a card to confirm, or a question. Nothing here schedules,
 approves, or authorizes anything: Brain only reports what the agent asked to record.

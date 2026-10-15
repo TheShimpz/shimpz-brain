@@ -154,7 +154,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(changed["routine"], _wire(replaces="a" * 32))
 
     def test_the_schedule_timezone_and_output_are_never_the_models(self):
-        # Team derives all three from the person's own words (ADR-0101 section 2); the tool offers none of them.
+        # Team derives all three from the person's own words (ADR-0101); the tool offers none of them.
         chat = _chat([LISTED])
         for member in ("schedule", "timezone", "output"):
             self.assertNotIn(member, routine.SCHEMA["properties"])
