@@ -306,17 +306,9 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
     """
     # An answer to Team's output question only records again: its work already ran, and repeating it would repeat its
     # changes, so the turn is offered no Action at all.
-    exposed = () if _records_only(context) else turn_attachments.exposed(context.assistants, context.attachments)
+    exposed = () if context.routine_output_answer else turn_attachments.exposed(context.assistants, context.attachments)
     memory_tool, routine_tool = _knowledge_tools(context)
     return exposed, memory_tool, routine_tool, turn_prompt.system_prompt(replace(context, assistants=exposed))
-
-
-def _records_only(context: TurnContext) -> bool:
-    """Whether the message is exactly the person's output choice answering Team's output question, as Team read it.
-
-    A message that also asks for anything else keeps every Action, so new work it names still runs.
-    """
-    return context.routine_output_answer
 
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
