@@ -1,17 +1,19 @@
 """Provider-free checks of the Routine eval's run: each attempt's evidence, the merged report, and the gate."""
 
 import base64
+import datetime
 import json
 import socketserver
 import tempfile
 import threading
 import unittest
+import zoneinfo
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from eval import routines, routines_pool
-from eval.routines_fixture import MODELS
+from eval import routines, routines_pool, routines_strata
+from eval.routines_fixture import MODELS, SHIMPZ, TIMEZONE, VERIFY
 from eval.routines_strata import CASES, VARIANT_STRATA
 from routines_fake_worker import counted
 
@@ -254,6 +256,27 @@ class WorkerTests(unittest.TestCase):
                 (discarded["outcome"]["disposition"], discarded["events"]), ("throttled", [{"kind": "send"}])
             )
             self.assertTrue(Path(directory, "gpt-6-luna", "plain-list", "4.json").is_file())
+
+
+class StrataTests(unittest.TestCase):
+    def test_a_changing_stratum_passes_only_with_exactly_its_one_change_while_recording(self):
+        today = datetime.datetime.now(zoneinfo.ZoneInfo(TIMEZONE)).date().isoformat()
+        change = {"zone_id": SHIMPZ, "record_id": VERIFY["id"], "record_type": "TXT", "name": VERIFY["name"]}
+        plain = next(item for item in routines_strata.STRATA if item.changes and not item.dated_text)
+        reading = next(item for item in routines_strata.STRATA if not item.changes)
+
+        def miss(stratum, *performed):
+            attempt = SimpleNamespace(fixture=SimpleNamespace(performed=list(performed)))
+            return routines_strata._recording_change_miss(attempt, stratum)
+
+        once = ("replace-dns-record", {**change, "content": today})
+        self.assertIsNone(miss(plain, once))
+        self.assertEqual(miss(plain), "recording-changes:0")
+        # An answer that ran the work again changed the record twice while recording.
+        self.assertEqual(miss(plain, once, once), "recording-changes:2")
+        self.assertEqual(miss(plain, ("replace-dns-record", {**change, "name": "x"})), "recording-change:input")
+        self.assertEqual(miss(plain, ("replace-dns-record", {**change, "content": "x"})), "recording-change:content")
+        self.assertIsNone(miss(reading, once))
 
 
 if __name__ == "__main__":

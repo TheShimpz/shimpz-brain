@@ -133,6 +133,32 @@ def _change_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum) ->
     return None
 
 
+def _recording_change_miss(attempt: Attempt, stratum: Stratum) -> str | None:
+    """Why recording did not perform exactly the person's one change, once, or None.
+
+    The work runs once when it is recorded; an answer to a schedule, over-budget, or output question only records
+    again, so a change performed again while recording is a miss, as is a change the person did not ask for. A
+    read-only stratum performs none, which the card's own change check judges.
+    """
+    if not stratum.changes:
+        return None
+    performed = attempt.fixture.performed
+    if len(performed) != 1:
+        return f"recording-changes:{len(performed)}"
+    action, action_input = performed[0]
+    expected = {"zone_id": SHIMPZ, "record_id": VERIFY["id"], "record_type": "TXT", "name": VERIFY["name"]}
+    if action != "replace-dns-record" or {key: action_input.get(key) for key in expected} != expected:
+        return "recording-change:input"
+    content = action_input.get("content")
+    today = datetime.datetime.now(zoneinfo.ZoneInfo(TIMEZONE)).date()
+    if stratum.dated_text:
+        dated = isinstance(content, str) and content.casefold().startswith(DATED_PREFIX)
+        written = dated and today in attempt.team.modules.dates.dates(content, today)
+    else:
+        written = content == today.isoformat()
+    return None if written else "recording-change:content"
+
+
 def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
     """The recording turn's card, judged; a miss names its first closed reason."""
     if "routine_refusal" in response:
@@ -154,6 +180,10 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
         ("invented-schedule", attempt.person.stated),
         (binding or "binding", binding is None),
         (_change_miss(attempt, card, stratum) or "change", _change_miss(attempt, card, stratum) is None),
+        (
+            _recording_change_miss(attempt, stratum) or "recording-change",
+            _recording_change_miss(attempt, stratum) is None,
+        ),
         (attempt.person.violations[0] if attempt.person.violations else "", not attempt.person.violations),
         (f"repeated-question:{attempt.repeated[0] if attempt.repeated else ''}", not attempt.repeated),
         ("too-many-sends", len(attempt.sends) <= stratum.sends + attempt.questions.count(OVER_BUDGET)),
