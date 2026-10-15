@@ -348,21 +348,27 @@ def accepted(messages: list[Any], ask: Callable[[str], object], known: dict[str,
     return tuple(change for change, keep in zip(changes, verdict.lasting, strict=True) if keep)
 
 
-def checker(
-    model: Callable[[], Any], provider: str, structured_output: Callable[..., Any]
-) -> Callable[[str], Confirmation]:
-    """One structured call on the Team's model that confirms proposed changes.
+def checker(model: Callable[[], Any], provider: str) -> Callable[[str], Confirmation]:
+    """One bounded structured call on the Team's model that confirms proposed changes.
 
     The raw response passes the closed structured-response validator, so a refusal, a duplicate key, or a reply that
-    disagrees with the adapter's parse is CheckUnavailableError like any other failure.
+    disagrees with the adapter's parse is CheckUnavailableError like any failed request.
     """
-    from structured import structured_value
+    from langchain_core.messages import HumanMessage
+    from runtime_errors import ProviderRequestError, ProviderResponseError
+    from structured import bounded_value
 
     def ask(prompt: str) -> Confirmation:
         try:
-            result = structured_output(model(), provider, Confirmation).invoke(prompt)
-            return structured_value(result, Confirmation, "memory check", MAX_CONFIRMATION_CHARS)
-        except Exception as exc:
+            return bounded_value(
+                model,
+                provider,
+                Confirmation,
+                lambda: [HumanMessage(content=prompt)],
+                "memory check",
+                MAX_CONFIRMATION_CHARS,
+            )
+        except (ProviderRequestError, ProviderResponseError) as exc:
             raise CheckUnavailableError("memory check failed") from exc
 
     return ask

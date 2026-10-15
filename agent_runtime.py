@@ -44,7 +44,6 @@ from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import turn as team_turn
 from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
-from structured import structured_output
 
 import routine as team_routine
 
@@ -825,9 +824,7 @@ class AgentRuntime:
         return intent_fast_path.classify(client, replace(decision, installable=installable), task, admitted)
 
     def _memory_check(self, context: TurnContext):
-        return team_memory.checker(
-            lambda: self._chat_model(context.provider), context.provider.provider, structured_output
-        )
+        return team_memory.checker(lambda: self._chat_model(context.provider), context.provider.provider)
 
     def _finish_routine(self, agent, context: TurnContext, state: Mapping[str, Any]) -> TurnResult | None:
         """End the turn on a recorded Routine, remembering exactly the reply the user is shown."""
