@@ -538,7 +538,7 @@ class ChargeTests(unittest.TestCase):
         self.assertEqual(turn_attachments.charges((attachment,), lambda _blocks, _timeout: 42), (42,))
         image = turn_attachments.admit([team_attachment("image")])[0]
         with self.assertRaises(turn_attachments.AttachmentContractError):
-            turn_attachments.charges((image,), None)
+            turn_attachments.charges((image,), failing)
 
     def test_opaque_files_are_estimated_without_any_provider_count(self) -> None:
         # The largest metadata the contract admits: every quote in the name is escaped twice in the estimate.

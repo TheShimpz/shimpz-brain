@@ -256,7 +256,7 @@ def _count_before(
 
 def charges(
     attachments: Sequence[Attachment],
-    count: Callable[[list[dict[str, object]], float], int] | None,
+    count: Callable[[list[dict[str, object]], float], int],
 ) -> tuple[int, ...]:
     """Each attachment's token charge, counted by the provider within one overall deadline or estimated otherwise.
 
@@ -266,9 +266,7 @@ def charges(
     the scope, so a slow count's I/O is terminated and its worker has finished before this returns.
     """
     deadline = time.monotonic() + COUNT_SECONDS
-    countable = [
-        index for index, item in enumerate(attachments) if count is not None and item.content["type"] != "opaque"
-    ]
+    countable = [index for index, item in enumerate(attachments) if item.content["type"] != "opaque"]
     counted: list[int] = []
     # The files are counted together, so the deadline bounds the slowest count rather than their sum.
     workers = max(1, min(len(countable), MAX_COUNT_WORKERS))
