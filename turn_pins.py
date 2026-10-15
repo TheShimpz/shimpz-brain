@@ -58,22 +58,23 @@ def _memory_json(memories: tuple[team_memory.Memory, ...] | None) -> str:
     return _json(entries)
 
 
-def _skills_json(skills: tuple[dict[str, object], ...] | None) -> str:
-    return _json(None if skills is None else list(skills))
+def _listing_json(listing: tuple[dict[str, object], ...] | None) -> str:
+    """A pinned listing, the turn's skills or its Routines, as canonical JSON; None withholds it."""
+    return _json(None if listing is None else list(listing))
 
 
 def record(
     turn_date: datetime.date,
     memories: tuple[team_memory.Memory, ...] | None,
     skills: tuple[dict[str, object], ...] | None,
-    routines: tuple[dict[str, object], ...] | None = None,
+    routines: tuple[dict[str, object], ...] | None,
 ) -> dict[str, str]:
     """The checkpoint metadata entries; metadata keeps only scalar values, so knowledge travels as canonical JSON."""
     return {
         DATE_METADATA: turn_date.isoformat(),
         MEMORY_METADATA: _memory_json(memories),
-        SKILLS_METADATA: _skills_json(skills),
-        ROUTINES_METADATA: _skills_json(routines),
+        SKILLS_METADATA: _listing_json(skills),
+        ROUTINES_METADATA: _listing_json(routines),
     }
 
 
@@ -103,8 +104,8 @@ def restore(
     if (
         recorded_date.isoformat() != date_value
         or _memory_json(recorded_memory) != memory_value
-        or _skills_json(recorded_skills) != skills_value
-        or _skills_json(recorded_routines) != routines_value
+        or _listing_json(recorded_skills) != skills_value
+        or _listing_json(recorded_routines) != routines_value
     ):
         raise PinError("recorded turn pins are invalid")
     return recorded_date, recorded_memory, recorded_skills, recorded_routines
