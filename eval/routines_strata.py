@@ -544,7 +544,10 @@ def variants(attempt: Attempt) -> dict[str, object]:
         "outcome": None if notice is None else notice.outcome,
         "reason": None if notice is None else notice.detail.get("reason"),
         "code": None if notice is None else notice.detail.get("code"),
-        "held_at": [item.action for item in attempt.team.service.routine_store.load("team_1").incidents],
+        "held_at": [
+            item.action
+            for item in attempt.team.modules.record.incidents(attempt.team.service.routine_store.load("team_1"))
+        ],
         "list_dns_records_dispatched": any(action == "list-dns-records" for action, _payload in attempt.fixture.calls),
     }
     return found

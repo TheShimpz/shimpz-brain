@@ -228,9 +228,9 @@ class Attempt:
         if claim is None:
             return "unclaimed", None
         lease = modules.record.lease_sha256(claim["lease_token"])
-        evidence = modules.local_authority.RoutineEvidence(ROUTINE_KEY, lease, "a" * 32, 0)
-        claimed = (claim["revision"], claim["plan_digest"], claim["mode"])
-        result = service.run_routine("team_1", claim["run_id"], evidence, claimed, (self.provider, ""))
+        evidence = modules.local_authority.RoutineEvidence(ROUTINE_KEY, lease)
+        claimed = (claim["revision"], claim["plan_digest"])
+        result = service.run_routine("team_1", claim["run_id"], evidence, claimed)
         result = self._run_authorized(claim["run_id"], result)
         notices = service.routine_store.load("team_1").notices
         notice = notices[-1] if notices else None
@@ -249,7 +249,7 @@ class Attempt:
             if opened.get("request", {}).get("kind") != "auth:password":
                 break
             answer = {"challenge_id": opened["challenge_id"], "decision": "submit", "value": True}
-            result = service.resume_routine_human("team_1", run_id, answer, self.provider, "")
+            result = service.resume_routine_human("team_1", run_id, answer)
             self.fixture.note({"kind": "run-authorization", "status": result["status"]})
         return result
 
