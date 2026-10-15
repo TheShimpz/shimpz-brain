@@ -126,6 +126,12 @@ def admit_context(context: Any) -> None:
         if admitted is None:
             raise RoutineContractError(f"invalid Routine {name}")
         object.__setattr__(context, field, admitted)
+    question = context.routine_question
+    if type(context.routine_output_answer) is not bool or (
+        context.routine_output_answer
+        and (question is None or question["code"] != "routine-output-unstated" or context.routine_output is None)
+    ):
+        raise RoutineContractError("invalid Routine output answer")
 
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:

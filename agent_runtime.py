@@ -204,6 +204,8 @@ class TurnContext:
     routine_schedule: dict[str, object] | None = None
     # The one output mode Team read from the person's own words, which the description must say; pinned likewise.
     routine_output: str | None = None
+    # Whether the message is exactly the person's output choice answering Team's output question (record only).
+    routine_output_answer: bool = False
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
@@ -310,9 +312,11 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
 
 
 def _records_only(context: TurnContext) -> bool:
-    """Whether the turn answers Team's output question: Team read the output from it, so the work already ran."""
-    question = context.routine_question
-    return question is not None and question["code"] == "routine-output-unstated" and context.routine_output is not None
+    """Whether the message is exactly the person's output choice answering Team's output question, as Team read it.
+
+    A message that also asks for anything else keeps every Action, so new work it names still runs.
+    """
+    return context.routine_output_answer
 
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:

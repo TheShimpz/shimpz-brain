@@ -490,7 +490,9 @@ class RoutineModeTests(unittest.TestCase):
             AIMessage(content="", tool_calls=[_call(reply="")]),
             AIMessage(content="", tool_calls=[_call(call_id="r2", description=said, reply="")]),
         )
-        chat = dataclasses.replace(_chat([LISTED]), routine_question=asked, routine_output="changes")
+        chat = dataclasses.replace(
+            _chat([LISTED]), routine_question=asked, routine_output="changes", routine_output_answer=True
+        )
         finished = runtime.start(chat, envelope("Mostrar somente quando mudar"))
         # The description that left the output unsaid was refused, and the next one, saying it, ended the turn.
         self.assertEqual(
@@ -499,11 +501,19 @@ class RoutineModeTests(unittest.TestCase):
         # The thread keeps the description the card shows, never an empty assistant message.
         state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
         self.assertEqual(state["channel_values"]["messages"][-1].content, said)
-        # An answer Team read the output from is offered no Action at all, so its work can never run again.
+        # The person's bare output choice is offered no Action at all, so its work can never run again; an answer that
+        # also asks for other work keeps every Action.
         self.assertEqual(agent_runtime._turn_surface(chat)[0], ())
-        unread = dataclasses.replace(chat, routine_output=None)
-        self.assertEqual(agent_runtime._turn_surface(unread)[0], agent_runtime._turn_surface(_chat([LISTED]))[0])
-        self.assertTrue(agent_runtime._turn_surface(unread)[0])
+        mixed = dataclasses.replace(chat, routine_output_answer=False)
+        self.assertEqual(agent_runtime._turn_surface(mixed)[0], agent_runtime._turn_surface(_chat([LISTED]))[0])
+        self.assertTrue(agent_runtime._turn_surface(mixed)[0])
+        # Team marks only an answer to its own output question whose output it read.
+        for changes in ({"routine_output": None}, {"routine_question": QUESTION}, {"routine_question": None}):
+            with (
+                self.subTest(changes=changes),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output answer"),
+            ):
+                dataclasses.replace(chat, **changes)
         # The output question asks for a record alone, unlike any other question.
         prompts = [
             turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=question))
