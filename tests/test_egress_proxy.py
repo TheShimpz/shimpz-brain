@@ -141,21 +141,7 @@ class BrainEgressServerTests(unittest.TestCase):
         server.assert_not_called()
         self.assertEqual(stderr.getvalue(), "brain-egress: audit custody is unavailable; refusing to start\n")
 
-    def test_invalid_shipping_envelope_and_script_guard_fail_closed(self) -> None:
-        specification = importlib.util.spec_from_file_location("brain_egress_invalid_config", EGRESS / "app.py")
-        if specification is None or specification.loader is None:
-            raise AssertionError("cannot execute Brain egress entrypoint")
-        invalid = importlib.util.module_from_spec(specification)
-        with (
-            mock.patch.dict(
-                "os.environ",
-                {"SHIMPZ_EGRESS_MAX_CONCURRENCY": "1", "SHIMPZ_EGRESS_MAX_SOURCE_CONCURRENCY": "2"},
-                clear=True,
-            ),
-            self.assertRaisesRegex(ValueError, "shipping resource envelope"),
-        ):
-            specification.loader.exec_module(invalid)
-
+    def test_the_script_guard_fails_closed(self) -> None:
         specification = importlib.util.spec_from_file_location("__main__", EGRESS / "app.py")
         if specification is None or specification.loader is None:
             raise AssertionError("cannot execute Brain egress entrypoint")

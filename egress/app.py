@@ -22,7 +22,6 @@ splices; this profile owns only its policy, audit stream, and resource envelope.
 """
 
 import ipaddress
-import os
 import sys
 from pathlib import Path
 
@@ -32,16 +31,11 @@ from audit_writer import AuditError, AuditWriter
 
 LISTEN_PORT = 8888  # the healthcheck and every HTTPS_PROXY address name this port
 ALLOWED_PORTS = {443}  # HTTPS only — every legitimate brain destination is TLS
-MAX_CONCURRENCY, MAX_SOURCE_CONCURRENCY, LISTEN_BACKLOG = connect.envelope(
-    int(os.environ.get("SHIMPZ_EGRESS_MAX_CONCURRENCY", "64")),
-    int(os.environ.get("SHIMPZ_EGRESS_MAX_SOURCE_CONCURRENCY", "8")),
-    int(os.environ.get("SHIMPZ_EGRESS_LISTEN_BACKLOG", "16")),
-)
+MAX_CONCURRENCY = 64
+MAX_SOURCE_CONCURRENCY = 8
+LISTEN_BACKLOG = 16
 # The security-relevant record of which public host the Brain was allowed to reach or refused.
-AUDIT = AuditWriter(
-    Path(os.environ.get("SHIMPZ_EGRESS_AUDIT_LOG", "/var/log/brain-egress/audit.jsonl")),
-    "egress-proxy",
-)
+AUDIT = AuditWriter(Path("/var/log/brain-egress/audit.jsonl"), "egress-proxy")
 
 
 def permitted(host: str, port: int, allowed_hosts: frozenset[str]) -> bool:
