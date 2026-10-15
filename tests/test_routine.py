@@ -504,9 +504,15 @@ class RoutineModeTests(unittest.TestCase):
         # The person's bare output choice is offered no Action at all, so its work can never run again, and the Routine
         # mode guidance never tells it to run the work; an answer that also asks for other work keeps every Action.
         self.assertEqual(agent_runtime._turn_surface(chat)[0], ())
-        self.assertNotIn("run the work once", turn_prompt.system_prompt(dataclasses.replace(chat, routine_mode=True)))
+        records = turn_prompt.system_prompt(dataclasses.replace(chat, routine_mode=True))
+        self.assertNotIn("run the work once", records)
+        # The Actions withheld from it are no limit of the Team's, so it is never told the Team has none.
+        self.assertNotIn("no enabled Assistants", agent_runtime._turn_surface(chat)[3])
         mixed = dataclasses.replace(chat, routine_settings_answer=False)
-        self.assertIn("run the work once", turn_prompt.system_prompt(dataclasses.replace(mixed, routine_mode=True)))
+        target = dataclasses.replace(mixed, routine_question=QUESTION, routine_mode=True)
+        self.assertIn("run the work once", turn_prompt.system_prompt(target))
+        # A typed settings answer runs only work it changes, while a target answer runs the work again.
+        self.assertNotIn("run the work once", turn_prompt.system_prompt(dataclasses.replace(mixed, routine_mode=True)))
         self.assertEqual(agent_runtime._turn_surface(mixed)[0], agent_runtime._turn_surface(_chat([LISTED]))[0])
         self.assertTrue(agent_runtime._turn_surface(mixed)[0])
         # Team marks only an answer to its own schedule, over-budget, or output question whose reading it took.
@@ -527,25 +533,15 @@ class RoutineModeTests(unittest.TestCase):
                 self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine settings answer"),
             ):
                 dataclasses.replace(chat, **changes)
-        # The bare output choice is asked for a record alone, unlike any other answer; a mixed one is told to run work.
-        prompts = [
-            turn_prompt.system_prompt(dataclasses.replace(chat, routine_question=asked)),
-            turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=QUESTION)),
-        ]
-        self.assertEqual(
-            turn_prompt.system_prompt(dataclasses.replace(mixed, routine_question=asked)).replace(
-                json.dumps(asked, ensure_ascii=False), ""
-            ),
-            turn_prompt.system_prompt(dataclasses.replace(mixed, routine_question=QUESTION)).replace(
-                json.dumps(QUESTION, ensure_ascii=False), ""
-            ),
-        )
-        self.assertNotEqual(
-            *(
-                prompt.replace(json.dumps(question, ensure_ascii=False), "")
-                for prompt, question in zip(prompts, (asked, QUESTION), strict=True)
+        # The bare output choice is asked for a record alone, a typed answer to the same question to run only work it
+        # changes, and an answer to a target question to run the work again: each is told something of its own.
+        prompts = {
+            turn_prompt.system_prompt(dataclasses.replace(base, routine_question=question)).replace(
+                json.dumps(question, ensure_ascii=False), ""
             )
-        )
+            for base, question in ((chat, asked), (mixed, asked), (mixed, QUESTION))
+        }
+        self.assertEqual(len(prompts), 3)
 
     def test_a_resumed_turn_keeps_the_mode_and_rerun_its_start_pinned(self):
         runtime, model = GraphTests._runtime(

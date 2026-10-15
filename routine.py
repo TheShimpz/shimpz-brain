@@ -131,6 +131,14 @@ def admit_context(context: Any) -> None:
         raise RoutineContractError("invalid Routine settings answer")
 
 
+def settings_question(question: Mapping[str, Any] | None) -> bool:
+    """Whether Team's pending question asks how often the Routine runs or what each run does with its result.
+
+    Its work already ran, so an answer to it runs no work again unless the answer also changes the work.
+    """
+    return question is not None and question["code"] in team_routine_proposal.SETTINGS_QUESTION_CODES
+
+
 def _settled(context: Any) -> bool:
     """Whether a settings answer answers a settings question, with the reading Team took from it."""
     question = context.routine_question

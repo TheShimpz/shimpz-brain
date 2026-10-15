@@ -113,18 +113,23 @@ def _runs(steps: list[dict[str, object]]) -> list[list[object]]:
     return runs
 
 
-def _routines_section(routines: tuple | None, records_only: bool) -> str:
+def _routines_section(routines: tuple | None, records_only: bool, settings: bool) -> str:
     """The Routine policy and the Team's Routines as data in a chat turn; nothing when the Routine tool is withheld.
 
-    A settings answer's turn already has its work, so it is told to record it, never to run it.
+    A settings answer's turn already has its work, so it is told to record it, never to run it; while Team's settings
+    question is pending, the work already ran, so the turn runs only work the message adds or changes.
     """
     if routines is None:
         return ""
-    run = (
-        "The recurring work already ran in this recording, so "
-        if records_only
-        else "Then run exactly the recurring work once in this same turn with the enabled Assistants, and afterwards "
-    )
+    if records_only:
+        run = "The recurring work already ran in this recording, so "
+    elif settings:
+        run = (
+            "Then run exactly the recurring work once in this same turn with the enabled Assistants, except work that "
+            "already ran in this recording, which runs again only when the user's message changes it, and afterwards "
+        )
+    else:
+        run = "Then run exactly the recurring work once in this same turn with the enabled Assistants, and afterwards "
     listed = [
         {
             "routine_id": item["routine_id"],
@@ -169,7 +174,8 @@ def _question_section(question: dict | None, records_only: bool) -> str:
     """The Routine question Team asked the user before this message, which the message may answer; nothing if none.
 
     ``records_only`` is Team's mark that the message is exactly one fixed answer to its schedule, over-budget, or output
-    question: only then is the turn told to run nothing, matching the Actions it is offered.
+    question: only then is the turn told to run nothing, matching the Actions it is offered. Any other answer to such a
+    settings question runs only work it changes, while a target or rerun answer runs the work again.
     """
     if question is None:
         return ""
@@ -179,6 +185,12 @@ def _question_section(question: dict | None, records_only: bool) -> str:
             f"If the user's message answers it, run no Action: call {routine.TOOL_NAME} record again at once, with "
             "the same name and replaces as before, its description also saying the answer in its words, and an empty "
             "reply; the Team keeps the work that already ran. "
+        )
+    elif routine.settings_question(question):
+        answered = (
+            "If the user's message answers it, run an Action again only when the message also changes the recurring "
+            f"work, and call {routine.TOOL_NAME} record again, with the same name and replaces as before, its "
+            "description saying the answer; the Team keeps the work that already ran unless it ran again. "
         )
     else:
         answered = (
@@ -192,20 +204,25 @@ def _question_section(question: dict | None, records_only: bool) -> str:
     )
 
 
-def _routine_mode_section(active: bool, records_only: bool) -> str:
+def _routine_mode_section(active: bool, records_only: bool, settings: bool) -> str:
     """The Routine-mode guidance when Team read, with no model, that this chat is about a Routine; advisory only.
 
-    A settings answer only records again, so its turn is told nothing about running the work. For measurement,
+    A settings answer only records again, so its turn is told nothing about running the work; while Team's settings
+    question is pending, the work already ran, so only work the message changes runs. For measurement,
     SHIMPZ_ROUTINE_MODE_PROMPT=off in the Brain's environment leaves it out (the eval's control arm).
     """
     if not active or records_only or os.environ.get("SHIMPZ_ROUTINE_MODE_PROMPT") == "off":
         return ""
+    run = (
+        "Then run only work the message adds or changes, since the rest already ran, and call"
+        if settings
+        else "Then run the work once and call"
+    )
     return (
         "If this message asks for a Routine: the Team takes the schedule, interval, timezone, limits, and what to do "
         "with each run's result from the user's words and asks about them itself, so never ask about them, and never "
         f"ask anything the conversation already says. Before any Action, ask with {clarification.TOOL_NAME} only what "
-        "is still unknown: what work to do or which item it acts on. Then run the work once and call "
-        f"{routine.TOOL_NAME} record.\n\n"
+        f"is still unknown: what work to do or which item it acts on. {run} {routine.TOOL_NAME} record.\n\n"
     )
 
 
@@ -258,8 +275,11 @@ def _language_section(locale: str | None) -> str:
 
 def system_prompt(context: TurnContext) -> str:
     """The Team turn's policy prompt: identity, Action authority, clarification, completeness, contracts, and date."""
-    # A settings answer only records again, so nothing in the prompt tells its turn to run work.
+    # A settings answer only records again, so nothing in the prompt tells its turn to run work, and the Actions it is
+    # not offered are no limit of the Team's.
     records_only = context.routine_settings_answer
+    question = None if context.attachments else context.routine_question
+    settings = routine.settings_question(question)
     assistant_contracts = [
         {
             "genesis": assistant.genesis,
@@ -288,7 +308,7 @@ def system_prompt(context: TurnContext) -> str:
         "This turn has no enabled Assistants, Actions, or external action tools. Respond naturally to greetings, "
         "clarifying questions, and questions about this limitation, but do not perform generic work or invent "
         "capabilities. Suggest enabling a relevant Assistant when appropriate.\n\n"
-        if not assistant_contracts
+        if not assistant_contracts and not records_only
         else ""
     )
     return (
@@ -331,9 +351,9 @@ def system_prompt(context: TurnContext) -> str:
         f"{capabilities}\n\n"
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
-        f"{_routines_section(None if context.attachments else context.routines, records_only)}"
-        f"{_question_section(None if context.attachments else context.routine_question, records_only)}"
-        f"{_routine_mode_section(context.routine_mode and not context.attachments, records_only)}"
+        f"{_routines_section(None if context.attachments else context.routines, records_only, settings)}"
+        f"{_question_section(question, records_only)}"
+        f"{_routine_mode_section(context.routine_mode and not context.attachments, records_only, settings)}"
         f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
         f"{_attachments_section(context.attachments)}"
         f"{_language_section(context.locale)}"
