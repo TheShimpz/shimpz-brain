@@ -142,6 +142,13 @@ class RuntimeApiTests(unittest.TestCase):
 
         self.assertEqual(frozenset(get_args(provider_annotation)), agent_runtime.PROVIDERS)
 
+    def test_a_provider_key_outside_the_team_bound_is_refused(self):
+        api = client(FakeRuntime())
+        for key in ("k" * 15, "k" * 8193):
+            with self.subTest(length=len(key)):
+                provider = {"provider": "openai", "model": "gpt-6.1-sol", "api_key": key}
+                self.assertEqual(api.post("/v1/turns", json=body(provider=provider), headers=AUTH).status_code, 422)
+
     def test_health_is_small_and_does_not_require_a_secret(self):
         response = client(FakeRuntime()).get("/health")
 

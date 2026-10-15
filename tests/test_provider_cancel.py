@@ -589,7 +589,7 @@ class CapabilityPlanDisconnectTests(unittest.TestCase):
         runtime = _BlockingPlanner()
         app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
         payload = {
-            "provider": {"provider": "openai", "model": "gpt-6-luna", "api_key": "secret-test-key"},
+            "provider": {"provider": "openai", "model": "gpt-6-luna", "api_key": "test-provider-key"},
             "objective": "Configure DNS",
             "candidates": [
                 {"id": "dns", "name": "DNS", "summary": "Manage DNS.", "actions": ["read"], "integrations": []}

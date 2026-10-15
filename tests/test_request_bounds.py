@@ -128,7 +128,7 @@ def _skill(index: int) -> dict[str, object]:
 def _largest_uncounted() -> dict[str, object]:
     """Every field of a resume that the model window does not count, each at the most its validation admits."""
     return {
-        "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "\x01" * 16 * 1024},
+        "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": "\x01" * 8192},
         "memories": [
             {"topic": f"t{index:02d}" + "a" * 37, "preference": WIDE * team_memory.MAX_PREFERENCE_CHARS}
             for index in range(team_memory.MAX_MEMORIES)
