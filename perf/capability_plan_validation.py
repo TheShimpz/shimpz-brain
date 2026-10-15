@@ -22,9 +22,15 @@ _RESPONSE = AIMessage(content='{"status":"sufficient","assistant_ids":[]}')
 
 
 class FixedModel:
+    def with_structured_output(self, schema, **_options):
+        if schema is not capability_plan.StructuredPlan:
+            raise AssertionError("capability plan schema changed")
+        return self
+
     @staticmethod
     def invoke(_messages):
-        return _RESPONSE
+        parsed = capability_plan.StructuredPlan.model_validate_json(_RESPONSE.content)
+        return {"raw": _RESPONSE, "parsed": parsed, "parsing_error": None}
 
 
 def _candidates(*, dense: bool, maximum_text: bool = False) -> tuple[capability_plan.CapabilityCandidate, ...]:
