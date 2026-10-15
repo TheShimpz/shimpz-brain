@@ -833,7 +833,6 @@ ALIGNED_CASES = (
     ),
 )
 CASES = RESULT_CASES + ATTACHMENT_CASES + ALIGNED_CASES
-CASES_BY_ID = {case.id: case for case in CASES}
 
 
 def _declared(assistant: str, action: str) -> bool:
