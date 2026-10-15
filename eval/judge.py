@@ -199,9 +199,9 @@ def calibration_items(path: Path = CALIBRATION) -> list[tuple[str, Item, dict[st
 HELDOUT = Path(__file__).with_name("judge_heldout.json")
 
 
-def heldout_collection(path: Path = HELDOUT) -> dict[str, object]:
+def heldout_collection() -> dict[str, object]:
     """How the owner's held-out labels were collected; empty until the owner adjudicates."""
-    return dict(json.loads(path.read_text(encoding="utf-8")).get("collection") or {})
+    return dict(json.loads(HELDOUT.read_text(encoding="utf-8")).get("collection") or {})
 
 
 def heldout_items(path: Path = HELDOUT) -> list[tuple[str, Item, dict[str, bool] | None]]:
