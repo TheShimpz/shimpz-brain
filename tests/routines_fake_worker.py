@@ -15,6 +15,24 @@ import time
 from pathlib import Path
 
 
+def counted(task: dict[str, object], **changes: object) -> dict[str, object]:
+    """The task's result as a worker reports a counted attempt that passed, with ``changes`` applied."""
+    return {
+        **task,
+        "disposition": "counted",
+        "throttled": 0,
+        "clamped": 0,
+        "passed": True,
+        "reason": None,
+        "cause": None,
+        "schedule": {"kind": "calendar"},
+        "questions": [],
+        "usd": 0.01,
+        "known": True,
+        "variants": None,
+    } | changes
+
+
 def _without_tasks(mode: str, config: dict[str, object]) -> None:
     """Every mode that never answers a task, up to the point where it would read its first one."""
     if mode == "silent":
@@ -45,21 +63,7 @@ def _serve(config: dict[str, object]) -> None:
         if config["mode"] == "fail":
             print(json.dumps({**task, "error": "RuntimeError: scripted"}), flush=True)
             continue
-        result = {
-            **task,
-            "disposition": "counted",
-            "throttled": 0,
-            "clamped": 0,
-            "passed": True,
-            "reason": None,
-            "cause": None,
-            "schedule": {"kind": "calendar"},
-            "questions": [],
-            "usd": 0.01,
-            "known": True,
-            "variants": None,
-            "brain": config["brain"],
-        }
+        result = counted(task, brain=config["brain"])
         print(
             json.dumps(result | config["results"].get(f"{task['case']}:{task['index']}:{task['try']}", {})), flush=True
         )

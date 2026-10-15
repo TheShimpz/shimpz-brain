@@ -13,6 +13,7 @@ from unittest import mock
 from eval import routines, routines_pool
 from eval.routines_fixture import MODELS
 from eval.routines_strata import CASES, VARIANT_STRATA
+from routines_fake_worker import counted
 
 VARIANTS = {
     "moved-zone-id": {"status": "done", "listed_new_id": True},
@@ -79,20 +80,7 @@ class SignalsTests(unittest.TestCase):
 
 
 def _counted(task: dict[str, object], **changes) -> dict[str, object]:
-    return {
-        **task,
-        "disposition": "counted",
-        "throttled": 0,
-        "clamped": 0,
-        "passed": True,
-        "reason": None,
-        "cause": None,
-        "schedule": {"kind": "calendar"},
-        "questions": [],
-        "usd": 0.01,
-        "known": True,
-        "variants": VARIANTS if task["case"] in VARIANT_STRATA else None,
-    } | changes
+    return counted(task, variants=VARIANTS if task["case"] in VARIANT_STRATA else None, **changes)
 
 
 class FakePool:

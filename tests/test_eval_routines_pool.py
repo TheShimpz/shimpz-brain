@@ -13,26 +13,14 @@ from unittest import mock
 import routines_fake_brain
 from eval import routines_pool
 from eval import stats as eval_stats
+from routines_fake_worker import counted
 
 FAKE_WORKER = Path(__file__).with_name("routines_fake_worker.py")
 MODELS = [("openai", "gpt-6-luna"), ("anthropic", "claude-sonnet-5-5")]
 
 
 def _result(slot: routines_pool.Slot, **changes) -> dict[str, object]:
-    return {
-        **slot.task(),
-        "disposition": "counted",
-        "throttled": 0,
-        "clamped": 0,
-        "passed": True,
-        "reason": None,
-        "cause": None,
-        "schedule": {"kind": "calendar"},
-        "questions": [],
-        "usd": 0.01,
-        "known": True,
-        "variants": None,
-    } | changes
+    return counted(slot.task(), **changes)
 
 
 def _alive(stat: Path) -> bool:
