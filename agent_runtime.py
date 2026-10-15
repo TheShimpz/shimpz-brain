@@ -96,7 +96,7 @@ class ProviderConfig:
             raise RuntimeContractError("unsupported model provider")
         if self.model not in MODELS_BY_PROVIDER[self.provider]:
             raise RuntimeContractError("unsupported model for provider")
-        if not self.api_key or len(self.api_key) > 16 * 1024 or "\0" in self.api_key:
+        if not self.api_key or len(self.api_key) > 8192 or "\0" in self.api_key:
             raise RuntimeContractError("invalid model provider credential")
 
 
