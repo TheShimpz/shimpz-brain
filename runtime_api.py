@@ -430,7 +430,12 @@ class IntentRouteInput(ClosedInput):
 class RuntimeLike(Protocol):
     """The runtime the API serves: ``AgentRuntime``, or a test double with the same methods."""
 
-    def start(self, context: agent_runtime.TurnContext, message: str) -> agent_runtime.TurnResult: ...
+    def start(
+        self,
+        context: agent_runtime.TurnContext,
+        message: str,
+        conversation: tuple[intent_route.ConversationEntry, ...] = (),
+    ) -> agent_runtime.TurnResult: ...
 
     def resume(
         self,
