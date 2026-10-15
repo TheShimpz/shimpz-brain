@@ -21,7 +21,6 @@ ROUTINES_METADATA = "shimpz_turn_routines"
 QUESTION_METADATA = "shimpz_turn_routine_question"
 MODE_METADATA = "shimpz_turn_routine_mode"
 RERUN_METADATA = "shimpz_turn_routine_rerun"
-CAPACITY_METADATA = "shimpz_turn_routine_capacity"
 SCHEDULE_METADATA = "shimpz_turn_routine_schedule"
 MODEL_METADATA = "shimpz_turn_model"
 WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
@@ -161,20 +160,6 @@ def restore_schedule(metadata: Mapping[str, object]) -> dict[str, object] | None
     if (decoded is not None and schedule is None) or _json(schedule) != value:
         raise PinError("recorded turn pins are invalid")
     return schedule
-
-
-def record_capacity(capacity: int | None) -> dict[str, str]:
-    """The checkpoint entry holding the daily Action steps Team left a new Routine, pinned with the listing."""
-    return {CAPACITY_METADATA: _json(capacity)}
-
-
-def restore_capacity(metadata: Mapping[str, object]) -> int | None:
-    """The exact capacity a start recorded; anything else is corrupt state."""
-    value = metadata.get(CAPACITY_METADATA)
-    decoded = _decoded(value)
-    if (decoded is not None and not team_routine.valid_capacity(decoded)) or _json(decoded) != value:
-        raise PinError("recorded turn pins are invalid")
-    return decoded
 
 
 def record_model(provider: str, model: str) -> dict[str, str]:

@@ -35,8 +35,6 @@ MAX_LISTED_STEPS_BYTES = 256 * 1024
 MAX_LISTING_STEPS_BYTES = 1024 * 1024
 # The reply the person reads beside the card: the result of the work the agent ran.
 MAX_REPLY_CHARS = 4000
-# The Team's daily Action steps across its Routines, which Team enforces; the context reports what is left of them.
-MAX_DAILY_STEPS = 20_000
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -107,10 +105,6 @@ def admit_context(context: Any) -> None:
     """
     if context.routines is not None:
         object.__setattr__(context, "routines", canonical_routines(context.routines))
-    if (context.routines is None) != (context.routine_capacity is None) or not (
-        context.routine_capacity is None or valid_capacity(context.routine_capacity)
-    ):
-        raise RoutineContractError("invalid Routine capacity")
     if type(context.routine_mode) is not bool or (context.routine_mode and context.routines is None):
         raise RoutineContractError("invalid Routine mode")
     for field, canonical, name in (
@@ -125,11 +119,6 @@ def admit_context(context: Any) -> None:
         if admitted is None:
             raise RoutineContractError(f"invalid Routine {name}")
         object.__setattr__(context, field, admitted)
-
-
-def valid_capacity(value: object) -> bool:
-    """Whether a Team's daily Action steps left for a Routine is a whole count within the Team's own bound."""
-    return type(value) is int and 0 <= value <= MAX_DAILY_STEPS
 
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:

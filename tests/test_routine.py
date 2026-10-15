@@ -90,7 +90,6 @@ def _chat(routines=(), schedule=EVERY_30_SECONDS):
         context(),
         memories=(),
         routines=tuple(routines),
-        routine_capacity=20_000,
         locale="pt",
         routine_schedule=schedule,
     )
@@ -321,7 +320,6 @@ class GraphTests(unittest.TestCase):
             memories=(memory.Memory("language", "responda em português"),),
             skills=(),
             routines=(LISTED,),
-            routine_capacity=20_000,
             knowledge_writable=False,
         )
         result = runtime.start(run, MESSAGE)
@@ -365,12 +363,7 @@ class PendingQuestionTests(unittest.TestCase):
                 self.subTest(question=question),
                 self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine question"),
             ):
-                dataclasses.replace(
-                    context(),
-                    routines=routines,
-                    routine_capacity=None if routines is None else 20_000,
-                    routine_question=question,
-                )
+                dataclasses.replace(context(), routines=routines, routine_question=question)
 
     def test_the_prompt_names_the_pending_question_only_while_one_is_pending(self):
         runtime, model = _runtime(AIMessage(content="Ok."))
@@ -404,9 +397,7 @@ class RoutineModeTests(unittest.TestCase):
         ):
             routines = changes.pop("routines", None)
             with self.subTest(changes=changes), self.assertRaisesRegex(agent_runtime.RuntimeContractError, error):
-                dataclasses.replace(
-                    context(), routines=routines, routine_capacity=None if routines is None else 20_000, **changes
-                )
+                dataclasses.replace(context(), routines=routines, **changes)
 
     def test_the_prompt_adds_the_routine_mode_and_rerun_sections_only_when_sent(self):
         runtime, model = _runtime(AIMessage(content="Ok."))
@@ -462,7 +453,7 @@ class RoutineModeTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore_schedule({turn_pins.SCHEDULE_METADATA: value})
         with self.assertRaises(agent_runtime.RuntimeContractError):
-            dataclasses.replace(_chat(), routines=None, routine_capacity=None, routine_schedule=EVERY_30_SECONDS)
+            dataclasses.replace(_chat(), routines=None, routine_schedule=EVERY_30_SECONDS)
 
     def test_a_resumed_turn_keeps_the_mode_and_rerun_its_start_pinned(self):
         runtime, model = GraphTests._runtime(
@@ -477,16 +468,14 @@ class RoutineModeTests(unittest.TestCase):
 
 
 class ContinuationFrameTests(unittest.TestCase):
-    """A resume as Team sends it: no listing, no capacity, no mode, the Team's configured model (ADR-0101)."""
+    """A resume as Team sends it: no listing, no mode, the Team's configured model (ADR-0101)."""
 
     @staticmethod
     def _team_resume(model: str = "gpt-6-luna") -> agent_runtime.TurnContext:
         provider = dataclasses.replace(context().provider, model=model)
-        return dataclasses.replace(
-            context(), provider=provider, memories=(), routines=None, routine_capacity=None, locale="pt"
-        )
+        return dataclasses.replace(context(), provider=provider, memories=(), routines=None, locale="pt")
 
-    def test_a_team_continuation_restores_the_listing_and_capacity_its_start_pinned(self):
+    def test_a_team_continuation_restores_the_listing_its_start_pinned(self):
         seen: list[agent_runtime.ProviderConfig] = []
         RecordingToolAwareFakeModel.seen_messages = []
         model = RecordingToolAwareFakeModel(
@@ -515,13 +504,6 @@ class ContinuationFrameTests(unittest.TestCase):
         )
         with self.assertRaises(agent_runtime.RuntimeContractError):
             runtime.resume(other, {suspended.actions[0].interrupt_id: {"records": ["A"]}})
-
-    def test_the_capacity_pin_refuses_corrupt_state(self):
-        self.assertEqual(turn_pins.restore_capacity(turn_pins.record_capacity(None)), None)
-        self.assertEqual(turn_pins.restore_capacity(turn_pins.record_capacity(20_000)), 20_000)
-        for value in (None, "x", "-1", "true", "20000.0", "999999999"):
-            with self.subTest(capacity=value), self.assertRaises(turn_pins.PinError):
-                turn_pins.restore_capacity({turn_pins.CAPACITY_METADATA: value})
 
     def test_the_model_pin_refuses_corrupt_state(self):
         self.assertEqual(
@@ -559,17 +541,11 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore({**pins, turn_pins.ROUTINES_METADATA: value})
 
-    def test_the_context_refuses_invalid_routines_or_capacity(self):
+    def test_the_context_refuses_invalid_routines(self):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid routines"):
-            dataclasses.replace(context(), routines=({"routine_id": "x"},), routine_capacity=20_000)
+            dataclasses.replace(context(), routines=({"routine_id": "x"},))
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid knowledge scope"):
             dataclasses.replace(context(), knowledge_writable=1)
-        for routines, capacity in (((), None), (None, 1), ((), -1)):
-            with (
-                self.subTest(capacity=capacity),
-                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "capacity"),
-            ):
-                dataclasses.replace(context(), routines=routines, routine_capacity=capacity)
 
     def test_the_turn_endpoint_carries_routines_and_returns_the_record(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -590,7 +566,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             ("routine_question", {"code": "unsupported", "options": [], "value": None}),
             ("routine_mode", "yes"),
             ("routine_rerun", [{"assistant": "x"}]),
-            ("routine_schedule", {"kind": "continuous", "gap": 30}),
+            ("routine_schedule", {"kind": "continuous", "gap": 4}),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)

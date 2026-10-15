@@ -213,7 +213,7 @@ class Session:
 def _context(session: Session, thread: str, provider: agent_runtime.ProviderConfig, turn: int):
     memories = (MEMORIES if turn < 5 else CHANGED) if session.stratum == "mem" else ()
     return agent_runtime.TurnContext(
-        thread, "Eval Team", (TASKS,), provider, memories=memories, routines=(), routine_capacity=20_000, locale="en"
+        thread, "Eval Team", (TASKS,), provider, memories=memories, routines=(), locale="en"
     )
 
 

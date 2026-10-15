@@ -34,7 +34,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
 from routine_recovery import RecoveryRequest
 
 import routine as team_routine
@@ -149,10 +149,8 @@ class TurnContextInput(ClosedInput):
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
     # The procedures the Team learned (ADR-0085); null where learning is unavailable.
     skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
-    # The Team's Routines as data (ADR-0086) and the daily Action steps it leaves a new one, advisory (ADR-0101); null
-    # withholds the Routine tool.
+    # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
-    routine_capacity: StrictInt | None
     # The question Team asked the person about this recording, which the person's message may answer (ADR-0101).
     routine_question: dict[str, Any] | None
     # Whether Team read that this chat is about a Routine (advisory), and the work a pending question asks to run again.
@@ -182,7 +180,6 @@ class TurnContextInput(ClosedInput):
             memories=_memories(self.memories),
             skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
-            routine_capacity=self.routine_capacity,
             routine_question=self.routine_question,
             routine_mode=self.routine_mode,
             routine_rerun=None if self.routine_rerun is None else tuple(self.routine_rerun),

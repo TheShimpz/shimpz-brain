@@ -28,7 +28,7 @@ REPLY = provider_replies.openai_reply("You have no open tasks.", model="gpt-6-lu
 
 def _context(memories: tuple = ()) -> agent_runtime.TurnContext:
     return agent_runtime.TurnContext(
-        "arms", "Eval Team", (ASSISTANTS["tasks"],), CONFIG, memories=memories, routines=(), routine_capacity=20_000
+        "arms", "Eval Team", (ASSISTANTS["tasks"],), CONFIG, memories=memories, routines=()
     )
 
 

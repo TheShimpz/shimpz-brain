@@ -265,7 +265,7 @@ def _team_modules(assistant: Generated) -> Modules:
 
 
 # The turn context members a trace keeps: never the model key.
-_TRACED_CONTEXT = ("thread_id", "provider", "model", "locale", "knowledge_writable", "routine_capacity")
+_TRACED_CONTEXT = ("thread_id", "provider", "model", "locale")
 
 
 def _turn_event(turn) -> dict[str, object]:

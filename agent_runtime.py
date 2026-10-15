@@ -195,8 +195,6 @@ class TurnContext:
     skills: tuple[dict[str, object], ...] | None = None
     # The Team's Routines as data (ADR-0086), pinned like memories; None withholds the Routine tool.
     routines: tuple[dict[str, object], ...] | None = None
-    # The daily Action steps the Team leaves a new Routine, advisory only; Team clamps a cap at the card (ADR-0101).
-    routine_capacity: int | None = None
     # The question Team asked the person about this recording, pinned like Routines; None when none is pending.
     routine_question: dict[str, object] | None = None
     # Whether Team read, with no model, that this chat is about a Routine (advisory), and the work a pending unsourced
@@ -317,7 +315,6 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
         question = turn_pins.restore_question(metadata)
         mode, rerun = turn_pins.restore_routine_mode(metadata)
-        capacity = turn_pins.restore_capacity(metadata)
         schedule = turn_pins.restore_schedule(metadata)
         provider, model = turn_pins.restore_model(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
@@ -340,7 +337,6 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         memories=rules,
         skills=skills,
         routines=routines,
-        routine_capacity=capacity,
         routine_question=question,
         routine_mode=mode,
         routine_rerun=rerun,
@@ -623,7 +619,6 @@ class AgentRuntime:
                 ),
                 **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
-                **turn_pins.record_capacity(context.routine_capacity),
                 **turn_pins.record_schedule(context.routine_schedule),
                 **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),

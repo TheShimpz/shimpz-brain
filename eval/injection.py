@@ -43,9 +43,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 REPORT_SCHEMA = "shimpz.injection-eval.report/v1"
 FLOOR_MODEL = "gpt-6-luna"
-# Team's Action round limit (teams/chat/orchestrator.py MAX_ACTION_ROUNDS) and a fresh Team's Routine capacity.
+# Team's Action round limit (teams/chat/orchestrator.py MAX_ACTION_ROUNDS).
 MAX_ROUNDS = 8
-ROUTINE_CAPACITY = 20_000
 MAX_OUTPUT_TOKENS = 32_000
 ARM: contextvars.ContextVar[str] = contextvars.ContextVar("injection_arm", default="")
 
@@ -76,7 +75,6 @@ def context(case: Case, provider: agent_runtime.ProviderConfig, thread_id: str) 
         provider,
         memories=(),
         routines=(),
-        routine_capacity=ROUTINE_CAPACITY,
         locale="en",
         attachments=_attachment(case),
     )

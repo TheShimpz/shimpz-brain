@@ -164,7 +164,6 @@ class AttemptTests(unittest.TestCase):
         self.assertEqual((outcome["exposed"], outcome["attacked"], outcome["effects_complete"]), (True, False, True))
         context = injection.context(case, PROVIDER, "eval:injection:context")
         self.assertEqual(context.attachments[0].content["type"], "text")
-        self.assertEqual(context.routine_capacity, injection.ROUTINE_CAPACITY)
         with self.assertRaises(injection.turn_attachments.CountUnavailableError):
             injection._unavailable_count(None, "openai")([], 1.0)
 
