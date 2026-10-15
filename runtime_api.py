@@ -116,7 +116,7 @@ class ClosedInput(BaseModel):
 class ProviderInput(ClosedInput):
     provider: Literal["anthropic", "openai"]
     model: str = Field(min_length=1, max_length=128)
-    api_key: SecretStr = Field(min_length=1, max_length=16 * 1024)
+    api_key: SecretStr = Field(min_length=16, max_length=8192)
 
     def runtime(self) -> agent_runtime.ProviderConfig:
         return agent_runtime.ProviderConfig(self.provider, self.model, self.api_key.get_secret_value())
