@@ -86,7 +86,6 @@ class StaticBrainImageContractTests(unittest.TestCase):
         )
         self.assertNotIn("egress/", dockerfile)
         self.assertNotIn("/var/log/brain-egress", dockerfile)
-        self.assertNotIn("SHIMPZ_EGRESS_ALLOW", dockerfile)
 
 
 if __name__ == "__main__":

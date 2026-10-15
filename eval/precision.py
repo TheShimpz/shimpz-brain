@@ -529,28 +529,6 @@ def grade(
     return {"grade": "exploratory" if reasons else "decision", "reasons": reasons, "judge_identity": current}
 
 
-def regrade(report: Mapping[str, object]) -> dict[str, object]:
-    """Recompute a committed report's grade under the current rules from what it records.
-
-    A report promotes only on the provenance it records for its verdicts: the judge identity behind each one. A report
-    without that provenance stays exploratory, so regrading never forgets that its verdicts came from another judge.
-    """
-    judges = report.get("judges") or {}
-    identities = judges.get("verdict_identities")
-    # An empty list is provenance only for a report that records exactly zero judged attempts.
-    nothing_judged = type(judges.get("judged_attempts")) is int and judges["judged_attempts"] == 0
-    recorded = (
-        isinstance(identities, list)
-        and (bool(identities) or nothing_judged)
-        and all(isinstance(item, str) and FINGERPRINT_RE.fullmatch(item) for item in identities)
-    )
-    judged = [{"judge_identity": item} for item in identities] if recorded else []
-    decision = grade(report.get("judge_calibration"), judged, report.get("meta") or {})
-    if not recorded:
-        decision = {**decision, "grade": "exploratory", "reasons": [*decision["reasons"], "no-verdict-provenance"]}
-    return {**report, "decision": decision}
-
-
 def _stratum(scenario_id: str) -> str:
     blind = next((stratum for stratum, module in BLIND.items() if scenario_id in module.SCENARIOS_BY_ID), None)
     if blind is not None:
@@ -861,7 +839,7 @@ def _report(args: argparse.Namespace) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("validate", "calibrate", "judge", "report", "regrade"))
+    parser.add_argument("command", choices=("validate", "calibrate", "judge", "report"))
     parser.add_argument("--transcript", type=Path)
     parser.add_argument(
         "--completion",
@@ -882,10 +860,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "validate":
             print(json.dumps(validate(), sort_keys=True))
-            return 0
-        if args.command == "regrade":
-            regraded = regrade(json.loads(args.out.read_text(encoding="utf-8")))
-            args.out.write_text(json.dumps(regraded, indent=1, sort_keys=True) + "\n", encoding="utf-8")
             return 0
         if args.command == "report":
             _report(args)
