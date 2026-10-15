@@ -86,6 +86,7 @@ from pathlib import Path
 from unittest import mock
 
 if __package__:
+    from eval.private import read_key
     from eval.routines_fixture import (
         ASSISTANT,
         ATTEMPTS,
@@ -113,6 +114,7 @@ if __package__:
     from eval.routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
     from eval.routines_strata import CASES, VARIANT_STRATA, _cause, variants
 else:  # run as a script from Team, beside its sibling modules
+    from private import read_key
     from routines_fixture import (
         ASSISTANT,
         ATTEMPTS,
@@ -815,7 +817,8 @@ def gate(report: dict[str, object], attempts: int) -> dict[str, object]:
 
 
 def _key(path: Path | None) -> str | None:
-    return None if path is None else path.read_text(encoding="utf-8").strip()
+    """A provider key from its owner-only file, read as every eval reads one; None when no file is named."""
+    return None if path is None else read_key(path)
 
 
 def _arguments() -> argparse.Namespace:
