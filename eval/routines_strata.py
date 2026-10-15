@@ -52,6 +52,8 @@ class Stratum:
     shows: str = "list-dns-records"
     # Whether the work replaces the content of the TXT record verify.shimpz.com with each run's date.
     changes: bool = False
+    # Whether that content is text holding each run's date, a template, rather than the date alone.
+    dated_text: bool = False
 
 
 def _selector_miss(card: dict[str, object], zones_meant: tuple[str, ...]) -> str | None:
@@ -111,6 +113,9 @@ def _change_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum) ->
         found = inputs.get(member)
         if found is None or found["origin"] != expected[0]:
             return f"change:{member}"
+        if member == "content" and (found["value"] is not None) != stratum.dated_text:
+            # The date alone is the run date; text holding it is a template the card shows whole.
+            return "change:content-form"
         if (
             expected[0] == "selector"
             and (
@@ -205,7 +210,9 @@ def _replayed_change_miss(attempt: Attempt, stratum: Stratum, performed: int) ->
     if len(changes) != 1 or changes[0][0] != "replace-dns-record":
         return "replay-change:count"
     action_input = changes[0][1]
-    if {key: action_input.get(key) for key in expected} != expected or action_input.get("content") != today:
+    # A run on the recording's own day writes the text the recording wrote; the date alone is today's.
+    content = attempt.fixture.performed[performed - 1][1].get("content") if stratum.dated_text else today
+    if {key: action_input.get(key) for key in expected} != expected or action_input.get("content") != content:
         return "replay-change:input"
     return None
 
@@ -300,6 +307,13 @@ TXT_UPDATE_REQUEST = (
 )
 
 
+# The same update, with the date inside a text: each run writes the text again for its own date.
+TXT_DATED_TEXT_REQUEST = (
+    "Cria uma rotina que atualiza o registro TXT verify.shimpz.com para o texto \"verificado em\" seguido da data de "
+    "hoje, todo dia às 9h"
+)
+
+
 # Each stratum's cap is its scripted sends plus one per piece the person left out of them, the output disposition
 # included whenever they did not state it.
 STRATA = (
@@ -371,6 +385,13 @@ STRATA = (
         sends=1,
     ),
     Stratum(
+        "interval-2-days",
+        _send("A cada 2 dias, liste os registros DNS de shimpz.com e me mostre sempre"),
+        _person("A cada 2 dias", 2 * 86_400, output="show", said={*FULL, "output"}),
+        _continuous,
+        sends=1,
+    ),
+    Stratum(
         "interval-5s",
         _send("A cada 5 segundos, liste minhas zonas"),
         _person("A cada 5 segundos", 5, zone_words="Todas as minhas zonas", output="none", said=set(FULL)),
@@ -387,6 +408,16 @@ STRATA = (
         sends=2,
         shows="replace-dns-record",
         changes=True,
+    ),
+    Stratum(
+        "txt-dated-text",
+        _send(TXT_DATED_TEXT_REQUEST),
+        _person("Todo dia às 9h", output="show", said=set(FULL)),
+        _daily_nine,
+        sends=2,
+        shows="replace-dns-record",
+        changes=True,
+        dated_text=True,
     ),
 )
 
