@@ -19,7 +19,7 @@ if __package__:
         ZONE_RECORDS,
         ZONE_SET,
     )
-    from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, _conversation_turns
+    from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         EXAMPLE,
@@ -32,7 +32,7 @@ else:  # run as a script from Team, beside its sibling modules
         ZONE_RECORDS,
         ZONE_SET,
     )
-    from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, _conversation_turns
+    from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 
 
 @dataclasses.dataclass(frozen=True)
@@ -321,18 +321,18 @@ def _primed(attempt: Attempt, first: str, recording: str) -> dict[str, object] |
         return Outcome("recorded-unasked")
     if not any(action == "list-zones" for action, _payload in attempt.fixture.calls):
         return Outcome("first-turn-calls")
-    return _conversation_turns(attempt, recording)
+    return conversation_turns(attempt, recording)
 
 
 def _unprimed(attempt: Attempt) -> dict[str, object]:
     """The zone's id is known only from an earlier assistant reply outside this span; nothing in the span ran."""
     attempt.remember("user", "Qual é o id da zona shimpz.com?")
     attempt.remember("assistant", f"O id da zona shimpz.com é {SHIMPZ}.")
-    return _conversation_turns(attempt, "A cada hora, liste os registros DNS dessa zona")
+    return conversation_turns(attempt, "A cada hora, liste os registros DNS dessa zona")
 
 
 def _send(first: str) -> Callable[[Attempt], dict[str, object]]:
-    return lambda attempt: _conversation_turns(attempt, first)
+    return lambda attempt: conversation_turns(attempt, first)
 
 
 def _person(frequency: str, gap: int | None = None, **changes) -> Callable[[], Person]:
@@ -505,7 +505,7 @@ def _shape_cause(attempt: Attempt, reason: str) -> str | None:
     return None
 
 
-def _cause(attempt: Attempt, reason: str) -> str:
+def failure_cause(attempt: Attempt, reason: str) -> str:
     """A miss's structural root cause, from its closed reason and the shape of the attempt's sends."""
     if reason == "all-zones":
         return "acted-on-every-zone"

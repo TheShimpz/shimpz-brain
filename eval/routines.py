@@ -112,7 +112,7 @@ if __package__:
     from eval.routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
     from eval.routines_pool import evidence as wire_evidence
     from eval.routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
-    from eval.routines_strata import CASES, VARIANT_STRATA, _cause, variants
+    from eval.routines_strata import CASES, VARIANT_STRATA, failure_cause, variants
 else:  # run as a script from Team, beside its sibling modules
     from private import read_key
     from routines_fixture import (
@@ -140,7 +140,7 @@ else:  # run as a script from Team, beside its sibling modules
     from routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
     from routines_pool import evidence as wire_evidence
     from routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
-    from routines_strata import CASES, VARIANT_STRATA, _cause, variants
+    from routines_strata import CASES, VARIANT_STRATA, failure_cause, variants
 
 
 # The Team checkout the eval drives; --teams names another, such as a worktree carrying a Team change.
@@ -568,7 +568,7 @@ def _judged(context: WorkerContext, case_id: str, attempt: Attempt, signals: Sig
         # Team's mapped detail, as Admin would see it; the Brain's own cause is in its --brain-logs file.
         attempt.fixture.note({"kind": "team-error", "code": exc.code, "detail": str(exc)})
     if not outcome:
-        outcome.cause = _cause(attempt, outcome.reason)
+        outcome.cause = failure_cause(attempt, outcome.reason)
     outcome.questions = tuple(attempt.questions)
     eligible = outcome and case_id in VARIANT_STRATA and signals.disposition() == "counted"
     found = variants(attempt) if eligible and _claim_variants(context.run_dir) else None

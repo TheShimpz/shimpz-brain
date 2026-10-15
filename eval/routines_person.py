@@ -494,7 +494,7 @@ def _already_answered(attempt: Attempt, code: str) -> bool:
     )
 
 
-def _conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
+def conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
     """Send and answer until a turn records, the person has nothing left to say, or the sends run out.
 
     The agent's clarification gets every part the person can answer, composed as Admin composes it, and Admin's
