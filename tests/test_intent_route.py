@@ -1,9 +1,13 @@
+import json
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 import agent_runtime
 import intent_route
+from langchain_core.messages import AIMessage
+from pydantic import BaseModel
+from structured_fake import StructuredFakeModel
 
 
 def provider(name: str = "openai") -> agent_runtime.ProviderConfig:
@@ -40,10 +44,13 @@ class StructuredModel:
         return self
 
     def invoke(self, messages):
+        """Answer the way LangChain's include_raw does, with the raw text the parsed value came from."""
         self.messages = messages
         if self.error is not None:
             raise self.error
-        return self.response
+        response = self.response
+        text = response.model_dump_json() if isinstance(response, BaseModel) else json.dumps(response)
+        return {"raw": AIMessage(content=text), "parsed": response, "parsing_error": None}
 
 
 class DecisionFactory:
@@ -77,7 +84,7 @@ class IntentRouteTests(unittest.TestCase):
         self.assertEqual(result, intent_route.IntentRoute("assistant-uninstall", "cloudflare"))
         factory.assert_called_once_with()
         self.assertIs(model.schema, intent_route.StructuredRoute)
-        self.assertEqual(model.options, {"method": "json_schema", "strict": True})
+        self.assertEqual(model.options, {"method": "json_schema", "include_raw": True, "strict": True})
         prompt = "\n".join(str(message.content) for message in model.messages)
         self.assertIn("untrusted data", prompt)
         self.assertIn("exactly one line", prompt)
@@ -168,7 +175,7 @@ class IntentRouteTests(unittest.TestCase):
         result = intent_route.create(lambda: model, "anthropic", "liste minhas zonas", None, (), None, "pt")
 
         self.assertEqual(result, intent_route.IntentRoute("ordinary-task"))
-        self.assertEqual(model.options, {"method": "json_schema"})
+        self.assertEqual(model.options, {"method": "json_schema", "include_raw": True})
 
     def test_selection_is_bound_to_expected_intent_and_exact_candidate_ids(self):
         model = StructuredModel(
@@ -606,8 +613,19 @@ class IntentRouteTests(unittest.TestCase):
             )
         self.assertIn("task_follows", intent_route.StructuredRoute.model_json_schema()["required"])
 
+    def test_the_raw_route_reply_passes_the_closed_structured_validator(self):
+        valid = '{"intent":"ordinary-task","query":"","assistant_ids":[],"reply":"","task_follows":false}'
+        for content in (
+            [{"type": "refusal", "refusal": "cannot comply"}],
+            valid[:-1] + ',"reply":""}',
+            valid[:-1] + " " * intent_route.MAX_RESPONSE_CHARS + "}",
+        ):
+            model = StructuredFakeModel(responses=[AIMessage(content=content)])
+            with self.subTest(content=content), self.assertRaises(intent_route.IntentRouteResponseError):
+                intent_route.create(lambda selected=model: selected, "openai", "hello", None, (), None, "pt")
+
     def test_provider_and_contract_failures_are_redacted_and_distinct(self):
-        with self.assertRaisesRegex(intent_route.IntentRouteProviderError, "^model provider request failed$"):
+        with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
             intent_route.create(
                 lambda: StructuredModel(error=RuntimeError("secret provider detail")),
                 "openai",
@@ -642,13 +660,10 @@ class IntentRouteTests(unittest.TestCase):
 
     def test_provider_adapter_and_dependency_failures_remain_distinct(self):
         factory = mock.Mock(side_effect=RuntimeError("secret provider detail"))
-        with self.assertRaises(intent_route.IntentRouteError):
-            intent_route.create(factory, "unsupported", "hello", None, (), None, "pt")
-        factory.assert_not_called()
         with self.assertRaisesRegex(intent_route.IntentRouteError, "invalid route objective"):
-            intent_route.create(factory, "unsupported", "", None, (), None, "pt")
+            intent_route.create(factory, "openai", "", None, (), None, "pt")
         factory.assert_not_called()
-        with self.assertRaisesRegex(intent_route.IntentRouteProviderError, "^model provider request failed$"):
+        with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
             intent_route.create(factory, "openai", "hello", None, (), None, "pt")
         factory.assert_called_once_with()
 
@@ -710,10 +725,6 @@ class IntentRouteTests(unittest.TestCase):
             (
                 intent_route.IntentRouteResponseError("private response"),
                 agent_runtime.ProviderResponseError,
-            ),
-            (
-                intent_route.IntentRouteProviderError("private request"),
-                agent_runtime.ProviderRequestError,
             ),
             (ImportError("missing adapter"), ImportError),
             (RuntimeError("private failure"), agent_runtime.ProviderRequestError),

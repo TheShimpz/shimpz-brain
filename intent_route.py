@@ -1,7 +1,7 @@
 """Stateless structured routing for one fresh Admin chat objective."""
 
 import unicodedata
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -12,6 +12,7 @@ from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict, Field
+from runtime_errors import ProviderResponseError
 
 # Every bound an intent route request or answer crosses with Team is Team's own, read from its mirrored protocol.
 MAX_CANDIDATES = team_turn.MAX_INTENT_ROUTE_CANDIDATES
@@ -28,6 +29,7 @@ MAX_CONVERSATION_CHARS = team_payload.MAX_CONVERSATION_CHARS
 MAX_INSTALLABLE = team_turn.MAX_CAPABILITY_CANDIDATES
 MAX_INSTALLABLE_NAME_CHARS = team_turn.MAX_CAPABILITY_NAME_CHARS
 MAX_INSTALLABLE_SUMMARY_CHARS = team_turn.MAX_CAPABILITY_SUMMARY_CHARS
+MAX_RESPONSE_CHARS = 4_096
 _LANGUAGE_LAYOUT_CONTROLS = frozenset({"\n", "\r", "\t"})
 
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
@@ -36,10 +38,6 @@ Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "u
 
 class IntentRouteError(ValueError):
     """Route input or structured provider output violated the closed contract."""
-
-
-class IntentRouteProviderError(RuntimeError):
-    """The provider request failed without exposing provider data."""
 
 
 class IntentRouteResponseError(RuntimeError):
@@ -296,17 +294,6 @@ def _prompt(
     return structured.messages(f"{system}\n\n{instruction}", payload)
 
 
-def _parsed(value: object) -> StructuredRoute:
-    if isinstance(value, StructuredRoute):
-        return value
-    if isinstance(value, Mapping):
-        try:
-            return StructuredRoute.model_validate(value)
-        except ValueError as exc:
-            raise IntentRouteError("invalid structured route response") from exc
-    raise IntentRouteError("invalid structured route response")
-
-
 def _classification(parsed: StructuredRoute, assistant_ids: tuple[str, ...], reply: str) -> IntentRoute:
     if assistant_ids or (parsed.intent in {"ordinary-task", "unresolved"} and parsed.query):
         raise IntentRouteError("invalid structured route classification")
@@ -358,11 +345,10 @@ def _selection(
 
 
 def _route(
-    value: object,
+    parsed: StructuredRoute,
     expected_intent: LifecycleIntent | None,
     candidates: tuple[DirectoryCandidate, ...],
 ) -> IntentRoute:
-    parsed = _parsed(value)
     assistant_ids = tuple(parsed.assistant_ids)
     reply = _text(parsed.reply, MAX_REPLY_CHARS, "route reply", empty=True)
     if any(unicodedata.category(character) in {"Zl", "Zp"} for character in reply):
@@ -393,20 +379,17 @@ def create(
         context,
     )
     try:
-        options = {"method": "json_schema"}
-        if provider == "openai":
-            options["strict"] = True
-        elif provider != "anthropic":
-            raise IntentRouteError("unsupported model provider")
-        structured = model_factory().with_structured_output(StructuredRoute, **options)
-        value = structured.invoke(_prompt(task, expected, admitted, admitted_context, locale))
-    except ImportError:
-        raise
-    except IntentRouteError:
-        raise
-    except Exception as exc:
-        raise IntentRouteProviderError("model provider request failed") from exc
-    try:
-        return _route(value, expected, admitted)
-    except IntentRouteError as exc:
+        return _route(
+            structured.bounded_value(
+                model_factory,
+                provider,
+                StructuredRoute,
+                lambda: _prompt(task, expected, admitted, admitted_context, locale),
+                "intent route",
+                MAX_RESPONSE_CHARS,
+            ),
+            expected,
+            admitted,
+        )
+    except (IntentRouteError, ProviderResponseError) as exc:
         raise IntentRouteResponseError("model provider response failed") from exc

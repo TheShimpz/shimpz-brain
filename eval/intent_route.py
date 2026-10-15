@@ -322,7 +322,7 @@ def main() -> int:
         OSError,
         ValueError,
         intent_route.IntentRouteError,
-        intent_route.IntentRouteProviderError,
+        agent_runtime.ProviderRequestError,
     ):
         print("intent-route semantic evaluation failed", file=sys.stderr)
         return 2

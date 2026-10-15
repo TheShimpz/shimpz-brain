@@ -10,6 +10,7 @@ from langchain_core.language_models import BaseChatModel
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict, Field
+from runtime_errors import ProviderResponseError
 
 # Every bound a capability plan request or answer crosses with Team is Team's own, read from its mirrored protocol.
 MAX_CANDIDATES = team_turn.MAX_CAPABILITY_CANDIDATES
@@ -24,10 +25,6 @@ MAX_RESPONSE_CHARS = 4_096
 
 class CapabilityPlanError(ValueError):
     """Planner input or provider output violated the closed contract."""
-
-
-class CapabilityPlanProviderError(RuntimeError):
-    """The model request failed without exposing provider data."""
 
 
 class CapabilityPlanResponseError(RuntimeError):
@@ -181,17 +178,18 @@ def create(
     candidates: tuple[CapabilityCandidate, ...],
 ) -> CapabilityPlan:
     """Produce one provider-native structured plan without tools, conversation state, or lifecycle authority."""
-    from runtime_errors import RuntimeContractError
-    from structured import structured_output, structured_value
-
     task, admitted = _inputs(objective, candidates)
     try:
-        result = structured_output(model_factory(), provider, StructuredPlan).invoke(_prompt(task, admitted))
-    except ImportError:
-        raise
-    except Exception as exc:
-        raise CapabilityPlanProviderError("model provider request failed") from exc
-    try:
-        return _plan(structured_value(result, StructuredPlan, "capability plan", MAX_RESPONSE_CHARS), admitted)
-    except (CapabilityPlanError, RuntimeContractError) as exc:
+        return _plan(
+            structured.bounded_value(
+                model_factory,
+                provider,
+                StructuredPlan,
+                lambda: _prompt(task, admitted),
+                "capability plan",
+                MAX_RESPONSE_CHARS,
+            ),
+            admitted,
+        )
+    except (CapabilityPlanError, ProviderResponseError) as exc:
         raise CapabilityPlanResponseError("model provider response failed") from exc

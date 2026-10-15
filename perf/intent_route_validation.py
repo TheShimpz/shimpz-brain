@@ -15,19 +15,21 @@ import time
 
 import agent_runtime
 import intent_route
+from langchain_core.messages import AIMessage
 
-_RESULT = intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[], reply="")
+_RESULT = intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[], reply="", task_follows=False)
+_OPTIONS = {"method": "json_schema", "include_raw": True, "strict": True}
 
 
 class FixedModel:
     def with_structured_output(self, schema, **options):
-        if schema is not intent_route.StructuredRoute or options != {"method": "json_schema", "strict": True}:
+        if schema is not intent_route.StructuredRoute or options != _OPTIONS:
             raise AssertionError("intent route schema changed")
         return self
 
     @staticmethod
     def invoke(_messages):
-        return _RESULT
+        return {"raw": AIMessage(content=_RESULT.model_dump_json()), "parsed": _RESULT, "parsing_error": None}
 
 
 class FixedFactory:

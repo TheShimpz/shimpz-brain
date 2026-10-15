@@ -247,7 +247,7 @@ class CapabilityPlanTests(unittest.TestCase):
 
         for failure, expected in (
             (ImportError("missing dependency"), ImportError),
-            (RuntimeError("secret provider detail"), capability_plan.CapabilityPlanProviderError),
+            (RuntimeError("secret provider detail"), agent_runtime.ProviderRequestError),
         ):
             model = mock.Mock()
             model.with_structured_output.return_value.invoke.side_effect = failure
@@ -265,7 +265,7 @@ class CapabilityPlanTests(unittest.TestCase):
             capability_plan.create(factory, "openai", "", candidates())
         factory.assert_not_called()
 
-        with self.assertRaisesRegex(capability_plan.CapabilityPlanProviderError, "^model provider request failed$"):
+        with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
             capability_plan.create(factory, "openai", "Configure DNS", candidates())
         factory.assert_called_once_with()
 
