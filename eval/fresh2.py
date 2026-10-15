@@ -427,10 +427,11 @@ class FreshWorld(world.World):
     def snapshot(self) -> dict[str, object]:
         """The precision World's snapshot plus every stored field of every new-Assistant item and counted grants."""
         state = super().snapshot()
-        for prefix, items in (("shipment", self.shipments), ("customer", self.customers), ("expense", self.expenses)):
-            for key, item in items.items():
-                state[f"{prefix}:{key}"] = True
-                state.update({f"{prefix}:{key}:{name}": value for name, value in item.items()})
+        state.update(
+            world.stored_fields(
+                (("shipment", self.shipments), ("customer", self.customers), ("expense", self.expenses))
+            )
+        )
         state.update(self.grants)
         state.update(self.redemptions)
         return state

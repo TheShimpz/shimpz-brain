@@ -549,17 +549,18 @@ class FreshWorld(world.World):
         Customers and classes are read-only, so they are not part of the compared state.
         """
         state = super().snapshot()
-        for prefix, items in (
-            ("recipe", self.recipes),
-            ("menu", self.menu),
-            ("item", self.items),
-            ("reservation", self.reservations),
-            ("document", self.documents),
-            ("enrollment", self.enrollments),
-        ):
-            for key, item in items.items():
-                state[f"{prefix}:{key}"] = True
-                state.update({f"{prefix}:{key}:{name}": value for name, value in item.items()})
+        state.update(
+            world.stored_fields(
+                (
+                    ("recipe", self.recipes),
+                    ("menu", self.menu),
+                    ("item", self.items),
+                    ("reservation", self.reservations),
+                    ("document", self.documents),
+                    ("enrollment", self.enrollments),
+                )
+            )
+        )
         return state
 
 

@@ -611,16 +611,17 @@ class FreshWorld(world.World):
     def snapshot(self) -> dict[str, object]:
         """The precision World's snapshot plus every stored field of every item a new Assistant can change."""
         state = super().snapshot()
-        for prefix, items in (
-            ("tenant", self.tenants),
-            ("lease", self.leases),
-            ("workorder", self.work_orders),
-            ("payee", self.payees),
-            ("transfer", self.transfers),
-        ):
-            for key, item in items.items():
-                state[f"{prefix}:{key}"] = True
-                state.update({f"{prefix}:{key}:{name}": value for name, value in item.items()})
+        state.update(
+            world.stored_fields(
+                (
+                    ("tenant", self.tenants),
+                    ("lease", self.leases),
+                    ("workorder", self.work_orders),
+                    ("payee", self.payees),
+                    ("transfer", self.transfers),
+                )
+            )
+        )
         return state
 
 

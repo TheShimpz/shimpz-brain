@@ -72,6 +72,16 @@ NO_EFFECT_CODES = frozenset(
 )
 
 
+def stored_fields(collections: Iterable[tuple[str, Mapping[str, Mapping[str, object]]]]) -> dict[str, object]:
+    """Snapshot entries for stored items: ``prefix:key`` marks each item, ``prefix:key:name`` holds each field."""
+    state: dict[str, object] = {}
+    for prefix, items in collections:
+        for key, item in items.items():
+            state[f"{prefix}:{key}"] = True
+            state.update({f"{prefix}:{key}:{name}": value for name, value in item.items()})
+    return state
+
+
 class ActionFailedError(RuntimeError):
     """The simulated Assistant failed the Action, as an Assistant exiting nonzero does: the Team turn aborts."""
 
