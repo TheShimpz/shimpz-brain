@@ -571,42 +571,6 @@ class DisconnectTests(unittest.TestCase):
         self.assertEqual(following["body"]["reply"], "Next turn.")
 
 
-class _BlockingRecovery:
-    def __init__(self) -> None:
-        self.entered = threading.Event()
-
-    def routine_recovery(self, _provider, _request):
-        self.entered.set()
-        scope = provider_cancel._SCOPE.get()
-        while not scope.cancelled:
-            time.sleep(0.01)
-        raise provider_cancel.ProviderCallCancelled
-
-
-class RecoveryDisconnectTests(unittest.TestCase):
-    def test_a_team_disconnect_cancels_a_blocked_recovery_decision_never_a_failure(self):
-        runtime = _BlockingRecovery()
-        app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
-        payload = {
-            "provider": {"provider": "openai", "model": "gpt-6-luna", "api_key": "secret-test-key"},
-            "locale": "pt",
-            "routine": {"name": "Daily DNS"},
-            "step": {"assistant": "dns", "action": "create-record"},
-            "proof": "not_occurred",
-            "diagnostics": [],
-        }
-
-        async def scenario():
-            disconnect = asyncio.Event()
-            decision = asyncio.create_task(_asgi_turn(app, payload, disconnect=disconnect, path="/v1/routine-recovery"))
-            self.assertTrue(await asyncio.to_thread(runtime.entered.wait, 5))
-            disconnect.set()
-            return await asyncio.wait_for(decision, 5)
-
-        # The blocked provider call stops with the request and answers as cancelled, not as a provider failure.
-        self.assertEqual(asyncio.run(scenario()), {"status": 409, "body": {"detail": "Routine recovery cancelled"}})
-
-
 class _BlockingPlanner:
     def __init__(self) -> None:
         self.entered = threading.Event()

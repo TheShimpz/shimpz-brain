@@ -34,7 +34,6 @@ import intent_route as intent_router
 import memory as team_memory
 import provider_cancel
 import provider_client
-import routine_recovery
 import turn_pins
 import turn_prompt
 from action_purpose import PendingAction
@@ -44,7 +43,6 @@ from protocol.team.action.v1 import schema as action_protocol
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import turn as team_turn
-from routine_recovery import RecoveryRequest
 from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError, RuntimeStateError
 from structured import structured_output
 
@@ -858,10 +856,6 @@ class AgentRuntime:
         decision_factory = getattr(self._model_factory, "decision", None)
         return decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
 
-    def _single_attempt_model(self, provider: ProviderConfig, *, decision: bool = False) -> BaseChatModel:
-        """A model built for exactly one provider attempt per call, its SDK client making no hidden retry."""
-        return self._model_factory.single_attempt(provider, decision=decision)
-
     def action_purpose(self, provider: ProviderConfig, pending: PendingAction) -> str | None:
         """Write why a pending Action pauses for a person, from its exact interrupt and the turn's own message."""
         try:
@@ -871,12 +865,6 @@ class AgentRuntime:
             raise RuntimeStateError("checkpoint read failed") from exc
         request = action_purpose.pending_request(checkpoint, pending)
         return action_purpose.create(functools.partial(self._decision_model, provider), provider.provider, request)
-
-    def routine_recovery(self, provider: ProviderConfig, request: RecoveryRequest) -> str:
-        """The one decision of a held Routine run's automatic recovery: retry, ask, or pause (ADR-0092)."""
-        return routine_recovery.decide(
-            functools.partial(self._single_attempt_model, provider, decision=True), provider.provider, request
-        )
 
     def capability_plan(
         self,

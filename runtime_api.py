@@ -24,7 +24,6 @@ import interface_language
 import memory as team_memory
 import model_usage
 import provider_cancel
-import routine_recovery
 import turn_pins
 from action_purpose import PendingAction
 from capability_plan import CapabilityCandidate, CapabilityPlan
@@ -35,7 +34,6 @@ from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
-from routine_recovery import RecoveryRequest
 
 import routine as team_routine
 
@@ -314,38 +312,6 @@ class DeleteThreadInput(ClosedInput):
         return value
 
 
-class RoutineInput(ClosedInput):
-    """The held run's Routine, by its name."""
-
-    name: str = Field(min_length=1, max_length=80)
-
-
-class RoutineStepInput(ClosedInput):
-    assistant: str = Field(min_length=1, max_length=128)
-    action: str = Field(min_length=1, max_length=128)
-
-
-class RoutineRecoveryInput(ClosedInput):
-    """A held run's failed step, Team's proof that it had no effect, and its sanitized diagnostics as data."""
-
-    provider: ProviderInput
-    locale: interface_language.Locale | None
-    routine: RoutineInput
-    step: RoutineStepInput
-    proof: Literal["not_occurred", "no_effect"]
-    diagnostics: list[dict[str, Any]] = Field(max_length=routine_recovery.MAX_DIAGNOSTICS)
-
-    def runtime_request(self) -> routine_recovery.RecoveryRequest:
-        return routine_recovery.RecoveryRequest(
-            self.routine.name,
-            self.step.assistant,
-            self.step.action,
-            self.proof,
-            tuple(self.diagnostics),
-            self.locale,
-        )
-
-
 class CapabilityIntegrationInput(ClosedInput):
     id: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=128)
@@ -486,8 +452,6 @@ class RuntimeLike:
         objective: str,
         candidates: tuple[CapabilityCandidate, ...],
     ) -> CapabilityPlan: ...
-
-    def routine_recovery(self, provider: agent_runtime.ProviderConfig, request: RecoveryRequest) -> str: ...
 
     def intent_route(
         self,
@@ -789,20 +753,6 @@ async def _state_error_response(_request, _exc: agent_runtime.RuntimeStateError)
     return JSONResponse(status_code=503, content={"detail": "Brain runtime state operation failed"})
 
 
-def _register_routine_recovery(app: FastAPI, current_runtime: Callable[[], RuntimeLike], require_auth) -> None:
-    """The one model decision of a held Routine run's automatic recovery, with no tools or history (ADR-0092)."""
-
-    @app.post("/v1/routine-recovery", dependencies=[Depends(require_auth)])
-    async def routine_recovery_decision(request: Request, body: RoutineRecoveryInput) -> dict[str, object]:
-        # Team's Stop or recovery deadline closes its request; that cancels only this decision's provider I/O.
-        decision, usage = await _cancellable(
-            request,
-            lambda: current_runtime().routine_recovery(body.provider.runtime(), body.runtime_request()),
-            "Routine recovery cancelled",
-        )
-        return {"decision": decision, "usage": usage}
-
-
 def _register_intent_route(
     app: FastAPI,
     current_runtime: Callable[[], RuntimeLike],
@@ -938,7 +888,6 @@ def create_app(
         return await _run_capability_plan(request, current_runtime, app.state.capability_plan_slots, body)
 
     _register_intent_route(app, current_runtime, require_auth)
-    _register_routine_recovery(app, current_runtime, require_auth)
 
     return app
 
