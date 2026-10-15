@@ -225,6 +225,8 @@ class Modules:
     local_authority: object
     http_routine_proposal: object
     record: object
+    plan: object
+    dates: object
     # The real Assistant every attempt's Team runs, admitted once.
     assistant: Admitted
 
@@ -240,7 +242,8 @@ def _team_modules(assistant: Generated) -> Modules:
     from local import audit as local_audit
     from local import authority as local_authority
     from protocol.http.v1 import routine_proposal as http_routine_proposal
-    from routine import record
+    from routine import dates, record
+    from routine import plan as routine_plan
 
     return Modules(
         local_controller_harness,
@@ -252,6 +255,8 @@ def _team_modules(assistant: Generated) -> Modules:
         local_authority,
         http_routine_proposal,
         record,
+        routine_plan,
+        dates,
         admitted(assistant),
     )
 

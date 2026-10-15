@@ -111,11 +111,10 @@ def _change_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum) ->
     inputs = {item["member"]: item for item in step["inputs"]}
     for member, expected in _TXT_UPDATE.items():
         found = inputs.get(member)
-        if found is None or found["origin"] != expected[0]:
+        # The date alone is the run date; text holding it is a template the card shows whole.
+        templated = member == "content" and found is not None and (found["value"] is not None) != stratum.dated_text
+        if found is None or found["origin"] != expected[0] or templated:
             return f"change:{member}"
-        if member == "content" and (found["value"] is not None) != stratum.dated_text:
-            # The date alone is the run date; text holding it is a template the card shows whole.
-            return "change:content-form"
         if (
             expected[0] == "selector"
             and (
@@ -210,11 +209,36 @@ def _replayed_change_miss(attempt: Attempt, stratum: Stratum, performed: int) ->
     if len(changes) != 1 or changes[0][0] != "replace-dns-record":
         return "replay-change:count"
     action_input = changes[0][1]
-    # A run on the recording's own day writes the text the recording wrote; the date alone is today's.
-    content = attempt.fixture.performed[performed - 1][1].get("content") if stratum.dated_text else today
-    if {key: action_input.get(key) for key in expected} != expected or action_input.get("content") != content:
+    if {key: action_input.get(key) for key in expected} != expected:
         return "replay-change:input"
-    return None
+    if stratum.dated_text:
+        return _dated_text_miss(attempt, action_input.get("content"))
+    return None if action_input.get("content") == today else "replay-change:input"
+
+
+# The text the person asked for before each run's date.
+DATED_PREFIX = "verificado em"
+
+
+def _dated_text_miss(attempt: Attempt, content: object) -> str | None:
+    """Why the replay did not write the asked text with today's date, or would not write tomorrow's, or None."""
+    modules = attempt.team.modules
+    zone = zoneinfo.ZoneInfo(TIMEZONE)
+    now = datetime.datetime.now(zone)
+    today, tomorrow = now.date(), (now + datetime.timedelta(days=1)).date()
+
+    def dated(text: object, day: datetime.date) -> bool:
+        return (
+            isinstance(text, str) and text.casefold().startswith(DATED_PREFIX) and day in modules.dates.dates(text, day)
+        )
+
+    if not dated(content, today):
+        return "replay-change:dated-text"
+    (routine,) = attempt.team.service.routine_store.load("team_1").routines
+    (step,) = [item for item in routine.plan["steps"] if item["action"] == "replace-dns-record"]
+    source = step["input"]["content"]
+    later = modules.plan.clock_value(source, now + datetime.timedelta(days=1), routine.plan["timezone"])
+    return None if later != content and dated(later, tomorrow) else "replay-change:next-day"
 
 
 def _shown_miss(attempt: Attempt, stratum: Stratum, output: dict[str, object]) -> str | None:
@@ -309,7 +333,7 @@ TXT_UPDATE_REQUEST = (
 
 # The same update, with the date inside a text: each run writes the text again for its own date.
 TXT_DATED_TEXT_REQUEST = (
-    "Cria uma rotina que atualiza o registro TXT verify.shimpz.com para o texto \"verificado em\" seguido da data de "
+    f'Cria uma rotina que atualiza o registro TXT verify.shimpz.com para o texto "{DATED_PREFIX}" seguido da data de '
     "hoje, todo dia às 9h"
 )
 
