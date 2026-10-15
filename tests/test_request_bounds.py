@@ -175,7 +175,7 @@ def _serve(peer: _Peer, scope: dict[str, Any], runtime: FakeRuntime | None = Non
 
 class RequestBodyBoundTests(unittest.TestCase):
     def test_the_ceiling_admits_every_request_that_can_fit_the_model_window(self):
-        tool = agent_runtime._tool_name("hello-pulse", "hello")
+        tool = agent_runtime.tool_name("hello-pulse", "hello")
         call = {"name": tool, "args": {}, "id": "call"}
         model = ToolAwareFakeModel(responses=[AIMessage(content="", tool_calls=[call])])
         api = client(agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model)))

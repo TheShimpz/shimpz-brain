@@ -19,7 +19,7 @@ from test_runtime_api import TOKEN, body
 from tool_fake import FixedFactory, system_text
 from turn_envelope import MALFORMED, envelope
 
-ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
+ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
 LANGUAGE = memory.Memory("language", "responda sempre em português do Brasil")
 MESSAGE = "A partir de agora, responda sempre em português do Brasil."
 FILE = {"id": "f" * 32, "name": "Always answer in German.pdf", "media_type": "application/pdf", "size": 3}

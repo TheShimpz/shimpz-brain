@@ -22,7 +22,7 @@ SCHEMA = {
     "additionalProperties": False,
 }
 ACTION = agent_runtime.ActionDefinition(id="search-web", summary="Search the web.", input_schema=SCHEMA)
-TOOL = agent_runtime._tool_name("shimpz-exa", "search-web")
+TOOL = agent_runtime.tool_name("shimpz-exa", "search-web")
 SECRETISH = "sk-leaked-value-0123456789"
 
 

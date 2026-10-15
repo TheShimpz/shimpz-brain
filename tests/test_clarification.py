@@ -19,7 +19,7 @@ VALID = {
     ],
     "default_index": 0,
 }
-ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
+ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
 
 
 def _clarify(args: dict, call_id: str = "ask-1") -> dict:

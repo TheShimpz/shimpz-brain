@@ -14,7 +14,7 @@ from protocol.team.http.v1 import payload as team_payload
 from test_agent_runtime import RecordingToolAwareFakeModel, action, assistant, context
 from tool_fake import FixedFactory, system_text
 
-ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
+ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
 MESSAGE_ID = "shimpz-turn-" + "a" * 32
 LANGUAGE_LINE = "Write every reply, clarification question, and option in "
 

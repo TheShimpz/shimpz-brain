@@ -26,7 +26,7 @@ class RecordingModel(tool_fake.RecordingModel):
     seen: ClassVar[list[list[Any]]] = []
 
 
-TOOL = agent_runtime._tool_name("pinger", "ping")
+TOOL = agent_runtime.tool_name("pinger", "ping")
 
 
 def _context(*assistants: agent_runtime.AssistantDefinition) -> agent_runtime.TurnContext:

@@ -350,7 +350,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
     )
 
 
-def _tool_name(assistant_id: str, action_id: str) -> str:
+def tool_name(assistant_id: str, action_id: str) -> str:
     """Map a local Assistant/Action pair to one stable provider-safe tool name."""
     assistant_slug = assistant_id.replace(".", "_")[:18]
     action_slug = action_id.replace(".", "_")[:18]
@@ -633,7 +633,7 @@ class AgentRuntime:
         )
         exposed, memory_tool, routine_tool, prompt = _turn_surface(context)
         tools = [
-            action_tool.request_action(_tool_name(assistant.id, action.id), assistant.id, action)
+            action_tool.request_action(tool_name(assistant.id, action.id), assistant.id, action)
             for assistant in exposed
             for action in assistant.actions
         ]
@@ -734,7 +734,7 @@ class AgentRuntime:
     def _fixed_tokens(context: TurnContext) -> int:
         exposed, memory_tool, routine_tool, prompt = _turn_surface(context)
         tools = [
-            {"name": _tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
+            {"name": tool_name(assistant.id, action.id), "summary": action.summary, "schema": action.input_schema}
             for assistant in exposed
             for action in assistant.actions
         ]

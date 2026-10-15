@@ -44,7 +44,7 @@ class _Responses:
                     "type": "function_call",
                     "id": "fc_1",
                     "call_id": "call_1",
-                    "name": agent_runtime._tool_name("dns", "read-zone"),
+                    "name": agent_runtime.tool_name("dns", "read-zone"),
                     "arguments": json.dumps({"zone": "example.com"}),
                     "status": "completed",
                 },

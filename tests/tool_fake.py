@@ -63,7 +63,7 @@ def system_text(messages: list) -> str:
 
 def call(assistant: agent_runtime.AssistantDefinition, action: str, args: dict[str, object], call_id: str) -> dict:
     """A model tool call of one Assistant Action."""
-    return {"name": agent_runtime._tool_name(assistant.id, action), "args": args, "id": call_id, "type": "tool_call"}
+    return {"name": agent_runtime.tool_name(assistant.id, action), "args": args, "id": call_id, "type": "tool_call"}
 
 
 def runtime(*responses: AIMessage) -> agent_runtime.AgentRuntime:

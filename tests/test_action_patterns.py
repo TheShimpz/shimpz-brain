@@ -8,7 +8,7 @@ import action_tool
 import agent_runtime
 from protocol.team.action.v1 import schema as action_protocol
 
-TOOL = agent_runtime._tool_name("shimpz-exa", "search-web")
+TOOL = agent_runtime.tool_name("shimpz-exa", "search-web")
 # Python's backtracking `re` needs seconds for 30 characters of this pattern and doubles with each one more.
 CATASTROPHIC = "^(a+)+b$"
 # The semantics Team pins in the Assistant protocol's pattern vectors.

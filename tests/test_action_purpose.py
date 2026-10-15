@@ -25,7 +25,7 @@ from test_provider_cancel import asgi_post
 from test_runtime_api import NO_USAGE, SECRET, TOKEN, FakeRuntime, client
 from turn_envelope import MALFORMED, envelope
 
-ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
+ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
 PURPOSE = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
 MESSAGE = "Traga as notícias de IA de hoje"
 FILE = {"id": "f" * 32, "name": "segredo-interno.pdf", "media_type": "application/pdf", "size": 3}

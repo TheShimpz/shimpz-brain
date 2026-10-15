@@ -234,7 +234,7 @@ class ActionProvider(_Provider):
         response = super().__call__(request)
         if request.url.path == "/v1/responses" and len(self.turns()) == 1:
             arguments = json.dumps({"document": "a" * 32})
-            name = agent_runtime._tool_name("docs", "store")
+            name = agent_runtime.tool_name("docs", "store")
             return httpx.Response(
                 200,
                 json={

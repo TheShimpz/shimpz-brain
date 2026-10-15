@@ -494,7 +494,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_the_next_turn_remembers_only_the_capped_reply_the_user_received(self):
         delivered = "x" * agent_runtime.MAX_REPLY_CHARS
-        tool = agent_runtime._tool_name("hello-pulse", "hello")
+        tool = agent_runtime.tool_name("hello-pulse", "hello")
         call = {"name": tool, "args": {"name": "Ada"}, "id": "provider-call-1", "type": "tool_call"}
         model = RecordingToolAwareFakeModel(
             responses=[
@@ -530,7 +530,7 @@ class AgentRuntimeTests(unittest.TestCase):
             runtime._settle(agent, context(), state, 0)
 
     def test_duplicate_local_action_ids_are_isolated_and_emit_the_selected_assistant(self):
-        selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
+        selected_tool = agent_runtime.tool_name("weather-pulse", "lookup")
         model = ToolAwareFakeModel(
             responses=[
                 AIMessage(
@@ -551,7 +551,7 @@ class AgentRuntimeTests(unittest.TestCase):
         suspended = runtime.start(turn, "Greet Ada")
 
         expected_tools = [
-            agent_runtime._tool_name("place-scout", "lookup"),
+            agent_runtime.tool_name("place-scout", "lookup"),
             selected_tool,
         ]
         self.assertEqual(ToolAwareFakeModel.bound_tools, [*expected_tools, clarification.TOOL_NAME])
@@ -585,8 +585,8 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(
             ToolAwareFakeModel.bound_tools,
             [
-                agent_runtime._tool_name("campaign-reader", "campaign.read"),
-                agent_runtime._tool_name("hello-pulse", "hello"),
+                agent_runtime.tool_name("campaign-reader", "campaign.read"),
+                agent_runtime.tool_name("hello-pulse", "hello"),
                 clarification.TOOL_NAME,
             ],
         )

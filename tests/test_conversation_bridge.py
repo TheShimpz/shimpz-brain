@@ -68,7 +68,7 @@ class ConversationBridgeTests(unittest.TestCase):
                 "",
                 tool_calls=[
                     {
-                        "name": agent_runtime._tool_name("pinger", "ping"),
+                        "name": agent_runtime.tool_name("pinger", "ping"),
                         "args": {"host": "example.com"},
                         "id": "c1",
                         "type": "tool_call",

@@ -20,7 +20,7 @@ from turn_envelope import envelope
 
 import routine
 
-ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
+ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
 MESSAGE = "Cria uma rotina: a cada 30 segundos liste os registros DNS de shimpz.com"
 LISTED = {
     "routine_id": "a" * 32,

@@ -14,7 +14,7 @@ from tool_fake import FixedFactory, system_text
 
 YESTERDAY = datetime.date(2026, 9, 28)
 TODAY = datetime.date(2026, 9, 29)
-ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
+ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
 
 
 class PromptTests(unittest.TestCase):

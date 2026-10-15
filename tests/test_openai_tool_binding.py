@@ -45,8 +45,8 @@ DNS = agent_runtime.AssistantDefinition(
     ),
 )
 DECLARED = {
-    agent_runtime._tool_name("dns", "list-records"): LOOKUP,
-    agent_runtime._tool_name("dns", "search-zones"): SEARCH,
+    agent_runtime.tool_name("dns", "list-records"): LOOKUP,
+    agent_runtime.tool_name("dns", "search-zones"): SEARCH,
 }
 BRAIN_TOOLS = {clarification.TOOL_NAME, memory.TOOL_NAME, routine.TOOL_NAME}
 REPLY = {"openai": provider_replies.openai_reply(), "anthropic": provider_replies.anthropic_reply()}
