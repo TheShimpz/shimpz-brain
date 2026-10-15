@@ -117,7 +117,8 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
     """The Routine policy and the Team's Routines as data in a chat turn; nothing when the Routine tool is withheld.
 
     A settings answer's turn already has its work, so it is told to record it, never to run it; while Team's settings
-    question is pending, the work already ran, so the turn runs only work the message adds or changes.
+    question is pending, the work already ran, so the turn runs nothing unless the message changes the work, and then
+    the whole resulting work once, since Team records the calls of the one send that ran Actions as the work.
     """
     if routines is None:
         return ""
@@ -125,8 +126,9 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
         run = "The recurring work already ran in this recording, so "
     elif settings:
         run = (
-            "Then run exactly the recurring work once in this same turn with the enabled Assistants, except work that "
-            "already ran in this recording, which runs again only when the user's message changes it, and afterwards "
+            "If the user's message changes the recurring work, run the whole resulting recurring work once in this "
+            "same turn with the enabled Assistants; otherwise run no Action, since it already ran in this recording; "
+            "and afterwards "
         )
     else:
         run = "Then run exactly the recurring work once in this same turn with the enabled Assistants, and afterwards "
@@ -175,7 +177,8 @@ def _question_section(question: dict | None, records_only: bool) -> str:
 
     ``records_only`` is Team's mark that the message is exactly one fixed answer to its schedule, over-budget, or output
     question: only then is the turn told to run nothing, matching the Actions it is offered. Any other answer to such a
-    settings question runs only work it changes, while a target or rerun answer runs the work again.
+    settings question runs nothing unless it changes the work, and then the whole resulting work once, while a target
+    or rerun answer runs the work again.
     """
     if question is None:
         return ""
@@ -188,9 +191,10 @@ def _question_section(question: dict | None, records_only: bool) -> str:
         )
     elif routine.settings_question(question):
         answered = (
-            "If the user's message answers it, run an Action again only when the message also changes the recurring "
-            f"work, and call {routine.TOOL_NAME} record again, with the same name and replaces as before, its "
-            "description saying the answer; the Team keeps the work that already ran unless it ran again. "
+            "If the user's message answers it, run no Action unless the message also changes the recurring work, and "
+            "then run the whole resulting recurring work once; call "
+            f"{routine.TOOL_NAME} record again, with the same name and replaces as before, its description saying the "
+            "answer; the Team keeps the work that already ran unless it ran again. "
         )
     else:
         answered = (
@@ -208,13 +212,14 @@ def _routine_mode_section(active: bool, records_only: bool, settings: bool) -> s
     """The Routine-mode guidance when Team read, with no model, that this chat is about a Routine; advisory only.
 
     A settings answer only records again, so its turn is told nothing about running the work; while Team's settings
-    question is pending, the work already ran, so only work the message changes runs. For measurement,
+    question is pending, the work already ran, so nothing runs unless the message changes the work, and then the whole
+    resulting work runs once. For measurement,
     SHIMPZ_ROUTINE_MODE_PROMPT=off in the Brain's environment leaves it out (the eval's control arm).
     """
     if not active or records_only or os.environ.get("SHIMPZ_ROUTINE_MODE_PROMPT") == "off":
         return ""
     run = (
-        "Then run only work the message adds or changes, since the rest already ran, and call"
+        "Then run no Action unless the message changes the work, and then run the whole resulting work once, and call"
         if settings
         else "Then run the work once and call"
     )

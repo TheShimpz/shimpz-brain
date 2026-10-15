@@ -134,7 +134,8 @@ def admit_context(context: Any) -> None:
 def settings_question(question: Mapping[str, Any] | None) -> bool:
     """Whether Team's pending question asks how often the Routine runs or what each run does with its result.
 
-    Its work already ran, so an answer to it runs no work again unless the answer also changes the work.
+    Its work already ran, so an answer to it runs no work unless the answer changes the work, and then the whole
+    resulting work once.
     """
     return question is not None and question["code"] in team_routine_proposal.SETTINGS_QUESTION_CODES
 
