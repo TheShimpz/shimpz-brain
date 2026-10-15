@@ -40,10 +40,6 @@ class IntentRouteError(ValueError):
     """Route input or structured provider output violated the closed contract."""
 
 
-class IntentRouteResponseError(RuntimeError):
-    """The provider response violated the route contract without exposing its content."""
-
-
 class StructuredRoute(BaseModel):
     """One static provider schema; candidate membership remains a Python invariant."""
 
@@ -391,5 +387,5 @@ def create(
             expected,
             admitted,
         )
-    except (IntentRouteError, ProviderResponseError) as exc:
-        raise IntentRouteResponseError("model provider response failed") from exc
+    except IntentRouteError as exc:
+        raise ProviderResponseError("model provider response failed") from exc

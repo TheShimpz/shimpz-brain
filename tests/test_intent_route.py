@@ -127,7 +127,7 @@ class IntentRouteTests(unittest.TestCase):
                 "reply": "",
             }
         )
-        with self.assertRaises(intent_route.IntentRouteResponseError):
+        with self.assertRaises(agent_runtime.ProviderResponseError):
             intent_route.create(lambda: echo, "openai", "instale ele", None, (), context, "pt")
 
     def test_classification_uses_bounded_conversation_to_resolve_a_reference(self):
@@ -240,7 +240,7 @@ class IntentRouteTests(unittest.TestCase):
         for response in invalid:
             expected = "assistant-uninstall" if response["intent"] == "assistant-uninstall" else "assistant-install"
             shortlist = candidates(uninstall=expected == "assistant-uninstall")
-            with self.subTest(response=response), self.assertRaises(intent_route.IntentRouteResponseError):
+            with self.subTest(response=response), self.assertRaises(agent_runtime.ProviderResponseError):
                 intent_route.create(
                     mock.Mock(return_value=StructuredModel(response)),
                     "openai",
@@ -322,7 +322,7 @@ class IntentRouteTests(unittest.TestCase):
         self.assertEqual(result.reply, reply)
 
         for separator in ("\u2028", "\u2029"):
-            with self.subTest(separator=separator), self.assertRaises(intent_route.IntentRouteResponseError):
+            with self.subTest(separator=separator), self.assertRaises(agent_runtime.ProviderResponseError):
                 intent_route.create(
                     mock.Mock(
                         return_value=StructuredModel(
@@ -617,7 +617,7 @@ class IntentRouteTests(unittest.TestCase):
             valid[:-1] + " " * intent_route.MAX_RESPONSE_CHARS + "}",
         ):
             model = StructuredFakeModel(responses=[AIMessage(content=content)])
-            with self.subTest(content=content), self.assertRaises(intent_route.IntentRouteResponseError):
+            with self.subTest(content=content), self.assertRaises(agent_runtime.ProviderResponseError):
                 intent_route.create(lambda selected=model: selected, "openai", "hello", None, (), None, "pt")
 
     def test_provider_and_contract_failures_are_redacted_and_distinct(self):
@@ -646,7 +646,7 @@ class IntentRouteTests(unittest.TestCase):
             with (
                 self.subTest(value=value),
                 self.assertRaisesRegex(
-                    intent_route.IntentRouteResponseError,
+                    agent_runtime.ProviderResponseError,
                     "^model provider response failed$",
                 ),
             ):
@@ -718,10 +718,12 @@ class IntentRouteTests(unittest.TestCase):
     def test_runtime_projects_every_intent_route_failure_without_provider_detail(self):
         cases = (
             (intent_route.IntentRouteError("invalid route"), agent_runtime.RuntimeContractError),
+            # A provider failure passes as the bounded call raised it, with its fixed text only.
             (
-                intent_route.IntentRouteResponseError("private response"),
+                agent_runtime.ProviderResponseError("model provider response failed"),
                 agent_runtime.ProviderResponseError,
             ),
+            (agent_runtime.ProviderRequestError("model provider request failed"), agent_runtime.ProviderRequestError),
             (ImportError("missing adapter"), ImportError),
             (RuntimeError("private failure"), agent_runtime.ProviderRequestError),
         )

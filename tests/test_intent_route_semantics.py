@@ -3,6 +3,7 @@
 import unittest
 from unittest import mock
 
+import agent_runtime
 import intent_route
 from eval import intent_route as semantics
 
@@ -44,7 +45,7 @@ class IntentRouteSemanticsTests(unittest.TestCase):
                 side_effect=[
                     intent_route.IntentRoute("assistant-uninstall", assistant_ids=("shimpz-whatsapp",)),
                     intent_route.IntentRoute("unresolved", reply="Which Assistant?"),
-                    intent_route.IntentRouteResponseError("model provider response failed"),
+                    agent_runtime.ProviderResponseError("model provider response failed"),
                 ],
             ) as route,
         ):

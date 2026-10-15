@@ -238,7 +238,7 @@ class CapabilityPlanTests(unittest.TestCase):
             AIMessage(content='{"status":"unknown","assistant_ids":[]}'),
         )
         for message in invalid_messages:
-            with self.subTest(content=message.content), self.assertRaises(capability_plan.CapabilityPlanResponseError):
+            with self.subTest(content=message.content), self.assertRaises(agent_runtime.ProviderResponseError):
                 factory = mock.Mock(return_value=RecordingModel(responses=[message]))
                 capability_plan.create(factory, "openai", "Configure DNS", candidates())
 
@@ -253,7 +253,7 @@ class CapabilityPlanTests(unittest.TestCase):
 
         model = mock.Mock()
         model.with_structured_output.return_value.invoke.return_value = object()
-        with self.assertRaises(capability_plan.CapabilityPlanResponseError):
+        with self.assertRaises(agent_runtime.ProviderResponseError):
             capability_plan.create(lambda: model, "openai", "Configure DNS", candidates())
 
     def test_create_validates_before_factory_and_calls_factory_once(self):

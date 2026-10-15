@@ -264,7 +264,7 @@ def evaluate(
                     # The interface language only shapes the reply; Portuguese cases run with Portuguese selected.
                     "pt" if case.id.endswith("-pt") else "en",
                 )
-            except intent_route.IntentRouteResponseError:
+            except agent_runtime.ProviderResponseError:
                 rejected += 1
                 continue
             passed += _matches(case, route)

@@ -27,10 +27,6 @@ class CapabilityPlanError(ValueError):
     """Planner input or provider output violated the closed contract."""
 
 
-class CapabilityPlanResponseError(RuntimeError):
-    """The model response violated the closed plan contract without exposing provider data."""
-
-
 @dataclass(frozen=True, slots=True)
 class CapabilityIntegration:
     id: str
@@ -191,5 +187,5 @@ def create(
             ),
             admitted,
         )
-    except (CapabilityPlanError, ProviderResponseError) as exc:
-        raise CapabilityPlanResponseError("model provider response failed") from exc
+    except CapabilityPlanError as exc:
+        raise ProviderResponseError("model provider response failed") from exc

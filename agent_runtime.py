@@ -518,15 +518,13 @@ def _conversation_bridge(conversation: tuple[intent_router.ConversationEntry, ..
 
 
 @contextlib.contextmanager
-def _decision_failures(contract: type[Exception], response: type[Exception]):
-    """A decision's failures as runtime errors; any other failure, a provider's included, is a request failure."""
+def _decision_failures(contract: type[Exception]):
+    """A decision's failures as runtime errors: its contract's, a provider's as raised, and any other a request's."""
     try:
         yield
     except contract as exc:
         raise RuntimeContractError(str(exc)) from exc
-    except response as exc:
-        raise ProviderResponseError("model provider response failed") from exc
-    except ImportError:
+    except ProviderRequestError, ImportError:
         raise
     except Exception as exc:
         raise ProviderRequestError("model provider request failed") from exc
@@ -870,7 +868,7 @@ class AgentRuntime:
         candidates: tuple[capability_planner.CapabilityCandidate, ...],
     ) -> capability_planner.CapabilityPlan:
         """Select a closed Assistant subset without conversation or lifecycle authority."""
-        with _decision_failures(capability_planner.CapabilityPlanError, capability_planner.CapabilityPlanResponseError):
+        with _decision_failures(capability_planner.CapabilityPlanError):
             return capability_planner.create(
                 lambda: self._model_factory(provider), provider.provider, objective, candidates
             )
@@ -896,7 +894,7 @@ class AgentRuntime:
             if fast.ordinary:
                 return intent_router.IntentRoute("ordinary-task", capability_free=fast.capability_free)
 
-        with _decision_failures(intent_router.IntentRouteError, intent_router.IntentRouteResponseError):
+        with _decision_failures(intent_router.IntentRouteError):
             model = functools.partial(self._decision_model, provider)
             return intent_router.create(
                 model, provider.provider, objective, expected_intent, candidates, context, locale
