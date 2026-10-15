@@ -1,6 +1,6 @@
 """Luna-classes mechanisms for three gpt-6-luna failure classes: experiment-only product candidates (ADR-0094).
 
-The umbrella driver ``.tests/perf/precision_classes.py`` applies them around Team's Action invocation and the
+The umbrella runner ``.tests/perf/precision_classes.py`` applies them around Team's Action invocation and the
 disposable Brain; production runtime is unchanged. Each names where it would live as a product feature:
 
 - W, working set (Brain: a step that renders the turn's working set to the model as data; shown Team-side here by
@@ -21,7 +21,7 @@ verbatim in the user's message. Verified evidence proves the words exist, not th
 helper's verdict is a probabilistic admission decision, measured as such. A missing, failed, malformed, or
 conflicting answer refuses: the gates only ever make Team stricter, never add or change a value. Reads are never
 gated, so a lookup may still use other wording than the user's. This module builds prompts, traces values, and parses
-answers; the driver makes every call. It uses only the standard library.
+answers; the runner makes every call. It uses only the standard library.
 """
 
 import datetime

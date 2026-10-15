@@ -4,7 +4,7 @@
 ids, to the precision corpus's five relevant Assistants and fifteen irrelevant-domain distractors. Ten task templates
 in all eight languages give 80 scenarios with stable ids ``<template>.<locale>``, the same scope rotation and
 deterministic padding as ``eval.corpus``, scored by ``eval.corpus.oracle`` against this module's ``INITIAL``. It is a
-SIMULATION. This module uses only the standard library so that the umbrella journey driver can import it.
+SIMULATION. This module uses only the standard library so that the umbrella journey runner can import it.
 """
 
 import json

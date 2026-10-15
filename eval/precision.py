@@ -1,6 +1,6 @@
 """Judge whole-task journey attempts and build the sanitized Precision Runtime report (ADR-0094).
 
-The umbrella driver ``.tests/perf/precision_journeys.py`` runs ``eval.corpus`` scenarios through the Team
+The umbrella runner ``.tests/perf/precision_journeys.py`` runs ``eval.corpus`` scenarios through the Team
 orchestrator and the shipped Brain runtime, and writes a private JSON Lines transcript, one attempt per line, outside
 the repository with owner-only permissions. From Brain, ``PYTHONPATH=. uv run --frozen --python 3.14 python -m
 eval.precision`` then:
@@ -599,7 +599,7 @@ def _completion_provenance(
 ) -> None:
     """Each merged completion has its own run metadata, in order, of the same campaign schedule and counts.
 
-    The driver's metadata names how many keys it found budget-stopped and missing, so a completion must supersede
+    The runner's metadata names how many keys it found budget-stopped and missing, so a completion must supersede
     and fill exactly those, and its every record must belong to the campaign the metadata names.
     """
     recorded = meta.get("completions") or []
@@ -828,7 +828,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--judged", type=Path, action="append", default=[], help="judgments (repeatable)")
     parser.add_argument("--calibration", type=Path)
-    parser.add_argument("--meta", type=Path, help="campaign metadata JSON the driver wrote")
+    parser.add_argument("--meta", type=Path, help="campaign metadata JSON the runner wrote")
     parser.add_argument("--key-file", type=Path)
     parser.add_argument("--tiebreak-key-file", type=Path)
     parser.add_argument("--cap", type=float, default=0.0, help="hard US dollar cap for judge calls")

@@ -4,7 +4,7 @@ One ``World`` per attempt: deterministic and stateful, reproducing only what Bra
 protocol. A failed Action raises ``ActionFailedError``, as an Assistant exiting nonzero does, which aborts the Team
 turn. Distractor writes succeed and are counted as foreign. ``snapshot`` is the state the oracle compares.
 
-This module uses only the standard library so that the umbrella journey driver can import it.
+This module uses only the standard library so that the umbrella journey runner can import it.
 """
 
 import copy

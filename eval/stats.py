@@ -2,7 +2,7 @@
 
 Repeated runs of one scenario, and the languages of one task template, are not independent evidence: intervals
 resample whole clusters. A paired comparison uses only complete pairs, and an interval that cannot be computed is
-None, never a guess. This module uses only the standard library so that the umbrella journey driver can load it.
+None, never a guess. This module uses only the standard library so that the umbrella journey runner can load it.
 """
 
 import hashlib

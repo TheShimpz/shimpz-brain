@@ -10,7 +10,7 @@ The simulated Assistants (``eval.fixtures``) and their state (``eval.world``) re
 the current Team protocol. The oracle compares the final state with the expected state; reply quality belongs to the
 judges.
 
-This module uses only the standard library so that the umbrella journey driver can import it.
+This module uses only the standard library so that the umbrella journey runner can import it.
 """
 
 import hashlib

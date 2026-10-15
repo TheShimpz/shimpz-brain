@@ -1,4 +1,4 @@
-"""Experiment-only Jev decisions for the engineering arms (ADR-0094), called by the journey driver, never by Brain.
+"""Experiment-only Jev decisions for the engineering arms (ADR-0094), called by the journey runner, never by Brain.
 
 TypeSafe ``jev-1.13.0`` answers typed questions with calibrated probabilities. A probe on 2026-10-02 found that a
 Choice is single-select but returns the full probability distribution (so a ranked top-k is available), that several

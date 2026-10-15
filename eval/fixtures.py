@@ -4,7 +4,7 @@ Five relevant Assistants (DNS, Tasks, Calendar, Messages, Research) and fifteen 
 of them with large schemas, so a scenario can carry only the Assistants it needs, 4, or 16. Every schema is a closed
 object that both Brain and Team admit. Behavior lives in ``eval.world``.
 
-This module uses only the standard library so that the umbrella journey driver can import it.
+This module uses only the standard library so that the umbrella journey runner can import it.
 """
 
 from collections.abc import Mapping

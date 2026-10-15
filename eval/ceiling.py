@@ -1,6 +1,6 @@
 """The spend ceiling of a disposable evaluation process: bound and reserve every provider request on the wire.
 
-Experiment-only (ADR-0094); the umbrella journey driver installs it into its own Brain process through
+Experiment-only (ADR-0094); the umbrella journey runner installs it into its own Brain process through
 ``.tests/perf/precision_brain_budget.py`` and the judge commands into theirs, never into a product process. It sits
 at the httpx transport boundary, where the SDKs have merged every override (``extra_body`` included) and expanded
 every schema, so it sees the exact bytes that would be sent:

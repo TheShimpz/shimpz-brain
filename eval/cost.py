@@ -8,7 +8,7 @@ reads and writes; a cache read or write is never priced as fresh input.
 
 Usage a provider did not report, or a call that failed, makes the usage unknown: the known part is a lower bound.
 
-This module uses only the standard library so that the umbrella journey driver can load it by path.
+This module uses only the standard library so that the umbrella journey runner can load it by path.
 """
 
 import contextlib

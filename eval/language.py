@@ -1,6 +1,6 @@
 """Language-aware retrieval mechanisms of the language-retrieval experiment: experiment-only (ADR-0094, proposed 0096).
 
-The driver ``.tests/perf/precision_engineering.py`` applies them in its own Team process; production runtime is
+The runner ``.tests/perf/precision_engineering.py`` applies them in its own Team process; production runtime is
 unchanged. They act only on a read Action whose corpus documents its search behavior (``SearchSpec``), and only
 through that same read with exactly one argument changed or removed:
 

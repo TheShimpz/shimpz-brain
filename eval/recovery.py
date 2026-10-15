@@ -1,6 +1,6 @@
 """Search-and-recovery mechanisms of the Luna-99 experiment: experiment-only, shaped as product candidates (ADR-0094).
 
-The driver ``.tests/perf/precision_engineering.py`` applies them in its own Team process and disposable Brain
+The runner ``.tests/perf/precision_engineering.py`` applies them in its own Team process and disposable Brain
 processes; production runtime is unchanged. Each names where it would live as a product feature:
 
 - ``PROTOCOL``: a working protocol appended to the Brain system prompt (Brain ``turn_prompt``).
@@ -13,7 +13,7 @@ processes; production runtime is unchanged. Each names where it would live as a 
 - the rewrite helper and the critic: one cheap model call proposes other read arguments for an empty read, and one
   reviews a finished turn and may send it back once (Team calling a helper model).
 
-This module builds prompts and parses answers only; the driver makes every call. It uses only the standard library.
+This module builds prompts and parses answers only; the runner makes every call. It uses only the standard library.
 """
 
 import json
