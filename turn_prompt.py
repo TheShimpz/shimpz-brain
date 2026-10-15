@@ -73,7 +73,7 @@ def _skills_section(skills: tuple | None, writable: bool) -> str:
 def _memory_section(memories: tuple | None, writable: bool) -> str:
     """The memory policy and what the Team remembers, quoted as data below the policy; nothing where unavailable.
 
-    A Routine run reads the memories but cannot change them, so it gets them without the tool's policy.
+    A turn that reads attachments sees the memories but cannot change them, so it gets them without the tool's policy.
     """
     if memories is None:
         return ""
@@ -113,16 +113,8 @@ def _runs(steps: list[dict[str, object]]) -> list[list[object]]:
     return runs
 
 
-def _routines_section(routines: tuple | None, writable: bool) -> str:
-    """The Routine policy and the Team's Routines as data in a chat turn; a note instead in a Routine run."""
-    if not writable:
-        return (
-            "This turn runs a Routine the user confirmed earlier: the message is their standing request, and nobody "
-            "is present while it runs. Do the requested work with the enabled Assistants. An Action runs without "
-            "asking unless it declares an approval or needs the user's authorization; the Team then pauses the run and "
-            "asks the user. When the rules above require a question, ask it "
-            f"with {clarification.TOOL_NAME}; it waits for the user. Your answer is delivered to the user later.\n\n"
-        )
+def _routines_section(routines: tuple | None) -> str:
+    """The Routine policy and the Team's Routines as data in a chat turn; nothing when the Routine tool is withheld."""
     if routines is None:
         return ""
     listed = [
@@ -265,7 +257,7 @@ def system_prompt(context: TurnContext) -> str:
         sort_keys=True,
     )
     # A turn that reads attachments learns nothing: its memories and skills are read-only (ADR-0093).
-    learnable = context.knowledge_writable and not context.attachments
+    learnable = not context.attachments
     empty_scope = (
         "This turn has no enabled Assistants, Actions, or external action tools. Respond naturally to greetings, "
         "clarifying questions, and questions about this limitation, but do not perform generic work or invent "
@@ -313,7 +305,7 @@ def system_prompt(context: TurnContext) -> str:
         f"{capabilities}\n\n"
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
-        f"{_routines_section(None if context.attachments else context.routines, context.knowledge_writable)}"
+        f"{_routines_section(None if context.attachments else context.routines)}"
         f"{_question_section(None if context.attachments else context.routine_question)}"
         f"{_routine_mode_section(context.routine_mode and not context.attachments)}"
         f"{_rerun_section(None if context.attachments else context.routine_rerun)}"

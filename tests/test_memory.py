@@ -302,7 +302,7 @@ class PromptAndPinTests(unittest.TestCase):
         for memories in (None, (), (LANGUAGE,)):
             with self.subTest(memories=memories):
                 self.assertEqual(
-                    turn_pins.restore(turn_pins.record(date, memories, None)), (date, memories, None, None, True)
+                    turn_pins.restore(turn_pins.record(date, memories, None)), (date, memories, None, None)
                 )
         for value in ("not json", "{}", '[{"topic":"Bad","preference":"x"}]', "[ ]"):
             pins = {

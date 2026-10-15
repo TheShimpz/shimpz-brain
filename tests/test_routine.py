@@ -7,7 +7,6 @@ from unittest import mock
 
 import agent_runtime
 import clarification
-import memory
 import runtime_api
 import turn_pins
 import turn_prompt
@@ -311,23 +310,6 @@ class GraphTests(unittest.TestCase):
             runtime._finish_routine(agent, _chat(), {"messages": [tool]})
         self.assertIsNone(runtime._finish_routine(agent, _chat(), {"messages": [tool], "__interrupt__": [1]}))
 
-    def test_a_routine_run_reads_knowledge_but_offers_neither_tool(self):
-        runtime, model = self._runtime(AIMessage(content="Resumo pronto."))
-        run = dataclasses.replace(
-            context(),
-            memories=(memory.Memory("language", "responda em português"),),
-            skills=(),
-            routines=(LISTED,),
-            knowledge_writable=False,
-        )
-        result = runtime.start(run, MESSAGE)
-        self.assertEqual((result.reply, result.routine, result.memory), ("Resumo pronto.", None, ()))
-        self.assertNotIn(routine.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
-        self.assertNotIn(memory.TOOL_NAME, RecordingToolAwareFakeModel.bound_tools)
-        system = system_text(model.seen_messages[0])
-        self.assertIn("responda em português", system)
-        self.assertNotIn("This Team's Routines", system)
-
     def test_without_routines_there_is_no_tool_and_no_policy(self):
         runtime, model = self._runtime(AIMessage(content="Oi."))
         result = runtime.start(context(), "Oi")
@@ -533,7 +515,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
     def test_routines_are_pinned_for_the_logical_turn(self):
         date = turn_prompt.today()
         pins = turn_pins.record(date, (), None, (LISTED,))
-        self.assertEqual(turn_pins.restore(pins), (date, (), None, (LISTED,), True))
+        self.assertEqual(turn_pins.restore(pins), (date, (), None, (LISTED,)))
         reordered = json.dumps([dict(reversed(list(LISTED.items())))], ensure_ascii=False)
         for value in ("[{}]", "[1]", '{"a": 1}', reordered):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
@@ -542,8 +524,6 @@ class PromptPinAndEndpointTests(unittest.TestCase):
     def test_the_context_refuses_invalid_routines(self):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid routines"):
             dataclasses.replace(context(), routines=({"routine_id": "x"},))
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid knowledge scope"):
-            dataclasses.replace(context(), knowledge_writable=1)
 
     def test_the_turn_endpoint_carries_routines_and_returns_the_record(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -560,7 +540,6 @@ class PromptPinAndEndpointTests(unittest.TestCase):
         self.assertEqual(response.json()["reply"], REPLY)
         for field, value in (
             ("routines", [{"routine_id": "x"}]),
-            ("knowledge_writable", "yes"),
             ("routine_question", {"code": "unsupported", "options": [], "value": None}),
             ("routine_mode", "yes"),
             ("routine_rerun", [{"assistant": "x"}]),

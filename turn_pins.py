@@ -23,7 +23,6 @@ MODE_METADATA = "shimpz_turn_routine_mode"
 RERUN_METADATA = "shimpz_turn_routine_rerun"
 SCHEDULE_METADATA = "shimpz_turn_routine_schedule"
 MODEL_METADATA = "shimpz_turn_model"
-WRITABLE_METADATA = "shimpz_turn_knowledge_writable"
 LOCALE_METADATA = "shimpz_turn_locale"
 ZONE_METADATA = "shimpz_turn_zone"
 # The zone a turn's date was read in: UTC unless Team names the person's own IANA zone.
@@ -68,7 +67,6 @@ def record(
     memories: tuple[team_memory.Memory, ...] | None,
     skills: tuple[dict[str, object], ...] | None,
     routines: tuple[dict[str, object], ...] | None = None,
-    writable: bool = True,
 ) -> dict[str, str]:
     """The checkpoint metadata entries; metadata keeps only scalar values, so knowledge travels as canonical JSON."""
     return {
@@ -76,7 +74,6 @@ def record(
         MEMORY_METADATA: _memory_json(memories),
         SKILLS_METADATA: _skills_json(skills),
         ROUTINES_METADATA: _skills_json(routines),
-        WRITABLE_METADATA: _json(writable),
     }
 
 
@@ -87,15 +84,14 @@ def restore(
     tuple[team_memory.Memory, ...] | None,
     tuple[dict[str, object], ...] | None,
     tuple[dict[str, object], ...] | None,
-    bool,
 ]:
     """The exact pins a start recorded; anything else is corrupt state, never replaced by today's values."""
-    keys = (DATE_METADATA, MEMORY_METADATA, SKILLS_METADATA, ROUTINES_METADATA, WRITABLE_METADATA)
+    keys = (DATE_METADATA, MEMORY_METADATA, SKILLS_METADATA, ROUTINES_METADATA)
     values = [metadata.get(key) for key in keys]
     try:
         if not all(isinstance(value, str) for value in values):
             raise ValueError
-        date_value, memory_value, skills_value, routines_value, writable_value = values
+        date_value, memory_value, skills_value, routines_value = values
         recorded_date = datetime.date.fromisoformat(date_value)
         decoded_memory, decoded_skills = json.loads(memory_value), json.loads(skills_value)
         decoded_routines = json.loads(routines_value)
@@ -109,10 +105,9 @@ def restore(
         or _memory_json(recorded_memory) != memory_value
         or _skills_json(recorded_skills) != skills_value
         or _skills_json(recorded_routines) != routines_value
-        or writable_value not in {"true", "false"}
     ):
         raise PinError("recorded turn pins are invalid")
-    return recorded_date, recorded_memory, recorded_skills, recorded_routines, writable_value == "true"
+    return recorded_date, recorded_memory, recorded_skills, recorded_routines
 
 
 def record_question(question: dict[str, object] | None) -> dict[str, str]:

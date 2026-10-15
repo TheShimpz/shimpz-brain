@@ -204,8 +204,6 @@ class TurnContext:
     # The one schedule Team read from the person's own words, which the record call's description must say; None when
     # the person stated none or several (ADR-0101); pinned like the question.
     routine_schedule: dict[str, object] | None = None
-    # False in a Routine run: knowledge is read-only and neither the memory nor the Routine tool is offered.
-    knowledge_writable: bool = True
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
@@ -255,8 +253,6 @@ def _admit_knowledge(context: TurnContext) -> None:
         team_routine.admit_context(context)
     except team_routine.RoutineContractError as exc:
         raise RuntimeContractError(str(exc)) from exc
-    if type(context.knowledge_writable) is not bool:
-        raise RuntimeContractError("invalid knowledge scope")
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,16 +299,16 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
 
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
-    """Whether this turn offers the memory and the Routine tool; a Routine run's knowledge is read-only."""
+    """Whether this turn offers the memory and the Routine tool."""
     # A turn that carries attachments learns nothing and changes no Routine (ADR-0093).
-    writable = context.knowledge_writable and not context.attachments
+    writable = not context.attachments
     return writable and context.memories is not None, writable and context.routines is not None
 
 
 def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnContext:
     """A resumed turn's context with exactly the pins its start recorded."""
     try:
-        turn_date, rules, skills, routines, writable = turn_pins.restore(metadata)
+        turn_date, rules, skills, routines = turn_pins.restore(metadata)
         question = turn_pins.restore_question(metadata)
         mode, rerun = turn_pins.restore_routine_mode(metadata)
         schedule = turn_pins.restore_schedule(metadata)
@@ -341,7 +337,6 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         routine_mode=mode,
         routine_rerun=rerun,
         routine_schedule=schedule,
-        knowledge_writable=writable,
         locale=locale,
         turn_message_id=turn_message_id,
         attachment_charge=charge,
@@ -614,9 +609,7 @@ class AgentRuntime:
             "configurable": {"thread_id": context.thread_id},
             "metadata": {
                 ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
-                **turn_pins.record(
-                    context.turn_date, context.memories, context.skills, context.routines, context.knowledge_writable
-                ),
+                **turn_pins.record(context.turn_date, context.memories, context.skills, context.routines),
                 **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
                 **turn_pins.record_schedule(context.routine_schedule),
