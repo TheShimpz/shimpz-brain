@@ -514,7 +514,7 @@ class RoutineModeTests(unittest.TestCase):
                 self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output answer"),
             ):
                 dataclasses.replace(chat, **changes)
-        # The bare output choice is asked for a record alone, unlike any other answer; a mixed answer is told to run work.
+        # The bare output choice is asked for a record alone, unlike any other answer; a mixed one is told to run work.
         prompts = [
             turn_prompt.system_prompt(dataclasses.replace(chat, routine_question=asked)),
             turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=QUESTION)),
