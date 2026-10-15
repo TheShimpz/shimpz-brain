@@ -21,6 +21,7 @@ from protocol.team.http.v1 import purpose as team_purpose
 from provider_replies import provider
 from structured_fake import StructuredFakeModel
 from test_agent_runtime import ToolAwareFakeModel, action, assistant, context
+from test_provider_cancel import asgi_post
 from test_runtime_api import NO_USAGE, SECRET, TOKEN, FakeRuntime, client
 from turn_envelope import MALFORMED, envelope
 
@@ -355,48 +356,15 @@ class PurposeApiTests(unittest.TestCase):
                 raise provider_cancel.ProviderCallCancelled
 
         app = runtime_api.create_app(runtime=Blocking(), token_reader=lambda: TOKEN)
-        raw = json.dumps(_body()).encode()
 
-        async def scenario() -> list[dict[str, object]]:
-            sent: list[dict[str, object]] = []
-            delivered = False
+        async def scenario() -> dict[str, object]:
+            disconnect = asyncio.Event()
+            purpose = asyncio.create_task(asgi_post(app, _body(), disconnect=disconnect, path="/v1/turns/purpose"))
+            self.assertTrue(await asyncio.to_thread(entered.wait, 5))
+            disconnect.set()
+            return await asyncio.wait_for(purpose, 5)
 
-            async def receive():
-                nonlocal delivered
-                if not delivered:
-                    delivered = True
-                    return {"type": "http.request", "body": raw, "more_body": False}
-                await asyncio.to_thread(entered.wait, 5)
-                return {"type": "http.disconnect"}
-
-            async def send(message):
-                sent.append(message)
-
-            scope = {
-                "type": "http",
-                "asgi": {"version": "3.0"},
-                "http_version": "1.1",
-                "method": "POST",
-                "scheme": "http",
-                "path": "/v1/turns/purpose",
-                "raw_path": b"/v1/turns/purpose",
-                "query_string": b"",
-                "root_path": "",
-                "headers": [
-                    (b"authorization", f"Bearer {TOKEN}".encode()),
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(raw)).encode()),
-                ],
-                "client": ("127.0.0.1", 1),
-                "server": ("127.0.0.1", 80),
-            }
-            await asyncio.wait_for(app(scope, receive, send), 5)
-            return sent
-
-        sent = asyncio.run(scenario())
-        start = next(message for message in sent if message["type"] == "http.response.start")
-        content = b"".join(message.get("body", b"") for message in sent if message["type"] == "http.response.body")
-        self.assertEqual((start["status"], json.loads(content)), (409, {"detail": "Action purpose cancelled"}))
+        self.assertEqual(asyncio.run(scenario()), {"status": 409, "body": {"detail": "Action purpose cancelled"}})
 
 
 if __name__ == "__main__":
