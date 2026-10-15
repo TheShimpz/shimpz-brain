@@ -98,10 +98,11 @@ def _candidate(value: CapabilityCandidate) -> CapabilityCandidate:
     )
 
 
-def _inputs(
+def validate_inputs(
     objective: object,
     candidates: tuple[CapabilityCandidate, ...],
 ) -> tuple[str, tuple[CapabilityCandidate, ...]]:
+    """Validate the complete request without creating a provider client."""
     task = _text(objective, MAX_OBJECTIVE_CHARS, "capability objective", allow_layout=True)
     if not isinstance(candidates, tuple) or not 1 <= len(candidates) <= MAX_CANDIDATES:
         raise CapabilityPlanError("invalid capability candidates")
@@ -110,14 +111,6 @@ def _inputs(
     if ids != tuple(sorted(set(ids))):
         raise CapabilityPlanError("invalid capability candidate order")
     return task, admitted
-
-
-def validate_inputs(
-    objective: object,
-    candidates: tuple[CapabilityCandidate, ...],
-) -> tuple[str, tuple[CapabilityCandidate, ...]]:
-    """Validate the complete request without creating a provider client."""
-    return _inputs(objective, candidates)
 
 
 def _prompt(objective: str, candidates: tuple[CapabilityCandidate, ...]) -> list[object]:
@@ -174,7 +167,7 @@ def create(
     candidates: tuple[CapabilityCandidate, ...],
 ) -> CapabilityPlan:
     """Produce one provider-native structured plan without tools, conversation state, or lifecycle authority."""
-    task, admitted = _inputs(objective, candidates)
+    task, admitted = validate_inputs(objective, candidates)
     try:
         return _plan(
             structured.bounded_value(

@@ -82,7 +82,7 @@ class CapabilityPlanTests(unittest.TestCase):
         model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
         runtime = agent_runtime.AgentRuntime(object(), model_factory=FixedFactory(lambda _config: model))
         shortlist = candidates()
-        with mock.patch.object(capability_plan, "_inputs", wraps=capability_plan._inputs) as validate:
+        with mock.patch.object(capability_plan, "validate_inputs", wraps=capability_plan.validate_inputs) as validate:
             self.assertEqual(
                 runtime.capability_plan(provider(), "Explain DNS", shortlist),
                 capability_plan.CapabilityPlan("sufficient"),
