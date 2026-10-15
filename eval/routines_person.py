@@ -67,7 +67,6 @@ OUTPUT_LABELS = {
     "show": "Mostrar em todas as execuções",
     "changes": "Mostrar somente quando mudar",
     "none": "Não mostrar",
-    "chain": "Usar em outras ações",
 }
 
 
@@ -78,7 +77,7 @@ OUTPUT_OPTIONS = {
 }
 
 
-# The owner's fourth disposition, chaining to other Actions, which no stratum's person ever picks.
+# Words of chaining the result to other Actions, which an agent's option may add and no output choice means.
 CHAIN_OPTION = r"encade|outras? aç|outra ação|chain|acionar"
 
 
@@ -467,7 +466,6 @@ OVER_BUDGET = "routine-interval-over-budget"
 
 # The person's own words for the questions whose answer never depends on the attempt.
 _FIXED_ANSWERS = {
-    "routine-binding-unsourced": "pode buscar de novo",
     "routine-work-rerun": "pode buscar de novo",
 }
 
@@ -477,7 +475,6 @@ _TEAM_QUESTIONS = {
     "routine-schedule-unstated": "Com que frequência a rotina deve rodar?",
     "routine-output-unstated": "O que a rotina deve fazer com o resultado de cada execução?",
     "routine-binding-ambiguous": "Qual destes alvos a rotina deve usar?",
-    "routine-binding-unsourced": "Posso buscar esse valor de novo?",
     "routine-work-rerun": "Posso refazer o trabalho completo?",
     OVER_BUDGET: "Esse intervalo não cabe no orçamento diário. Qual intervalo a rotina deve usar?",
 }
