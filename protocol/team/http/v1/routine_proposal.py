@@ -27,23 +27,23 @@ def _card_input(value: object, position: int) -> bool:
     if not isinstance(value, dict) or set(value) != _PROPOSAL_INPUT_FIELDS or value["origin"] not in INPUT_ORIGINS:
         return False
     origin = value["origin"]
-    if not routine._plain(value["member"], routine.MAX_MEMBER_CHARS):
+    if not routine.plain(value["member"], routine.MAX_MEMBER_CHARS):
         return False
     if origin in ("request", "assistant"):
-        literal = isinstance(value["value"], str) and routine._PLAN_UNSAFE_RE.search(value["value"]) is None
+        literal = isinstance(value["value"], str) and routine.PLAN_UNSAFE_RE.search(value["value"]) is None
         return literal and all(value[key] is None for key in ("step", "pointer", "where", "item"))
     if origin == "clock":
         # The run date alone, or a text template complete, each of its dates in braces.
         template = value["value"] is None or (
             isinstance(value["value"], str)
             and "{" in value["value"]
-            and routine._PLAN_UNSAFE_RE.search(value["value"]) is None
+            and routine.PLAN_UNSAFE_RE.search(value["value"]) is None
         )
         return template and all(value[key] is None for key in ("step", "pointer", "where", "item"))
     return (
         value["value"] is None
         and (value["where"] is not None) == (origin == "selector")
-        and routine._reference(value, position)
+        and routine.reference(value, position)
     )
 
 
@@ -53,10 +53,10 @@ def _card_step(value: object, position: int) -> bool:
         and set(value) == {"position", "assistant", "action", "read_only", "inputs"}
         and value["position"] == position
         and type(value["position"]) is int
-        and routine._assistant(value["assistant"])
-        and routine._action(value["action"])
+        and routine.valid_assistant(value["assistant"])
+        and routine.valid_action(value["action"])
         and type(value["read_only"]) is bool
-        and routine._members(value["inputs"], lambda item: _card_input(item, position))
+        and routine.members(value["inputs"], lambda item: _card_input(item, position))
     )
 
 
@@ -67,9 +67,9 @@ def canonical_proposal(value: object) -> dict[str, object] | None:
         return None
     steps = value["steps"]
     valid = (
-        routine._identity(value["proposal_id"], routine.ROUTINE_ID_RE)
-        and routine_notice._instant(value["expires_at"])
-        and routine_notice._optional(value["replaces"], routine.ROUTINE_ID_RE)
+        routine.matches(value["proposal_id"], routine.ROUTINE_ID_RE)
+        and routine_notice.instant(value["expires_at"])
+        and routine_notice.optional(value["replaces"], routine.ROUTINE_ID_RE)
         and routine.canonical_name(value["name"]) == value["name"]
         and routine.canonical_description(value["description"]) is not None
         and routine.canonical_description(value["description"]) == value["description"]
@@ -89,7 +89,6 @@ QUESTION_CODES = (
     "routine-output-unstated",
     "routine-interval-over-budget",
     "routine-binding-ambiguous",
-    "routine-binding-unsourced",
     "routine-work-rerun",
 )
 MAX_QUESTION_OPTIONS = 8
@@ -109,7 +108,7 @@ def _target(text: object) -> bool:
     except ValueError:
         return False
     scalar = (
-        routine._plain(decoded, MAX_QUESTION_OPTION_CHARS)
+        routine.plain(decoded, MAX_QUESTION_OPTION_CHARS)
         if isinstance(decoded, str)
         else type(decoded) is int and len(text) <= MAX_QUESTION_OPTION_CHARS
     )
@@ -121,58 +120,50 @@ def _question_option(value: object) -> bool:
     if not isinstance(value, dict) or set(value) != {"value", "label"}:
         return False
     label = value["label"]
-    return _target(value["value"]) and (label is None or routine._plain(label, MAX_QUESTION_OPTION_CHARS))
+    return _target(value["value"]) and (label is None or routine.plain(label, MAX_QUESTION_OPTION_CHARS))
 
 
 # What each run does with its result, as the person chooses it (ADR-0101): show it every run, show it only when it
-# changes, show nothing, or use it in other Actions, which the recorded work then runs and the Routine shows. Team reads
-# the choice from the person's own words; asked, Admin offers these labels in the interface language, and the label
-# the person picks, as Admin composes it, states that choice.
-OUTPUT_KINDS = ("show", "changes", "none", "chain")
+# changes, or show nothing. Team reads the choice from the person's own words; asked, Admin offers these labels in the
+# interface language, and the label the person picks, as Admin composes it, states that choice.
+OUTPUT_KINDS = routine.OUTPUT_MODES
 OUTPUT_CHOICES = {
     "ar": {
         "show": "اعرض في كل تشغيل",
         "changes": "اعرض فقط عند التغيير",
         "none": "لا تعرض",
-        "chain": "استخدمه في إجراءات أخرى",
     },
     "de": {
         "show": "Bei jedem Lauf anzeigen",
         "changes": "Nur bei Änderung anzeigen",
         "none": "Nicht anzeigen",
-        "chain": "In anderen Aktionen verwenden",
     },
     "en": {
         "show": "Show every run",
         "changes": "Show only when it changes",
         "none": "Don't show",
-        "chain": "Use it in other Actions",
     },
     "es": {
         "show": "Mostrar en cada ejecución",
         "changes": "Mostrar solo cuando cambie",
         "none": "No mostrar",
-        "chain": "Usar en otras acciones",
     },
     "fr": {
         "show": "Afficher à chaque exécution",
         "changes": "Afficher seulement en cas de changement",
         "none": "Ne pas afficher",
-        "chain": "Utiliser dans d'autres actions",
     },
     "ja": {
         "show": "毎回表示する",
         "changes": "変更時のみ表示する",
         "none": "表示しない",
-        "chain": "他のアクションで使う",
     },
     "pt": {
         "show": "Mostrar em todas as execuções",
         "changes": "Mostrar somente quando mudar",
         "none": "Não mostrar",
-        "chain": "Usar em outras ações",
     },
-    "zh": {"show": "每次运行都显示", "changes": "仅在变化时显示", "none": "不显示", "chain": "用于其他操作"},
+    "zh": {"show": "每次运行都显示", "changes": "仅在变化时显示", "none": "不显示"},
 }
 
 
@@ -207,7 +198,7 @@ def canonical_question(value: object) -> dict[str, object] | None:
         and all(_question_option(item) for item in options)
         and len({item["value"] for item in options}) == len(options)
         and (
-            routine._whole(interval, routine.MIN_CONTINUOUS_GAP_SECONDS, routine.MAX_CONTINUOUS_GAP_SECONDS)
+            routine.whole(interval, routine.MIN_CONTINUOUS_GAP_SECONDS, routine.MAX_CONTINUOUS_GAP_SECONDS)
             if code == "routine-interval-over-budget"
             else interval is None
         )
@@ -220,7 +211,7 @@ def canonical_refusal(value: object) -> dict[str, str] | None:
     if (
         not isinstance(value, dict)
         or set(value) != {"code"}
-        or not routine._identity(value["code"], routine.ERROR_CODE_RE)
+        or not routine.matches(value["code"], routine.ERROR_CODE_RE)
     ):
         return None
     return {"code": value["code"]}
@@ -236,13 +227,13 @@ def canonical_proposal_answer(value: object) -> dict[str, object] | None:
         return None
     status = value["status"]
     valid = (
-        routine._team(value["team_id"])
-        and routine._identity(value["proposal_id"], routine.ROUTINE_ID_RE)
+        routine.valid_team(value["team_id"])
+        and routine.matches(value["proposal_id"], routine.ROUTINE_ID_RE)
         and status in PROPOSAL_STATUSES
         and (
             value["routine_id"] is None
             if status == "revoked"
-            else routine._identity(value["routine_id"], routine.ROUTINE_ID_RE)
+            else routine.matches(value["routine_id"], routine.ROUTINE_ID_RE)
         )
     )
     return copy.deepcopy(value) if valid else None
