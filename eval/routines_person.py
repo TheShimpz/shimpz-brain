@@ -77,10 +77,6 @@ OUTPUT_OPTIONS = {
 }
 
 
-# Words of chaining the result to other Actions, which an agent's option may add and no output choice means.
-CHAIN_OPTION = r"encade|outras? aç|outra ação|chain|acionar"
-
-
 # An option stands for the person's output choice only when it is about showing the result, and never names the work.
 OUTPUT_VERBS = r"mostr|exib|receb|avis|notific|nada"
 
@@ -421,7 +417,6 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
             item["label"]
             for item in options
             if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())
-            and not re.search(CHAIN_OPTION, item["label"].casefold())
             and not re.search(SCHEDULE_WORDS, item["label"].casefold())
             and not re.search(WORK_WORDS, item["label"].casefold())
             and re.search(OUTPUT_VERBS, item["label"].casefold())
@@ -519,7 +514,8 @@ def conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
                 attempt.person.violations.extend([miss] if miss else [])
             answer = _team_answer(attempt.person, question)
             attempt.answered[code] = answer or ""
-            # Admin answers Team's question with its composed form, which Team records from without the Brain.
+            # Admin answers Team's question with its composed form: Team records a target answer itself, and the Brain
+            # reads any other.
             asked, composed = _TEAM_QUESTIONS.get(code, code), True
         else:
             answer, composed = _answer(attempt.person, response)

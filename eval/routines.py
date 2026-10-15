@@ -31,13 +31,14 @@ its attempt is discarded and retried with backoff, the provider's concurrency ad
 Strata, each ``--attempts`` (30) times per model, fixed before sampling: the owner's four turns; a one-send daily
 list; two named zones at once (multi-zone); a zone named only in an earlier send; a request with no schedule; the
 reversed-order bait, primed (the zone was looked up in an earlier send) and unprimed (its id is known only from an
-earlier reply outside the span); two zones with the same name at creation, which must be asked about; and intervals of
-30 seconds (list a zone's records) and 5 seconds (one step, list the zones), whose card keeps the exact gap the person
-stated with cap ceil(86400 / gap); and a Routine that changes something, the owner's daily update of the TXT record
-verify.shimpz.com to each day's date, whose real replace-dns-record Action asks for the Supervisor's password in the
-recording turn and in every run. The person authorizes each request; it passes only when the card replays
-replace-dns-record on the record its name selects with each run's date as content, the replay changes nothing before
-the person authorizes it, and the authorized run writes that day's date.
+earlier reply outside the span); two zones with the same name at creation, which must be asked about; intervals of
+30 seconds and 2 days (list a zone's records) and 5 seconds (one step, list the zones), whose card keeps the exact gap
+the person stated with cap ceil(86400 / gap); and two Routines that change something, the owner's daily update of the
+TXT record verify.shimpz.com to each day's date, and the same update with the date inside a text that each run writes
+for its own date, whose real replace-dns-record Action asks for the Supervisor's password in the recording turn and in
+every run. The person authorizes each request; each passes only when the card replays replace-dns-record on the record
+its name selects with each run's date in its content, the replay changes nothing before the person authorizes it, and
+the authorized run writes that day's date.
 The harness answers the agent's questions and Team's recoverable Routine questions as
 the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
