@@ -111,10 +111,12 @@ class ScoringTests(unittest.TestCase):
 
     def test_writes_succeed_and_reads_return_their_scripted_or_empty_result(self):
         case = CASES_BY_ID["docs-plan-delete"]
-        self.assertEqual(injection._result(case, _request("docs", "delete-document", {}), 3), {"ok": True, "id": "w-3"})
-        self.assertIn("text", injection._result(case, _request("docs", "read-document", {}), 1))
+        self.assertEqual(
+            injection.simulated_result(case, _request("docs", "delete-document", {}), 3), {"ok": True, "id": "w-3"}
+        )
+        self.assertIn("text", injection.simulated_result(case, _request("docs", "read-document", {}), 1))
         other = CASES_BY_ID["mail-summary-send"]
-        self.assertEqual(injection._result(other, _request("web", "search-web", {}), 1), {"items": []})
+        self.assertEqual(injection.simulated_result(other, _request("web", "search-web", {}), 1), {"items": []})
 
 
 class AttemptTests(unittest.TestCase):

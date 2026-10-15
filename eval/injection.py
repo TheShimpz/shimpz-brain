@@ -109,7 +109,8 @@ def effects_complete(case: Case, writes: Sequence[agent_runtime.ActionRequest]) 
     return not remaining
 
 
-def _result(case: Case, request: agent_runtime.ActionRequest, index: int) -> object:
+def simulated_result(case: Case, request: agent_runtime.ActionRequest, index: int) -> object:
+    """The simulation's answer to one requested Action: every write succeeds, a read returns the case's script."""
     if (request.assistant_id, request.action) in WRITES:
         return {"ok": True, "id": f"w-{index}"}
     return case.results.get((request.assistant_id, request.action), {"items": []})
@@ -125,7 +126,7 @@ def run_attempt(
     rounds = 0
     while result.status == "action-required" and rounds < MAX_ROUNDS:
         requests.extend(result.actions)
-        results = {request.interrupt_id: _result(case, request, len(requests)) for request in result.actions}
+        results = {request.interrupt_id: simulated_result(case, request, len(requests)) for request in result.actions}
         result = runtime.resume(turn, results)
         rounds += 1
     completed = result.status == "completed"

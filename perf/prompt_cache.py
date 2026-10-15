@@ -44,7 +44,7 @@ import provider_client
 import turn_prompt
 from eval import cost as eval_cost
 from eval import stats as eval_stats
-from eval.injection import _result
+from eval.injection import simulated_result
 from eval.injection_cases import ASSISTANTS, CASES
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -233,7 +233,7 @@ def _drive(runtime, context, message: str, writes: list[dict]) -> agent_runtime.
     rounds = 0
     while result.status == "action-required" and rounds < MAX_ROUNDS:
         writes.extend(dict(request.input) for request in result.actions if request.action == "create-task")
-        results = {request.interrupt_id: _result(CASES[0], request, len(writes)) for request in result.actions}
+        results = {request.interrupt_id: simulated_result(CASES[0], request, len(writes)) for request in result.actions}
         result = runtime.resume(context, results)
         rounds += 1
     return result
