@@ -17,20 +17,31 @@ unjudged attempt is inconclusive and never counted as a failure or a success.
 """
 
 import argparse
-import concurrent.futures
 import dataclasses
 import functools
 import hashlib
 import json
 import math
-import os
 import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
-from eval import arms, corpus, fresh, fresh2, fresh3, judge, large_api, large_api_contract, private, signals, split
+from eval import (
+    arms,
+    corpus,
+    fresh,
+    fresh2,
+    fresh3,
+    judge,
+    judgments,
+    large_api,
+    large_api_contract,
+    private,
+    signals,
+    split,
+)
 from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.contracts import ASSISTANTS_B
@@ -94,23 +105,14 @@ def judge_attempts(
     attempts: Iterable[Mapping[str, object]], primary: Judgment, tiebreak: Judgment, workers: int = WORKERS
 ) -> list[dict[str, object]]:
     """Judge every completed attempt; an attempt whose judgment failed or hit the cap stays unjudged."""
-
-    def one(attempt: Mapping[str, object]) -> dict[str, object] | None:
-        try:
-            decision = judge.decide(primary, tiebreak, judge_item(attempt), bool(attempt["oracle"]["passed"]))
-        except judge.JudgeError, eval_cost.BudgetExhaustedError:
-            return None
-        return {
-            "key": attempt_key(attempt),
-            "primary": decision.primary.model_dump(),
-            "tiebreak": None if decision.tiebreak is None else decision.tiebreak.model_dump(),
-            "final": decision.final.model_dump(),
-            "judge_identity": judge.identity(),
-        }
-
-    completed = [attempt for attempt in attempts if attempt["status"] == "completed"]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        return [result for result in pool.map(one, completed) if result is not None]
+    return judgments.judge_completed(
+        attempts,
+        lambda attempt: judge.decide(primary, tiebreak, judge_item(attempt), bool(attempt["oracle"]["passed"])),
+        attempt_key,
+        judge.identity(),
+        judge.JudgeError,
+        workers,
+    )
 
 
 def calibrate(primary: Judgment, tiebreak: Judgment) -> dict[str, object]:
@@ -127,20 +129,12 @@ def calibrate(primary: Judgment, tiebreak: Judgment) -> dict[str, object]:
         and collection.get("frozen_judge_identity") == current
     )
     items = held if owner else judge.calibration_items()
-    summary: dict[str, object] = {
+    return {
         "adjudication": "owner" if owner else "author",
         "blind": owner,
         "judge_identity": current,
+        **judgments.agreements({"primary": primary, "tiebreak": tiebreak}, items, judge.agreement, judge.JudgeError),
     }
-    for name, verdict in (("primary", primary), ("tiebreak", tiebreak)):
-        results = []
-        for _item_id, item, expected in items:
-            try:
-                results.append((verdict(item), expected))
-            except judge.JudgeError, eval_cost.BudgetExhaustedError:
-                results.append((None, expected))
-        summary[name] = judge.agreement(results)
-    return summary
 
 
 def outcome(attempt: Mapping[str, object], decision: Mapping[str, object] | None) -> str:
@@ -167,19 +161,14 @@ def _rate(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: str
 
 
 def _pass_k(rows: Sequence[tuple[Mapping[str, object], str]], seed: str, name: str) -> dict[str, object]:
-    by_scenario: dict[str, list[bool]] = defaultdict(list)
-    for attempt, result in rows:
-        if result != "inconclusive":
-            by_scenario[str(attempt["scenario"])].append(result == "success")
-    summary: dict[str, object] = {}
-    for k in (1, 3, 5):
-        clusters: dict[str, list[float]] = defaultdict(list)
-        for scenario, results in by_scenario.items():
-            estimate = eval_stats.pass_hat_k(sum(results), len(results), k)
-            if estimate is not None:
-                clusters[SCENARIOS[scenario].template.id].append(estimate)
-        summary[f"pass^{k}"] = eval_stats.cluster_bootstrap(clusters, f"{seed}:{name}:pass{k}")
-    return summary
+    return judgments.pass_k(
+        rows,
+        lambda attempt: str(attempt["scenario"]),
+        lambda scenario: SCENARIOS[scenario].template.id,
+        (1, 3, 5),
+        seed,
+        name,
+    )
 
 
 def _usage(attempts: Sequence[Mapping[str, object]]) -> dict[str, object]:
@@ -811,17 +800,13 @@ def _brain_assistant(contracts: str, name: str) -> object:
 
 
 def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[Judgment, Judgment]:
-    judgments = []
-    for provider, key_file in (("openai", args.key_file), ("anthropic", args.tiebreak_key_file)):
-        model = judge.judge_model(provider, private.read_key(key_file))
-        judgments.append(
-            metered(
-                judge.JUDGE_MODELS[provider],
-                lambda item, model=model, provider=provider: judge.judge(model, provider, item),
-                spend,
-            )
-        )
-    return judgments[0], judgments[1]
+    return judgments.judge_pair(
+        args.key_file,
+        args.tiebreak_key_file,
+        lambda model, provider: metered(
+            judge.JUDGE_MODELS[provider], lambda item: judge.judge(model, provider, item), spend
+        ),
+    )
 
 
 def _report(args: argparse.Namespace) -> None:
@@ -833,6 +818,18 @@ def _report(args: argparse.Namespace) -> None:
     completions = [private.read_jsonl(path) for path in args.completion]
     report = build_report(private.read_jsonl(args.transcript), judged, meta, calibration, args.split, completions)
     args.out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _paid(args: argparse.Namespace, budget) -> str:
+    """The text of one paid command: both judges' calibration with the budget, or the transcript's verdicts."""
+    primary, tiebreak = _judges(args, [])
+    if args.command == "calibrate":
+        return (
+            json.dumps({**calibrate(primary, tiebreak), "judge_budget": budget.summary()}, indent=1, sort_keys=True)
+            + "\n"
+        )
+    verdicts = judge_attempts(private.read_jsonl(args.transcript), primary, tiebreak)
+    return "".join(json.dumps(item, sort_keys=True) + "\n" for item in verdicts)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -862,31 +859,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "report":
             _report(args)
             return 0
-        from eval.ceiling import Ceiling
-
-        # The output is admitted, and held open, before any paid inference.
-        descriptor = private.open_private(args.out)
-
-        # Installed before any judge model exists: no SDK retries, clamped output, a reserved worst case per request.
-        ceiling = Ceiling(args.cap, judge.MAX_OUTPUT_TOKENS)
-        ceiling.install()
-        budget = ceiling.budget
-        try:
-            spend: list[eval_cost.Cost] = []
-            primary, tiebreak = _judges(args, spend)
-            if args.command == "calibrate":
-                result: object = calibrate(primary, tiebreak)
-                text = json.dumps({**result, "judge_budget": budget.summary()}, indent=1, sort_keys=True) + "\n"
-            else:
-                judged = judge_attempts(private.read_jsonl(args.transcript), primary, tiebreak)
-                text = "".join(json.dumps(item, sort_keys=True) + "\n" for item in judged)
-        except BaseException:
-            os.close(descriptor)
-            raise
-        finally:
-            ceiling.uninstall()
-        private.write_descriptor(descriptor, text)
-        print(json.dumps({"command": args.command, "judge_budget": budget.summary()}, sort_keys=True))
+        judgments.run_paid(args.out, args.cap, args.command, lambda budget: _paid(args, budget))
     except OSError, ValueError, KeyError, TypeError:
         print("precision evaluation failed", file=sys.stderr)
         return 2
