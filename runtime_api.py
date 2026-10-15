@@ -158,8 +158,8 @@ class TurnContextInput(ClosedInput):
     routine_schedule: dict[str, Any] | None
     # The one output mode Team read from the person's own words, which the record call's description must say.
     routine_output: str | None
-    # Whether the message is exactly the person's choice of one output, answering Team's output question: the work
-    # already ran, so the turn only records again and is offered no Action.
+    # Whether the message is exactly one fixed answer Admin offers to Team's schedule, over-budget, or output question:
+    # the work already ran, so the turn only records again and is offered no Action.
     routine_settings_answer: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
     attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
