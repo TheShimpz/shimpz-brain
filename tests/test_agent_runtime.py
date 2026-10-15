@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from protocol.team.action.v1 import schema as action_protocol
+from tool_fake import FixedFactory
 
 COLD_IMPORT_TIMEOUT_SECONDS = 10
 
@@ -122,7 +123,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_returns_a_direct_reply_without_executing_any_action(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Supervisor.")])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         result = runtime.start(context(), "Say hello")
 
@@ -164,7 +165,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         saver = PruningSaver()
         model = ToolAwareFakeModel(responses=[AIMessage(content="Hello, Supervisor.")])
-        runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
 
         runtime.start(context(), "Say hello")
 
@@ -172,7 +173,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_empty_assistant_context_binds_no_tools_and_returns_a_natural_reply(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="I can help you think this through.")])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = dataclasses.replace(context(thread_id="team:brain-only:thread-1", team_name="Planning"), assistants=())
 
         result = runtime.start(turn, "Help me organize an idea")
@@ -202,7 +203,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 )
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = dataclasses.replace(context(thread_id="team:brain-only:thread-2", team_name="Planning"), assistants=())
 
         # The undeclared call is answered as an unknown tool and never executes; a model that keeps calling it ends
@@ -230,7 +231,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 ),
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = context(thread_id="team:one:shared-thread")
 
         first = runtime.start(turn, "First message")
@@ -263,7 +264,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 )
                 runtime = agent_runtime.AgentRuntime(
                     saver,
-                    model_factory=lambda _config, selected_model=model: selected_model,
+                    model_factory=FixedFactory(lambda _config, selected_model=model: selected_model),
                 )
 
                 suspended = runtime.start(selected, "Use the private Action")
@@ -293,7 +294,7 @@ class AgentRuntimeTests(unittest.TestCase):
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="Weather-private reply."), AIMessage(content="Campaign reply.")]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         runtime.start(first, "Weather-private question")
         result = runtime.start(second, "Campaign question")
@@ -308,7 +309,7 @@ class AgentRuntimeTests(unittest.TestCase):
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="First scoped reply."), AIMessage(content="Second scoped reply.")]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = context(thread_id="team:scope:stable")
 
         runtime.start(turn, "First scoped question")
@@ -338,7 +339,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 )
                 runtime = agent_runtime.AgentRuntime(
                     saver,
-                    model_factory=lambda _config, selected_model=model: selected_model,
+                    model_factory=FixedFactory(lambda _config, selected_model=model: selected_model),
                 )
                 turn = context(
                     assistant("weather-pulse", action("lookup")),
@@ -379,7 +380,7 @@ class AgentRuntimeTests(unittest.TestCase):
         first = context(assistant("weather-pulse"), thread_id="team:scope:concurrent")
         second = dataclasses.replace(first, assistants=(assistant("campaign-reader"),))
         model = BlockingScopeModel(responses=[AIMessage(content="First reply."), AIMessage(content="Second reply.")])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_result = executor.submit(runtime.start, first, "First concurrent scope")
@@ -400,7 +401,7 @@ class AgentRuntimeTests(unittest.TestCase):
         first = context(assistant("weather-pulse"), thread_id="team:parallel:first")
         second = context(assistant("campaign-reader"), thread_id="team:parallel:second")
         model = BlockingScopeModel(responses=[AIMessage(content="First reply."), AIMessage(content="Second reply.")])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_result = executor.submit(runtime.start, first, "First concurrent scope")
@@ -484,7 +485,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_completed_reply_is_bounded_to_the_public_chat_contract(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="x" * (agent_runtime.MAX_REPLY_CHARS + 1))])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         completed = runtime.start(context(), "Give me a long answer")
 
@@ -503,7 +504,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 AIMessage(content="Short."),
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = context()
 
         self.assertEqual(runtime.start(turn, "Give me a long answer").reply, delivered)
@@ -520,7 +521,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_a_failed_capped_reply_update_is_a_state_error(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="x" * (agent_runtime.MAX_REPLY_CHARS + 1))])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         agent = mock.Mock()
         agent.update_state.side_effect = RuntimeError("private checkpoint detail")
         state = {"messages": [AIMessage(content="y" * (agent_runtime.MAX_REPLY_CHARS + 1), id="a1")]}
@@ -541,7 +542,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 AIMessage(content="The Assistant returned: Hello, Ada."),
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = context(
             assistant("place-scout", action("lookup")),
             assistant("weather-pulse", action("lookup")),
@@ -571,7 +572,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_model_receives_every_assistants_declared_actions(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Done")])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         runtime.start(
             context(
@@ -592,7 +593,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_model_accepts_one_hundred_actions_across_ten_assistants(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Done")])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         assistants = tuple(
             assistant(
                 f"relay-{assistant_index:02d}",
@@ -609,7 +610,7 @@ class AgentRuntimeTests(unittest.TestCase):
     def test_conversations_are_isolated_by_thread(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="First team"), AIMessage(content="Second team")])
         saver = InMemorySaver()
-        runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
 
         runtime.start(context(thread_id="team-a:hello:one"), "A")
         runtime.start(context(thread_id="team-b:hello:one"), "B")
@@ -629,7 +630,7 @@ class AgentRuntimeTests(unittest.TestCase):
             connection = sqlite3.connect(Path(directory) / "checkpoints.sqlite3", check_same_thread=False)
             saver = SqliteSaver(connection)
             saver.setup()
-            runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+            runtime = agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
 
             runtime.start(context(thread_id="team-a:hello:one"), "A")
             runtime.start(context(thread_id="team-b:hello:one"), "B")
@@ -786,12 +787,11 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual([item.id for item in turn.assistants[0].actions], ["a-action", "z-action"])
 
     def test_dependency_import_errors_are_never_laundered_as_provider_failures(self):
-        class MissingDependencyFactory:
-            def __call__(self, _config):
-                raise ImportError("synthetic missing runtime dependency")
+        def missing_dependency(_config):
+            raise ImportError("synthetic missing runtime dependency")
 
         with self.assertRaisesRegex(ImportError, "synthetic missing runtime dependency"):
-            agent_runtime.AgentRuntime(InMemorySaver(), model_factory=MissingDependencyFactory()).start(
+            agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(missing_dependency)).start(
                 context(thread_id="team:dependency:start"),
                 "Start",
             )
@@ -808,13 +808,13 @@ class AgentRuntimeTests(unittest.TestCase):
                 )
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         turn = context(
             assistant("weather-pulse", action("lookup")),
             thread_id="team:dependency:resume",
         )
         suspended = runtime.start(turn, "Look up Lisbon")
-        runtime._model_factory = MissingDependencyFactory()
+        runtime._model_factory = FixedFactory(missing_dependency)
 
         with self.assertRaisesRegex(ImportError, "synthetic missing runtime dependency"):
             runtime.resume(turn, {suspended.actions[0].interrupt_id: {"weather": "sunny"}})
@@ -920,11 +920,10 @@ class AgentRuntimeTests(unittest.TestCase):
                 )
 
     def test_provider_failures_do_not_expose_the_secret(self):
-        class FailedModelFactory:
-            def __call__(self, config):
-                raise RuntimeError(f"provider rejected {config.api_key}")
+        def failed_model(config):
+            raise RuntimeError(f"provider rejected {config.api_key}")
 
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FailedModelFactory())
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(failed_model))
 
         with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "model provider request failed") as raised:
             runtime.start(context(), "Hello")

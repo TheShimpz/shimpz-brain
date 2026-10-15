@@ -19,7 +19,7 @@ import runtime_api
 import tool_fake
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from protocol.team.action.v1 import schema as action_protocol
-from tool_fake import ACTION, PINGER
+from tool_fake import ACTION, PINGER, FixedFactory
 
 
 class RecordingModel(tool_fake.RecordingModel):
@@ -194,7 +194,7 @@ class RuntimeBudgetTests(unittest.TestCase):
         saver = runtime_api.PruningSqliteSaver(connection)
         saver.setup()
         model = RecordingModel(responses=list(responses))
-        return agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        return agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
 
     def test_a_new_turn_forgets_the_oldest_whole_exchanges_and_resume_still_finds_its_reply(self):
         turn = _context()
@@ -274,7 +274,7 @@ class RuntimeBudgetTests(unittest.TestCase):
         self.connections.append(connection)
         saver = runtime_api.PruningSqliteSaver(connection)
         saver.setup()
-        runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
         runtime.start(turn, "one")
         with self.assertRaises(agent_runtime.ProviderRequestError):
             runtime.start(turn, "boom")
@@ -327,7 +327,7 @@ class RuntimeBudgetTests(unittest.TestCase):
                     self.connections.append(connection)
                     saver = runtime_api.PruningSqliteSaver(connection)
                     saver.setup()
-                    factory = functools.partial(provider_client.provider_model, http_client=client)
+                    factory = FixedFactory(functools.partial(provider_client.provider_model, http_client=client))
                     runtime = agent_runtime.AgentRuntime(saver, model_factory=factory)
                     config = agent_runtime.ProviderConfig(provider, model, "sk-test")
                     turn = agent_runtime.TurnContext(f"cut-{provider}-{kind}", "Budget Team", (PINGER,), config)

@@ -24,6 +24,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage
 from test_agent_runtime import ToolAwareFakeModel, action, assistant, context
 from test_runtime_api import TOKEN, body
+from tool_fake import FixedFactory
 
 NO_PROXY_ENV = {"HTTPS_PROXY": "", "https_proxy": ""}
 
@@ -472,7 +473,7 @@ class RuntimeCancellationTests(unittest.TestCase):
             turn = context(assistant("hello-pulse", action()), thread_id="team:cancel:thread")
             _CancellableModel.entered = threading.Event()
             cancelling = agent_runtime.AgentRuntime(
-                runtime._checkpointer, model_factory=lambda _config: _CancellableModel(responses=[])
+                runtime._checkpointer, model_factory=FixedFactory(lambda _config: _CancellableModel(responses=[]))
             )
             scope = provider_cancel.CancelScope()
             outcome = _run(scope, lambda: cancelling.start(turn, "Please wait"))
@@ -484,7 +485,7 @@ class RuntimeCancellationTests(unittest.TestCase):
             reopened = runtime_api._sqlite_runtime(path)
             answering = agent_runtime.AgentRuntime(
                 reopened._checkpointer,
-                model_factory=lambda _config: ToolAwareFakeModel(responses=[AIMessage(content="Back.")]),
+                model_factory=FixedFactory(lambda _config: ToolAwareFakeModel(responses=[AIMessage(content="Back.")])),
             )
             self.assertEqual(answering.start(turn, "Hello again").reply, "Back.")
             reopened.close()

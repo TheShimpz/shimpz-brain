@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
+from tool_fake import FixedFactory
 
 KEY = "sk-test-0123456789abcdef"
 CANDIDATES = (
@@ -26,7 +27,7 @@ PLAN = {"status": "install-required", "assistant_ids": ["shimpz-cloudflare"]}
 
 
 def _runtime() -> agent_runtime.AgentRuntime:
-    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=provider_client.provider_model)
+    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(provider_client.provider_model))
 
 
 def _anthropic_reply(text: str | None, stop_reason: str = "end_turn") -> Message:

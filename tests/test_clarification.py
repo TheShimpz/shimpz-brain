@@ -9,6 +9,7 @@ import clarification
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import ToolAwareFakeModel, action, assistant, context
+from tool_fake import FixedFactory
 
 VALID = {
     "question": "Qual período você quer cobrir?",
@@ -79,7 +80,7 @@ class GraphTests(unittest.TestCase):
     def _runtime(self, *responses: AIMessage) -> tuple[agent_runtime.AgentRuntime, InMemorySaver]:
         saver = InMemorySaver()
         model = ToolAwareFakeModel(responses=list(responses))
-        return agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model), saver
+        return agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model)), saver
 
     def test_a_valid_clarification_ends_the_turn_and_remembers_exactly_what_is_shown(self):
         runtime, saver = self._runtime(

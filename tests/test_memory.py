@@ -16,7 +16,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
 from test_runtime_api import TOKEN, body
-from tool_fake import system_text
+from tool_fake import FixedFactory, system_text
 from turn_envelope import MALFORMED, envelope
 
 ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
@@ -154,7 +154,7 @@ class GraphTests(unittest.TestCase):
     def _runtime(self, *responses):
         RecordingToolAwareFakeModel.seen_messages = []
         model = RecordingToolAwareFakeModel(responses=list(responses))
-        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
+        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model)), model
 
     def test_a_stated_taste_is_proposed_and_the_answer_continues(self):
         runtime, _model = self._runtime(
@@ -396,7 +396,7 @@ class ConfirmationTests(unittest.TestCase):
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="", tool_calls=[_remember()]), AIMessage(content="Ok.")]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
         def reject(prompt: str) -> memory.Confirmation:
             return memory.Confirmation(lasting=[False] * prompt.count('"op"'))
@@ -407,7 +407,7 @@ class ConfirmationTests(unittest.TestCase):
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="", tool_calls=[_remember()]), AIMessage(content="Ok.")]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         self.assertEqual(runtime.start(_with_memory(), envelope(MESSAGE)).memory, ())
 
 
@@ -431,7 +431,7 @@ class EndpointTests(unittest.TestCase):
                 AIMessage(content="Ok."),
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         api = TestClient(runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN))
         unavailable = api.post("/v1/turns", json=body(memories=None, message="Oi"), headers=headers)
         self.assertEqual(unavailable.json()["memory"], [])

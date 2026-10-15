@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
 from test_runtime_api import TOKEN, body
-from tool_fake import system_text
+from tool_fake import FixedFactory, system_text
 from turn_envelope import envelope
 
 import routine
@@ -238,7 +238,7 @@ class RecordTests(unittest.TestCase):
 
 def _runtime(*responses):
     model = RecordingToolAwareFakeModel(responses=list(responses))
-    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model), model
+    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model)), model
 
 
 class GraphTests(unittest.TestCase):
@@ -466,7 +466,7 @@ class ContinuationFrameTests(unittest.TestCase):
             seen.append(config)
             return model
 
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=factory)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(factory))
         started = dataclasses.replace(_chat([LISTED]), routine_mode=True)
         suspended = runtime.start(started, envelope(MESSAGE))
         finished = runtime.resume(self._team_resume(), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
@@ -528,7 +528,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
     def test_the_turn_endpoint_carries_routines_and_returns_the_record(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}
         model = ToolAwareFakeModel(responses=[AIMessage(content="", tool_calls=[_call()])])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         api = TestClient(runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN))
         response = api.post(
             "/v1/turns",

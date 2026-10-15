@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.http.v1 import payload as team_payload
 from test_agent_runtime import RecordingToolAwareFakeModel, action, assistant, context
-from tool_fake import system_text
+from tool_fake import FixedFactory, system_text
 
 ACTION_TOOL = agent_runtime._tool_name("hello-pulse", "hello")
 MESSAGE_ID = "shimpz-turn-" + "a" * 32
@@ -87,7 +87,7 @@ class InterfaceLanguageTests(unittest.TestCase):
             ]
         )
         saver = InMemorySaver()
-        runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
         started = dataclasses.replace(context(), locale="pt")
         suspended = runtime.start(started, "Greet Ada")
         pinned = saver.get_tuple({"configurable": {"thread_id": started.thread_id}}).metadata
@@ -105,7 +105,7 @@ class InterfaceLanguageTests(unittest.TestCase):
         model = RecordingToolAwareFakeModel(
             responses=[AIMessage(content="", tool_calls=[{"name": ACTION_TOOL, "args": {}, "id": "a1"}])]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         suspended = runtime.start(context(), "Greet Ada")
         with (
             mock.patch.object(turn_pins, "restore_turn", side_effect=turn_pins.PinError("missing")),

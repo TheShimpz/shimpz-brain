@@ -16,7 +16,7 @@ from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
-from tool_fake import PINGER
+from tool_fake import PINGER, FixedFactory
 
 
 class RecordingModel(tool_fake.RecordingModel):
@@ -60,7 +60,7 @@ class ConversationBridgeTests(unittest.TestCase):
 
     def _runtime(self, *responses: AIMessage) -> agent_runtime.AgentRuntime:
         model = RecordingModel(responses=list(responses))
-        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
     def test_a_fresh_thread_quotes_the_window_through_its_action_rounds_then_forgets_it(self):
         runtime = self._runtime(
@@ -148,7 +148,9 @@ class ConversationBridgeTests(unittest.TestCase):
                 usage=Usage(input_tokens=1, output_tokens=1),
             )
 
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=provider_client.provider_model)
+        runtime = agent_runtime.AgentRuntime(
+            InMemorySaver(), model_factory=FixedFactory(provider_client.provider_model)
+        )
         with mock.patch.object(ChatAnthropic, "_create", send):
             self.assertEqual(
                 runtime.start(_context("anthropic", "claude-sonnet-5-5"), "Check it now.", WINDOW).reply, "ok"

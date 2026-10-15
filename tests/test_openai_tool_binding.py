@@ -16,6 +16,7 @@ import memory
 import provider_client
 import provider_replies
 from langgraph.checkpoint.memory import InMemorySaver
+from tool_fake import FixedFactory
 
 import routine
 
@@ -62,7 +63,8 @@ def _sent_tools(provider: str) -> list[dict]:
     client = httpx.Client(transport=httpx.MockTransport(handle))
     try:
         runtime = agent_runtime.AgentRuntime(
-            InMemorySaver(), model_factory=lambda config: provider_client.provider_model(config, http_client=client)
+            InMemorySaver(),
+            model_factory=FixedFactory(lambda config: provider_client.provider_model(config, http_client=client)),
         )
         config = provider_replies.provider(provider)
         context = agent_runtime.TurnContext(f"binding-{provider}", "DNS Team", (DNS,), config, memories=(), routines=())

@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage
 from provider_replies import provider
 from pydantic import BaseModel
 from structured_fake import StructuredFakeModel
+from tool_fake import FixedFactory
 
 
 def candidates(*, uninstall: bool = False) -> tuple[intent_route.DirectoryCandidate, ...]:
@@ -691,26 +692,21 @@ class IntentRouteTests(unittest.TestCase):
         validate.assert_called_once_with("hello", None, (), None)
         self.assertEqual(factory.decision_calls, [provider()])
 
-        fallback = mock.Mock(spec=lambda _config: None, return_value=StructuredModel(model.response))
-        self.assertEqual(
-            agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=fallback).intent_route(
-                provider(), "hello", None, (), None, "pt"
-            ),
-            intent_route.IntentRoute("ordinary-task"),
-        )
-        fallback.assert_called_once_with(provider())
-
     def test_runtime_model_factory_failures_keep_their_error_mapping(self):
         failed = agent_runtime.AgentRuntime(
             SimpleNamespace(),
-            model_factory=mock.Mock(spec=lambda _config: None, side_effect=RuntimeError("secret provider detail")),
+            model_factory=FixedFactory(
+                mock.Mock(spec=lambda _config: None, side_effect=RuntimeError("secret provider detail"))
+            ),
         )
         with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
             failed.intent_route(provider(), "hello", None, (), None, "pt")
 
         missing = agent_runtime.AgentRuntime(
             SimpleNamespace(),
-            model_factory=mock.Mock(spec=lambda _config: None, side_effect=ImportError("missing dependency")),
+            model_factory=FixedFactory(
+                mock.Mock(spec=lambda _config: None, side_effect=ImportError("missing dependency"))
+            ),
         )
         with self.assertRaisesRegex(ImportError, "missing dependency"):
             missing.intent_route(provider(), "hello", None, (), None, "pt")
@@ -727,7 +723,7 @@ class IntentRouteTests(unittest.TestCase):
             (ImportError("missing adapter"), ImportError),
             (RuntimeError("private failure"), agent_runtime.ProviderRequestError),
         )
-        runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(SimpleNamespace(), model_factory=FixedFactory(lambda _config: mock.Mock()))
         for failure, projected in cases:
             with (
                 self.subTest(failure=failure),

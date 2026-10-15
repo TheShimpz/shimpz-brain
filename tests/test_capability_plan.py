@@ -7,6 +7,7 @@ import capability_plan
 from langchain_core.messages import AIMessage
 from provider_replies import provider
 from structured_fake import StructuredFakeModel
+from tool_fake import FixedFactory
 
 RecordingModel = StructuredFakeModel
 
@@ -47,7 +48,9 @@ class CapabilityPlanTests(unittest.TestCase):
                 )
             ]
         )
-        runtime = agent_runtime.AgentRuntime(RejectCheckpointAccess(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(
+            RejectCheckpointAccess(), model_factory=FixedFactory(lambda _config: model)
+        )
 
         plan = runtime.capability_plan(
             provider(),
@@ -77,7 +80,7 @@ class CapabilityPlanTests(unittest.TestCase):
 
     def test_accepts_a_closed_sufficient_result(self):
         model = RecordingModel(responses=[AIMessage(content='{"status":"sufficient","assistant_ids":[]}')])
-        runtime = agent_runtime.AgentRuntime(object(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(object(), model_factory=FixedFactory(lambda _config: model))
         shortlist = candidates()
         with mock.patch.object(capability_plan, "_inputs", wraps=capability_plan._inputs) as validate:
             self.assertEqual(
@@ -103,7 +106,7 @@ class CapabilityPlanTests(unittest.TestCase):
                 model = RecordingModel(responses=[AIMessage(content=content)])
                 runtime = agent_runtime.AgentRuntime(
                     object(),
-                    model_factory=lambda _config, selected=model: selected,
+                    model_factory=FixedFactory(lambda _config, selected=model: selected),
                 )
                 with self.assertRaisesRegex(agent_runtime.ProviderResponseError, "model provider response failed"):
                     runtime.capability_plan(provider(), "Configure DNS", candidates())
@@ -125,7 +128,7 @@ class CapabilityPlanTests(unittest.TestCase):
         )
         model = RecordingModel(responses=[AIMessage(content=output)])
         with self.assertRaises(agent_runtime.ProviderResponseError):
-            agent_runtime.AgentRuntime(object(), model_factory=lambda _config: model).capability_plan(
+            agent_runtime.AgentRuntime(object(), model_factory=FixedFactory(lambda _config: model)).capability_plan(
                 provider(),
                 "Use all capabilities",
                 five,
@@ -283,14 +286,14 @@ class CapabilityPlanTests(unittest.TestCase):
         provider_failure.with_structured_output.return_value.invoke.side_effect = RuntimeError("secret provider detail")
         runtime = agent_runtime.AgentRuntime(
             object(),
-            model_factory=lambda _config: provider_failure,
+            model_factory=FixedFactory(lambda _config: provider_failure),
         )
         with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
             runtime.capability_plan(provider(), "Configure DNS", candidates())
 
         runtime = agent_runtime.AgentRuntime(
             object(),
-            model_factory=mock.Mock(side_effect=RuntimeError("secret provider detail")),
+            model_factory=FixedFactory(mock.Mock(side_effect=RuntimeError("secret provider detail"))),
         )
 
         with self.assertRaisesRegex(agent_runtime.ProviderRequestError, "^model provider request failed$"):
@@ -298,7 +301,7 @@ class CapabilityPlanTests(unittest.TestCase):
 
         missing = agent_runtime.AgentRuntime(
             object(),
-            model_factory=mock.Mock(side_effect=ImportError("missing dependency")),
+            model_factory=FixedFactory(mock.Mock(side_effect=ImportError("missing dependency"))),
         )
         with self.assertRaisesRegex(ImportError, "missing dependency"):
             missing.capability_plan(provider(), "Configure DNS", candidates())

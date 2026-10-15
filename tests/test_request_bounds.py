@@ -21,6 +21,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.http.v1 import identifiers as team_identifiers
 from test_agent_runtime import ToolAwareFakeModel
 from test_runtime_api import TOKEN, FakeRuntime, body, client
+from tool_fake import FixedFactory
 
 import routine as team_routine
 
@@ -176,7 +177,7 @@ class RequestBodyBoundTests(unittest.TestCase):
         tool = agent_runtime._tool_name("hello-pulse", "hello")
         call = {"name": tool, "args": {}, "id": "call"}
         model = ToolAwareFakeModel(responses=[AIMessage(content="", tool_calls=[call])])
-        api = client(agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model))
+        api = client(agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model)))
         interrupt = api.post("/v1/turns", json=body(), headers=HEADERS).json()["actions"][0]["interrupt_id"]
 
         # Action results that alone fill the smallest window, beside every uncounted field at its maximum. The fixed

@@ -10,7 +10,7 @@ import turn_prompt
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import RecordingToolAwareFakeModel, action, assistant, context
-from tool_fake import system_text
+from tool_fake import FixedFactory, system_text
 
 YESTERDAY = datetime.date(2026, 9, 28)
 TODAY = datetime.date(2026, 9, 29)
@@ -80,7 +80,7 @@ class PinnedDateTests(unittest.TestCase):
                 AIMessage(content="New day."),
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         started = dataclasses.replace(context(), turn_date=YESTERDAY)
         suspended = runtime.start(started, "Greet Ada")
         self.assertEqual(suspended.status, "action-required")
@@ -98,7 +98,7 @@ class PinnedDateTests(unittest.TestCase):
                 AIMessage(content="Done."),
             ]
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         started = dataclasses.replace(context(), turn_date=YESTERDAY, timezone="America/Sao_Paulo")
         suspended = runtime.start(started, "Greet Ada")
         # The resume names no zone of its own: the start's date and zone come back from its pins.

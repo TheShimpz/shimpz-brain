@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.action.v1 import schema as action_protocol
 from test_agent_runtime import ToolAwareFakeModel
+from tool_fake import FixedFactory
 
 SCHEMA = {
     "type": "object",
@@ -154,7 +155,7 @@ class GraphCorrectionTests(unittest.TestCase):
             ]
         )
         saver = InMemorySaver()
-        runtime = agent_runtime.AgentRuntime(saver, model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(saver, model_factory=FixedFactory(lambda _config: model))
         context = _context()
 
         suspended = runtime.start(context, "Quais modelos de IA saíram hoje?")
@@ -173,7 +174,7 @@ class GraphCorrectionTests(unittest.TestCase):
 
     def test_endless_invalid_calls_end_at_the_graph_limit_without_an_action(self):
         model = ToolAwareFakeModel(responses=[_call({"query": "q"}, f"call-{i}") for i in range(20)])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         with (
             mock.patch("langgraph.types.interrupt") as interrupt,
             self.assertRaises(agent_runtime.ProviderRequestError),

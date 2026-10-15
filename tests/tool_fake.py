@@ -3,7 +3,7 @@
 They prove what the runtime does with scripted model output; they say nothing about how a real model behaves.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 import agent_runtime
@@ -18,6 +18,25 @@ ACTION = agent_runtime.ActionDefinition(
     {"type": "object", "properties": {"host": {"type": "string"}}, "additionalProperties": False},
 )
 PINGER = agent_runtime.AssistantDefinition("pinger", "Pinger checks that hosts answer.", (ACTION,))
+
+
+class FixedFactory:
+    """A model factory that builds every kind of model with ``build``, so a test fixes the models a runtime runs."""
+
+    def __init__(self, build: Callable[[agent_runtime.ProviderConfig], Any]) -> None:
+        self.build = build
+
+    def __call__(self, config: agent_runtime.ProviderConfig) -> Any:
+        return self.build(config)
+
+    def chat(self, config: agent_runtime.ProviderConfig) -> Any:
+        return self.build(config)
+
+    def decision(self, config: agent_runtime.ProviderConfig) -> Any:
+        return self.build(config)
+
+    def single_attempt(self, config: agent_runtime.ProviderConfig, *, chat: bool = False) -> Any:
+        return self.build(config)
 
 
 class ToolModel(FakeMessagesListChatModel):
@@ -50,4 +69,4 @@ def call(assistant: agent_runtime.AssistantDefinition, action: str, args: dict[s
 def runtime(*responses: AIMessage) -> agent_runtime.AgentRuntime:
     """An in-memory runtime whose every model answers with ``responses`` in order."""
     model = ToolModel(responses=list(responses))
-    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+    return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))

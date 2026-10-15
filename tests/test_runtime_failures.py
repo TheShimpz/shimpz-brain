@@ -6,6 +6,7 @@ import agent_runtime
 import provider_client
 from langgraph.checkpoint.memory import InMemorySaver
 from tests.test_agent_runtime import action, assistant, context
+from tool_fake import FixedFactory
 
 
 class RuntimeFailureProjectionTests(unittest.TestCase):
@@ -26,13 +27,13 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
     def test_runtime_lifecycle_failures_are_generic_and_closed(self):
         pruning = mock.Mock()
         pruning.prune_thread.side_effect = RuntimeError("private checkpoint")
-        runtime = agent_runtime.AgentRuntime(pruning, model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(pruning, model_factory=FixedFactory(lambda _config: mock.Mock()))
         with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint pruning failed"):
             runtime._prune_history("team:thread")
 
         deleting = mock.Mock()
         deleting.delete_thread.side_effect = RuntimeError("private checkpoint")
-        runtime = agent_runtime.AgentRuntime(deleting, model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(deleting, model_factory=FixedFactory(lambda _config: mock.Mock()))
         with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint deletion failed"):
             runtime.delete_thread("team:thread")
 
@@ -54,7 +55,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
 
         checkpointer = mock.Mock()
         checkpointer.get_tuple.side_effect = RuntimeError("private checkpoint")
-        runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=FixedFactory(lambda _config: mock.Mock()))
         with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "checkpoint read failed"):
             runtime._prepare_scope(turn, resume=False)
 
@@ -123,7 +124,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             metadata={agent_runtime.ASSISTANT_SCOPE_METADATA: expected_scope},
             checkpoint={"channel_values": {"messages": [object(), object()]}},
         )
-        runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(checkpointer, model_factory=FixedFactory(lambda _config: mock.Mock()))
 
         with mock.patch.object(agent_runtime, "_assistant_scope", wraps=agent_runtime._assistant_scope) as scope:
             self.assertEqual(len(runtime._prepare_scope(turn, resume=False)[1]), 2)
@@ -131,7 +132,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
         scope.assert_called_once_with(turn)
 
     def test_turn_entrypoints_reject_invalid_input_and_resume_provider_failure(self):
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: mock.Mock()))
         for message in (None, " ", "x" * (agent_runtime.MAX_MESSAGE_CHARS + 1)):
             with (
                 self.subTest(message=message),
@@ -151,7 +152,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             ):
                 runtime.resume(context(), results)
 
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: mock.Mock()))
         failing_agent = mock.Mock()
         failing_agent.invoke.side_effect = RuntimeError("provider secret")
         with (
@@ -163,7 +164,7 @@ class RuntimeFailureProjectionTests(unittest.TestCase):
             runtime.resume(context(), {"interrupt": {"value": "result"}})
 
     def test_action_tool_name_collision_fails_before_agent_creation(self):
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: mock.Mock())
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: mock.Mock()))
         duplicate_tool = SimpleNamespace(name="duplicate")
         turn = context(assistant("helper", action("first"), action("second")))
         with (

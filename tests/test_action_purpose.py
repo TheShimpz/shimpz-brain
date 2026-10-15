@@ -41,7 +41,7 @@ class DecisionOnly:
         self.purpose = StructuredFakeModel(responses=[AIMessage(content=json.dumps({"purpose": purpose}))])
         self.decisions = []
 
-    def __call__(self, _config):
+    def chat(self, _config):
         return self.turn
 
     def decision(self, config):

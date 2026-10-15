@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_agent_runtime import ToolAwareFakeModel
 from test_runtime_api import AUTH, TOKEN, body
+from tool_fake import FixedFactory
 
 USAGE = {
     "input_tokens": 120,
@@ -102,7 +103,7 @@ class UsageTests(unittest.TestCase):
 class EndpointTests(unittest.TestCase):
     def test_a_real_graph_turn_reports_its_model_usage_through_the_turn_endpoint(self):
         model = ToolAwareFakeModel(responses=[AIMessage(content="Hello.", usage_metadata=USAGE)])
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=lambda _config: model)
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
         app = runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN)
         response = TestClient(app).post("/v1/turns", json=body(), headers=AUTH)
         self.assertEqual(response.status_code, 200)

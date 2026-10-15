@@ -53,9 +53,24 @@ class FixedModel(FakeMessagesListChatModel):
         return self
 
 
+class FixedFactory:
+    """Every model the timed runtime builds is its one fixed model."""
+
+    def __init__(self, model: FixedModel) -> None:
+        self.model = model
+
+    def __call__(self, _provider: agent_runtime.ProviderConfig) -> FixedModel:
+        return self.model
+
+    chat = decision = __call__
+
+    def single_attempt(self, _provider: agent_runtime.ProviderConfig, *, chat: bool = False) -> FixedModel:
+        return self.model
+
+
 class TimedRuntime(agent_runtime.AgentRuntime):
     def __init__(self, saver: runtime_api.PruningSqliteSaver, model: FixedModel) -> None:
-        super().__init__(saver, model_factory=lambda _provider: model)
+        super().__init__(saver, model_factory=FixedFactory(model))
         self.phase_ns: dict[str, int] = {}
         self.prior_messages = -1
 

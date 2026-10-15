@@ -13,6 +13,7 @@ import provider_client
 import provider_replies
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from tool_fake import FixedFactory
 
 SCHEMA = {
     "type": "object",
@@ -74,7 +75,8 @@ class OpenAIStoreTests(unittest.TestCase):
         responses = _Responses()
         client = httpx.Client(transport=httpx.MockTransport(responses))
         runtime = agent_runtime.AgentRuntime(
-            InMemorySaver(), model_factory=lambda config: provider_client.provider_model(config, http_client=client)
+            InMemorySaver(),
+            model_factory=FixedFactory(lambda config: provider_client.provider_model(config, http_client=client)),
         )
         context = agent_runtime.TurnContext("store-thread", "DNS Team", (DNS,), CONFIG)
         paused = runtime.start(context, '{"files":[],"message":"Is example.com active?"}')

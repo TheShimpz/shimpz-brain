@@ -16,7 +16,7 @@ import re
 import secrets
 import threading
 import weakref
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -283,7 +283,16 @@ class Checkpointer(Protocol):
     def delete_thread(self, thread_id: str) -> None: ...
 
 
-ModelFactory = Callable[[ProviderConfig], BaseChatModel]
+class ModelFactory(Protocol):
+    """The provider models a runtime builds, one per kind of call (provider_client.ProviderModelFactory)."""
+
+    def __call__(self, config: ProviderConfig) -> BaseChatModel: ...
+
+    def chat(self, config: ProviderConfig) -> BaseChatModel: ...
+
+    def decision(self, config: ProviderConfig) -> BaseChatModel: ...
+
+    def single_attempt(self, config: ProviderConfig, *, chat: bool = False) -> BaseChatModel: ...
 
 
 def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, str]:
@@ -617,10 +626,9 @@ class AgentRuntime:
         from langchain.agents import create_agent
 
         # An attachment turn retries explicitly, reserving its charge per attempt, so its model makes no hidden retry.
-        single = getattr(self._model_factory, "single_attempt", None)
         model = (
-            single(context.provider, chat=True)
-            if context.attachments and callable(single)
+            self._model_factory.single_attempt(context.provider, chat=True)
+            if context.attachments
             else self._chat_model(context.provider)
         )
         exposed, memory_tool, routine_tool, prompt = _turn_surface(context)
@@ -838,13 +846,11 @@ class AgentRuntime:
 
     def _chat_model(self, provider: ProviderConfig) -> BaseChatModel:
         """The model of an ordinary chat turn and its memory check, at Brain's fixed chat reasoning effort."""
-        chat_factory = getattr(self._model_factory, "chat", None)
-        return chat_factory(provider) if callable(chat_factory) else self._model_factory(provider)
+        return self._model_factory.chat(provider)
 
     def _decision_model(self, provider: ProviderConfig) -> BaseChatModel:
         """A short model with at most one retry for one stateless structured decision."""
-        decision_factory = getattr(self._model_factory, "decision", None)
-        return decision_factory(provider) if callable(decision_factory) else self._model_factory(provider)
+        return self._model_factory.decision(provider)
 
     def action_purpose(self, provider: ProviderConfig, pending: PendingAction) -> str | None:
         """Write why a pending Action pauses for a person, from its exact interrupt and the turn's own message."""

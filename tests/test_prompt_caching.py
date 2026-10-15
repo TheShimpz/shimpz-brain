@@ -12,6 +12,7 @@ import provider_client
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
 from langgraph.checkpoint.memory import InMemorySaver
+from tool_fake import FixedFactory
 
 CACHE = {"type": "ephemeral", "ttl": "5m"}
 CLOCK = agent_runtime.AssistantDefinition(
@@ -51,7 +52,9 @@ class PromptCachingTests(unittest.TestCase):
             (CLOCK,),
             agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789abcdef"),
         )
-        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=provider_client.provider_model)
+        runtime = agent_runtime.AgentRuntime(
+            InMemorySaver(), model_factory=FixedFactory(provider_client.provider_model)
+        )
         with mock.patch.object(ChatAnthropic, "_create", send):
             first = runtime.start(context, "oi")
             second = runtime.start(context, "tudo bem?")
