@@ -30,7 +30,7 @@ import connect
 import policy
 from audit_writer import AuditError, AuditWriter
 
-LISTEN_PORT = int(os.environ.get("SHIMPZ_EGRESS_PORT", "8888"))
+LISTEN_PORT = 8888  # the healthcheck and every HTTPS_PROXY address name this port
 ALLOWED_PORTS = {443}  # HTTPS only — every legitimate brain destination is TLS
 MAX_CONCURRENCY, MAX_SOURCE_CONCURRENCY, LISTEN_BACKLOG = connect.envelope(
     int(os.environ.get("SHIMPZ_EGRESS_MAX_CONCURRENCY", "64")),
