@@ -355,7 +355,7 @@ def checker(model: Callable[[], Any], provider: str) -> Callable[[str], Confirma
     disagrees with the adapter's parse is CheckUnavailableError like any failed request.
     """
     from langchain_core.messages import HumanMessage
-    from runtime_errors import ProviderRequestError, ProviderResponseError
+    from runtime_errors import ProviderRequestError
     from structured import bounded_value
 
     def ask(prompt: str) -> Confirmation:
@@ -368,7 +368,7 @@ def checker(model: Callable[[], Any], provider: str) -> Callable[[str], Confirma
                 "memory check",
                 MAX_CONFIRMATION_CHARS,
             )
-        except (ProviderRequestError, ProviderResponseError) as exc:
+        except ProviderRequestError as exc:
             raise CheckUnavailableError("memory check failed") from exc
 
     return ask
