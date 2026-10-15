@@ -5,7 +5,7 @@ from unittest import mock
 import agent_runtime
 import provider_client
 from langgraph.checkpoint.memory import InMemorySaver
-from tests.test_agent_runtime import action, assistant, context
+from test_agent_runtime import action, assistant, context
 from tool_fake import FixedFactory
 
 
