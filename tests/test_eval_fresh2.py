@@ -150,7 +150,7 @@ class StratumTests(unittest.TestCase):
         broken = dataclasses.replace(fresh2.SCENARIOS[0], assistants=("loyalty",))
         with mock.patch.object(fresh2, "SCENARIOS", (broken, *fresh2.SCENARIOS[1:])), self.assertRaises(ValueError):
             fresh2.validate()
-        unscoped = tuple(dataclasses.replace(s, scope="needed", assistants=s.template.needed) for s in fresh2.SCENARIOS)
+        unscoped = eval_stratum_case.unscoped(fresh2)
         with mock.patch.object(fresh2, "SCENARIOS", unscoped), self.assertRaisesRegex(ValueError, "scope"):
             fresh2.validate()
 
@@ -158,11 +158,7 @@ class StratumTests(unittest.TestCase):
 class WorldTests(unittest.TestCase):
     def test_failures_raise_before_any_effect(self):
         failures = (
-            ("dns", "list-records", {"zone_id": "zn-none"}),
-            ("dns", "create-record", {"zone_id": "zn-7f3a", "type": "A", "name": "www", "content": "192.0.2.5"}),
-            ("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-none", "content": "192.0.2.5"}),
-            ("tasks", "complete-task", {"task_id": "tk-none"}),
-            ("messages", "send-message", {"contact_id": "ct-none", "text": "hi"}),
+            *eval_stratum_case.PRECISION_FAILURES,
             ("shipping", "create-shipment", {"address_id": "adr-none", "weight_grams": 500}),
             ("shipping", "create-shipment", {"address_id": "adr-k2p7", "weight_grams": 500, "reference": "ord-2289"}),
             ("shipping", "cancel-shipment", {"shipment_id": "shp-none"}),

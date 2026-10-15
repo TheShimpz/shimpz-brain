@@ -10,6 +10,14 @@ from eval import corpus
 Workflow = Callable[[Any], None]
 # The oracle result of a reference workflow: passed, with no defect of any kind.
 PASSED = {"passed": True, "missing": 0, "wrong": 0, "forbidden": 0, "wrong_scope": 0, "duplicates": 0}
+# Failing calls of the precision World every fresh stratum inherits; each must raise before any effect.
+PRECISION_FAILURES = (
+    ("dns", "list-records", {"zone_id": "zn-none"}),
+    ("dns", "create-record", {"zone_id": "zn-7f3a", "type": "A", "name": "www", "content": "192.0.2.5"}),
+    ("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-none", "content": "192.0.2.5"}),
+    ("tasks", "complete-task", {"task_id": "tk-none"}),
+    ("messages", "send-message", {"contact_id": "ct-none", "text": "hi"}),
+)
 
 
 def one(items: list) -> dict:
@@ -36,6 +44,11 @@ def run(stratum: ModuleType, *workflows: Workflow) -> Any:
 
 def oracle(stratum: ModuleType, scenario_id: str, world: Any) -> corpus.Oracle:
     return corpus.oracle(stratum.SCENARIOS_BY_ID[scenario_id], world, stratum.INITIAL)
+
+
+def unscoped(stratum: ModuleType) -> tuple:
+    """The stratum's scenarios offered only the Assistants they need, which scope validation must refuse."""
+    return tuple(dataclasses.replace(s, scope="needed", assistants=s.template.needed) for s in stratum.SCENARIOS)
 
 
 def template_defects(stratum: ModuleType) -> list[tuple[corpus.Template, ...]]:

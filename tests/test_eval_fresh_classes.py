@@ -210,20 +210,14 @@ class StratumTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, "invalid scenario"),
             ):
                 fresh_classes.validate()
-        unscoped = tuple(
-            dataclasses.replace(s, scope="needed", assistants=s.template.needed) for s in fresh_classes.SCENARIOS
-        )
+        unscoped = eval_stratum_case.unscoped(fresh_classes)
         with mock.patch.object(fresh_classes, "SCENARIOS", unscoped), self.assertRaisesRegex(ValueError, "scope"):
             fresh_classes.validate()
 
 
 class WorldFailureTests(unittest.TestCase):
     FAILURES = (
-        ("dns", "list-records", {"zone_id": "zn-none"}),
-        ("dns", "create-record", {"zone_id": "zn-7f3a", "type": "A", "name": "www", "content": "192.0.2.5"}),
-        ("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-none", "content": "192.0.2.5"}),
-        ("tasks", "complete-task", {"task_id": "tk-none"}),
-        ("messages", "send-message", {"contact_id": "ct-none", "text": "hi"}),
+        *eval_stratum_case.PRECISION_FAILURES,
         ("property", "renew-lease", {"lease_id": "lse-none", "new_end_date": "2027-05-31"}),
         ("property", "renew-lease", {"lease_id": "lse-4087", "new_end_date": "2027-05-31"}),
         ("property", "renew-lease", {"lease_id": "lse-4103", "new_end_date": "2026-11-30"}),

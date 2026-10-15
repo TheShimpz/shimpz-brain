@@ -216,7 +216,7 @@ class StratumTests(unittest.TestCase):
         broken = dataclasses.replace(fresh3.SCENARIOS[0], assistants=("rentals",))
         with mock.patch.object(fresh3, "SCENARIOS", (broken, *fresh3.SCENARIOS[1:])), self.assertRaises(ValueError):
             fresh3.validate()
-        unscoped = tuple(dataclasses.replace(s, scope="needed", assistants=s.template.needed) for s in fresh3.SCENARIOS)
+        unscoped = eval_stratum_case.unscoped(fresh3)
         with mock.patch.object(fresh3, "SCENARIOS", unscoped), self.assertRaisesRegex(ValueError, "scope"):
             fresh3.validate()
         search = dict(fresh3.SEARCH)
@@ -243,11 +243,7 @@ class StratumTests(unittest.TestCase):
 class WorldTests(unittest.TestCase):
     def test_failures_raise_before_any_effect(self):
         failures = (
-            ("dns", "list-records", {"zone_id": "zn-none"}),
-            ("dns", "create-record", {"zone_id": "zn-7f3a", "type": "A", "name": "www", "content": "192.0.2.5"}),
-            ("dns", "update-record", {"zone_id": "zn-7f3a", "record_id": "rc-none", "content": "192.0.2.5"}),
-            ("tasks", "complete-task", {"task_id": "tk-none"}),
-            ("messages", "send-message", {"contact_id": "ct-none", "text": "hi"}),
+            *eval_stratum_case.PRECISION_FAILURES,
             ("recipes", "add-to-menu", {"recipe_id": "rec-none", "day": "friday"}),
             ("recipes", "add-to-menu", {"recipe_id": "rec-111", "day": "friday"}),
             ("recipes", "remove-from-menu", {"entry_id": "men-none"}),

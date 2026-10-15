@@ -6,6 +6,7 @@ import unittest
 from collections import Counter
 from unittest import mock
 
+import eval_stratum_case
 from eval import corpus, fresh
 from eval import world as simulated
 
@@ -132,7 +133,7 @@ class StratumTests(unittest.TestCase):
         broken = dataclasses.replace(fresh.SCENARIOS[0], assistants=("tasks",))
         with mock.patch.object(fresh, "SCENARIOS", (broken, *fresh.SCENARIOS[1:])), self.assertRaises(ValueError):
             fresh.validate()
-        unscoped = tuple(dataclasses.replace(s, scope="needed", assistants=s.template.needed) for s in fresh.SCENARIOS)
+        unscoped = eval_stratum_case.unscoped(fresh)
         with mock.patch.object(fresh, "SCENARIOS", unscoped), self.assertRaisesRegex(ValueError, "scope"):
             fresh.validate()
 
