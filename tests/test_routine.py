@@ -213,8 +213,9 @@ class RecordTests(unittest.TestCase):
             ({}, "changes", "output"),
             ({"description": said.replace("somente quando mudar", "em todas as execuções")}, "changes", "output"),
             ({}, None, None),
-            ({"description": said}, None, "unstated-output"),
-            # A replacement may keep saying its own listed output, and nothing else, when the person states none.
+            # A new Routine's output not chosen yet is asked before any card, so its description is not checked.
+            ({"description": said}, None, None),
+            # A replacement keeps its listed output unasked: its description says that one, or none, and nothing else.
             (
                 {
                     "description": said.replace("Mostrar somente quando mudar", "Não mostrar"),

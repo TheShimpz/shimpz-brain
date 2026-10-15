@@ -93,8 +93,8 @@ _CORRECTIONS = {
     "description; the Team asks them.",
     "output": _NOT_DONE + "Say in the description what is done with each run's result as the person chose it, in "
     "these words, and no other choice: ",
-    "unstated-output": _NOT_DONE + "The person has not said what is done with each run's result yet: leave it out of "
-    "the description; the Team asks them.",
+    "unstated-output": _NOT_DONE + "The person has not changed what is done with each run's result: say the "
+    "Routine's own output or leave it out of the description.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person an empty reply or one of at most 4000 characters.",
 }
@@ -170,16 +170,18 @@ def canonical_output(value: object) -> str | None:
 
 
 def _output_miss(description: str, output: object, replaced: object) -> str:
-    """Whether a description says what each run does with its result as Team read it from the person, "" when it does.
+    """Whether a description says what each run does with its result as the person chose it, "" when it does.
 
-    As with the schedule, Team's reading is the authority: with one output, the description states exactly it; with
-    none, it states none, except a replacement's own listed output, which it keeps.
+    Team's reading is the authority once the person chose: the description states exactly that output. A new
+    Routine's output not chosen yet is asked before any card, and the answer has the description written again, so it
+    is not checked here; a replacement keeps its listed output unasked, so its description states that one or none.
     """
     stated = team_phrase.outputs(description)
     if output is not None:
         return "" if stated == (output,) else "output"
-    kept = () if replaced is None else (replaced["output"]["mode"],)
-    return "" if stated in ((), kept) else "unstated-output"
+    if replaced is None or stated in ((), (replaced["output"]["mode"],)):
+        return ""
+    return "unstated-output"
 
 
 def _schedule_miss(description: str, schedule: object, replaced: object) -> str:
