@@ -436,16 +436,16 @@ class Pool:
 POLL_SECONDS = 1.0
 
 
-def orchestrate(schedule: Schedule, pool: Pool, clock: Callable[[], float] = time.monotonic) -> None:
+def orchestrate(schedule: Schedule, pool: Pool) -> None:
     """Dispatch every slot the schedule allows to the freest worker, and settle each result, until the run is done."""
     while not schedule.done():
-        now = clock()
+        now = time.monotonic()
         while (worker := pool.free()) is not None and (slot := schedule.take(now)) is not None:
             pool.dispatch(worker, slot)
         wake = schedule.wake(now)
         received = pool.receive(POLL_SECONDS if wake is None else min(wake, POLL_SECONDS))
         if received is not None:
-            schedule.finish(*received, clock())
+            schedule.finish(*received, time.monotonic())
 
 
 def evidence(run_dir: Path, schedule: Schedule) -> dict[str, int]:
