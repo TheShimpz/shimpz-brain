@@ -9,9 +9,9 @@ environment plus Team's pinned cryptography, as the journeys require:
         --arms base,prod --repetitions 5 --cap-per-arm 0.8 --workers 6 --seed <seed> --campaign <name>
         --transcript /private/dir/arms.jsonl --meta-out /private/dir/arms-meta.json   (one command line)
 
-Judge the transcript with ``eval.precision judge`` (or ``perf/sol_tiebreak.py``), build the report with
-``eval.precision report``. The metadata records the umbrella, Brain, and Team revisions; record with the report the
-sha256 of each ``perf/`` source the run used, as the 2026-10-09 reports' ``provenance`` does.
+Judge the transcript with ``eval.precision judge``, build the report with ``eval.precision report``. The metadata
+records the umbrella, Brain, and Team revisions; record with the report the sha256 of each ``perf/`` source the run
+used, as the 2026-10-09 reports' ``provenance`` does.
 """
 
 import argparse
