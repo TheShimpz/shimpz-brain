@@ -140,15 +140,17 @@ def settings_question(question: Mapping[str, Any] | None) -> bool:
     return question is not None and question["code"] in team_routine_proposal.SETTINGS_QUESTION_CODES
 
 
+# The settings questions about how often the Routine runs; the only other one asks what each run does with its result.
+_SCHEDULE_QUESTION_CODES = team_routine_proposal.SETTINGS_QUESTION_CODES - {"routine-output-unstated"}
+
+
 def _settled(context: Any) -> bool:
     """Whether a settings answer answers a settings question, with the reading Team took from it."""
     question = context.routine_question
     code = None if question is None else question["code"]
     if code == "routine-output-unstated":
         return context.routine_output is not None
-    return (
-        code in {"routine-schedule-unstated", "routine-interval-over-budget"} and context.routine_schedule is not None
-    )
+    return code in _SCHEDULE_QUESTION_CODES and context.routine_schedule is not None
 
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
