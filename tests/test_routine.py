@@ -483,7 +483,7 @@ class RoutineModeTests(unittest.TestCase):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
             dataclasses.replace(_chat(), routine_output="sometimes")
 
-    def test_an_output_answer_records_without_running_the_work_again(self):
+    def test_a_settings_answer_records_without_running_the_work_again(self):
         asked = {"code": "routine-output-unstated", "options": [], "value": None}
         said = "A cada 30 segundos, lista as zonas da sua Cloudflare. Mostrar somente quando mudar."
         runtime, _model = GraphTests._runtime(
@@ -491,7 +491,7 @@ class RoutineModeTests(unittest.TestCase):
             AIMessage(content="", tool_calls=[_call(call_id="r2", description=said, reply="")]),
         )
         chat = dataclasses.replace(
-            _chat([LISTED]), routine_question=asked, routine_output="changes", routine_output_answer=True
+            _chat([LISTED]), routine_question=asked, routine_output="changes", routine_settings_answer=True
         )
         finished = runtime.start(chat, envelope("Mostrar somente quando mudar"))
         # The description that left the output unsaid was refused, and the next one, saying it, ended the turn.
@@ -501,17 +501,30 @@ class RoutineModeTests(unittest.TestCase):
         # The thread keeps the description the card shows, never an empty assistant message.
         state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
         self.assertEqual(state["channel_values"]["messages"][-1].content, said)
-        # The person's bare output choice is offered no Action at all, so its work can never run again; an answer that
-        # also asks for other work keeps every Action.
+        # The person's bare output choice is offered no Action at all, so its work can never run again, and the Routine
+        # mode guidance never tells it to run the work; an answer that also asks for other work keeps every Action.
         self.assertEqual(agent_runtime._turn_surface(chat)[0], ())
-        mixed = dataclasses.replace(chat, routine_output_answer=False)
+        self.assertNotIn("run the work once", turn_prompt.system_prompt(dataclasses.replace(chat, routine_mode=True)))
+        mixed = dataclasses.replace(chat, routine_settings_answer=False)
+        self.assertIn("run the work once", turn_prompt.system_prompt(dataclasses.replace(mixed, routine_mode=True)))
         self.assertEqual(agent_runtime._turn_surface(mixed)[0], agent_runtime._turn_surface(_chat([LISTED]))[0])
         self.assertTrue(agent_runtime._turn_surface(mixed)[0])
-        # Team marks only an answer to its own output question whose output it read.
-        for changes in ({"routine_output": None}, {"routine_question": QUESTION}, {"routine_question": None}):
+        # Team marks only an answer to its own schedule, over-budget, or output question whose reading it took.
+        schedule = {**asked, "code": "routine-schedule-unstated"}
+        over = {"code": "routine-interval-over-budget", "options": [], "value": 120}
+        for question in (schedule, over):
+            with self.subTest(question=question):
+                self.assertTrue(dataclasses.replace(chat, routine_question=question).routine_settings_answer)
+        for changes in (
+            {"routine_output": None},
+            {"routine_question": QUESTION},
+            {"routine_question": None},
+            {"routine_question": schedule, "routine_schedule": None},
+            {"routine_question": over, "routine_schedule": None},
+        ):
             with (
                 self.subTest(changes=changes),
-                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output answer"),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine settings answer"),
             ):
                 dataclasses.replace(chat, **changes)
         # The bare output choice is asked for a record alone, unlike any other answer; a mixed one is told to run work.

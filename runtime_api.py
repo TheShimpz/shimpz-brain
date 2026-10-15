@@ -160,7 +160,7 @@ class TurnContextInput(ClosedInput):
     routine_output: str | None
     # Whether the message is exactly the person's choice of one output, answering Team's output question: the work
     # already ran, so the turn only records again and is offered no Action.
-    routine_output_answer: StrictBool
+    routine_settings_answer: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
     attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
 
@@ -186,7 +186,7 @@ class TurnContextInput(ClosedInput):
             routine_rerun=None if self.routine_rerun is None else tuple(self.routine_rerun),
             routine_schedule=self.routine_schedule,
             routine_output=self.routine_output,
-            routine_output_answer=self.routine_output_answer,
+            routine_settings_answer=self.routine_settings_answer,
             attachments=_attachments(self.attachments),
             **turn,
         )

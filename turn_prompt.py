@@ -161,17 +161,17 @@ def _routines_section(routines: tuple | None) -> str:
 def _question_section(question: dict | None, records_only: bool) -> str:
     """The Routine question Team asked the user before this message, which the message may answer; nothing if none.
 
-    ``records_only`` is Team's mark that the message is exactly the person's output choice: only then is the turn told
-    to run nothing, matching the Actions it is offered.
+    ``records_only`` is Team's mark that the message is exactly one fixed answer to its schedule, over-budget, or output
+    question: only then is the turn told to run nothing, matching the Actions it is offered.
     """
     if question is None:
         return ""
     if records_only:
-        # The work already ran; repeating it would repeat its changes, so an output answer only records again.
+        # The work already ran; repeating it would repeat its changes, so a settings answer only records again.
         answered = (
             f"If the user's message answers it, run no Action: call {routine.TOOL_NAME} record again at once, with "
-            "the same name and replaces as before, its description also saying what is done with each run's result "
-            "in the words of the answer, and an empty reply; the Team keeps the work that already ran. "
+            "the same name and replaces as before, its description also saying the answer in its words, and an empty "
+            "reply; the Team keeps the work that already ran. "
         )
     else:
         answered = (
@@ -185,12 +185,13 @@ def _question_section(question: dict | None, records_only: bool) -> str:
     )
 
 
-def _routine_mode_section(active: bool) -> str:
+def _routine_mode_section(active: bool, records_only: bool) -> str:
     """The Routine-mode guidance when Team read, with no model, that this chat is about a Routine; advisory only.
 
-    For measurement, SHIMPZ_ROUTINE_MODE_PROMPT=off in the Brain's environment leaves it out (the eval's control arm).
+    A settings answer only records again, so its turn is told nothing about running the work. For measurement,
+    SHIMPZ_ROUTINE_MODE_PROMPT=off in the Brain's environment leaves it out (the eval's control arm).
     """
-    if not active or os.environ.get("SHIMPZ_ROUTINE_MODE_PROMPT") == "off":
+    if not active or records_only or os.environ.get("SHIMPZ_ROUTINE_MODE_PROMPT") == "off":
         return ""
     return (
         "If this message asks for a Routine: the Team takes the schedule, interval, timezone, limits, and what to do "
@@ -250,6 +251,8 @@ def _language_section(locale: str | None) -> str:
 
 def system_prompt(context: TurnContext) -> str:
     """The Team turn's policy prompt: identity, Action authority, clarification, completeness, contracts, and date."""
+    # A settings answer only records again, so nothing in the prompt tells its turn to run work.
+    records_only = context.routine_settings_answer
     assistant_contracts = [
         {
             "genesis": assistant.genesis,
@@ -322,8 +325,8 @@ def system_prompt(context: TurnContext) -> str:
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
         f"{_routines_section(None if context.attachments else context.routines)}"
-        f"{_question_section(None if context.attachments else context.routine_question, context.routine_output_answer)}"
-        f"{_routine_mode_section(context.routine_mode and not context.attachments)}"
+        f"{_question_section(None if context.attachments else context.routine_question, records_only)}"
+        f"{_routine_mode_section(context.routine_mode and not context.attachments, records_only)}"
         f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
         f"{_attachments_section(context.attachments)}"
         f"{_language_section(context.locale)}"

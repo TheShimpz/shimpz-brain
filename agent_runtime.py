@@ -204,8 +204,9 @@ class TurnContext:
     routine_schedule: dict[str, object] | None = None
     # The one output mode Team read from the person's own words, which the description must say; pinned likewise.
     routine_output: str | None = None
-    # Whether the message is exactly the person's output choice answering Team's output question (record only).
-    routine_output_answer: bool = False
+    # Whether the message is exactly the person's pick of one fixed answer to Team's schedule, over-budget, or output
+    # question (record only).
+    routine_settings_answer: bool = False
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
@@ -304,9 +305,11 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
 
     The agent and the context budget both read it here, so they never count a different set.
     """
-    # An answer to Team's output question only records again: its work already ran, and repeating it would repeat its
-    # changes, so the turn is offered no Action at all.
-    exposed = () if context.routine_output_answer else turn_attachments.exposed(context.assistants, context.attachments)
+    # A settings answer only records again: its work already ran, and repeating it would repeat its changes, so the
+    # turn is offered no Action at all.
+    exposed = (
+        () if context.routine_settings_answer else turn_attachments.exposed(context.assistants, context.attachments)
+    )
     memory_tool, routine_tool = _knowledge_tools(context)
     return exposed, memory_tool, routine_tool, turn_prompt.system_prompt(replace(context, assistants=exposed))
 

@@ -126,12 +126,19 @@ def admit_context(context: Any) -> None:
         if admitted is None:
             raise RoutineContractError(f"invalid Routine {name}")
         object.__setattr__(context, field, admitted)
+    if type(context.routine_settings_answer) is not bool or (context.routine_settings_answer and not _settled(context)):
+        raise RoutineContractError("invalid Routine settings answer")
+
+
+def _settled(context: Any) -> bool:
+    """Whether a settings answer answers a settings question, with the reading Team took from it."""
     question = context.routine_question
-    if type(context.routine_output_answer) is not bool or (
-        context.routine_output_answer
-        and (question is None or question["code"] != "routine-output-unstated" or context.routine_output is None)
-    ):
-        raise RoutineContractError("invalid Routine output answer")
+    code = None if question is None else question["code"]
+    if code == "routine-output-unstated":
+        return context.routine_output is not None
+    return (
+        code in {"routine-schedule-unstated", "routine-interval-over-budget"} and context.routine_schedule is not None
+    )
 
 
 def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
