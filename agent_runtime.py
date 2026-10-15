@@ -253,39 +253,12 @@ def _admit_knowledge(context: TurnContext) -> None:
             object.__setattr__(context, "skills", team_memory.canonical_skills(context.skills))
         except team_memory.MemoryContractError as exc:
             raise RuntimeContractError("invalid skills") from exc
-    _admit_routines(context)
+    try:
+        team_routine.admit_context(context)
+    except team_routine.RoutineContractError as exc:
+        raise RuntimeContractError(str(exc)) from exc
     if type(context.knowledge_writable) is not bool:
         raise RuntimeContractError("invalid knowledge scope")
-
-
-def _admit_routines(context: TurnContext) -> None:
-    """Canonicalize the turn's Routines and what Team sends about a recording in place, refusing anything invalid."""
-    if context.routines is not None:
-        try:
-            object.__setattr__(context, "routines", team_routine.canonical_routines(context.routines))
-        except team_routine.RoutineContractError as exc:
-            raise RuntimeContractError("invalid routines") from exc
-    if (context.routines is None) != (context.routine_capacity is None) or not (
-        context.routine_capacity is None or team_routine.valid_capacity(context.routine_capacity)
-    ):
-        raise RuntimeContractError("invalid Routine capacity")
-    if context.routine_question is not None:
-        question = None if context.routines is None else team_routine.canonical_question(context.routine_question)
-        if question is None:
-            raise RuntimeContractError("invalid Routine question")
-        object.__setattr__(context, "routine_question", question)
-    if type(context.routine_mode) is not bool or (context.routine_mode and context.routines is None):
-        raise RuntimeContractError("invalid Routine mode")
-    if context.routine_rerun is not None:
-        rerun = None if context.routines is None else team_routine.canonical_rerun(context.routine_rerun)
-        if rerun is None:
-            raise RuntimeContractError("invalid Routine rerun")
-        object.__setattr__(context, "routine_rerun", rerun)
-    if context.routine_schedule is not None:
-        schedule = None if context.routines is None else team_routine.canonical_schedule(context.routine_schedule)
-        if schedule is None:
-            raise RuntimeContractError("invalid Routine schedule")
-        object.__setattr__(context, "routine_schedule", schedule)
 
 
 @dataclass(frozen=True, slots=True)

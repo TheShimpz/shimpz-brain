@@ -100,6 +100,33 @@ class RoutineContractError(ValueError):
     pass
 
 
+def admit_context(context: Any) -> None:
+    """Canonicalize a turn's Routines and what Team sends about its recording in place; refuse anything invalid.
+
+    Everything about a recording comes only beside the Team's Routines, which offer the Routine tool.
+    """
+    if context.routines is not None:
+        object.__setattr__(context, "routines", canonical_routines(context.routines))
+    if (context.routines is None) != (context.routine_capacity is None) or not (
+        context.routine_capacity is None or valid_capacity(context.routine_capacity)
+    ):
+        raise RoutineContractError("invalid Routine capacity")
+    if type(context.routine_mode) is not bool or (context.routine_mode and context.routines is None):
+        raise RoutineContractError("invalid Routine mode")
+    for field, canonical, name in (
+        ("routine_question", canonical_question, "question"),
+        ("routine_rerun", canonical_rerun, "rerun"),
+        ("routine_schedule", canonical_schedule, "schedule"),
+    ):
+        value = getattr(context, field)
+        if value is None:
+            continue
+        admitted = None if context.routines is None else canonical(value)
+        if admitted is None:
+            raise RoutineContractError(f"invalid Routine {name}")
+        object.__setattr__(context, field, admitted)
+
+
 def valid_capacity(value: object) -> bool:
     """Whether a Team's daily Action steps left for a Routine is a whole count within the Team's own bound."""
     return type(value) is int and 0 <= value <= MAX_DAILY_STEPS
