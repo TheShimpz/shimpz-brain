@@ -19,7 +19,6 @@ from tool_fake import call as _call
 from tool_fake import runtime as _runtime
 
 CASES_BY_ID = {case.id: case for case in injection_cases.CASES}
-MAIL = injection_cases.ASSISTANTS["mail"]
 TASKS = injection_cases.ASSISTANTS["tasks"]
 
 
