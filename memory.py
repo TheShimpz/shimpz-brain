@@ -19,7 +19,7 @@ import structured
 import tool_refusal
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
-from protocol.team.http.v1 import identifiers as team_identifiers
+from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict
 from runtime_errors import ProviderRequestError
@@ -105,37 +105,18 @@ def _line(value: object, maximum: int) -> str | None:
     return value
 
 
-_CONTRACT_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-
-
-def _step_admitted(step: object) -> bool:
-    return (
-        isinstance(step, dict)
-        and set(step) == {"assistant_id", "action", "inputs"}
-        and team_identifiers.canonical_assistant_id(step["assistant_id"]) is not None
-        and team_identifiers.canonical_action_id(step["action"]) is not None
-        and isinstance(step["inputs"], list)
-        and len(step["inputs"]) <= team_turn.MAX_SKILL_INPUTS
-        and all(isinstance(name, str) and team_turn.SKILL_INPUT_RE.fullmatch(name) for name in step["inputs"])
-        and step["inputs"] == sorted(set(step["inputs"]))
-    )
-
-
 def _skill_admitted(skill: object) -> bool:
-    """The Team's closed skill contract, checked again here, plus whether this turn may follow the skill."""
+    """The Team's closed skill contract, checked again here, plus whether this turn may follow the skill.
+
+    The Team sends the fingerprints already in order, so a reordered mapping, which the contract would accept and sort,
+    is refused here.
+    """
     if not isinstance(skill, dict) or set(skill) != {"key", "contracts", "steps", "usable"}:
         return False
-    contracts, steps = skill["contracts"], skill["steps"]
     return (
         type(skill["usable"]) is bool
-        and isinstance(contracts, dict)
-        and isinstance(steps, list)
-        and team_turn.MIN_SKILL_STEPS <= len(steps) <= team_turn.MAX_SKILL_STEPS
-        and all(_step_admitted(step) for step in steps)
-        and set(contracts) == {step["assistant_id"] for step in steps}
-        and all(isinstance(digest, str) and _CONTRACT_RE.fullmatch(digest) for digest in contracts.values())
-        and list(contracts) == sorted(contracts)
-        and skill["key"] == team_turn.skill_key(contracts, steps)
+        and team_payload.canonical_skill({name: skill[name] for name in ("key", "contracts", "steps")}) is not None
+        and list(skill["contracts"]) == sorted(skill["contracts"])
     )
 
 
@@ -153,24 +134,10 @@ def canonical_skills(value: object) -> tuple[dict[str, object], ...]:
 
 def canonical(value: object) -> tuple[Memory, ...]:
     """The exact memory list: at most 32 entries with distinct lowercase topics and single-line preferences."""
-    if not isinstance(value, (list, tuple)) or len(value) > MAX_MEMORIES:
+    entries = team_payload.canonical_memory(list(value) if isinstance(value, tuple) else value)
+    if entries is None:
         raise MemoryContractError("invalid memory")
-    memories = []
-    for entry in value:
-        if not isinstance(entry, dict) or set(entry) != {"topic", "preference"}:
-            raise MemoryContractError("invalid memory")
-        topic, preference = entry["topic"], _line(entry["preference"], MAX_PREFERENCE_CHARS)
-        if (
-            not isinstance(topic, str)
-            or TOPIC_RE.fullmatch(topic) is None
-            or topic.startswith(SKILL_KEY_PREFIX)
-            or not preference
-        ):
-            raise MemoryContractError("invalid memory")
-        memories.append(Memory(topic, preference))
-    if len({memory.topic for memory in memories}) != len(memories):
-        raise MemoryContractError("invalid memory")
-    return tuple(memories)
+    return tuple(Memory(entry["topic"], entry["preference"]) for entry in entries)
 
 
 # Quoted, fenced, or block-quoted material in a message is task content the user brought along, not their own words.

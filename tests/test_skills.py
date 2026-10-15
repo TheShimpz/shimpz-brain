@@ -51,6 +51,15 @@ class SkillContractTests(unittest.TestCase):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid skills"):
             dataclasses.replace(context(), skills=({"key": "bad"},))
 
+    def test_a_skill_arrives_with_its_contract_fingerprints_in_order(self):
+        contracts = {"shimpz-dns": "sha256:" + "d" * 64, "shimpz-cloudflare": "sha256:" + "c" * 64}
+        steps = [dict(STEPS[0], assistant_id="shimpz-dns"), STEPS[1]]
+        ordered = dict(sorted(contracts.items()))
+        skill = {"key": team_turn.skill_key(ordered, steps), "contracts": ordered, "steps": steps, "usable": False}
+        self.assertEqual(memory.canonical_skills((skill,)), (skill,))
+        with self.assertRaises(memory.MemoryContractError):
+            memory.canonical_skills([dict(skill, contracts=contracts)])
+
     def test_a_procedure_can_be_forgotten_but_nothing_is_remembered_under_its_key(self):
         message = "Esse jeito de criar registro não vale mais."
         forget = {"op": "forget", "topic": SKILL["key"], "quote": "não vale mais"}
