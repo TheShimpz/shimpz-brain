@@ -80,7 +80,7 @@ class _Exchanges:
     ) -> dict[str, tuple[str, float]] | None:
         decision = intent_fast_path.Decision(self.key, installable)
         started = time.perf_counter()
-        answers = intent_fast_path._answers(self.client, decision, message, context)
+        answers = intent_fast_path.ask(self.client, decision, message, context)
         self.latencies.append((time.perf_counter() - started) * 1000)
         self.calls += 1
         return answers

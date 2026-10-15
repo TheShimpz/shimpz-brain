@@ -191,7 +191,7 @@ def classify(
     client: httpx.Client, decision: Decision, objective: str, context: intent_route.LifecycleContext
 ) -> FastPath:
     """Return what one Jev exchange lets the caller act on; every other outcome keeps the LLM route authoritative."""
-    return decide(_answers(client, decision, objective, context))
+    return decide(ask(client, decision, objective, context))
 
 
 def decide(answers: Mapping[str, tuple[str, float]] | None) -> FastPath:
@@ -207,7 +207,7 @@ def decide(answers: Mapping[str, tuple[str, float]] | None) -> FastPath:
     return FastPath(ordinary=True, capability_free=need == "conversation" and need_confidence >= CAPABILITY_THRESHOLD)
 
 
-def _answers(
+def ask(
     client: httpx.Client, decision: Decision, objective: str, context: intent_route.LifecycleContext
 ) -> dict[str, tuple[str, float]] | None:
     """Every asked question's answer from one exchange, or None when it failed, ran late, or found no worker free.
