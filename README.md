@@ -16,6 +16,9 @@ The authenticated API is intentionally small:
   pending Action interrupt pauses for a person. It reads only that interrupt and the `message` of the turn's own
   start envelope, never other history, Action results, Genesis, the human request, or credentials, and returns
   `{"purpose": string | null, "usage": ...}`; a sentence that breaks the plain-text rule is null;
+- `POST /v1/capability-plan` decides, over one closed public Assistant shortlist Team supplies, whether an objective
+  needs any of them installed, and returns `{"status": "sufficient" | "install-required", "assistant_ids", "usage"}`;
+  it runs in its own two-slot capacity lane, and Team's deadline closing the request cancels its provider I/O;
 - `POST /v1/intent-route` classifies one fresh Assistant lifecycle intent with bounded untrusted conversation evidence, or resolves it against a closed candidate directory, writing its presentation-only reply in the required `locale`;
 - `POST /v1/threads/delete` deletes one exact conversation checkpoint during Team teardown.
 
