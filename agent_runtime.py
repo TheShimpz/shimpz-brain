@@ -72,6 +72,9 @@ MAX_MESSAGE_CHARS = 64 * 1024
 MAX_ASSISTANT_SCHEMA_NODES = 32_768
 MAX_REPLY_CHARS = team_turn.MAX_REPLY_CHARS
 DEFAULT_RECURSION_LIMIT = 12
+# A provider API key's length; the runtime API admits a request's key only from the minimum up.
+MIN_API_KEY_CHARS = 16
+MAX_API_KEY_CHARS = 8192
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 
 
@@ -96,7 +99,7 @@ class ProviderConfig:
             raise RuntimeContractError("unsupported model provider")
         if self.model not in MODELS_BY_PROVIDER[self.provider]:
             raise RuntimeContractError("unsupported model for provider")
-        if not self.api_key or len(self.api_key) > 8192 or "\0" in self.api_key:
+        if not self.api_key or len(self.api_key) > MAX_API_KEY_CHARS or "\0" in self.api_key:
             raise RuntimeContractError("invalid model provider credential")
 
 

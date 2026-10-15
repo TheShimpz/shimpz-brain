@@ -116,7 +116,7 @@ class ClosedInput(BaseModel):
 class ProviderInput(ClosedInput):
     provider: Literal["anthropic", "openai"]
     model: str = Field(min_length=1, max_length=128)
-    api_key: SecretStr = Field(min_length=16, max_length=8192)
+    api_key: SecretStr = Field(min_length=agent_runtime.MIN_API_KEY_CHARS, max_length=agent_runtime.MAX_API_KEY_CHARS)
 
     def runtime(self) -> agent_runtime.ProviderConfig:
         return agent_runtime.ProviderConfig(self.provider, self.model, self.api_key.get_secret_value())
@@ -384,7 +384,7 @@ class DecisionProviderInput(ClosedInput):
     """The Supervisor's request-scoped TypeSafe key for the classification fast path."""
 
     provider: Literal["typesafe"]
-    api_key: SecretStr = Field(min_length=16, max_length=8192)
+    api_key: SecretStr = Field(min_length=agent_runtime.MIN_API_KEY_CHARS, max_length=agent_runtime.MAX_API_KEY_CHARS)
 
 
 class IntentRouteInput(ClosedInput):
