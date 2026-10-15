@@ -60,8 +60,11 @@ def _campaign(journeys: ModuleType, args: argparse.Namespace, plan: dict[str, ob
         arm: journeys.MeteredBrainClient(brain, model, base_url=brain.url, token_file=brain.token_file)
         for arm, brain in brains.items()
     }
-    tasks = [(repetition, scenario) for repetition in range(args.repetitions) for scenario in plan["scenarios"]]
-    order = journeys.eval_stats.arm_order(seed, "openai", "schedule", [str(index) for index in range(len(tasks))])
+    tasks = journeys.scheduled(
+        seed,
+        "openai",
+        [(repetition, scenario) for repetition in range(args.repetitions) for scenario in plan["scenarios"]],
+    )
     lock, stopped, counter = threading.Lock(), threading.Event(), iter(range(10**9))
     descriptor = journeys.private.open_private(args.transcript, append=True)
 
@@ -73,7 +76,7 @@ def _campaign(journeys: ModuleType, args: argparse.Namespace, plan: dict[str, ob
             client = clients[arm]
             if stopped.is_set() or client.refused():
                 stopped.set()
-                record = journeys._stopped(scenario)
+                record = journeys.stopped_result(scenario)
             else:
                 with lock:
                     thread = f"precision.{name}.{next(counter)}"
@@ -95,7 +98,7 @@ def _campaign(journeys: ModuleType, args: argparse.Namespace, plan: dict[str, ob
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-            list(pool.map(task, [tasks[int(index)] for index in order]))
+            list(pool.map(task, tasks))
     finally:
         os.close(descriptor)
 
@@ -129,8 +132,7 @@ def main() -> int:
     }
     plan["scenarios"] = journeys._selected(args.scenarios)
     os.close(journeys.private.open_private(args.meta_out))  # refuse an unsafe destination before spending anything
-    commits = {"umbrella": journeys._git(journeys.ROOT), "brain": journeys._git(journeys.BRAIN)}
-    commits["team"] = journeys._git(journeys.TEAM)
+    commits = journeys.recorded_commits()
     started = time.time()
     brains = _brains(journeys, arms_module, arms, args.cap_per_arm)
     try:
