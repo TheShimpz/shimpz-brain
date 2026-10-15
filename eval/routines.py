@@ -326,12 +326,7 @@ def admitted(assistant: Generated) -> Admitted:
     declared = assistant_manifest.parse_manifest_contract(assistant.manifest)
     presentation = assistant_manifest.parse_manifest_presentation(assistant.manifest)
     machine_contract = assistant_manifest.parse_machine_contract(
-        assistant.contract,
-        declared.integrations,
-        declared.stored_inputs,
-        summary=identity.summary,
-        description=presentation.description,
-        allowed_hosts=declared.allowed_hosts,
+        assistant.contract, declared, summary=identity.summary, description=presentation.description
     )
     contract = assistant_spec.runtime_contract(
         {
