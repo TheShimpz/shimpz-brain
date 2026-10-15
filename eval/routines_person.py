@@ -9,32 +9,33 @@ import unicodedata
 
 if __package__:
     from eval.routines_fixture import (
-        ANSWER_LABEL,
         ASSISTANT,
         MAX_CONVERSATION_TEXT,
         MAX_SENDS,
         PRINCIPAL,
-        QUESTION_LABEL,
         ROUTINE_KEY,
         SHIMPZ,
         TIMEZONE,
         TWIN,
         Fixture,
     )
+    from protocol.team.http.v1 import payload as team_payload
+    from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
-        ANSWER_LABEL,
         ASSISTANT,
         MAX_CONVERSATION_TEXT,
         MAX_SENDS,
         PRINCIPAL,
-        QUESTION_LABEL,
         ROUTINE_KEY,
         SHIMPZ,
         TIMEZONE,
         TWIN,
         Fixture,
     )
+
+    from protocol.http.v1 import payload as team_payload
+    from protocol.http.v1 import routine_proposal as team_routine_proposal
 
 
 @dataclasses.dataclass
@@ -62,12 +63,8 @@ class Team:
 OUTPUT_WORDS = {"show": "Mostrar sempre", "changes": "Mostrar só quando mudar", "none": "Não precisa mostrar nada"}
 
 
-# Team's Portuguese labels for its output question (protocol OUTPUT_CHOICES["pt"]), which --validate pins to Team's.
-OUTPUT_LABELS = {
-    "show": "Mostrar em todas as execuções",
-    "changes": "Mostrar somente quando mudar",
-    "none": "Não mostrar",
-}
+# Team's Portuguese labels for its output question, which Admin offers in a Portuguese interface.
+OUTPUT_LABELS = team_routine_proposal.OUTPUT_CHOICES["pt"]
 
 
 OUTPUT_OPTIONS = {
@@ -451,7 +448,7 @@ def _team_answer(person: Person, question: dict[str, object]) -> str | None:
     if code == OVER_BUDGET and isinstance(question.get("value"), int):
         # The person takes the shortest interval Team says fits.
         person.gap = question["value"]
-        person.frequency = f"A cada {person.gap} segundos"
+        person.frequency = team_routine_proposal.OVER_BUDGET_ANSWERS["pt"].replace("{seconds}", str(person.gap))
         return person.frequency
     return _FIXED_ANSWERS.get(code)
 
@@ -523,6 +520,6 @@ def conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
         if answer is None:
             return response
         if composed:
-            answer = f"{message.strip()}\n\n{QUESTION_LABEL}: {asked}\n{ANSWER_LABEL}: {answer.strip()}"
+            answer = team_payload.compose_clarified(message, asked, answer, "pt")
         message = answer
     return response

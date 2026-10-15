@@ -32,8 +32,8 @@ Strata, each ``--attempts`` (30) times per model, fixed before sampling: the own
 list; two named zones at once (multi-zone); a zone named only in an earlier send; a request with no schedule; the
 reversed-order bait, primed (the zone was looked up in an earlier send) and unprimed (its id is known only from an
 earlier reply outside the span); two zones with the same name at creation, which must be asked about; intervals of
-30 seconds and 2 days (list a zone's records) and 5 seconds (one step, list the zones), whose card keeps the exact gap
-the person stated with cap ceil(86400 / gap); and two Routines that change something, the owner's daily update of the
+30 seconds and 2 days (list a zone's records) and 5 seconds (one step, list the zones), whose confirmed Routine keeps
+the exact gap the person stated; and two Routines that change something, the owner's daily update of the
 TXT record verify.shimpz.com to each day's date, and the same update with the date inside a text that each run writes
 for its own date, whose real replace-dns-record Action asks for the Supervisor's password in the recording turn and in
 every run. The person authorizes each request; each passes only when the card replays replace-dns-record on the record
@@ -42,8 +42,9 @@ the authorized run writes that day's date.
 The harness answers the agent's questions and Team's recoverable Routine questions as
 the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
-chosen zone by its id), carries the schedule the person stated, takes no more sends than its missing pieces need,
-"Criar rotina" creates the Routine, and one replay through Team's real claim and run shows that work's exact result.
+chosen zone by its id), its description and confirmed Routine carry the schedule the person stated, it takes no more
+sends than its missing pieces need, "Criar rotina" creates the Routine, and one replay through Team's real claim and
+run shows that work's exact result.
 One frequency question and one output question are each allowed, from the agent or Team, whichever comes first, while
 the person has not stated it; asking it again, after it was stated, or by both is a miss, as is any timezone or limits
 question. Team's output question gets its protocol label as the answer, and the card's description must state the
@@ -110,7 +111,7 @@ if __package__:
         zone,
         zones,
     )
-    from eval.routines_person import OUTPUT_LABELS, Attempt, Outcome, Team
+    from eval.routines_person import Attempt, Outcome, Team
     from eval.routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
     from eval.routines_pool import evidence as wire_evidence
     from eval.routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
@@ -138,7 +139,7 @@ else:  # run as a script from Team, beside its sibling modules
         zone,
         zones,
     )
-    from routines_person import OUTPUT_LABELS, Attempt, Outcome, Team
+    from routines_person import Attempt, Outcome, Team
     from routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
     from routines_pool import evidence as wire_evidence
     from routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
@@ -208,10 +209,6 @@ def validate(assistant: Generated) -> None:
         Draft202012Validator(actions["list-dns-records"]["output_schema"]).validate(records(zone_id))
         for item in records(zone_id)["records"]:
             Draft202012Validator(actions["get-dns-record"]["output_schema"]).validate(record(zone_id, item["id"]))
-    from protocol.http.v1 import routine_proposal as http_routine_proposal
-
-    if http_routine_proposal.OUTPUT_CHOICES["pt"] != OUTPUT_LABELS:
-        raise SystemExit("the person's output labels drifted from Team's protocol OUTPUT_CHOICES")
     if len({case for case, _play in CASES}) != len(CASES):
         raise SystemExit("case ids are not unique")
 
@@ -229,7 +226,6 @@ class Modules:
     local_authority: object
     http_routine_proposal: object
     record: object
-    plan: object
     dates: object
     phrase: object
     # The real Assistant every attempt's Team runs, admitted once.
@@ -249,7 +245,6 @@ def _team_modules(assistant: Generated) -> Modules:
     from protocol.http.v1 import phrase
     from protocol.http.v1 import routine_proposal as http_routine_proposal
     from routine import dates, record
-    from routine import plan as routine_plan
 
     return Modules(
         local_controller_harness,
@@ -261,7 +256,6 @@ def _team_modules(assistant: Generated) -> Modules:
         local_authority,
         http_routine_proposal,
         record,
-        routine_plan,
         dates,
         phrase,
         admitted(assistant),

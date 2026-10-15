@@ -63,11 +63,6 @@ ZONE_SET = {"example.com", "other.org", "shimpz.com"}
 TIMEZONE = "America/Sao_Paulo"
 
 
-# The labels Admin's Portuguese interface composes a clarification answer with
-# (admin/frontend/src/lib/chat/clarificationLabels.js).
-QUESTION_LABEL, ANSWER_LABEL = "Pergunta", "Resposta"
-
-
 MAX_CONVERSATION_TEXT = 512
 
 

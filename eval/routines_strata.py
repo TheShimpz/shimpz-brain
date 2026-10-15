@@ -330,7 +330,7 @@ def _expected_records(zone: str) -> set[tuple[object, ...]]:
 
 
 def _continuous(person: Person, schedule: dict[str, object]) -> bool:
-    """The exact interval the person last stated, running all day: its cap is ceil(86400 / gap), never lowered."""
+    """The exact interval the person last stated, running all day."""
     gap = person.gap
     expected = {"kind": "continuous", "gap": gap} if gap else None
     return schedule == expected
