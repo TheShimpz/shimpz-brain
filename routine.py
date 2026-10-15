@@ -72,9 +72,10 @@ SCHEMA = {
 DESCRIPTION = (
     "Record the work you just ran as a Routine the Team repeats on a schedule. Call it only when the person asks for "
     "work to recur or to change a listed Routine, only after you ran exactly that work once, unless only a listed "
-    "Routine's schedule or output changes or the person answers the Team's question about what to do with each run's "
-    "result, and alone in your response. It takes no schedule, timezone, or output: the Team reads how often (any "
-    "interval from 5 seconds to 366 days, at most ceil(86400 / interval) runs a day) and what to do with each run's "
+    "Routine's schedule or output changes or the person answers the Team's question about how often it runs or what to "
+    "do with each run's result, and alone in your response. It takes no schedule, timezone, or output: the Team "
+    "reads how often (any interval from 5 seconds to 366 days, at most ceil(86400 / interval) runs a day) and what to "
+    "do with each run's "
     "result from the person's own words, in the person's own timezone, and asks the person itself when something is "
     "missing or does not fit. It ends the turn; the "
     "Team then shows the person a card to confirm, so never say a Routine was created."

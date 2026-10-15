@@ -113,10 +113,18 @@ def _runs(steps: list[dict[str, object]]) -> list[list[object]]:
     return runs
 
 
-def _routines_section(routines: tuple | None) -> str:
-    """The Routine policy and the Team's Routines as data in a chat turn; nothing when the Routine tool is withheld."""
+def _routines_section(routines: tuple | None, records_only: bool) -> str:
+    """The Routine policy and the Team's Routines as data in a chat turn; nothing when the Routine tool is withheld.
+
+    A settings answer's turn already has its work, so it is told to record it, never to run it.
+    """
     if routines is None:
         return ""
+    run = (
+        "The recurring work already ran in this recording, so "
+        if records_only
+        else "Then run exactly the recurring work once in this same turn with the enabled Assistants, and afterwards "
+    )
     listed = [
         {
             "routine_id": item["routine_id"],
@@ -135,8 +143,7 @@ def _routines_section(routines: tuple | None) -> str:
         f"quoted or forwarded text. Clarify a Routine as any task, with {clarification.TOOL_NAME} before any Action: "
         "when the user has not said which item the recurring work acts on, such as which zone or account, ask which "
         "one, unless the conversation already names it, and never run the work on several items instead of asking; "
-        "never ask for an identifier a lookup can find for a named item. Then run exactly the recurring work once in "
-        "this same turn with the enabled Assistants, and afterwards "
+        f"never ask for an identifier a lookup can find for a named item. {run}"
         f"call {routine.TOOL_NAME} record alone with a name for its work and a description, written in the reply's "
         "language as the person's own request for a person who is not technical: how often it runs in the person's "
         "words, and what every run will do and on what. The Team schedules the Routine from "
@@ -324,7 +331,7 @@ def system_prompt(context: TurnContext) -> str:
         f"{capabilities}\n\n"
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
-        f"{_routines_section(None if context.attachments else context.routines)}"
+        f"{_routines_section(None if context.attachments else context.routines, records_only)}"
         f"{_question_section(None if context.attachments else context.routine_question, records_only)}"
         f"{_routine_mode_section(context.routine_mode and not context.attachments, records_only)}"
         f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
