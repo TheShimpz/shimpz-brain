@@ -195,8 +195,8 @@ class TurnContext:
     routines: tuple[dict[str, object], ...] | None = None
     # The question Team asked the person about this recording, pinned like Routines; None when none is pending.
     routine_question: dict[str, object] | None = None
-    # Whether Team read, with no model, that this chat is about a Routine (advisory), and the work a pending unsourced
-    # or rerun question asks to run again; both pinned like the question (ADR-0101).
+    # Whether Team read, with no model, that this chat is about a Routine (advisory), and the work a pending rerun
+    # question asks to run again; both pinned like the question (ADR-0101).
     routine_mode: bool = False
     routine_rerun: tuple[dict[str, object], ...] | None = None
     # The one schedule Team read from the person's own words, which the record call's description must say; None when
