@@ -3,10 +3,11 @@
 A Routine is never compiled. When the person asks for work to recur, the chat agent clarifies as for any task, runs the
 recurring work once in the same turn with the Team's Actions, and then calls one closed tool, ``shimpz_routine``
 ``record``, with the Routine's name, a plain-language description of the work for the card, the Routine it replaces,
-and the reply the person reads. The schedule and timezone are never the model's: Team derives both from the person's
-own words and asks when they are missing (ADR-0101 section 2). The guard checks only that closed shape and ends the
-turn; Team builds the plan from its own trace of the person's sends and shows the person a card to confirm, or a
-question. Nothing here schedules, approves, or authorizes anything: Brain only reports what the agent asked to record.
+and the reply the person reads. The schedule, timezone, and output are never the model's: Team derives them from the
+person's own words and asks when they are missing (ADR-0101 section 2), and the description must say the schedule and
+output exactly as Team read them. The guard checks that closed shape and ends the turn; Team builds the plan from its
+own trace of the person's sends and shows the person a card to confirm, or a question. Nothing here schedules,
+approves, or authorizes anything: Brain only reports what the agent asked to record.
 """
 
 import functools
@@ -59,16 +60,20 @@ SCHEMA = {
         },
         "reply": {
             "type": "string",
-            "description": "Your reply to the person: the result of the work you ran, in their language.",
+            "description": (
+                "Your reply to the person: the result of the work you ran in this message, in their language; empty "
+                "when you ran no Action in this message, since the card says everything."
+            ),
         },
     },
     "required": ["op", "name", "description", "replaces", "reply"],
     "additionalProperties": False,
 }
 DESCRIPTION = (
-    "Record the work you just ran in this turn as a Routine the Team repeats on a schedule. Call it only when the "
-    "person asks for work to recur or to change a listed Routine, only after you ran exactly that work once in this "
-    "turn, and alone in your response. It takes no schedule, timezone, or output: the Team reads how often (any "
+    "Record the work you just ran as a Routine the Team repeats on a schedule. Call it only when the person asks for "
+    "work to recur or to change a listed Routine, only after you ran exactly that work once, unless only a listed "
+    "Routine's schedule or output changes or the person answers the Team's question about what to do with each run's "
+    "result, and alone in your response. It takes no schedule, timezone, or output: the Team reads how often (any "
     "interval from 5 seconds to 366 days, at most ceil(86400 / interval) runs a day) and what to do with each run's "
     "result from the person's own words, in the person's own timezone, and asks the person itself when something is "
     "missing or does not fit. It ends the turn; the "
@@ -86,8 +91,12 @@ _CORRECTIONS = {
     "schedule.",
     "unstated-schedule": _NOT_DONE + "The person has not said how often it runs yet: leave how often out of the "
     "description; the Team asks them.",
+    "output": _NOT_DONE + "Say in the description what is done with each run's result as the person chose it, in "
+    "these words, and no other choice: ",
+    "unstated-output": _NOT_DONE + "The person has not said what is done with each run's result yet: leave it out of "
+    "the description; the Team asks them.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
-    "reply": _NOT_DONE + "Give the person a reply of at most 4000 characters.",
+    "reply": _NOT_DONE + "Give the person an empty reply or one of at most 4000 characters.",
 }
 
 
@@ -108,6 +117,7 @@ def admit_context(context: Any) -> None:
         ("routine_question", canonical_question, "question"),
         ("routine_rerun", canonical_rerun, "rerun"),
         ("routine_schedule", canonical_schedule, "schedule"),
+        ("routine_output", canonical_output, "output"),
     ):
         value = getattr(context, field)
         if value is None:
@@ -141,6 +151,9 @@ def canonical_rerun(value: object) -> tuple[dict[str, object], ...] | None:
 
 
 def _reply(value: object) -> str | None:
+    """The reply the person reads beside the card: empty, or text that says something."""
+    if value == "":
+        return value
     if not isinstance(value, str) or "\x00" in value or not value.strip() or len(value) > MAX_REPLY_CHARS:
         return None
     return value
@@ -149,6 +162,24 @@ def _reply(value: object) -> str | None:
 def canonical_schedule(value: object) -> dict[str, object] | None:
     """A schedule in Team's closed form, as Team's protocol admits it, or None."""
     return team_routine_protocol.canonical_schedule(value)
+
+
+def canonical_output(value: object) -> str | None:
+    """One of Team's output modes, or None."""
+    return value if isinstance(value, str) and value in team_routine_protocol.OUTPUT_MODES else None
+
+
+def _output_miss(description: str, output: object, replaced: object) -> str:
+    """Whether a description says what each run does with its result as Team read it from the person, "" when it does.
+
+    As with the schedule, Team's reading is the authority: with one output, the description states exactly it; with
+    none, it states none, except a replacement's own listed output, which it keeps.
+    """
+    stated = team_phrase.outputs(description)
+    if output is not None:
+        return "" if stated == (output,) else "output"
+    kept = () if replaced is None else (replaced["output"]["mode"],)
+    return "" if stated in ((), kept) else "unstated-output"
 
 
 def _schedule_miss(description: str, schedule: object, replaced: object) -> str:
@@ -182,11 +213,21 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     refused = next((field for field, valid in checks if not valid), None)
     if refused is not None:
         return refused
-    missed = _schedule_miss(description, context.routine_schedule, replaced)
+    missed = _schedule_miss(description, context.routine_schedule, replaced) or _output_miss(
+        description, context.routine_output, replaced
+    )
     if missed:
         return missed
-    routine = {"op": "record", "name": name, "description": description, "replaces": replaces}
+    routine = {"name": name, "description": description, "replaces": replaces}
     return {"routine": routine, "reply": reply}
+
+
+def correction(outcome: str, context: Any) -> str:
+    """The closed correction of a refused record; an output miss names the person's choice in the chat's words."""
+    if outcome != "output":
+        return _CORRECTIONS[outcome]
+    label = team_routine_proposal.OUTPUT_CHOICES[context.locale or "en"][context.routine_output]
+    return f"{_CORRECTIONS[outcome]}{json.dumps(label, ensure_ascii=False)}."
 
 
 def _review(messages: list[Any], context: Any) -> object:
@@ -221,7 +262,7 @@ def _guard_class():
                     "messages": [ToolMessage(content=content, tool_call_id=calls[0]["id"], name=TOOL_NAME)],
                     "jump_to": "end",
                 }
-            return tool_refusal.refusal(calls, _CORRECTIONS[outcome])
+            return tool_refusal.refusal(calls, correction(outcome, self.context))
 
     return RoutineGuard
 

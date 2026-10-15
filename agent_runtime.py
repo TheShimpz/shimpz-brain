@@ -202,6 +202,8 @@ class TurnContext:
     # The one schedule Team read from the person's own words, which the record call's description must say; None when
     # the person stated none or several (ADR-0101); pinned like the question.
     routine_schedule: dict[str, object] | None = None
+    # The one output mode Team read from the person's own words, which the description must say; pinned likewise.
+    routine_output: str | None = None
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
@@ -319,6 +321,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         question = turn_pins.restore_question(metadata)
         mode, rerun = turn_pins.restore_routine_mode(metadata)
         schedule = turn_pins.restore_schedule(metadata)
+        output = turn_pins.restore_output(metadata)
         provider, model = turn_pins.restore_model(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         zone = turn_pins.restore_zone(metadata)
@@ -344,6 +347,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
         routine_mode=mode,
         routine_rerun=rerun,
         routine_schedule=schedule,
+        routine_output=output,
         locale=locale,
         turn_message_id=turn_message_id,
         attachment_charge=charge,
@@ -612,6 +616,7 @@ class AgentRuntime:
                 **turn_pins.record_question(context.routine_question),
                 **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
                 **turn_pins.record_schedule(context.routine_schedule),
+                **turn_pins.record_output(context.routine_output),
                 **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_zone(context.timezone),
@@ -834,7 +839,10 @@ class AgentRuntime:
             return None
         reply, recorded = finished
         try:
-            agent.update_state(self._config(context), {"messages": [AIMessage(content=reply)]})
+            # An empty reply leaves the card to speak; the thread keeps its description, which the card shows, so no
+            # later turn carries an empty assistant message.
+            remembered = reply or recorded["description"]
+            agent.update_state(self._config(context), {"messages": [AIMessage(content=remembered)]})
         except Exception as exc:
             raise RuntimeStateError("checkpoint update failed") from exc
         return TurnResult(status="completed", reply=reply, routine=recorded)

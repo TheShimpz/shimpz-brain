@@ -156,6 +156,8 @@ class TurnContextInput(ClosedInput):
     routine_rerun: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_STEPS)] | None
     # The one schedule Team read from the person's own words, which the record call's description must say.
     routine_schedule: dict[str, Any] | None
+    # The one output mode Team read from the person's own words, which the record call's description must say.
+    routine_output: str | None
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
     attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
 
@@ -180,6 +182,7 @@ class TurnContextInput(ClosedInput):
             routine_mode=self.routine_mode,
             routine_rerun=None if self.routine_rerun is None else tuple(self.routine_rerun),
             routine_schedule=self.routine_schedule,
+            routine_output=self.routine_output,
             attachments=_attachments(self.attachments),
             **turn,
         )

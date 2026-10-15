@@ -95,7 +95,6 @@ def _chat(routines=(), schedule=EVERY_30_SECONDS):
 
 def _wire(**changes) -> dict:
     fields = {
-        "op": "record",
         "name": "DNS de shimpz.com",
         "description": "A cada 30 segundos, lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
         "replaces": None,
@@ -177,7 +176,6 @@ class RecordTests(unittest.TestCase):
             (_args(description="x" * 601), "description"),
             (_args(description=None), "description"),
             (_args(replaces="b" * 32), "replaces"),
-            (_args(reply=""), "reply"),
             (_args(reply="   "), "reply"),
             (_args(reply="a\x00b"), "reply"),
             (_args(reply="x" * (routine.MAX_REPLY_CHARS + 1)), "reply"),
@@ -207,6 +205,41 @@ class RecordTests(unittest.TestCase):
         for code in ("schedule", "unstated-schedule"):
             self.assertTrue(routine._CORRECTIONS[code].startswith("Not done: nothing was recorded."))
 
+    def test_a_description_says_the_output_exactly_as_team_read_it_from_the_person(self) -> None:
+        listed = {**LISTED, "output": {"mode": "none"}}
+        said = "A cada 30 segundos, lista as zonas da sua Cloudflare. Mostrar somente quando mudar."
+        cases = (
+            ({"description": said}, "changes", None),
+            ({}, "changes", "output"),
+            ({"description": said.replace("somente quando mudar", "em todas as execuções")}, "changes", "output"),
+            ({}, None, None),
+            ({"description": said}, None, "unstated-output"),
+            # A replacement may keep saying its own listed output, and nothing else, when the person states none.
+            (
+                {
+                    "description": said.replace("Mostrar somente quando mudar", "Não mostrar"),
+                    "replaces": listed["routine_id"],
+                },
+                None,
+                None,
+            ),
+            ({"description": said, "replaces": listed["routine_id"]}, None, "unstated-output"),
+        )
+        for changes, output, refused in cases:
+            with self.subTest(changes=changes, output=output):
+                chat = dataclasses.replace(_chat([listed]), routine_output=output)
+                outcome = routine.record(_args(**changes), chat)
+                self.assertEqual(outcome if isinstance(outcome, str) else None, refused)
+        # The correction names the person's choice in the chat's own words, and the Team's English without a language.
+        chat = dataclasses.replace(_chat([listed]), routine_output="changes")
+        self.assertTrue(routine.correction("output", chat).endswith('"Mostrar somente quando mudar".'))
+        english = dataclasses.replace(chat, locale=None)
+        self.assertTrue(routine.correction("output", english).endswith('"Show only when it changes".'))
+        self.assertEqual(routine.correction("unstated-output", chat), routine._CORRECTIONS["unstated-output"])
+
+    def test_an_answer_that_ran_nothing_may_leave_its_reply_to_the_card(self) -> None:
+        self.assertEqual(routine.record(_args(reply=""), _chat([LISTED]))["reply"], "")
+
     def test_a_review_reads_only_the_latest_routine_call(self):
         chat = _chat()
         self.assertIsNone(routine._review([], chat))
@@ -219,10 +252,10 @@ class RecordTests(unittest.TestCase):
             routine._review([AIMessage(content="", tool_calls=[_call()], invalid_tool_calls=[broken])], chat)
 
     def test_only_a_well_formed_ending_is_read_back(self):
-        content = json.dumps({"routine": {"op": "record"}, "reply": "Ok."})
+        content = json.dumps({"routine": {"name": "DNS"}, "reply": "Ok."})
         self.assertEqual(
             routine.recorded([ToolMessage(content=content, tool_call_id="r1", name=routine.TOOL_NAME)]),
-            ("Ok.", {"op": "record"}),
+            ("Ok.", {"name": "DNS"}),
         )
         for messages in (
             [],
@@ -435,6 +468,46 @@ class RoutineModeTests(unittest.TestCase):
         with self.assertRaises(agent_runtime.RuntimeContractError):
             dataclasses.replace(_chat(), routines=None, routine_schedule=EVERY_30_SECONDS)
 
+    def test_the_persons_output_is_pinned_for_the_logical_turn(self):
+        for output in (None, "changes"):
+            with self.subTest(output=output):
+                self.assertEqual(turn_pins.restore_output(turn_pins.record_output(output)), output)
+        for value in (None, "not json", '"sometimes"', "1"):
+            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_output({turn_pins.OUTPUT_METADATA: value})
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
+            dataclasses.replace(_chat(schedule=None), routines=None, routine_output="changes")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
+            dataclasses.replace(_chat(), routine_output="sometimes")
+
+    def test_an_output_answer_records_without_running_the_work_again(self):
+        asked = {"code": "routine-output-unstated", "options": [], "value": None}
+        said = "A cada 30 segundos, lista as zonas da sua Cloudflare. Mostrar somente quando mudar."
+        runtime, _model = GraphTests._runtime(
+            AIMessage(content="", tool_calls=[_call(reply="")]),
+            AIMessage(content="", tool_calls=[_call(call_id="r2", description=said, reply="")]),
+        )
+        chat = dataclasses.replace(_chat([LISTED]), routine_question=asked, routine_output="changes")
+        finished = runtime.start(chat, envelope("Mostrar somente quando mudar"))
+        # The description that left the output unsaid was refused, and the next one, saying it, ended the turn.
+        self.assertEqual(
+            (finished.status, finished.reply, finished.routine), ("completed", "", _wire(description=said))
+        )
+        # The thread keeps the description the card shows, never an empty assistant message.
+        state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
+        self.assertEqual(state["channel_values"]["messages"][-1].content, said)
+        # The output question asks for a record alone, unlike any other question.
+        prompts = [
+            turn_prompt.system_prompt(dataclasses.replace(_chat(), routine_question=question))
+            for question in (asked, QUESTION)
+        ]
+        self.assertNotEqual(
+            *(
+                prompt.replace(json.dumps(question, ensure_ascii=False), "")
+                for prompt, question in zip(prompts, (asked, QUESTION), strict=True)
+            )
+        )
+
     def test_a_resumed_turn_keeps_the_mode_and_rerun_its_start_pinned(self):
         runtime, model = GraphTests._runtime(
             None, AIMessage(content="", tool_calls=[_action()]), AIMessage(content="Ok.")
@@ -536,7 +609,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["routine"]["op"], "record")
+        self.assertEqual(response.json()["routine"], _wire())
         self.assertEqual(response.json()["reply"], REPLY)
         for field, value in (
             ("routines", [{"routine_id": "x"}]),
@@ -544,6 +617,7 @@ class PromptPinAndEndpointTests(unittest.TestCase):
             ("routine_mode", "yes"),
             ("routine_rerun", [{"assistant": "x"}]),
             ("routine_schedule", {"kind": "continuous", "gap": 4}),
+            ("routine_output", "sometimes"),
         ):
             with self.subTest(field=field):
                 refused = api.post("/v1/turns", json=body(**{field: value}), headers=headers)

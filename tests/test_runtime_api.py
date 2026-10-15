@@ -56,6 +56,7 @@ def body(**updates):
         "routine_mode": False,
         "routine_rerun": None,
         "routine_schedule": None,
+        "routine_output": None,
         "attachments": [],
         "message": "Hello",
         "conversation": [],
