@@ -69,10 +69,6 @@ _CORRECTIONS = {
 }
 
 
-class UnanswerableToolCallError(ValueError):
-    """A clarification arrived beside a tool call no refusal can be paired with."""
-
-
 @dataclass(frozen=True, slots=True)
 class Option:
     label: str
@@ -186,21 +182,12 @@ def _review(messages: list[Any], *, allowed: bool, routine_mode: bool = False) -
     allowed exactly while a turn starts. In a Routine turn, a question about the schedule, the output, or limits is
     Team's to ask (ADR-0101), so the agent's own is refused.
     """
-    latest = messages[-1] if messages else None
-    if not isinstance(latest, AIMessage):
-        return None
-    calls = [*(latest.tool_calls or []), *(latest.invalid_tool_calls or [])]
-    if not any(call.get("name") == TOOL_NAME for call in calls):
-        return None
-    if latest.invalid_tool_calls:
-        # A refusal must pair with a call the provider sees again, and adapters drop unparsable calls (Anthropic) or
-        # send them without an id; so a clarification beside one ends the turn as a contract error.
-        raise UnanswerableToolCallError("a clarification arrived with an unparsable tool call")
-    if len(calls) > 1:
-        return "mixed"
+    call = tool_refusal.lone_call(messages, TOOL_NAME, label="a clarification")
+    if call is None or isinstance(call, str):
+        return call
     if not allowed:
         return "after-action"
-    return _refused(latest.tool_calls[0].get("args"), routine_mode)
+    return _refused(call.get("args"), routine_mode)
 
 
 def _refused(arguments: object, routine_mode: bool) -> str | None:

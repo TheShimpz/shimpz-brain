@@ -34,6 +34,7 @@ import intent_route as intent_router
 import memory as team_memory
 import provider_cancel
 import provider_client
+import tool_refusal
 import turn_pins
 import turn_prompt
 from action_purpose import PendingAction
@@ -539,7 +540,7 @@ def _turn_failures():
         raise
     except turn_attachments.AttachmentContractError as exc:
         raise RuntimeContractError(str(exc)) from exc
-    except clarifier.UnanswerableToolCallError as exc:
+    except tool_refusal.UnanswerableToolCallError as exc:
         raise RuntimeContractError("the model returned an unparsable tool call") from exc
     except Exception as exc:
         raise ProviderRequestError("model provider request failed") from exc

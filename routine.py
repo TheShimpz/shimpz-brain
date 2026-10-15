@@ -14,9 +14,9 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-import clarification
 import memory as team_memory
-from langchain_core.messages import AIMessage, ToolMessage
+import tool_refusal
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import routine as team_routine_protocol
@@ -193,18 +193,10 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
 
 
 def _review(messages: list[Any], context: Any) -> object:
-    latest = messages[-1] if messages else None
-    if not isinstance(latest, AIMessage):
-        return None
-    calls = [*(latest.tool_calls or []), *(latest.invalid_tool_calls or [])]
-    if not any(call.get("name") == TOOL_NAME for call in calls):
-        return None
-    if latest.invalid_tool_calls:
-        # A refusal must pair with a call the provider sees again, and adapters drop unparsable calls.
-        raise clarification.UnanswerableToolCallError("a Routine record arrived with an unparsable tool call")
-    if len(calls) > 1:
-        return "mixed"
-    return record(latest.tool_calls[0].get("args"), context)
+    call = tool_refusal.lone_call(messages, TOOL_NAME, label="a Routine record")
+    if call is None or isinstance(call, str):
+        return call
+    return record(call.get("args"), context)
 
 
 @functools.cache
@@ -232,13 +224,7 @@ def _guard_class():
                     "messages": [ToolMessage(content=content, tool_call_id=calls[0]["id"], name=TOOL_NAME)],
                     "jump_to": "end",
                 }
-            return {
-                "messages": [
-                    ToolMessage(content=_CORRECTIONS[outcome], tool_call_id=call["id"], name=call["name"])
-                    for call in calls
-                ],
-                "jump_to": "model",
-            }
+            return tool_refusal.refusal(calls, _CORRECTIONS[outcome])
 
     return RoutineGuard
 

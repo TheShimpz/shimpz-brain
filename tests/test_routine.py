@@ -6,8 +6,8 @@ import unittest
 from unittest import mock
 
 import agent_runtime
-import clarification
 import runtime_api
+import tool_refusal
 import turn_pins
 import turn_prompt
 from fastapi.testclient import TestClient
@@ -215,7 +215,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(routine._review([AIMessage(content="", tool_calls=[_call(), _action()])], chat), "mixed")
         self.assertEqual(routine._review([AIMessage(content="", tool_calls=[_call()])], chat)["reply"], REPLY)
         broken = {"name": ACTION_TOOL, "args": "{bad", "id": "bad", "error": "invalid", "type": "invalid_tool_call"}
-        with self.assertRaises(clarification.UnanswerableToolCallError):
+        with self.assertRaises(tool_refusal.UnanswerableToolCallError):
             routine._review([AIMessage(content="", tool_calls=[_call()], invalid_tool_calls=[broken])], chat)
 
     def test_only_a_well_formed_ending_is_read_back(self):
