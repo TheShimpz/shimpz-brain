@@ -526,7 +526,7 @@ class AgentRuntimeTests(unittest.TestCase):
         state = {"messages": [AIMessage(content="y" * (agent_runtime.MAX_REPLY_CHARS + 1), id="a1")]}
 
         with self.assertRaisesRegex(agent_runtime.RuntimeStateError, "^checkpoint update failed$"):
-            runtime._settle(agent, context(), state, message_offset=0)
+            runtime._settle(agent, context(), state, 0)
 
     def test_duplicate_local_action_ids_are_isolated_and_emit_the_selected_assistant(self):
         selected_tool = agent_runtime._tool_name("weather-pulse", "lookup")
@@ -727,20 +727,15 @@ class AgentRuntimeTests(unittest.TestCase):
             with self.subTest(pending=pending), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
                 agent_runtime._pending_result(pending)
 
-        for state, boundaries, message in (
-            ({}, {"message_offset": 0}, "without messages"),
-            ({"messages": []}, {}, "boundary is invalid"),
-            ({"messages": []}, {"after_message_id": "id", "message_offset": 0}, "boundary is invalid"),
-            ({"messages": []}, {"after_message_id": "missing"}, "without the current turn"),
-            ({"messages": []}, {"message_offset": -1}, "boundary is invalid"),
-            ({"messages": []}, {"message_offset": 1}, "boundary is invalid"),
-            ({"messages": [AIMessage(content=" ")]}, {"message_offset": 0}, "without an Assistant reply"),
+        for boundary, message in (
+            (lambda: agent_runtime._at_offset({}, 0), "without messages"),
+            (lambda: agent_runtime._after_message({"messages": []}, "missing"), "without the current turn"),
+            (lambda: agent_runtime._at_offset({"messages": []}, -1), "boundary is invalid"),
+            (lambda: agent_runtime._at_offset({"messages": []}, 1), "boundary is invalid"),
+            (lambda: agent_runtime._result({"messages": []}, AIMessage(content=" ")), "without an Assistant reply"),
         ):
-            with (
-                self.subTest(boundaries=boundaries),
-                self.assertRaisesRegex(agent_runtime.RuntimeContractError, message),
-            ):
-                agent_runtime._result(state, **boundaries)
+            with self.subTest(message=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
+                boundary()
 
     def test_a_genesis_is_bounded_in_code_points_as_its_producers_bound_it(self):
         # 65,536 three-byte characters: 196,608 bytes, as admissible as 65,536 ASCII ones.

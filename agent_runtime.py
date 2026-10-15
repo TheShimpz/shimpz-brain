@@ -403,50 +403,44 @@ def _pending_result(pending: object) -> TurnResult:
     return TurnResult(status="action-required", actions=tuple(requests))
 
 
-def _result(
-    state: Mapping[str, Any],
-    *,
-    after_message_id: str | None = None,
-    message_offset: int | None = None,
-) -> TurnResult:
+def _result(state: Mapping[str, Any], reply_message: AIMessage | None) -> TurnResult:
     pending = state.get("__interrupt__")
     if pending:
         return _pending_result(pending)
-    reply_message = _turn_reply(state, after_message_id=after_message_id, message_offset=message_offset)
     reply = context_budget.final_reply(reply_message)
     if reply:
         return TurnResult(status="completed", reply=reply[:MAX_REPLY_CHARS])
     raise RuntimeContractError("graph completed without an Assistant reply")
 
 
-def _turn_reply(
-    state: Mapping[str, Any],
-    *,
-    after_message_id: str | None = None,
-    message_offset: int | None = None,
-) -> AIMessage | None:
-    """Return the newest Assistant message of the current turn."""
+def _messages(state: Mapping[str, Any]) -> Sequence[Any]:
     messages = state.get("messages")
     if not isinstance(messages, Sequence):
         raise RuntimeContractError("graph completed without messages")
+    return messages
 
-    if (after_message_id is None) == (message_offset is None):
+
+def _after_message(state: Mapping[str, Any], message_id: str) -> int:
+    """Where a started turn's messages begin: just after its own message."""
+    boundary = next(
+        (index for index, message in enumerate(_messages(state)) if getattr(message, "id", None) == message_id), None
+    )
+    if boundary is None:
+        raise RuntimeContractError("graph completed without the current turn")
+    return boundary + 1
+
+
+def _at_offset(state: Mapping[str, Any], offset: int) -> int:
+    """Where a resumed turn's messages begin: at the history length it resumed after."""
+    if not 0 <= offset <= len(_messages(state)):
         raise RuntimeContractError("graph result boundary is invalid")
-    if after_message_id is not None:
-        boundary = next(
-            (index for index, message in enumerate(messages) if getattr(message, "id", None) == after_message_id),
-            None,
-        )
-        if boundary is None:
-            raise RuntimeContractError("graph completed without the current turn")
-        current_messages = messages[boundary + 1 :]
-    else:
-        if message_offset < 0 or message_offset > len(messages):
-            raise RuntimeContractError("graph result boundary is invalid")
-        current_messages = messages[message_offset:]
+    return offset
 
+
+def _turn_reply(state: Mapping[str, Any], turn_start: int) -> AIMessage | None:
+    """Return the newest Assistant message of the current turn, whose messages begin at ``turn_start``."""
     return next(
-        (message for message in reversed(current_messages) if isinstance(message, AIMessage)),
+        (message for message in reversed(_messages(state)[turn_start:]) if isinstance(message, AIMessage)),
         None,
     )
 
@@ -675,12 +669,12 @@ class AgentRuntime:
             raise RuntimeStateError("checkpoint update failed") from exc
         return TurnResult(status="completed", reply=reply, clarification=asked)
 
-    def _settle(self, agent, context: TurnContext, state: Mapping[str, Any], **boundary: Any) -> TurnResult:
+    def _settle(self, agent, context: TurnContext, state: Mapping[str, Any], turn_start: int) -> TurnResult:
         """Return the turn's result, remembering exactly the reply the user is shown when the cap shortened it."""
-        result = _result(state, **boundary)
+        message = _turn_reply(state, turn_start)
+        result = _result(state, message)
         if result.status != "completed":
             return result
-        message = _turn_reply(state, **boundary)
         if context_budget.final_reply(message) != result.reply:
             try:
                 agent.update_state(
@@ -928,7 +922,7 @@ class AgentRuntime:
             result = (
                 self._finish_clarification(agent, context, state)
                 or self._finish_routine(agent, context, state)
-                or self._settle(agent, context, state, after_message_id=turn_id)
+                or self._settle(agent, context, state, _after_message(state, turn_id))
             )
         return self._attach(result, state, context)
 
@@ -947,6 +941,6 @@ class AgentRuntime:
                 agent = self._agent(context, clarification_allowed=False)
                 state = agent.invoke(Command(resume=dict(results)), config=self._config(context))
                 result = self._finish_routine(agent, context, state) or self._settle(
-                    agent, context, state, message_offset=message_offset
+                    agent, context, state, _at_offset(state, message_offset)
                 )
         return self._attach(result, state, context)
