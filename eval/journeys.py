@@ -31,6 +31,7 @@ from eval import cost as eval_cost
 from eval import stats as eval_stats
 from eval.private import read_key
 from langgraph.checkpoint.memory import InMemorySaver
+from protocol.team.http.v1 import turn as team_turn
 
 MAX_ROUNDS = 8
 # "with-skills" learns every executed Action as Team does today; "with-clean-skills" drops the ones that failed.
@@ -307,7 +308,7 @@ def learned_skill(
         {"assistant_id": assistant, "action": action, "inputs": sorted(inputs)} for assistant, action, inputs in steps
     ]
     contracts = {assistant: _contract(by_id[assistant]) for assistant in sorted({step[0] for step in steps})}
-    return {"key": memory._skill_key(contracts, shaped), "contracts": contracts, "steps": shaped, "usable": True}
+    return {"key": team_turn.skill_key(contracts, shaped), "contracts": contracts, "steps": shaped, "usable": True}
 
 
 def remember(skills: list[dict[str, object]], skill: dict[str, object] | None) -> list[dict[str, object]]:
