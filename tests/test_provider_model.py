@@ -6,27 +6,9 @@ from unittest import mock
 import agent_runtime
 import model_usage
 import provider_client
+import provider_replies
 
-OPENAI_REPLY = {
-    "id": "resp_1",
-    "object": "response",
-    "created_at": 0,
-    "status": "completed",
-    "model": "gpt-6-luna",
-    "output": [
-        {
-            "type": "message",
-            "id": "msg_1",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": "Done.", "annotations": []}],
-        }
-    ],
-    "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
-    "parallel_tool_calls": True,
-    "tool_choice": "auto",
-    "tools": [],
-}
+OPENAI_REPLY = provider_replies.openai_reply(model="gpt-6-luna")
 
 
 class ProviderModelTests(unittest.TestCase):

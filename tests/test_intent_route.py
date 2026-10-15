@@ -6,13 +6,9 @@ from unittest import mock
 import agent_runtime
 import intent_route
 from langchain_core.messages import AIMessage
+from provider_replies import provider
 from pydantic import BaseModel
 from structured_fake import StructuredFakeModel
-
-
-def provider(name: str = "openai") -> agent_runtime.ProviderConfig:
-    model = "gpt-6.1-sol" if name == "openai" else "claude-sonnet-5-5"
-    return agent_runtime.ProviderConfig(name, model, "secret-test-key")
 
 
 def candidates(*, uninstall: bool = False) -> tuple[intent_route.DirectoryCandidate, ...]:

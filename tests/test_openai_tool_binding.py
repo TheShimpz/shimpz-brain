@@ -14,6 +14,7 @@ import clarification
 import httpx
 import memory
 import provider_client
+import provider_replies
 from langgraph.checkpoint.memory import InMemorySaver
 
 import routine
@@ -47,39 +48,7 @@ DECLARED = {
     agent_runtime._tool_name("dns", "search-zones"): SEARCH,
 }
 BRAIN_TOOLS = {clarification.TOOL_NAME, memory.TOOL_NAME, routine.TOOL_NAME}
-REPLY = {
-    "openai": {
-        "id": "resp_1",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-6.1-sol",
-        "output": [
-            {
-                "type": "message",
-                "id": "msg_1",
-                "status": "completed",
-                "role": "assistant",
-                "content": [{"type": "output_text", "text": "Done.", "annotations": []}],
-            }
-        ],
-        "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
-        "parallel_tool_calls": True,
-        "tool_choice": "auto",
-        "tools": [],
-    },
-    "anthropic": {
-        "id": "msg_1",
-        "type": "message",
-        "role": "assistant",
-        "model": "claude-sonnet-5-5",
-        "content": [{"type": "text", "text": "Done."}],
-        "stop_reason": "end_turn",
-        "stop_sequence": None,
-        "usage": {"input_tokens": 10, "output_tokens": 2},
-    },
-}
-MODELS = {"openai": "gpt-6.1-sol", "anthropic": "claude-sonnet-5-5"}
+REPLY = {"openai": provider_replies.openai_reply(), "anthropic": provider_replies.anthropic_reply()}
 
 
 def _sent_tools(provider: str) -> list[dict]:
@@ -95,7 +64,7 @@ def _sent_tools(provider: str) -> list[dict]:
         runtime = agent_runtime.AgentRuntime(
             InMemorySaver(), model_factory=lambda config: provider_client.provider_model(config, http_client=client)
         )
-        config = agent_runtime.ProviderConfig(provider, MODELS[provider], "sk-test-0123456789abcdef")
+        config = provider_replies.provider(provider)
         context = agent_runtime.TurnContext(
             f"binding-{provider}", "DNS Team", (DNS,), config, memories=(), routines=(), routine_capacity=20_000
         )

@@ -10,6 +10,7 @@ import unittest
 import agent_runtime
 import httpx
 import provider_client
+import provider_replies
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -57,21 +58,7 @@ class _Responses:
                     "content": [{"type": "output_text", "text": "The zone is active.", "annotations": []}],
                 }
             ]
-        return httpx.Response(
-            200,
-            json={
-                "id": f"resp_{index}",
-                "object": "response",
-                "created_at": 0,
-                "status": "completed",
-                "model": "gpt-6.1-sol",
-                "output": output,
-                "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
-                "parallel_tool_calls": True,
-                "tool_choice": "auto",
-                "tools": [],
-            },
-        )
+        return httpx.Response(200, json=provider_replies.openai_reply() | {"id": f"resp_{index}", "output": output})
 
 
 class OpenAIStoreTests(unittest.TestCase):

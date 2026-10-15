@@ -14,6 +14,7 @@ import agent_runtime
 import context_budget
 import httpx
 import provider_client
+import provider_replies
 import turn_prompt
 from eval.ceiling import Ceiling
 from eval.injection_cases import ASSISTANTS
@@ -22,26 +23,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from perf import prompt_arms, prompt_cache
 
 CONFIG = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "test-key")
-REPLY = {
-    "id": "resp_1",
-    "object": "response",
-    "created_at": 0,
-    "status": "completed",
-    "model": "gpt-6-luna",
-    "output": [
-        {
-            "type": "message",
-            "id": "msg_1",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": "You have no open tasks.", "annotations": []}],
-        }
-    ],
-    "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
-    "parallel_tool_calls": True,
-    "tool_choice": "auto",
-    "tools": [],
-}
+REPLY = provider_replies.openai_reply("You have no open tasks.", model="gpt-6-luna")
 
 
 def _context(memories: tuple = ()) -> agent_runtime.TurnContext:

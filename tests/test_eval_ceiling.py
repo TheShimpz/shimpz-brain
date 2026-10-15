@@ -10,34 +10,23 @@ from pathlib import Path
 import httpx
 import openai
 import provider_client
+import provider_replies
 from eval import ceiling
 from eval import cost as eval_cost
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-OPENAI_RESPONSE = {
-    "id": "resp_1",
-    "object": "response",
-    "created_at": 0,
-    "status": "completed",
-    "model": "gpt-6-luna",
-    "output": [
-        {
-            "type": "message",
-            "id": "msg_1",
-            "role": "assistant",
-            "status": "completed",
-            "content": [{"type": "output_text", "text": "ok", "annotations": []}],
-        }
-    ],
-    "usage": {
+OPENAI_RESPONSE = provider_replies.openai_reply(
+    "ok",
+    model="gpt-6-luna",
+    usage={
         "input_tokens": 10,
         "output_tokens": 5,
         "total_tokens": 15,
         "input_tokens_details": {"cached_tokens": 4},
         "output_tokens_details": {"reasoning_tokens": 0},
     },
-}
+)
 CHAT_RESPONSE = {
     "id": "chat_1",
     "object": "chat.completion",
@@ -46,16 +35,10 @@ CHAT_RESPONSE = {
     "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}],
     "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
 }
-ANTHROPIC_RESPONSE = {
-    "id": "msg_1",
-    "type": "message",
-    "role": "assistant",
-    "model": "claude-sonnet-5-5",
-    "content": [{"type": "text", "text": "ok"}],
-    "stop_reason": "end_turn",
-    "stop_sequence": None,
-    "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 20, "cache_creation_input_tokens": 30},
-}
+ANTHROPIC_RESPONSE = provider_replies.anthropic_reply(
+    "ok",
+    usage={"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 20, "cache_creation_input_tokens": 30},
+)
 
 
 class Recorder:

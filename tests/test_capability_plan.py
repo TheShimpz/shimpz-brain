@@ -5,13 +5,10 @@ from unittest import mock
 import agent_runtime
 import capability_plan
 from langchain_core.messages import AIMessage
+from provider_replies import provider
 from structured_fake import StructuredFakeModel
 
 RecordingModel = StructuredFakeModel
-
-
-def provider() -> agent_runtime.ProviderConfig:
-    return agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "secret-test-key")
 
 
 def candidates() -> tuple[capability_plan.CapabilityCandidate, ...]:

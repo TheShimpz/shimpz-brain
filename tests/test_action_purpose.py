@@ -19,6 +19,7 @@ import runtime_api
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.http.v1 import purpose as team_purpose
+from provider_replies import provider
 from structured_fake import StructuredFakeModel
 from test_agent_runtime import ToolAwareFakeModel, action, assistant, context
 from test_runtime_api import NO_USAGE, SECRET, TOKEN, FakeRuntime, client
@@ -28,10 +29,6 @@ PURPOSE = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com 
 MESSAGE = "Traga as notícias de IA de hoje"
 FILE = {"id": "f" * 32, "name": "segredo-interno.pdf", "media_type": "application/pdf", "size": 3}
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
-
-
-def provider() -> agent_runtime.ProviderConfig:
-    return agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "secret-test-key")
 
 
 def envelope(message: str = MESSAGE, files: list | None = None) -> str:
