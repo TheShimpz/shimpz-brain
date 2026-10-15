@@ -125,7 +125,7 @@ def main() -> int:
         "seed": seed,
         "campaign": args.campaign or f"arms-{seed}",
         "arms": arms,
-        "key": journeys._key(args.key_file),
+        "key": journeys.private.read_key(args.key_file),
     }
     plan["scenarios"] = journeys._selected(args.scenarios)
     os.close(journeys.private.open_private(args.meta_out))  # refuse an unsafe destination before spending anything
