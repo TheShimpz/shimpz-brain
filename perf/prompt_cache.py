@@ -286,13 +286,13 @@ def run_session(runtime, provider: agent_runtime.ProviderConfig, session: Sessio
 
 def _run(args: argparse.Namespace) -> None:
     from eval.ceiling import Ceiling
-    from eval.intent_route import _key
+    from eval.private import read_key
     from langgraph.checkpoint.memory import InMemorySaver
 
     ceiling = Ceiling(args.cap, MAX_OUTPUT_TOKENS)
     ceiling.install()
     install()
-    provider = agent_runtime.ProviderConfig(args.provider, MODELS[args.provider], _key(args.key_file))
+    provider = agent_runtime.ProviderConfig(args.provider, MODELS[args.provider], read_key(args.key_file))
     PROVIDER.set(args.provider)
     runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=Factory(provider_client.ProviderModelFactory()))
     sessions = [

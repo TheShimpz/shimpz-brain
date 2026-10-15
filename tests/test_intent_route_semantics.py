@@ -1,8 +1,6 @@
 """Provider-free checks for the fixed intent-route semantic evaluation."""
 
-import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import intent_route
@@ -54,20 +52,6 @@ class IntentRouteSemanticsTests(unittest.TestCase):
         self.assertEqual(result["cases"], [{"id": "select-uninstall", "passed": 1, "rejected": 1, "required": 3}])
         self.assertEqual(result["passing_cases"], 0)
         self.assertEqual(route.call_count, semantics.ATTEMPTS)
-
-    def test_key_reader_rejects_symlink_and_wide_permissions(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "key"
-            path.write_bytes(b"a" * 16 + b"\n")
-            path.chmod(0o644)
-            with self.assertRaises(ValueError):
-                semantics._key(path)
-            path.chmod(0o600)
-            self.assertEqual(semantics._key(path), "a" * 16)
-            alias = Path(directory) / "alias"
-            alias.symlink_to(path)
-            with self.assertRaises(OSError):
-                semantics._key(alias)
 
 
 if __name__ == "__main__":

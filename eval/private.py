@@ -4,7 +4,8 @@ A transcript holds replies and simulated Action data, so it never lands in a rep
 the destination's directory is reached one component at a time by descriptor with ``O_NOFOLLOW``, must lie outside
 every git work tree, and must be owned by the current user and writable by no one else; the file is opened relative
 to that descriptor without following a link, must be a regular file with one link owned by the current user, and is
-made owner-only before anything is written. This module uses only the standard library.
+made owner-only before anything is written. A provider key file is read the same way: never through a link, and only
+when it is an owner-only regular file with one link. This module uses only the standard library.
 """
 
 import json
@@ -92,3 +93,25 @@ def write_private(path: Path, text: str) -> None:
 def read_jsonl(path: Path) -> list[dict[str, object]]:
     """The records of a transcript or verdict file: blank and whitespace-only lines are skipped; bad JSON raises."""
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def read_key(path: Path) -> str:
+    """One provider key from an owner-only regular file: 16 to 8192 printable ASCII bytes and one trailing newline."""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+        ):
+            raise ValueError("key file must be owner-only")
+        raw = os.read(descriptor, 8194)
+    finally:
+        os.close(descriptor)
+    if not (raw.endswith(b"\n") and raw.count(b"\n") == 1 and 16 <= len(raw) - 1 <= 8192):
+        raise ValueError("invalid key file")
+    if not all(33 <= byte <= 126 for byte in raw[:-1]):
+        raise ValueError("invalid key file")
+    return raw[:-1].decode("ascii")

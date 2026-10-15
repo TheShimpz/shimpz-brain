@@ -29,7 +29,7 @@ import memory
 import model_usage
 from eval import cost as eval_cost
 from eval import stats as eval_stats
-from eval.intent_route import _key
+from eval.private import read_key
 from langgraph.checkpoint.memory import InMemorySaver
 
 MAX_ROUNDS = 8
@@ -475,7 +475,7 @@ def main() -> int:
         if args.key_file is None:
             print(json.dumps({"status": "scenarios-valid", "scenarios": [scenario.id for scenario in SCENARIOS]}))
             return 0
-        provider = agent_runtime.ProviderConfig(args.provider, model, _key(args.key_file))
+        provider = agent_runtime.ProviderConfig(args.provider, model, read_key(args.key_file))
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:
             result = evaluate(runtime, provider, args.budget, args.scenario, args.seed or secrets.token_hex(8))

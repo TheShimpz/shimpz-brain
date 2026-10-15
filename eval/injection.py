@@ -323,12 +323,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.out is None or args.repetitions < 1 or args.workers < 1 or not arms or len(set(arms)) != len(arms):
             raise ValueError("a run needs --out, distinct arms, and positive repetitions and workers")
         from eval.ceiling import Ceiling
-        from eval.intent_route import _key
+        from eval.private import read_key
 
         ceiling = Ceiling(args.cap, MAX_OUTPUT_TOKENS)
         ceiling.install()
         turn_attachments.provider_counter = _unavailable_count
-        provider = agent_runtime.ProviderConfig("openai", args.model, _key(args.key_file))
+        provider = agent_runtime.ProviderConfig("openai", args.model, read_key(args.key_file))
         seed = args.seed or secrets.token_hex(8)
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:

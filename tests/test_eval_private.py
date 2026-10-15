@@ -68,6 +68,27 @@ class PrivateFileTests(unittest.TestCase):
         with mock.patch.object(private.os, "fstat", return_value=foreign), self.assertRaises(private.PrivateFileError):
             private.write_private(self.root / "foreign", "secret")
 
+    def test_a_key_is_read_only_from_an_owner_only_file_with_one_bounded_line(self):
+        path = self.root / "key"
+        path.write_bytes(b"test-key-0123456\n")
+        path.chmod(0o600)
+        self.assertEqual(private.read_key(path), "test-key-0123456")
+        (self.root / "alias").symlink_to(path)
+        with self.assertRaises(OSError):
+            private.read_key(self.root / "alias")
+        (self.root / "hard").hardlink_to(path)
+        with self.assertRaisesRegex(ValueError, "owner-only"):
+            private.read_key(path)
+        (self.root / "hard").unlink()
+        path.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "owner-only"):
+            private.read_key(path)
+        path.chmod(0o600)
+        for body in (b"short\n", b"test-key-0123456", b"test-key-0123456\n\n", b"test key 0123456\n"):
+            path.write_bytes(body)
+            with self.subTest(body=body), self.assertRaisesRegex(ValueError, "invalid key file"):
+                private.read_key(path)
+
 
 if __name__ == "__main__":
     unittest.main()

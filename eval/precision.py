@@ -811,11 +811,9 @@ def _brain_assistant(contracts: str, name: str) -> object:
 
 
 def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[Judgment, Judgment]:
-    from eval.intent_route import _key
-
     judgments = []
     for provider, key_file in (("openai", args.key_file), ("anthropic", args.tiebreak_key_file)):
-        model = judge.judge_model(provider, _key(key_file))
+        model = judge.judge_model(provider, private.read_key(key_file))
         judgments.append(
             metered(
                 judge.JUDGE_MODELS[provider],

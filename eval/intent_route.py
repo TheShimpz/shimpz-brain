@@ -12,8 +12,6 @@ misses; never rerun only to turn a missed case green.
 
 import argparse
 import json
-import os
-import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +19,7 @@ from pathlib import Path
 import agent_runtime
 import intent_route
 import provider_client
+from eval import private
 
 # Least expensive option per provider in the umbrella model catalog on 2026-09-28.
 FLOOR_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
@@ -247,27 +246,6 @@ def validate_corpus() -> None:
                 raise ValueError("invalid semantic selection case")
 
 
-def _key(path: Path) -> str:
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or stat.S_IMODE(metadata.st_mode) != 0o600
-            or metadata.st_uid != os.getuid()
-            or metadata.st_nlink != 1
-        ):
-            raise ValueError("key file must be owner-only")
-        raw = os.read(descriptor, 8194)
-    finally:
-        os.close(descriptor)
-    if not (raw.endswith(b"\n") and raw.count(b"\n") == 1 and 16 <= len(raw) - 1 <= 8192):
-        raise ValueError("invalid key file")
-    if not all(33 <= byte <= 126 for byte in raw[:-1]):
-        raise ValueError("invalid key file")
-    return raw[:-1].decode("ascii")
-
-
 def evaluate(
     factory: provider_client.ProviderModelFactory, provider: agent_runtime.ProviderConfig
 ) -> dict[str, object]:
@@ -312,7 +290,9 @@ def main() -> int:
                 json.dumps({"status": "corpus-inputs-valid", "cases": len(CASES), "model": FLOOR_MODELS[args.provider]})
             )
             return 0
-        provider = agent_runtime.ProviderConfig(args.provider, FLOOR_MODELS[args.provider], _key(args.key_file))
+        provider = agent_runtime.ProviderConfig(
+            args.provider, FLOOR_MODELS[args.provider], private.read_key(args.key_file)
+        )
         factory = provider_client.ProviderModelFactory()
         try:
             result = evaluate(factory, provider)

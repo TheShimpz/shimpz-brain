@@ -18,11 +18,11 @@ MODELS = ("gpt-6-luna", "gpt-6.1-sol")
 
 
 def _judges(args: argparse.Namespace, spend: list[eval_cost.Cost]) -> tuple[precision.Judgment, precision.Judgment]:
-    from eval.intent_route import _key
+    from eval.private import read_key
     from langchain_openai import ChatOpenAI
     from pydantic import SecretStr
 
-    key = _key(args.key_file)
+    key = read_key(args.key_file)
     judgments = []
     for model_id in MODELS:
         model = ChatOpenAI(

@@ -31,7 +31,7 @@ import capability_plan
 import model_usage
 import provider_client
 from eval import cost as eval_cost
-from eval.intent_route import _key
+from eval.private import read_key
 from langgraph.checkpoint.memory import InMemorySaver
 
 ATTEMPTS = 3
@@ -459,7 +459,7 @@ def main() -> int:
                 )
             )
             return 0
-        provider = agent_runtime.ProviderConfig(args.provider, model, _key(args.key_file))
+        provider = agent_runtime.ProviderConfig(args.provider, model, read_key(args.key_file))
         runtime = agent_runtime.AgentRuntime(InMemorySaver())
         try:
             result = evaluate(runtime, provider)

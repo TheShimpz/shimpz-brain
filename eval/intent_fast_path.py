@@ -33,7 +33,7 @@ import intent_route
 import provider_cancel
 from eval import stats
 from eval.intent_fast_path_cases import CAPABILITY_CASES, CASES, INSTALLABLE, CapabilityCase, Case, validate_corpus
-from eval.intent_route import _key
+from eval.private import read_key
 
 THRESHOLDS = tuple(sorted({0.7, 0.8, 0.9, 0.95, intent_fast_path.CONFIDENCE_THRESHOLD}))
 CAPABILITY_THRESHOLDS = tuple(sorted({0.7, 0.8, 0.9, 0.95, 0.99, intent_fast_path.CAPABILITY_THRESHOLD}))
@@ -253,7 +253,7 @@ def main() -> int:
                 )
             )
             return 0
-        result = evaluate(_key(args.key_file), sets, args.repeats)
+        result = evaluate(read_key(args.key_file), sets, args.repeats)
     except OSError, ValueError, httpx.HTTPError, KeyError:
         print("fast-path evaluation failed", file=sys.stderr)
         return 2

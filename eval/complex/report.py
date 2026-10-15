@@ -251,11 +251,10 @@ def build_report(
 
 def _judges(args: argparse.Namespace) -> tuple[Judgment, Judgment]:
     from eval import judge
-    from eval.intent_route import _key
 
     judgments = []
     for provider, key_file in (("openai", args.key_file), ("anthropic", args.tiebreak_key_file)):
-        model = judge.judge_model(provider, _key(key_file))
+        model = judge.judge_model(provider, private.read_key(key_file))
         judgments.append(lambda item, model=model, provider=provider: judging.judge(model, provider, item))
     return judgments[0], judgments[1]
 
