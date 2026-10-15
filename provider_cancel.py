@@ -1,9 +1,10 @@
-"""Request-scoped cancellation of one chat turn's provider HTTP I/O (ADR-0079).
+"""Request-scoped cancellation of one Team request's provider HTTP I/O (ADR-0079).
 
-A turn runs its synchronous graph inside ``CancelScope.run``. The scope travels in a context variable, which the
-LangGraph sync executor copies into its worker threads, so every provider socket read, write, and TLS handshake of
-that turn registers with it. ``cancel`` shuts those sockets down to wake a blocked call, and every later connect or
-request of the turn fails before it starts. Calls without a scope (routing, planning, labels) are never affected.
+A chat turn, an Action purpose, or a capability plan runs its synchronous work inside ``CancelScope.run``; a Jev
+decision exchange runs inside its own deadline scope. The scope travels in a context variable, which the LangGraph
+sync executor copies into its worker threads, so every provider socket read, write, and TLS handshake of that work
+registers with it. ``cancel`` shuts those sockets down to wake a blocked call, and every later connect or request of
+the work fails before it starts. Calls without a scope, such as the intent route, are never affected.
 
 ``ProviderCallCancelled`` subclasses ``BaseException`` on purpose: the provider SDKs retry every ``Exception`` with
 backoff, and the runtime maps every ``Exception`` to a provider failure. The graph still unwinds through its normal
