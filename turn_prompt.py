@@ -157,7 +157,7 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
         "the user's own "
         "words in the user's own timezone, which it already knows, and reads what to do with each run's result from "
         "them: never ask about a timezone, and never choose, invent, or change a schedule, an interval, or what to do "
-        "with the result. Every interval from 5 seconds to 366 days is valid, and the Team alone checks the daily "
+        f"with the result. Every interval from {routine.INTERVALS} is valid, and the Team alone checks the daily "
         "limit; if the user has not said how often, ask how often while you clarify. The Team records the "
         "Actions you ran as the Routine's steps, so run only the work that recurs, and do any one-off work in another "
         "turn. Write every date an input needs as a whole date, never a bare day joined to another date by a range "

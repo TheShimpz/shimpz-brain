@@ -33,6 +33,14 @@ MAX_LISTED_STEPS_BYTES = 256 * 1024
 MAX_LISTING_STEPS_BYTES = 1024 * 1024
 # The reply the person reads beside the card: the result of the work the agent ran.
 MAX_REPLY_CHARS = 4000
+_NAME_CHARS = team_routine_protocol.MAX_ROUTINE_NAME_CHARS
+_DESCRIPTION_CHARS = team_routine_protocol.MAX_ROUTINE_DESCRIPTION_CHARS
+_DAY = team_routine_protocol.DAY_SECONDS
+# Every continuous interval Team admits, as the prompt states it.
+INTERVALS = (
+    f"{team_routine_protocol.MIN_CONTINUOUS_GAP_SECONDS} seconds to "
+    f"{team_routine_protocol.MAX_CONTINUOUS_GAP_SECONDS // _DAY} days"
+)
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -40,14 +48,15 @@ SCHEMA = {
         "name": {
             "type": "string",
             "description": (
-                "A short name for the Routine's work, at most 80 characters, without the word Routine or how often "
-                "it runs."
+                f"A short name for the Routine's work, at most {_NAME_CHARS} characters, without the word Routine or "
+                "how often it runs."
             ),
         },
         "description": {
             "type": "string",
             "description": (
-                "One plain paragraph, at most 600 characters, written as the person's own request for this Routine, "
+                f"One plain paragraph, at most {_DESCRIPTION_CHARS} characters, written as the person's own request "
+                "for this Routine, "
                 "in everyday words for a person who is not technical: how often it runs, in the person's own words, "
                 "what every run does and on what, and what is done with each run's result only as the person said "
                 "it. Describe only the work you ran, say plainly when a run changes something, and never promise how "
@@ -74,7 +83,7 @@ DESCRIPTION = (
     "work to recur or to change a listed Routine, only after you ran exactly that work once, unless only a listed "
     "Routine's schedule or output changes or the person answers the Team's question about how often it runs or what to "
     "do with each run's result, and alone in your response. It takes no schedule, timezone, or output: the Team "
-    "reads how often (any interval from 5 seconds to 366 days, at most ceil(86400 / interval) runs a day) and what to "
+    f"reads how often (any interval from {INTERVALS}, at most ceil({_DAY} / interval) runs a day) and what to "
     "do with each run's "
     "result from the person's own words, in the person's own timezone, and asks the person itself when something is "
     "missing or does not fit. It ends the turn; the "
@@ -86,8 +95,8 @@ _CORRECTIONS = {
     "mixed": _NOT_DONE + "Call shimpz_routine alone in its response, after the work ran; nothing else in this "
     "response ran, so repeat the calls you still need.",
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
-    "name": _NOT_DONE + "Give a name of one line, at most 80 characters.",
-    "description": _NOT_DONE + "Give a description of one plain paragraph, at most 600 characters.",
+    "name": _NOT_DONE + f"Give a name of one line, at most {_NAME_CHARS} characters.",
+    "description": _NOT_DONE + f"Give a description of one plain paragraph, at most {_DESCRIPTION_CHARS} characters.",
     "schedule": _NOT_DONE + "Say in the description how often the Routine runs in the person's own words, and no other "
     "schedule.",
     "unstated-schedule": _NOT_DONE + "The person has not said how often it runs yet: leave how often out of the "
@@ -97,7 +106,7 @@ _CORRECTIONS = {
     "unstated-output": _NOT_DONE + "The person has not changed what is done with each run's result: say the "
     "Routine's own output or leave it out of the description.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
-    "reply": _NOT_DONE + "Give the person an empty reply or one of at most 4000 characters.",
+    "reply": _NOT_DONE + f"Give the person an empty reply or one of at most {MAX_REPLY_CHARS} characters.",
 }
 
 
