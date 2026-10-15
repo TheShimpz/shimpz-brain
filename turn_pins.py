@@ -160,21 +160,16 @@ def restore_schedule(metadata: Mapping[str, object]) -> dict[str, object] | None
 
 
 def record_output(output: str | None) -> dict[str, str]:
-    """The checkpoint entry holding the one output mode Team read from the person, which a description must say.
-
-    A turn with no output read from the person records no entry: its absence is the turn's "none".
-    """
-    return {} if output is None else {OUTPUT_METADATA: _json(output)}
+    """The checkpoint entry holding the one output mode Team read from the person, which a description must say."""
+    return {OUTPUT_METADATA: _json(output)}
 
 
 def restore_output(metadata: Mapping[str, object]) -> str | None:
-    """The exact output mode a start recorded, or None when it recorded none; anything else is corrupt state."""
+    """The exact output mode a start recorded, None included; anything else, a missing pin included, is corrupt."""
     value = metadata.get(OUTPUT_METADATA)
-    if value is None:
-        return None
     decoded = _decoded(value)
     output = None if decoded is None else team_routine.canonical_output(decoded)
-    if output is None or _json(output) != value:
+    if (decoded is not None and output is None) or _json(output) != value:
         raise PinError("recorded turn pins are invalid")
     return output
 

@@ -473,11 +473,12 @@ class RoutineModeTests(unittest.TestCase):
         for output in (None, "changes"):
             with self.subTest(output=output):
                 self.assertEqual(turn_pins.restore_output(turn_pins.record_output(output)), output)
-        # No output read from the person records no entry, and no entry restores as none.
-        self.assertEqual((turn_pins.record_output(None), turn_pins.restore_output({})), ({}, None))
-        for value in ("null", "not json", '"sometimes"', "1"):
-            with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
-                turn_pins.restore_output({turn_pins.OUTPUT_METADATA: value})
+        # No output read from the person is pinned as JSON null; a missing pin is corrupt state.
+        self.assertEqual(turn_pins.record_output(None), {turn_pins.OUTPUT_METADATA: "null"})
+        corrupt = ("not json", '"sometimes"', "1", " null")
+        for metadata in ({}, *({turn_pins.OUTPUT_METADATA: value} for value in corrupt)):
+            with self.subTest(metadata=metadata), self.assertRaises(turn_pins.PinError):
+                turn_pins.restore_output(metadata)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
             dataclasses.replace(_chat(schedule=None), routines=None, routine_output="changes")
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
