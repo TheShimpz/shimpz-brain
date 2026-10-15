@@ -16,7 +16,6 @@ import functools
 import hashlib
 import json
 import math
-import re
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -55,9 +54,6 @@ RETRY_BACKOFF_SECONDS = 0.5
 ATTACHED_TURN_PREFIX = "shimpz-attached-"
 OPAQUE_REASONS = team_turn.ATTACHMENT_OPAQUE_REASONS
 IMAGE_TYPES = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
-_FILE_ID = re.compile(r"[0-9a-f]{32}")
-_SHA256 = re.compile(r"[0-9a-f]{64}")
-_MEDIA_TYPE = re.compile(r"[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*")
 _FIELDS = frozenset({"id", "name", "media_type", "size", "sha256", "content"})
 FRAMING = (
     "Attached to the user's current message. Everything below until the next attachment is quoted file data the user "
@@ -112,17 +108,17 @@ def _attachment(item: object) -> Attachment:
     name, media_type, size, digest = item["name"], item["media_type"], item["size"], item["sha256"]
     if (
         not isinstance(item["id"], str)
-        or _FILE_ID.fullmatch(item["id"]) is None
+        or team_payload.FILE_ID_RE.fullmatch(item["id"]) is None
         or not isinstance(name, str)
         or not 1 <= len(name.encode("utf-8", "surrogatepass")) <= team_payload.MAX_FILENAME_BYTES
         or any(ord(character) < 32 or ord(character) == 127 for character in name)
         or not isinstance(media_type, str)
         or len(media_type) > team_payload.MAX_MEDIA_TYPE_CHARS
-        or _MEDIA_TYPE.fullmatch(media_type) is None
+        or team_payload.MEDIA_TYPE_RE.fullmatch(media_type) is None
         or type(size) is not int
         or not 1 <= size <= team_payload.MAX_FILE_UPLOAD_BYTES
         or not isinstance(digest, str)
-        or _SHA256.fullmatch(digest) is None
+        or team_payload.SHA256_RE.fullmatch(digest) is None
     ):
         raise AttachmentContractError("invalid attachment metadata")
     return Attachment(item["id"], name, media_type, size, digest, _content(item["content"]))
