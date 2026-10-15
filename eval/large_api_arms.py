@@ -13,7 +13,7 @@ This module uses only the standard library.
 from collections.abc import Mapping
 
 from eval import large_api, large_api_contract
-from eval.fixtures import _DATE, _OBJECT, _STRING, DISTRACTORS, Action, Assistant
+from eval.fixtures import DATE_SCHEMA, DISTRACTORS, OBJECT_SCHEMA, STRING_SCHEMA, Action, Assistant
 from eval.world import ActionFailedError
 
 GROUP_LIMIT = 3
@@ -76,11 +76,11 @@ def recall(template_id: str, exposed: tuple[str, ...]) -> bool:
     return NEEDED_ACTIONS[template_id] <= set(exposed)
 
 
-_ZONE = {**_STRING, "description": "The domain, such as example.com; the Assistant resolves its zone."}
+_ZONE = {**STRING_SCHEMA, "description": "The domain, such as example.com; the Assistant resolves its zone."}
 
 
 def _a(action_id: str, summary: str, writes: bool, required: tuple[str, ...], **properties: object) -> Action:
-    return Action(action_id, summary, {**_OBJECT, "properties": properties, "required": list(required)}, writes)
+    return Action(action_id, summary, {**OBJECT_SCHEMA, "properties": properties, "required": list(required)}, writes)
 
 
 def _e(*values: str) -> dict[str, object]:
@@ -99,7 +99,7 @@ TASK_EDGE = Assistant(
             False,
             ("domain",),
             domain=_ZONE,
-            name={**_STRING, "description": "Fully qualified name."},
+            name={**STRING_SCHEMA, "description": "Fully qualified name."},
             type=_e("A", "AAAA", "CNAME", "TXT", "MX"),
         ),
         _a(
@@ -109,8 +109,8 @@ TASK_EDGE = Assistant(
             ("domain", "type", "name", "content"),
             domain=_ZONE,
             type=_e("A", "AAAA", "CNAME", "TXT", "MX"),
-            name={**_STRING, "description": "Record name, such as _acme-challenge or www.example.com."},
-            content={**_STRING, "description": "Record value, such as 192.0.2.99."},
+            name={**STRING_SCHEMA, "description": "Record name, such as _acme-challenge or www.example.com."},
+            content={**STRING_SCHEMA, "description": "Record value, such as 192.0.2.99."},
         ),
         _a(
             "delete-dns-record",
@@ -119,7 +119,7 @@ TASK_EDGE = Assistant(
             ("domain", "type", "name"),
             domain=_ZONE,
             type=_e("A", "AAAA", "CNAME", "TXT", "MX"),
-            name=_STRING,
+            name=STRING_SCHEMA,
         ),
         _a(
             "purge-cache",
@@ -127,7 +127,7 @@ TASK_EDGE = Assistant(
             True,
             ("domain",),
             domain=_ZONE,
-            urls={"type": "array", "items": _STRING, "maxItems": 30},
+            urls={"type": "array", "items": STRING_SCHEMA, "maxItems": 30},
         ),
         _a(
             "get-setting",
@@ -145,7 +145,7 @@ TASK_EDGE = Assistant(
             ("domain", "setting", "value"),
             domain=_ZONE,
             setting=_e("ssl_mode", "development_mode", "security_level", "always_use_https"),
-            value=_STRING,
+            value=STRING_SCHEMA,
         ),
         _a(
             "set-ip-rule",
@@ -153,7 +153,7 @@ TASK_EDGE = Assistant(
             True,
             ("domain", "ip", "mode"),
             domain=_ZONE,
-            ip={**_STRING, "description": "IPv4/IPv6 address or CIDR."},
+            ip={**STRING_SCHEMA, "description": "IPv4/IPv6 address or CIDR."},
             mode=_e("block", "challenge", "allow"),
         ),
         _a("list-workers", "List Worker scripts by name.", False, ()),
@@ -163,19 +163,21 @@ TASK_EDGE = Assistant(
             True,
             ("domain", "pattern", "script"),
             domain=_ZONE,
-            pattern={**_STRING, "description": "URL pattern, such as example.com/api/*."},
-            script={**_STRING, "description": "Worker script name."},
+            pattern={**STRING_SCHEMA, "description": "URL pattern, such as example.com/api/*."},
+            script={**STRING_SCHEMA, "description": "Worker script name."},
         ),
         _a("list-buckets", "List R2 storage buckets.", False, ()),
-        _a("create-bucket", "Create an R2 storage bucket.", True, ("name",), name=_STRING),
-        _a("delete-bucket", "Delete an empty R2 storage bucket by its exact name.", True, ("name",), name=_STRING),
+        _a("create-bucket", "Create an R2 storage bucket.", True, ("name",), name=STRING_SCHEMA),
+        _a(
+            "delete-bucket", "Delete an empty R2 storage bucket by its exact name.", True, ("name",), name=STRING_SCHEMA
+        ),
         _a(
             "get-traffic",
             "Get a domain's totals for one day.",
             False,
             ("domain", "date"),
             domain=_ZONE,
-            date=_DATE,
+            date=DATE_SCHEMA,
             metric=_e("requests", "bandwidth", "threats", "dns_queries"),
         ),
         _a(
@@ -184,7 +186,7 @@ TASK_EDGE = Assistant(
             True,
             ("domain", "expression", "action"),
             domain=_ZONE,
-            expression=_STRING,
+            expression=STRING_SCHEMA,
             action=_e("block", "challenge", "log"),
         ),
         _a(
@@ -193,25 +195,32 @@ TASK_EDGE = Assistant(
             True,
             ("domain", "hosts"),
             domain=_ZONE,
-            hosts={"type": "array", "items": _STRING, "maxItems": 10},
+            hosts={"type": "array", "items": STRING_SCHEMA, "maxItems": 10},
         ),
-        _a("deploy-site", "Deploy a Pages project from a branch.", True, ("project",), project=_STRING, branch=_STRING),
+        _a(
+            "deploy-site",
+            "Deploy a Pages project from a branch.",
+            True,
+            ("project",),
+            project=STRING_SCHEMA,
+            branch=STRING_SCHEMA,
+        ),
         _a(
             "set-load-balancer",
             "Balance a hostname of a domain across origin pools.",
             True,
             ("domain", "hostname", "pools"),
             domain=_ZONE,
-            hostname=_STRING,
-            pools={"type": "array", "items": _STRING, "maxItems": 10},
+            hostname=STRING_SCHEMA,
+            pools={"type": "array", "items": STRING_SCHEMA, "maxItems": 10},
         ),
         _a(
             "protect-hostname",
             "Require sign-in for a hostname, allowing the given emails.",
             True,
             ("hostname", "emails"),
-            hostname=_STRING,
-            emails={"type": "array", "items": _STRING, "maxItems": 50},
+            hostname=STRING_SCHEMA,
+            emails={"type": "array", "items": STRING_SCHEMA, "maxItems": 50},
         ),
         _a(
             "forward-email",
@@ -219,17 +228,17 @@ TASK_EDGE = Assistant(
             True,
             ("domain", "address", "to"),
             domain=_ZONE,
-            address=_STRING,
-            to=_STRING,
+            address=STRING_SCHEMA,
+            to=STRING_SCHEMA,
         ),
         _a(
             "manage-member",
             "Invite a member with a role, or remove one.",
             True,
             ("email", "operation"),
-            email=_STRING,
+            email=STRING_SCHEMA,
             operation=_e("invite", "remove"),
-            role=_STRING,
+            role=STRING_SCHEMA,
         ),
     ),
 )

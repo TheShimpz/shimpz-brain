@@ -13,13 +13,13 @@ from collections import Counter
 from collections.abc import Mapping
 
 from eval.corpus import LOCALES, Template, scenarios, stratum_digest, validate_stratum
-from eval.fixtures import _DATE, _STRING, _TIME, RELEVANT, Action, Assistant, _schema
 from eval.fixtures import ASSISTANTS as PRECISION_ASSISTANTS
+from eval.fixtures import DATE_SCHEMA, RELEVANT, STRING_SCHEMA, TIME_SCHEMA, Action, Assistant, closed_object
 from eval.world import ActionFailedError, World
 
 CORPUS_ID = "fresh-v1"
 
-_ID = {**_STRING, "maxLength": 40}
+_ID = {**STRING_SCHEMA, "maxLength": 40}
 _QUANTITY = {"type": "integer", "minimum": 1, "maximum": 10000}
 _SEATING = {"type": "string", "enum": ["indoor", "terrace"]}
 _PARTY = {"type": "integer", "minimum": 1, "maximum": 12}
@@ -32,13 +32,13 @@ INVENTORY = Assistant(
         Action(
             "list-products",
             "List products, optionally only those whose name or SKU contains the given text.",
-            _schema(query=_STRING),
+            closed_object(query=STRING_SCHEMA),
             writes=False,
         ),
         Action(
             "adjust-stock",
             "Add units to one product's stock with a positive delta or remove them with a negative one.",
-            _schema(
+            closed_object(
                 ("product_id", "delta"),
                 product_id=_ID,
                 delta={"type": "integer", "minimum": -10000, "maximum": 10000, "description": "Units to add."},
@@ -48,7 +48,7 @@ INVENTORY = Assistant(
         Action(
             "set-price",
             "Set one product's price in cents.",
-            _schema(
+            closed_object(
                 ("product_id", "price_cents"),
                 product_id=_ID,
                 price_cents={"type": "integer", "minimum": 1, "maximum": 10000000},
@@ -64,25 +64,25 @@ PURCHASING = Assistant(
         Action(
             "get-supplier",
             "Get one supplier by id with its name, the SKUs it carries, its minimum quantity per order, and lead time.",
-            _schema(("supplier_id",), supplier_id=_ID),
+            closed_object(("supplier_id",), supplier_id=_ID),
             writes=False,
         ),
         Action(
             "list-orders",
             "List purchase orders, optionally only those with one status or from one supplier.",
-            _schema(status=_ORDER_STATUS, supplier_id=_ID),
+            closed_object(status=_ORDER_STATUS, supplier_id=_ID),
             writes=False,
         ),
         Action(
             "create-order",
             "Place one purchase order for one SKU that the supplier carries, at least its minimum quantity.",
-            _schema(("supplier_id", "sku", "quantity"), supplier_id=_ID, sku=_ID, quantity=_QUANTITY),
+            closed_object(("supplier_id", "sku", "quantity"), supplier_id=_ID, sku=_ID, quantity=_QUANTITY),
             writes=True,
         ),
         Action(
             "cancel-order",
             "Cancel one placed purchase order by its id; delivered and cancelled orders cannot be cancelled.",
-            _schema(("order_id",), order_id=_ID),
+            closed_object(("order_id",), order_id=_ID),
             writes=True,
         ),
     ),
@@ -95,17 +95,17 @@ RESERVATIONS = Assistant(
         Action(
             "list-reservations",
             "List the reservations on one day, cancelled ones included, optionally only those for a guest name.",
-            _schema(("date",), date=_DATE, guest_name=_STRING),
+            closed_object(("date",), date=DATE_SCHEMA, guest_name=STRING_SCHEMA),
             writes=False,
         ),
         Action(
             "create-reservation",
             "Book one table at a service time; the seating preference is optional and stays unset when omitted.",
-            _schema(
+            closed_object(
                 ("guest_name", "date", "time", "party_size"),
-                guest_name=_STRING,
-                date=_DATE,
-                time=_TIME,
+                guest_name=STRING_SCHEMA,
+                date=DATE_SCHEMA,
+                time=TIME_SCHEMA,
                 party_size=_PARTY,
                 seating=_SEATING,
             ),
@@ -114,13 +114,15 @@ RESERVATIONS = Assistant(
         Action(
             "update-reservation",
             "Change the time, party size, or seating of one booked reservation by its id.",
-            _schema(("reservation_id",), reservation_id=_ID, time=_TIME, party_size=_PARTY, seating=_SEATING),
+            closed_object(
+                ("reservation_id",), reservation_id=_ID, time=TIME_SCHEMA, party_size=_PARTY, seating=_SEATING
+            ),
             writes=True,
         ),
         Action(
             "cancel-reservation",
             "Cancel one booked reservation by its id.",
-            _schema(("reservation_id",), reservation_id=_ID),
+            closed_object(("reservation_id",), reservation_id=_ID),
             writes=True,
         ),
     ),

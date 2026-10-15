@@ -11,14 +11,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 SIMULATION = "simulated Assistant fixture; not a real integration"
-_OBJECT = {"type": "object", "additionalProperties": False}
-_STRING = {"type": "string", "minLength": 1, "maxLength": 200}
-_DATE = {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Date as YYYY-MM-DD."}
-_TIME = {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$", "description": "24-hour time as HH:MM."}
+OBJECT_SCHEMA = {"type": "object", "additionalProperties": False}
+STRING_SCHEMA = {"type": "string", "minLength": 1, "maxLength": 200}
+DATE_SCHEMA = {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Date as YYYY-MM-DD."}
+TIME_SCHEMA = {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$", "description": "24-hour time as HH:MM."}
 
 
-def _schema(required: tuple[str, ...] = (), **properties: Mapping[str, object]) -> dict[str, object]:
-    return {**_OBJECT, "properties": dict(properties), "required": list(required)}
+def closed_object(required: tuple[str, ...] = (), **properties: Mapping[str, object]) -> dict[str, object]:
+    return {**OBJECT_SCHEMA, "properties": dict(properties), "required": list(required)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,46 +41,51 @@ class Assistant:
     relevant: bool = True
 
 
-def _read(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
+def read_action(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
     return Action(action_id, summary, schema, writes=False)
 
 
-def _write(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
+def write_action(action_id: str, summary: str, schema: Mapping[str, object]) -> Action:
     return Action(action_id, summary, schema, writes=True)
 
 
-_RECORD_TYPES = {"type": "string", "enum": ["A", "AAAA", "CNAME", "TXT", "MX"]}
+RECORD_TYPE_SCHEMA = {"type": "string", "enum": ["A", "AAAA", "CNAME", "TXT", "MX"]}
 RELEVANT = (
     Assistant(
         "dns",
         "DNS manages the user's DNS zones and their records. Records are addressed by zone id and record id.",
         (
-            _read("list-zones", "List the user's DNS zones with their ids.", _schema()),
-            _read(
+            read_action("list-zones", "List the user's DNS zones with their ids.", closed_object()),
+            read_action(
                 "list-records",
                 "List a zone's records, optionally only those with a name or type.",
-                _schema(("zone_id",), zone_id=_STRING, name=_STRING, type=_RECORD_TYPES),
+                closed_object(("zone_id",), zone_id=STRING_SCHEMA, name=STRING_SCHEMA, type=RECORD_TYPE_SCHEMA),
             ),
-            _write(
+            write_action(
                 "create-record",
                 "Create one record in a zone; fails when a record with that name and type exists.",
-                _schema(
+                closed_object(
                     ("zone_id", "type", "name", "content"),
-                    zone_id=_STRING,
-                    type=_RECORD_TYPES,
-                    name={**_STRING, "description": "Record name, relative to the zone or fully qualified."},
-                    content=_STRING,
+                    zone_id=STRING_SCHEMA,
+                    type=RECORD_TYPE_SCHEMA,
+                    name={**STRING_SCHEMA, "description": "Record name, relative to the zone or fully qualified."},
+                    content=STRING_SCHEMA,
                 ),
             ),
-            _write(
+            write_action(
                 "update-record",
                 "Change the content of one existing record by its id.",
-                _schema(("zone_id", "record_id", "content"), zone_id=_STRING, record_id=_STRING, content=_STRING),
+                closed_object(
+                    ("zone_id", "record_id", "content"),
+                    zone_id=STRING_SCHEMA,
+                    record_id=STRING_SCHEMA,
+                    content=STRING_SCHEMA,
+                ),
             ),
-            _write(
+            write_action(
                 "delete-record",
                 "Delete one existing record by its id.",
-                _schema(("zone_id", "record_id"), zone_id=_STRING, record_id=_STRING),
+                closed_object(("zone_id", "record_id"), zone_id=STRING_SCHEMA, record_id=STRING_SCHEMA),
             ),
         ),
     ),
@@ -88,34 +93,39 @@ RELEVANT = (
         "tasks",
         "Tasks keeps the user's to-do list. Tasks have ids, titles, tags, and an open or done status.",
         (
-            _read(
+            read_action(
                 "list-tasks",
                 "List tasks, by default only open ones, optionally only those with a tag.",
-                _schema(status={"type": "string", "enum": ["open", "done", "all"]}, tag=_STRING),
+                closed_object(status={"type": "string", "enum": ["open", "done", "all"]}, tag=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "create-task",
                 "Create one open task.",
-                _schema(
-                    ("title",), title=_STRING, due_date=_DATE, tags={"type": "array", "items": _STRING, "maxItems": 8}
+                closed_object(
+                    ("title",),
+                    title=STRING_SCHEMA,
+                    due_date=DATE_SCHEMA,
+                    tags={"type": "array", "items": STRING_SCHEMA, "maxItems": 8},
                 ),
             ),
-            _write("complete-task", "Mark one task as done by its id.", _schema(("task_id",), task_id=_STRING)),
+            write_action(
+                "complete-task", "Mark one task as done by its id.", closed_object(("task_id",), task_id=STRING_SCHEMA)
+            ),
         ),
     ),
     Assistant(
         "calendar",
         "Calendar manages the user's calendar events.",
         (
-            _read("list-events", "List the events on one day.", _schema(("date",), date=_DATE)),
-            _write(
+            read_action("list-events", "List the events on one day.", closed_object(("date",), date=DATE_SCHEMA)),
+            write_action(
                 "create-event",
                 "Create one event; the duration defaults to 60 minutes.",
-                _schema(
+                closed_object(
                     ("title", "date", "start_time"),
-                    title=_STRING,
-                    date=_DATE,
-                    start_time=_TIME,
+                    title=STRING_SCHEMA,
+                    date=DATE_SCHEMA,
+                    start_time=TIME_SCHEMA,
                     duration_minutes={"type": "integer", "minimum": 5, "maximum": 1440},
                 ),
             ),
@@ -125,15 +135,17 @@ RELEVANT = (
         "messages",
         "Messages sends short text messages to the user's contacts, addressed by contact id.",
         (
-            _read(
-                "find-contact", "Find contacts whose name contains the given text.", _schema(("name",), name=_STRING)
+            read_action(
+                "find-contact",
+                "Find contacts whose name contains the given text.",
+                closed_object(("name",), name=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "send-message",
                 "Send one text message to one contact.",
-                _schema(
+                closed_object(
                     ("contact_id", "text"),
-                    contact_id=_STRING,
+                    contact_id=STRING_SCHEMA,
                     text={"type": "string", "minLength": 1, "maxLength": 1000},
                 ),
             ),
@@ -143,8 +155,16 @@ RELEVANT = (
         "research",
         "Research searches the public web and reads public pages.",
         (
-            _read("search-web", "Search the web; returns result titles and urls.", _schema(("query",), query=_STRING)),
-            _read("read-page", "Read one public page by url and return its text.", _schema(("url",), url=_STRING)),
+            read_action(
+                "search-web",
+                "Search the web; returns result titles and urls.",
+                closed_object(("query",), query=STRING_SCHEMA),
+            ),
+            read_action(
+                "read-page",
+                "Read one public page by url and return its text.",
+                closed_object(("url",), url=STRING_SCHEMA),
+            ),
         ),
     ),
 )
@@ -153,18 +173,18 @@ RELEVANT = (
 def _large(prefix: str, count: int) -> dict[str, Mapping[str, object]]:
     """Many described optional properties, as a large real schema has."""
     return {
-        f"{prefix}_{index:02d}": {**_STRING, "description": f"Optional {prefix} detail number {index}."}
+        f"{prefix}_{index:02d}": {**STRING_SCHEMA, "description": f"Optional {prefix} detail number {index}."}
         for index in range(count)
     }
 
 
-_LINE = _schema(
+_LINE = closed_object(
     ("description", "quantity", "unit_price"),
-    description=_STRING,
+    description=STRING_SCHEMA,
     quantity={"type": "integer", "minimum": 1},
     unit_price={"type": "number", "minimum": 0},
 )
-_TITLE = {"title": _STRING}
+_TITLE = {"title": STRING_SCHEMA}
 # (id, Genesis, read Action, write Action, write properties, required write properties); four have large schemas.
 _DISTRACTOR_SPECS = (
     (
@@ -213,7 +233,7 @@ _DISTRACTOR_SPECS = (
         ("list-invoices", "List invoices."),
         ("create-invoice", "Create and send one invoice."),
         {
-            "customer": _STRING,
+            "customer": STRING_SCHEMA,
             "currency": {"type": "string", "enum": ["USD", "EUR", "BRL", "JPY"]},
             "lines": {"type": "array", "items": _LINE, "maxItems": 50},
             **_large("billing", 18),
@@ -242,7 +262,7 @@ _DISTRACTOR_SPECS = (
         ("get-quote", "Get a share quote."),
         ("place-order", "Place one share order."),
         {
-            "symbol": _STRING,
+            "symbol": STRING_SCHEMA,
             "side": {"type": "string", "enum": ["buy", "sell"]},
             "quantity": {"type": "integer", "minimum": 1},
             **_large("order", 16),
@@ -279,9 +299,9 @@ _DISTRACTOR_SPECS = (
         ("list-vehicles", "List vehicles."),
         ("schedule-maintenance", "Schedule maintenance for one vehicle."),
         {
-            "vehicle_id": _STRING,
-            "date": _DATE,
-            "services": {"type": "array", "items": _STRING, "maxItems": 20},
+            "vehicle_id": STRING_SCHEMA,
+            "date": DATE_SCHEMA,
+            "services": {"type": "array", "items": STRING_SCHEMA, "maxItems": 20},
             **_large("service", 20),
         },
         ("vehicle_id", "date"),
@@ -300,9 +320,9 @@ _DISTRACTOR_SPECS = (
         ("list-tickets", "List support tickets."),
         ("create-ticket", "Create one support ticket."),
         {
-            "title": _STRING,
+            "title": STRING_SCHEMA,
             "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]},
-            "components": {"type": "array", "items": _STRING, "maxItems": 10},
+            "components": {"type": "array", "items": STRING_SCHEMA, "maxItems": 10},
             **_large("context", 22),
         },
         ("title", "priority"),
@@ -312,7 +332,10 @@ DISTRACTORS = tuple(
     Assistant(
         name,
         genesis,
-        (_read(*read, _schema(query=_STRING)), _write(*write, _schema(required, **properties))),
+        (
+            read_action(*read, closed_object(query=STRING_SCHEMA)),
+            write_action(*write, closed_object(required, **properties)),
+        ),
         relevant=False,
     )
     for name, genesis, read, write, properties, required in _DISTRACTOR_SPECS

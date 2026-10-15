@@ -15,7 +15,7 @@ from collections.abc import Mapping
 
 from eval import fixtures, world
 from eval.corpus import Template, created, messages, scenarios, stratum_digest, validate_stratum
-from eval.fixtures import _DATE, _STRING, Assistant, _read, _schema, _write
+from eval.fixtures import DATE_SCHEMA, STRING_SCHEMA, Assistant, closed_object, read_action, write_action
 
 CORPUS_ID = "fresh-v2"
 
@@ -32,43 +32,43 @@ NEW_ASSISTANTS = (
         "shipping",
         "Shipping buys parcel labels to the user's saved recipient addresses and tracks the resulting shipments.",
         (
-            _read(
+            read_action(
                 "list-addresses",
                 "List saved recipient addresses, optionally only those whose name contains the given text.",
-                _schema(name=_STRING),
+                closed_object(name=STRING_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-shipments",
                 "List shipments with recipient, status, ship date, and price, optionally by reference, recipient, "
                 "or status.",
-                _schema(reference=_STRING, recipient=_STRING, status=_SHIPMENT_STATUS),
+                closed_object(reference=STRING_SCHEMA, recipient=STRING_SCHEMA, status=_SHIPMENT_STATUS),
             ),
-            _read(
+            read_action(
                 "get-quote",
                 "Quote the price in EUR of one parcel by weight and service.",
-                _schema(("weight_grams", "service"), weight_grams=_WEIGHT, service=_SERVICE),
+                closed_object(("weight_grams", "service"), weight_grams=_WEIGHT, service=_SERVICE),
             ),
-            _write(
+            write_action(
                 "create-shipment",
                 "Buy a label for one parcel to a saved address; the service defaults to standard and no signature.",
-                _schema(
+                closed_object(
                     ("address_id", "weight_grams"),
-                    address_id=_STRING,
+                    address_id=STRING_SCHEMA,
                     weight_grams=_WEIGHT,
                     service=_SERVICE,
-                    reference={**_STRING, "description": "Order reference; unique among active shipments."},
+                    reference={**STRING_SCHEMA, "description": "Order reference; unique among active shipments."},
                     signature_required={"type": "boolean"},
                 ),
             ),
-            _write(
+            write_action(
                 "change-service",
                 "Change the service of one shipment that only has a label yet, which recalculates its price.",
-                _schema(("shipment_id", "service"), shipment_id=_STRING, service=_SERVICE),
+                closed_object(("shipment_id", "service"), shipment_id=STRING_SCHEMA, service=_SERVICE),
             ),
-            _write(
+            write_action(
                 "cancel-shipment",
                 "Cancel one shipment that only has a label yet.",
-                _schema(("shipment_id",), shipment_id=_STRING),
+                closed_object(("shipment_id",), shipment_id=STRING_SCHEMA),
             ),
         ),
     ),
@@ -76,30 +76,30 @@ NEW_ASSISTANTS = (
         "loyalty",
         "Loyalty runs the shop's customer loyalty program with point balances and rewards to redeem.",
         (
-            _read(
+            read_action(
                 "find-customer",
                 "Find loyalty customers whose name or email contains the given text, with their point balances.",
-                _schema(("query",), query=_STRING),
+                closed_object(("query",), query=STRING_SCHEMA),
             ),
-            _read("list-rewards", "List the rewards and the points each one costs.", _schema()),
-            _write(
+            read_action("list-rewards", "List the rewards and the points each one costs.", closed_object()),
+            write_action(
                 "add-points",
                 "Add points to one customer's balance.",
-                _schema(
+                closed_object(
                     ("customer_id", "points"),
-                    customer_id=_STRING,
+                    customer_id=STRING_SCHEMA,
                     points={"type": "integer", "minimum": 1, "maximum": 1000},
                 ),
             ),
-            _write(
+            write_action(
                 "redeem-reward",
                 "Redeem one reward for one customer and deduct its points; fails when the balance is too low.",
-                _schema(("customer_id", "reward_id"), customer_id=_STRING, reward_id=_STRING),
+                closed_object(("customer_id", "reward_id"), customer_id=STRING_SCHEMA, reward_id=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "update-email",
                 "Change one customer's email address; fails when another customer already uses it.",
-                _schema(("customer_id", "email"), customer_id=_STRING, email=_STRING),
+                closed_object(("customer_id", "email"), customer_id=STRING_SCHEMA, email=STRING_SCHEMA),
             ),
         ),
     ),
@@ -107,39 +107,39 @@ NEW_ASSISTANTS = (
         "expenses",
         "Expenses keeps the business's expense claims and submits them for approval.",
         (
-            _read(
+            read_action(
                 "list-expenses",
                 "List expense claims, optionally only those with a status or category.",
-                _schema(status=_EXPENSE_STATUS, category=_CATEGORY),
+                closed_object(status=_EXPENSE_STATUS, category=_CATEGORY),
             ),
-            _write(
+            write_action(
                 "create-expense",
                 "Create one draft expense claim; paid_with defaults to company-card.",
-                _schema(
+                closed_object(
                     ("description", "date", "amount", "currency", "category"),
-                    description=_STRING,
-                    date=_DATE,
+                    description=STRING_SCHEMA,
+                    date=DATE_SCHEMA,
                     amount=_AMOUNT,
                     currency={"type": "string", "enum": ["EUR", "USD", "GBP"]},
                     category=_CATEGORY,
                     paid_with={"type": "string", "enum": ["company-card", "personal-card", "cash"]},
-                    note=_STRING,
+                    note=STRING_SCHEMA,
                 ),
             ),
-            _write(
+            write_action(
                 "set-category",
                 "Change the category of one draft expense claim.",
-                _schema(("expense_id", "category"), expense_id=_STRING, category=_CATEGORY),
+                closed_object(("expense_id", "category"), expense_id=STRING_SCHEMA, category=_CATEGORY),
             ),
-            _write(
+            write_action(
                 "submit-expense",
                 "Submit one draft expense claim for approval.",
-                _schema(("expense_id",), expense_id=_STRING),
+                closed_object(("expense_id",), expense_id=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "delete-expense",
                 "Delete one draft expense claim.",
-                _schema(("expense_id",), expense_id=_STRING),
+                closed_object(("expense_id",), expense_id=STRING_SCHEMA),
             ),
         ),
     ),

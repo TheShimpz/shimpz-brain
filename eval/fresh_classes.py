@@ -18,12 +18,11 @@ from collections.abc import Mapping
 
 from eval import fixtures, world
 from eval.corpus import scenarios, stratum_digest, validate_ids, validate_stratum
-from eval.fixtures import _DATE, _STRING, Assistant, _read, _schema, _write
+from eval.fixtures import DATE_SCHEMA, STRING_SCHEMA, TIME_SCHEMA, Assistant, closed_object, read_action, write_action
 from eval.fresh_classes_templates import TEMPLATES
 
 CORPUS_ID = "fresh-v4-classes"
 
-_TIME = {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$", "description": "24-hour time as HH:MM."}
 _LEASE_STATUS = {"type": "string", "enum": ["active", "ended"]}
 _TRADE = {
     "type": "string",
@@ -46,42 +45,42 @@ NEW_ASSISTANTS = (
         "Property manages the user's rental units, their tenants, and the leases between them. Rents and deposits "
         "are in EUR.",
         (
-            _read(
+            read_action(
                 "list-units",
                 "List rental units with their ids and labels, optionally only those whose label contains the text.",
-                _schema(query=_STRING),
+                closed_object(query=STRING_SCHEMA),
             ),
-            _read(
+            read_action(
                 "find-tenant",
                 "Find tenants, current or former, whose name or email contains the given text, with their contact "
                 "details and their leases.",
-                _schema(("query",), query=_STRING),
+                closed_object(("query",), query=STRING_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-leases",
                 "List leases with unit, tenant, monthly rent, deposit, dates, and status, optionally by unit, tenant, "
                 "or status.",
-                _schema(unit_id=_STRING, tenant_id=_STRING, status=_LEASE_STATUS),
+                closed_object(unit_id=STRING_SCHEMA, tenant_id=STRING_SCHEMA, status=_LEASE_STATUS),
             ),
-            _write(
+            write_action(
                 "renew-lease",
                 "Extend one active lease to a new end date after its current one; the monthly rent stays unchanged "
                 "unless new_monthly_rent is given.",
-                _schema(
+                closed_object(
                     ("lease_id", "new_end_date"),
-                    lease_id=_STRING,
-                    new_end_date=_DATE,
+                    lease_id=STRING_SCHEMA,
+                    new_end_date=DATE_SCHEMA,
                     new_monthly_rent={**_EUR, "description": "The new monthly rent in EUR."},
                 ),
             ),
-            _write(
+            write_action(
                 "update-tenant-contact",
                 "Change one tenant's email address or phone number, or both; fails when another tenant uses the email.",
-                _schema(
+                closed_object(
                     ("tenant_id",),
-                    tenant_id=_STRING,
-                    email=_STRING,
-                    phone={**_STRING, "description": "Phone number in international format."},
+                    tenant_id=STRING_SCHEMA,
+                    email=STRING_SCHEMA,
+                    phone={**STRING_SCHEMA, "description": "Phone number in international format."},
                 ),
             ),
         ),
@@ -91,51 +90,54 @@ NEW_ASSISTANTS = (
         "Repairs dispatches maintenance work orders for the rental units to the user's contractors and tracks their "
         "visits and costs in EUR.",
         (
-            _read(
+            read_action(
                 "list-contractors",
                 "List contractors with their trade, phone, and next free visit slot, optionally only one trade.",
-                _schema(trade=_TRADE),
+                closed_object(trade=_TRADE),
             ),
-            _read(
+            read_action(
                 "list-work-orders",
                 "List work orders with unit, contractor, visit, and costs, optionally by unit, contractor, or status.",
-                _schema(unit_id=_STRING, contractor_id=_STRING, status=_WORK_ORDER_STATUS),
+                closed_object(unit_id=STRING_SCHEMA, contractor_id=STRING_SCHEMA, status=_WORK_ORDER_STATUS),
             ),
-            _write(
+            write_action(
                 "create-work-order",
                 "Create one open work order for a unit and a contractor. Priority defaults to normal; without "
                 "preferred_date the visit takes the contractor's next free slot; access_notes and cost_cap default to "
                 "none; notify_tenant defaults to false. Returns the work order with its visit date and time.",
-                _schema(
+                closed_object(
                     ("unit_id", "contractor_id", "title"),
-                    unit_id=_STRING,
-                    contractor_id=_STRING,
-                    title=_STRING,
+                    unit_id=STRING_SCHEMA,
+                    contractor_id=STRING_SCHEMA,
+                    title=STRING_SCHEMA,
                     priority=_PRIORITY,
-                    preferred_date={**_DATE, "description": "Visit date as YYYY-MM-DD at the contractor's start time."},
-                    access_notes={**_STRING, "description": "How the contractor gets into the unit."},
+                    preferred_date={
+                        **DATE_SCHEMA,
+                        "description": "Visit date as YYYY-MM-DD at the contractor's start time.",
+                    },
+                    access_notes={**STRING_SCHEMA, "description": "How the contractor gets into the unit."},
                     cost_cap={**_EUR, "description": "Most the contractor may charge in EUR without asking first."},
                     notify_tenant={"type": "boolean", "description": "Email the tenant the visit date and time."},
                 ),
             ),
-            _write(
+            write_action(
                 "reschedule-visit",
                 "Move the visit of one open work order to another date and start time.",
-                _schema(
+                closed_object(
                     ("work_order_id", "date", "start_time"),
-                    work_order_id=_STRING,
-                    date=_DATE,
-                    start_time=_TIME,
+                    work_order_id=STRING_SCHEMA,
+                    date=DATE_SCHEMA,
+                    start_time=TIME_SCHEMA,
                 ),
             ),
-            _write(
+            write_action(
                 "complete-work-order",
                 "Mark one open work order completed with the contractor's final cost and optional invoice number.",
-                _schema(
+                closed_object(
                     ("work_order_id", "final_cost"),
-                    work_order_id=_STRING,
+                    work_order_id=STRING_SCHEMA,
                     final_cost=_EUR,
-                    invoice_number=_STRING,
+                    invoice_number=STRING_SCHEMA,
                 ),
             ),
         ),
@@ -144,43 +146,43 @@ NEW_ASSISTANTS = (
         "payments",
         "Payments sends bank transfers in EUR from the business account to saved payees.",
         (
-            _read(
+            read_action(
                 "list-payees",
                 "List saved payees with their ids and IBAN endings, optionally only those whose name contains the "
                 "text.",
-                _schema(name=_STRING),
+                closed_object(name=STRING_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-transfers",
                 "List transfers with payee, amount, reference, date, and status, optionally by payee, reference, or "
                 "status.",
-                _schema(payee_id=_STRING, reference=_STRING, status=_TRANSFER_STATUS),
+                closed_object(payee_id=STRING_SCHEMA, reference=STRING_SCHEMA, status=_TRANSFER_STATUS),
             ),
-            _write(
+            write_action(
                 "add-payee",
                 "Save one new payee by name and IBAN, with an optional email for remittance advice; fails when a "
                 "payee with that IBAN exists.",
-                _schema(("name", "iban"), name=_STRING, iban=_IBAN, email=_STRING),
+                closed_object(("name", "iban"), name=STRING_SCHEMA, iban=_IBAN, email=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "create-transfer",
                 "Send one transfer to a saved payee. Without execution_date it is sent immediately, otherwise it is "
                 "scheduled for that date; instant defaults to false and needs immediate sending; reference (shown to "
                 "the payee) and internal_note default to empty.",
-                _schema(
+                closed_object(
                     ("payee_id", "amount"),
-                    payee_id=_STRING,
+                    payee_id=STRING_SCHEMA,
                     amount=_EUR,
-                    reference={**_STRING, "description": "Text shown to the payee on their statement."},
-                    execution_date=_DATE,
+                    reference={**STRING_SCHEMA, "description": "Text shown to the payee on their statement."},
+                    execution_date=DATE_SCHEMA,
                     instant={"type": "boolean"},
-                    internal_note={**_STRING, "description": "Note visible only in the business account."},
+                    internal_note={**STRING_SCHEMA, "description": "Note visible only in the business account."},
                 ),
             ),
-            _write(
+            write_action(
                 "cancel-transfer",
                 "Cancel one scheduled transfer; a sent transfer cannot be cancelled.",
-                _schema(("transfer_id",), transfer_id=_STRING),
+                closed_object(("transfer_id",), transfer_id=STRING_SCHEMA),
             ),
         ),
     ),

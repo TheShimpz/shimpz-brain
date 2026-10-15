@@ -21,7 +21,7 @@ from collections.abc import Mapping
 
 from eval import fixtures, world
 from eval.corpus import scenarios, stratum_digest, validate_stratum
-from eval.fixtures import _DATE, _STRING, Action, Assistant, _read, _schema, _write
+from eval.fixtures import DATE_SCHEMA, STRING_SCHEMA, Action, Assistant, closed_object, read_action, write_action
 from eval.fresh3_records import (
     CLASSES,
     CUSTOMERS,
@@ -50,31 +50,31 @@ NEW_ASSISTANTS = (
         "recipes",
         "Recipes keeps the catering kitchen's recipe book and its weekly menu. Prices are per serving in EUR.",
         (
-            _read(
+            read_action(
                 "search-recipes",
                 "Find recipes whose name or description contains the given text, ignoring case; optionally only one "
                 "course. Without filters, list every recipe.",
-                _schema(query=_STRING, course=_COURSE),
+                closed_object(query=STRING_SCHEMA, course=_COURSE),
             ),
-            _read(
+            read_action(
                 "list-menu",
                 "List the weekly menu entries with their day and recipe, optionally only one day's.",
-                _schema(day=_DAY),
+                closed_object(day=_DAY),
             ),
-            _write(
+            write_action(
                 "add-to-menu",
                 "Put one recipe on the weekly menu on one day; fails when it is already on that day.",
-                _schema(("recipe_id", "day"), recipe_id=_STRING, day=_DAY),
+                closed_object(("recipe_id", "day"), recipe_id=STRING_SCHEMA, day=_DAY),
             ),
-            _write(
+            write_action(
                 "remove-from-menu",
                 "Remove one entry from the weekly menu by its id.",
-                _schema(("entry_id",), entry_id=_STRING),
+                closed_object(("entry_id",), entry_id=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "set-price",
                 "Set one recipe's price per serving in EUR.",
-                _schema(("recipe_id", "price"), recipe_id=_STRING, price=_PRICE),
+                closed_object(("recipe_id", "price"), recipe_id=STRING_SCHEMA, price=_PRICE),
             ),
         ),
     ),
@@ -83,44 +83,44 @@ NEW_ASSISTANTS = (
         "Rentals runs a kimono rental shop: the garments and accessories for rent, the shop's customers, and their "
         "reservations.",
         (
-            _read(
+            read_action(
                 "search-items",
                 "Find rental items whose name or description contains the given text, ignoring case; optionally only "
                 "those with a status. Without filters, list every item.",
-                _schema(query=_STRING, status=_ITEM_STATUS),
+                closed_object(query=STRING_SCHEMA, status=_ITEM_STATUS),
             ),
-            _read(
+            read_action(
                 "list-customers",
                 "List the shop's customers, optionally only those whose name contains the given text, ignoring case.",
-                _schema(query=_STRING),
+                closed_object(query=STRING_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-reservations",
                 "List reservations with their item and customer names, optionally only one item's or one date's.",
-                _schema(item_id=_STRING, date=_DATE),
+                closed_object(item_id=STRING_SCHEMA, date=DATE_SCHEMA),
             ),
-            _write(
+            write_action(
                 "reserve-item",
                 "Reserve one item for one customer on one date; the dressing service defaults to off and the note to "
                 "empty. Fails when the item is under repair or already reserved that date.",
-                _schema(
+                closed_object(
                     ("item_id", "customer_id", "date"),
-                    item_id=_STRING,
-                    customer_id=_STRING,
-                    date=_DATE,
+                    item_id=STRING_SCHEMA,
+                    customer_id=STRING_SCHEMA,
+                    date=DATE_SCHEMA,
                     dressing={"type": "boolean", "description": "Whether the staff dress the customer."},
-                    note=_STRING,
+                    note=STRING_SCHEMA,
                 ),
             ),
-            _write(
+            write_action(
                 "cancel-reservation",
                 "Cancel one reservation by its id.",
-                _schema(("reservation_id",), reservation_id=_STRING),
+                closed_object(("reservation_id",), reservation_id=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "set-status",
                 "Set one item's status.",
-                _schema(("item_id", "status"), item_id=_STRING, status=_ITEM_STATUS),
+                closed_object(("item_id", "status"), item_id=STRING_SCHEMA, status=_ITEM_STATUS),
             ),
         ),
     ),
@@ -129,35 +129,37 @@ NEW_ASSISTANTS = (
         "Documents keeps the household's scanned documents with their holder, expiry date, notes, an optional "
         "reminder date, and whether they are archived.",
         (
-            _read(
+            read_action(
                 "search-documents",
                 "Find documents whose title or notes contain the given text, ignoring case.",
-                _schema(("query",), query=_STRING),
+                closed_object(("query",), query=STRING_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-expiring",
                 "List the documents that are not archived and expire on or before the given date, soonest first.",
-                _schema(("before",), before=_DATE),
+                closed_object(("before",), before=DATE_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-documents",
                 "List every document, optionally only one holder's.",
-                _schema(holder={**_STRING, "description": "The holder's full name as stored, ignoring case."}),
+                closed_object(
+                    holder={**STRING_SCHEMA, "description": "The holder's full name as stored, ignoring case."}
+                ),
             ),
-            _write(
+            write_action(
                 "set-reminder",
                 "Set or replace one document's reminder date; fails for an archived document.",
-                _schema(("document_id", "date"), document_id=_STRING, date=_DATE),
+                closed_object(("document_id", "date"), document_id=STRING_SCHEMA, date=DATE_SCHEMA),
             ),
-            _write(
+            write_action(
                 "rename-document",
                 "Change one document's title; fails for an archived document or a title another document has.",
-                _schema(("document_id", "title"), document_id=_STRING, title=_STRING),
+                closed_object(("document_id", "title"), document_id=STRING_SCHEMA, title=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "archive-document",
                 "Archive one document.",
-                _schema(("document_id",), document_id=_STRING),
+                closed_object(("document_id",), document_id=STRING_SCHEMA),
             ),
         ),
     ),
@@ -166,27 +168,27 @@ NEW_ASSISTANTS = (
         "Classes runs the kitchen's cooking-class catalog and the students enrolled in each class. A class's id is "
         "its code, such as CL-100.",
         (
-            _read(
+            read_action(
                 "search-classes",
                 "Find classes whose title or description contains the given text, ignoring case; optionally only on "
                 "one date. Without filters, list every class with its free seats.",
-                _schema(query=_STRING, date=_DATE),
+                closed_object(query=STRING_SCHEMA, date=DATE_SCHEMA),
             ),
-            _read(
+            read_action(
                 "list-enrollments",
                 "List the students enrolled in one class.",
-                _schema(("class_id",), class_id=_STRING),
+                closed_object(("class_id",), class_id=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "enroll-student",
                 "Enroll one student, by full name, in one class; fails when the class is full or the student is "
                 "already in it.",
-                _schema(("class_id", "student"), class_id=_STRING, student=_STRING),
+                closed_object(("class_id", "student"), class_id=STRING_SCHEMA, student=STRING_SCHEMA),
             ),
-            _write(
+            write_action(
                 "cancel-enrollment",
                 "Cancel one enrollment by its id.",
-                _schema(("enrollment_id",), enrollment_id=_STRING),
+                closed_object(("enrollment_id",), enrollment_id=STRING_SCHEMA),
             ),
         ),
     ),

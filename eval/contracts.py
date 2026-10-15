@@ -10,7 +10,16 @@ standard library.
 from collections.abc import Mapping
 
 from eval.corpus import LOCALES
-from eval.fixtures import _DATE, _RECORD_TYPES, _STRING, _TIME, DISTRACTORS, Action, Assistant, _schema
+from eval.fixtures import (
+    DATE_SCHEMA,
+    DISTRACTORS,
+    RECORD_TYPE_SCHEMA,
+    STRING_SCHEMA,
+    TIME_SCHEMA,
+    Action,
+    Assistant,
+    closed_object,
+)
 
 HOSTNAME = "hostname"
 DATE = "date"
@@ -21,28 +30,28 @@ def _described(schema: Mapping[str, object], description: str) -> dict[str, obje
     return {**schema, "description": description}
 
 
-_ZONE_ID = _described(_STRING, "Zone id from list-zones, such as zn-1234.")
-_RECORD_ID = _described(_STRING, "Record id from list-records or get-record, such as rc-5678.")
+_ZONE_ID = _described(STRING_SCHEMA, "Zone id from list-zones, such as zn-1234.")
+_RECORD_ID = _described(STRING_SCHEMA, "Record id from list-records or get-record, such as rc-5678.")
 _NAME = _described(
-    _STRING, "Record name, relative such as www or fully qualified such as www.example.com; never an address."
+    STRING_SCHEMA, "Record name, relative such as www or fully qualified such as www.example.com; never an address."
 )
 DNS = Assistant(
     "dns",
     "DNS manages the user's DNS zones and records through the provider API. Zones and records are addressed by id: "
     "list zones to get a zone id, then list or get records to get a record id before changing or deleting a record.",
     (
-        Action("list-zones", "List the user's DNS zones with their ids and names.", _schema(), writes=False),
+        Action("list-zones", "List the user's DNS zones with their ids and names.", closed_object(), writes=False),
         Action(
             "list-records",
             "List a zone's records. Every filter is optional and exact: name is a record name, never an address; type "
             "is the record type; content is the exact record value, such as 192.0.2.1, to find which records point to "
             "it. Omit every filter to list all records.",
-            _schema(
+            closed_object(
                 ("zone_id",),
                 zone_id=_ZONE_ID,
                 name=_NAME,
-                type=_RECORD_TYPES,
-                content=_described(_STRING, "Exact record value, such as 192.0.2.1."),
+                type=RECORD_TYPE_SCHEMA,
+                content=_described(STRING_SCHEMA, "Exact record value, such as 192.0.2.1."),
             ),
             writes=False,
             filters=("name", "content"),
@@ -51,19 +60,19 @@ DNS = Assistant(
         Action(
             "get-record",
             "Get one record by its id.",
-            _schema(("zone_id", "record_id"), zone_id=_ZONE_ID, record_id=_RECORD_ID),
+            closed_object(("zone_id", "record_id"), zone_id=_ZONE_ID, record_id=_RECORD_ID),
             writes=False,
         ),
         Action(
             "create-record",
             "Create one record. When a record with the same name and type already exists, nothing is created and the "
             "existing record is returned with created false; change it with update-record instead.",
-            _schema(
+            closed_object(
                 ("zone_id", "type", "name", "content"),
                 zone_id=_ZONE_ID,
-                type=_RECORD_TYPES,
+                type=RECORD_TYPE_SCHEMA,
                 name=_NAME,
-                content=_described(_STRING, "Record value, such as 203.0.113.10 for an A record."),
+                content=_described(STRING_SCHEMA, "Record value, such as 203.0.113.10 for an A record."),
             ),
             writes=True,
             kinds=(("name", HOSTNAME),),
@@ -71,23 +80,23 @@ DNS = Assistant(
         Action(
             "update-record",
             "Change the content of one existing record, identified by its zone id and record id.",
-            _schema(
+            closed_object(
                 ("zone_id", "record_id", "content"),
                 zone_id=_ZONE_ID,
                 record_id=_RECORD_ID,
-                content=_described(_STRING, "New record value, such as 198.51.100.7."),
+                content=_described(STRING_SCHEMA, "New record value, such as 198.51.100.7."),
             ),
             writes=True,
         ),
         Action(
             "delete-record",
             "Delete one existing record, identified by its zone id and record id.",
-            _schema(("zone_id", "record_id"), zone_id=_ZONE_ID, record_id=_RECORD_ID),
+            closed_object(("zone_id", "record_id"), zone_id=_ZONE_ID, record_id=_RECORD_ID),
             writes=True,
         ),
     ),
 )
-_TASK_ID = _described(_STRING, "Task id from list-tasks, such as tk-12.")
+_TASK_ID = _described(STRING_SCHEMA, "Task id from list-tasks, such as tk-12.")
 TASKS = Assistant(
     "tasks",
     "Tasks keeps the user's to-do list. Each task has an id, a title, tags, and a status, open or done. Find a task by "
@@ -98,28 +107,30 @@ TASKS = Assistant(
             "List tasks; status defaults to open. query matches words in the title, case-insensitively, such as "
             "dentist. tag must be one of the user's existing tags exactly, such as home or work; tags are labels, not "
             "title words. Omit both to see every task with its tags.",
-            _schema(
+            closed_object(
                 status={"type": "string", "enum": ["open", "done", "all"]},
-                query=_described(_STRING, "Words of the task title, such as dentist."),
-                tag=_described(_STRING, "An existing tag, such as home."),
+                query=_described(STRING_SCHEMA, "Words of the task title, such as dentist."),
+                tag=_described(STRING_SCHEMA, "An existing tag, such as home."),
             ),
             writes=False,
             filters=("query", "tag"),
         ),
-        Action("get-task", "Get one task by its id.", _schema(("task_id",), task_id=_TASK_ID), writes=False),
+        Action("get-task", "Get one task by its id.", closed_object(("task_id",), task_id=_TASK_ID), writes=False),
         Action(
             "create-task",
             "Create one open task. Set due_date and tags only when the user gives them.",
-            _schema(
+            closed_object(
                 ("title",),
-                title=_described(_STRING, "Task title in the user's words, such as Renew my passport."),
-                due_date=_DATE,
-                tags={"type": "array", "items": _STRING, "maxItems": 8},
+                title=_described(STRING_SCHEMA, "Task title in the user's words, such as Renew my passport."),
+                due_date=DATE_SCHEMA,
+                tags={"type": "array", "items": STRING_SCHEMA, "maxItems": 8},
             ),
             writes=True,
             kinds=(("due_date", DATE),),
         ),
-        Action("complete-task", "Mark one task done by its id.", _schema(("task_id",), task_id=_TASK_ID), writes=True),
+        Action(
+            "complete-task", "Mark one task done by its id.", closed_object(("task_id",), task_id=_TASK_ID), writes=True
+        ),
     ),
 )
 CALENDAR = Assistant(
@@ -129,7 +140,7 @@ CALENDAR = Assistant(
         Action(
             "list-events",
             "List the events on one date with their ids, titles, start times, and durations.",
-            _schema(("date",), date=_described(_DATE, "Date as YYYY-MM-DD, such as 2026-10-05.")),
+            closed_object(("date",), date=_described(DATE_SCHEMA, "Date as YYYY-MM-DD, such as 2026-10-05.")),
             writes=False,
             kinds=(("date", DATE),),
         ),
@@ -137,11 +148,11 @@ CALENDAR = Assistant(
             "create-event",
             "Create one event. title is the exact title the user gives; set duration_minutes only when the user gives "
             "it, otherwise it is 60.",
-            _schema(
+            closed_object(
                 ("title", "date", "start_time"),
-                title=_described(_STRING, "Exact event title, such as Team lunch."),
-                date=_described(_DATE, "Date as YYYY-MM-DD, such as 2026-10-09."),
-                start_time=_described(_TIME, "Start as HH:MM, 24-hour, such as 12:00."),
+                title=_described(STRING_SCHEMA, "Exact event title, such as Team lunch."),
+                date=_described(DATE_SCHEMA, "Date as YYYY-MM-DD, such as 2026-10-09."),
+                start_time=_described(TIME_SCHEMA, "Start as HH:MM, 24-hour, such as 12:00."),
                 duration_minutes={"type": "integer", "minimum": 5, "maximum": 1440},
             ),
             writes=True,
@@ -157,16 +168,16 @@ MESSAGES = Assistant(
             "find-contact",
             "Find contacts whose display name contains the text, case-insensitively, such as a first name like Ana; "
             "returns ids and full names.",
-            _schema(("name",), name=_described(_STRING, "Part of the display name, such as Ana.")),
+            closed_object(("name",), name=_described(STRING_SCHEMA, "Part of the display name, such as Ana.")),
             writes=False,
             filters=("name",),
         ),
         Action(
             "send-message",
             "Send one text message to one contact by contact id.",
-            _schema(
+            closed_object(
                 ("contact_id", "text"),
-                contact_id=_described(_STRING, "Contact id from find-contact, such as ct-12."),
+                contact_id=_described(STRING_SCHEMA, "Contact id from find-contact, such as ct-12."),
                 text={"type": "string", "minLength": 1, "maxLength": 1000, "description": "The message as delivered."},
             ),
             writes=True,
@@ -180,13 +191,13 @@ RESEARCH = Assistant(
         Action(
             "search-web",
             "Search the public web; include the exact service or domain name, such as status.example.org current IP.",
-            _schema(("query",), query=_STRING),
+            closed_object(("query",), query=STRING_SCHEMA),
             writes=False,
         ),
         Action(
             "read-page",
             "Read one public page by a url from search-web results.",
-            _schema(("url",), url=_STRING),
+            closed_object(("url",), url=STRING_SCHEMA),
             writes=False,
         ),
     ),

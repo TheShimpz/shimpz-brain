@@ -7,18 +7,18 @@ state, templates, and scenarios. This module uses only the standard library.
 
 from collections.abc import Mapping
 
-from eval.fixtures import _DATE, _OBJECT, _STRING, DISTRACTORS, Action, Assistant
+from eval.fixtures import DATE_SCHEMA, DISTRACTORS, OBJECT_SCHEMA, STRING_SCHEMA, Action, Assistant
 
 ASSISTANT_ID = "edge"
 
-_ID = {**_STRING, "description": "Identifier returned by a list or get Action."}
+_ID = {**STRING_SCHEMA, "description": "Identifier returned by a list or get Action."}
 _BOOL = {"type": "boolean"}
 _INT = {"type": "integer", "minimum": 1}
-_LIST = {"type": "array", "items": _STRING, "maxItems": 30}
+_LIST = {"type": "array", "items": STRING_SCHEMA, "maxItems": 30}
 _TYPES = {"type": "string", "enum": ["A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "CAA"]}
 
 
-def _p(text: str, schema: Mapping[str, object] = _STRING) -> dict[str, object]:
+def _p(text: str, schema: Mapping[str, object] = STRING_SCHEMA) -> dict[str, object]:
     return {**schema, "description": text}
 
 
@@ -320,7 +320,7 @@ GROUPS: dict[str, tuple[str, tuple[tuple[str, str, bool, tuple[str, ...], dict[s
                 "List recent firewall events of a zone.",
                 False,
                 ("zone_id",),
-                {"zone_id": ZONE, "since": _DATE},
+                {"zone_id": ZONE, "since": DATE_SCHEMA},
             ),
             ("security-level-get", "Get the zone's security level.", False, ("zone_id",), {"zone_id": ZONE}),
             (
@@ -434,28 +434,28 @@ GROUPS: dict[str, tuple[str, tuple[tuple[str, str, bool, tuple[str, ...], dict[s
                 "Get a zone's request and bandwidth totals for one day.",
                 False,
                 ("zone_id", "date"),
-                {"zone_id": ZONE, "date": _DATE},
+                {"zone_id": ZONE, "date": DATE_SCHEMA},
             ),
             (
                 "analytics-zone-threats",
                 "Get a zone's threat totals for one day.",
                 False,
                 ("zone_id", "date"),
-                {"zone_id": ZONE, "date": _DATE},
+                {"zone_id": ZONE, "date": DATE_SCHEMA},
             ),
             (
                 "analytics-dns-queries",
                 "Get a zone's DNS query totals for one day.",
                 False,
                 ("zone_id", "date"),
-                {"zone_id": ZONE, "date": _DATE},
+                {"zone_id": ZONE, "date": DATE_SCHEMA},
             ),
             (
                 "analytics-workers-requests",
                 "Get a Worker script's request totals for one day.",
                 False,
                 ("script", "date"),
-                {"script": _p("Script name."), "date": _DATE},
+                {"script": _p("Script name."), "date": DATE_SCHEMA},
             ),
             (
                 "analytics-r2-usage",
@@ -652,7 +652,7 @@ GROUPS: dict[str, tuple[str, tuple[tuple[str, str, bool, tuple[str, ...], dict[s
                 {"name": _p("Token name."), "permissions": _LIST},
             ),
             ("api-tokens-revoke", "Revoke an API token.", True, ("token_id",), {"token_id": _ID}),
-            ("audit-logs-list", "List recent account audit log entries.", False, (), {"since": _DATE}),
+            ("audit-logs-list", "List recent account audit log entries.", False, (), {"since": DATE_SCHEMA}),
         ),
     ),
 }
@@ -662,7 +662,7 @@ EDGE = Assistant(
     "firewall, cache, SSL/TLS, analytics and logs, Pages, load balancing, Access and tunnels, email routing, and "
     "account members and tokens. Most Actions take a zone id from zones-list.",
     tuple(
-        Action(action_id, summary, {**_OBJECT, "properties": properties, "required": list(required)}, writes)
+        Action(action_id, summary, {**OBJECT_SCHEMA, "properties": properties, "required": list(required)}, writes)
         for _group, (_description, actions) in GROUPS.items()
         for action_id, summary, writes, required, properties in actions
     ),
