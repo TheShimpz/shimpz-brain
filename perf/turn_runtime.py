@@ -12,7 +12,6 @@ I/O wait. p50 is the median and p95 uses nearest rank.
 
 import argparse
 import json
-import math
 import os
 import socket
 import sqlite3
@@ -26,6 +25,7 @@ from unittest import mock
 
 import agent_runtime
 import runtime_api
+from eval import stats as eval_stats
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 
@@ -102,10 +102,9 @@ def _assistants(count: int, actions_each: int) -> tuple[agent_runtime.AssistantD
 
 
 def _summary(values: list[int], *, raw: bool = False) -> dict[str, object]:
-    ordered = sorted(values)
     result: dict[str, object] = {
         "p50_ms": round(statistics.median(values) / 1_000_000, 6),
-        "p95_ms": round(ordered[math.ceil(len(values) * 0.95) - 1] / 1_000_000, 6),
+        "p95_ms": round(eval_stats.percentile(values, 0.95) / 1_000_000, 6),
     }
     if raw:
         result["samples_ms"] = [round(value / 1_000_000, 6) for value in values]

@@ -22,6 +22,7 @@ import http.client
 import importlib
 import itertools
 import json
+import math
 import os
 import secrets
 import socket
@@ -245,7 +246,8 @@ def _summary(args, durations_ns, frozen, samples, latencies, failures, seconds) 
     turns = sorted(latencies)
 
     def rank(values: list[float], fraction: float) -> float:
-        return values[min(len(values) - 1, int(fraction * len(values)))]
+        # The nearest rank of eval.stats.percentile, which this process (Team's environment) cannot import.
+        return values[max(0, math.ceil(fraction * len(values)) - 1)]
 
     return {
         "arm": args.arm,

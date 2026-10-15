@@ -9,13 +9,13 @@ Only case names and aggregate timings are printed after every result matches.
 
 import argparse
 import json
-import math
 import statistics
 import time
 from collections.abc import Callable
 
 import agent_runtime
 import capability_plan
+from eval import stats as eval_stats
 from langchain_core.messages import AIMessage
 
 _RESPONSE = AIMessage(content='{"status":"sufficient","assistant_ids":[]}')
@@ -62,8 +62,7 @@ def _measure(operation: Callable[[], object], expected: object, samples: int) ->
         elapsed.append((time.perf_counter_ns() - start) / 1_000_000)
         if result != expected:
             raise AssertionError("capability plan result changed")
-    ordered = sorted(elapsed)
-    return {"p50_ms": statistics.median(elapsed), "p95_ms": ordered[math.ceil(samples * 0.95) - 1]}
+    return {"p50_ms": statistics.median(elapsed), "p95_ms": eval_stats.percentile(elapsed, 0.95)}
 
 
 def _case(

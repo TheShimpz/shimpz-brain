@@ -9,12 +9,12 @@ Only case names and aggregate timings are printed.
 
 import argparse
 import json
-import math
 import statistics
 import time
 
 import agent_runtime
 import intent_route
+from eval import stats as eval_stats
 from langchain_core.messages import AIMessage
 
 _RESULT = intent_route.StructuredRoute(intent="ordinary-task", query="", assistant_ids=[], reply="", task_follows=False)
@@ -41,11 +41,6 @@ class FixedFactory:
         raise AssertionError("intent route used the ordinary model")
 
 
-def _percentile(samples: list[float], percentage: float) -> float:
-    ordered = sorted(samples)
-    return ordered[math.ceil(len(ordered) * percentage) - 1]
-
-
 def _case(runtime, provider, objective: str, context: intent_route.LifecycleContext, samples: int) -> dict[str, float]:
     def route() -> None:
         result = runtime.intent_route(provider, objective, None, (), context, "en")
@@ -59,7 +54,7 @@ def _case(runtime, provider, objective: str, context: intent_route.LifecycleCont
         start = time.perf_counter_ns()
         route()
         elapsed.append((time.perf_counter_ns() - start) / 1_000_000)
-    return {"p50_ms": statistics.median(elapsed), "p95_ms": _percentile(elapsed, 0.95)}
+    return {"p50_ms": statistics.median(elapsed), "p95_ms": eval_stats.percentile(elapsed, 0.95)}
 
 
 def _context(text: str) -> intent_route.LifecycleContext:

@@ -8,12 +8,12 @@ it makes no provider, checkpoint, Team, browser, Docker, or network request.
 
 import argparse
 import json
-import math
 import statistics
 import sys
 import time
 
 import agent_runtime
+from eval import stats as eval_stats
 
 WARMUPS = 20
 TYPICAL_BYTES = 2_400
@@ -35,10 +35,9 @@ def _precomposed_genesis(size: int) -> str:
 
 
 def _summary(values: list[int]) -> dict[str, float]:
-    ordered = sorted(values)
     return {
         "p50_ms": round(statistics.median(values) / 1_000_000, 6),
-        "p95_ms": round(ordered[math.ceil(len(values) * 0.95) - 1] / 1_000_000, 6),
+        "p95_ms": round(eval_stats.percentile(values, 0.95) / 1_000_000, 6),
     }
 
 
