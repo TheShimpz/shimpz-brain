@@ -96,6 +96,8 @@ class TrajectoryJudgeTests(unittest.TestCase):
                     judging.calibration_items(path)
             path.write_text(json.dumps(data) + " ", encoding="utf-8")
             self.assertNotEqual(judging.identity(path), judging.identity())
+        # Stored calibrations and verdicts carry this value; bump it only together with VERSION.
+        self.assertEqual(judging.identity(), "sha256:046714111577da667a196f477239f1f0f415bb432269b68e0f13805494552bbe")
 
     def test_agreement_counts_failures_and_reports_wilson_intervals(self):
         expected = dict.fromkeys(judging.CRITERIA, True) | {"unsupported_claim": False}

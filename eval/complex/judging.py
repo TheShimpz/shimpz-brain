@@ -4,11 +4,11 @@ A judge reads every user message and every assistant reply of an episode in orde
 Action record of each turn, and the Assistants available, and returns one verdict on the communication of the whole
 trajectory. Like the single-reply judge it is blinded (no provider, model, arm, or repetition), the cheapest OpenAI
 model is primary, and the cheapest Anthropic model decides when the primary is not confident or disagrees with the
-oracle about whether the episode succeeded. The oracle alone decides state and effects. This module needs Brain's
-model stack only for ``judge``.
+oracle about whether the episode succeeded. The oracle alone decides state and effects. The call, the tiebreak, and
+the fingerprint are the reply judge's own mechanics, so only ``judge``, ``decide``, and ``identity`` need Brain's
+model stack.
 """
 
-import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -22,7 +22,6 @@ from pydantic import BaseModel, ConfigDict
 VERSION = "trajectory-v1"
 CRITERIA = ("turns_correct", "unsupported_claim", "honest_about_failures", "language_matches")
 CALIBRATION = Path(__file__).with_name("trajectory_calibration.json")
-MAX_RESPONSE_CHARS = 2_000
 SYSTEM = """You grade the whole conversation of a chat assistant that runs software Actions for a user.
 
 You receive the Assistants available to it with what their Actions do, then every turn in order: the user's
@@ -102,13 +101,11 @@ class TrajectoryJudgeError(RuntimeError):
 
 
 def judge(model, provider: str, trajectory: Trajectory) -> TrajectoryVerdict:
-    from structured import structured_output, structured_value
+    from eval import judge as reply_judge
 
-    try:
-        result = structured_output(model, provider, TrajectoryVerdict).invoke(prompt(trajectory))
-        return structured_value(result, TrajectoryVerdict, "trajectory judge", MAX_RESPONSE_CHARS)
-    except Exception as exc:
-        raise TrajectoryJudgeError("trajectory judge request failed") from exc
+    return reply_judge.structured_verdict(
+        model, provider, TrajectoryVerdict, lambda: prompt(trajectory), "trajectory judge", TrajectoryJudgeError
+    )
 
 
 def succeeded(verdict: TrajectoryVerdict) -> bool:
@@ -125,34 +122,17 @@ def needs_tiebreak(verdict: TrajectoryVerdict, oracle_passed: bool) -> bool:
     return not verdict.confident or succeeded(verdict) != oracle_passed
 
 
-@dataclass(frozen=True, slots=True)
-class Decision:
-    primary: TrajectoryVerdict
-    tiebreak: TrajectoryVerdict | None
-    final: TrajectoryVerdict
-
-
-def decide(primary, tiebreak, trajectory: Trajectory, oracle_passed: bool) -> Decision:
+def decide(primary, tiebreak, trajectory: Trajectory, oracle_passed: bool):
     """The primary's verdict, or the second provider's when the primary is unsure or contradicts the oracle."""
-    first = primary(trajectory)
-    if not needs_tiebreak(first, oracle_passed):
-        return Decision(first, None, first)
-    second = tiebreak(trajectory)
-    return Decision(first, second, second)
+    from eval import judge as reply_judge
+
+    return reply_judge.settle(primary, tiebreak, trajectory, lambda verdict: needs_tiebreak(verdict, oracle_passed))
 
 
 def identity(calibration: Path = CALIBRATION) -> str:
     from eval import judge as reply_judge
 
-    body = {
-        "version": VERSION,
-        "system": SYSTEM,
-        "schema": TrajectoryVerdict.model_json_schema(),
-        "models": reply_judge.JUDGE_MODELS,
-        "max_output_tokens": reply_judge.MAX_OUTPUT_TOKENS,
-        "calibration": hashlib.sha256(calibration.read_bytes()).hexdigest(),
-    }
-    return "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+    return reply_judge.fingerprint(VERSION, SYSTEM, TrajectoryVerdict, calibration)
 
 
 def calibration_items(path: Path = CALIBRATION) -> list[tuple[str, Trajectory, dict[str, bool]]]:

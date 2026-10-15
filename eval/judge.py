@@ -102,17 +102,22 @@ def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
     return [SystemMessage(SYSTEM), HumanMessage(json.dumps(body, ensure_ascii=False, indent=1))]
 
 
-def identity(calibration: Path = CALIBRATION) -> str:
-    """The fingerprint a calibration and every verdict must share for a report to support a decision."""
+def fingerprint(version: str, system: str, schema: type[BaseModel], calibration: Path) -> str:
+    """One frozen judge's fingerprint: its version, prompt, schema, models, output limit, and calibration sample."""
     body = {
-        "version": JUDGE_VERSION,
-        "system": SYSTEM,
-        "schema": Verdict.model_json_schema(),
+        "version": version,
+        "system": system,
+        "schema": schema.model_json_schema(),
         "models": JUDGE_MODELS,
         "max_output_tokens": MAX_OUTPUT_TOKENS,
         "calibration": hashlib.sha256(calibration.read_bytes()).hexdigest(),
     }
     return "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+def identity(calibration: Path = CALIBRATION) -> str:
+    """The fingerprint a calibration and every verdict must share for a report to support a decision."""
+    return fingerprint(JUDGE_VERSION, SYSTEM, Verdict, calibration)
 
 
 def judge_model(provider: str, api_key: str) -> BaseChatModel:
@@ -139,14 +144,26 @@ class JudgeError(RuntimeError):
     """The judge request or its response failed; the attempt stays unjudged."""
 
 
-def judge(model: BaseChatModel, provider: str, item: Item) -> Verdict:
+def structured_verdict[V: BaseModel](
+    model: BaseChatModel,
+    provider: str,
+    schema: type[V],
+    messages: Callable[[], list],
+    label: str,
+    error: type[Exception],
+) -> V:
+    """One judge call and its closed re-validation; any failure, building the prompt included, raises ``error``."""
     from structured import structured_output, structured_value
 
     try:
-        result = structured_output(model, provider, Verdict).invoke(prompt(item))
-        return structured_value(result, Verdict, "judge", MAX_RESPONSE_CHARS)
+        result = structured_output(model, provider, schema).invoke(messages())
+        return structured_value(result, schema, label, MAX_RESPONSE_CHARS)
     except Exception as exc:
-        raise JudgeError("judge request failed") from exc
+        raise error(f"{label} request failed") from exc
+
+
+def judge(model: BaseChatModel, provider: str, item: Item) -> Verdict:
+    return structured_verdict(model, provider, Verdict, lambda: prompt(item), "judge", JudgeError)
 
 
 def succeeded(verdict: Verdict, item: Item) -> bool:
@@ -165,20 +182,27 @@ def needs_tiebreak(verdict: Verdict, item: Item, oracle_passed: bool) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
-class Decision:
-    primary: Verdict
-    tiebreak: Verdict | None
-    final: Verdict
+class Decision[V]:
+    primary: V
+    tiebreak: V | None
+    final: V
+
+
+def settle[I, V](
+    primary: Callable[[I], V], tiebreak: Callable[[I], V], item: I, doubtful: Callable[[V], bool]
+) -> Decision[V]:
+    """The primary's verdict, or the second provider's when ``doubtful`` holds for the primary's."""
+    first = primary(item)
+    if not doubtful(first):
+        return Decision(first, None, first)
+    second = tiebreak(item)
+    return Decision(first, second, second)
 
 
 def decide(
     primary: Callable[[Item], Verdict], tiebreak: Callable[[Item], Verdict], item: Item, oracle_passed: bool
-) -> Decision:
-    first = primary(item)
-    if not needs_tiebreak(first, item, oracle_passed):
-        return Decision(first, None, first)
-    second = tiebreak(item)
-    return Decision(first, second, second)
+) -> Decision[Verdict]:
+    return settle(primary, tiebreak, item, lambda verdict: needs_tiebreak(verdict, item, oracle_passed))
 
 
 def calibration_items(path: Path = CALIBRATION) -> list[tuple[str, Item, dict[str, bool]]]:

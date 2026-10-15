@@ -27,6 +27,10 @@ def _item(scenario_id: str = "dns-create.en", reply: str = "Created.") -> judge.
 
 
 class JudgeTests(unittest.TestCase):
+    def test_the_frozen_judge_fingerprint_is_pinned(self):
+        # Stored calibrations and verdicts carry this value; bump it only together with JUDGE_VERSION.
+        self.assertEqual(judge.identity(), "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7")
+
     def test_the_judge_input_is_blinded_and_reference_grounded(self):
         system, human = judge.prompt(_item("dns-create.ja", "作成しました。"))
         body = json.loads(human.content)
