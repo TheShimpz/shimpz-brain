@@ -1,4 +1,4 @@
-"""Engineering arms of the gpt-6-luna experiment: experiment-only, loaded by the journey driver (ADR-0094).
+"""Engineering arms of the gpt-6-luna experiment: experiment-only, loaded by the umbrella journey harness (ADR-0094).
 
 Cumulative arms over Luna at effort low:
 
@@ -32,8 +32,8 @@ registry observed; NLC into the languages a cold registry learns during the atte
 languages to the Action description; NV ranks a relaxed read by embedding similarity when a search finds nothing; NR is
 N with R.
 
-Nothing here is production runtime: the driver applies it in its own Team process. This module uses only the
-standard library.
+Nothing here is production runtime: ``.tests/perf/precision_engineering.py`` applies it in its own Team process.
+This module uses only the standard library.
 """
 
 import datetime
