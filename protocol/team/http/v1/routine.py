@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
-import math
 import re
 import unicodedata
 from collections.abc import Callable
-from fractions import Fraction
 
 if __package__:
     from . import identifiers, payload
@@ -128,6 +126,16 @@ def canonical_description(value: object) -> str | None:
     return _line(value, MAX_ROUTINE_DESCRIPTION_CHARS)
 
 
+def exact_name(value: object) -> bool:
+    """Whether a value is a Routine name exactly in its canonical form."""
+    return value is not None and canonical_name(value) == value
+
+
+def exact_description(value: object) -> bool:
+    """Whether a value is a Routine card's description exactly in its canonical form."""
+    return value is not None and canonical_description(value) == value
+
+
 def _line(value: object, maximum: int) -> str | None:
     if (
         not isinstance(value, str)
@@ -160,17 +168,9 @@ def zoned(timezone: object, source: object) -> bool:
     return source != "none" or timezone == CONVENTIONAL_TIMEZONE
 
 
-def daily_rate(schedule: dict[str, object]) -> Fraction:
-    """The runs per day a canonical schedule allows, its cap for a continuous one."""
-    kind = schedule["kind"]
-    if kind == "continuous":
-        return Fraction(continuous_cap(schedule["gap"]))
-    return {"daily": Fraction(1), "weekly": Fraction(1, 7), "monthly": Fraction(1, 28)}[kind]
-
-
 def daily_cap(schedule: dict[str, object]) -> int:
-    """The most runs a Routine may start in any rolling 24 hours: its cap, or its schedule's whole daily rate."""
-    return math.ceil(daily_rate(schedule))
+    """The most runs a Routine may start in any rolling 24 hours: a continuous one's cap, else one."""
+    return continuous_cap(schedule["gap"]) if schedule["kind"] == "continuous" else 1
 
 
 def valid_assistant(value: object) -> bool:
