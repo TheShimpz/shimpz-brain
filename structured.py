@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
-from runtime_errors import RuntimeContractError
+from runtime_errors import ProviderRequestError, ProviderResponseError, RuntimeContractError
 
 
 def messages(system: str, payload: Mapping[str, object]) -> list:
@@ -103,8 +103,6 @@ def bounded_value[Schema: BaseModel](
     Building the model, its prompt, or the call fails as a request; an answer that is not one schema-valid value fails
     as a response.
     """
-    from runtime_errors import ProviderRequestError, ProviderResponseError
-
     try:
         result = structured_output(model(), provider, schema).invoke(prompt())
     except ImportError:

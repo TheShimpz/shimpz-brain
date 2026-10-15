@@ -18,6 +18,7 @@ from langchain_core.messages import HumanMessage
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import purpose as team_purpose
 from pydantic import BaseModel, ConfigDict
+from runtime_errors import RuntimeContractError
 
 MAX_ASSISTANT_NAME_CHARS = 80
 MAX_ACTION_SUMMARY_CHARS = 2_000
@@ -57,7 +58,7 @@ class PendingAction:
     action_summary: str
 
     def __post_init__(self) -> None:
-        from agent_runtime import IDENTIFIER_RE, RuntimeContractError
+        from agent_runtime import IDENTIFIER_RE
 
         if (
             not isinstance(self.thread_id, str)
@@ -82,8 +83,6 @@ def _public_text(value: object, maximum: int) -> bool:
 
 
 def _pending_action(pending_writes: object, interrupt_id: str) -> Mapping[str, object]:
-    from agent_runtime import RuntimeContractError
-
     if not isinstance(pending_writes, Sequence) or isinstance(pending_writes, str | bytes):
         raise RuntimeContractError("conversation has no pending Action request")
     matches = [
@@ -100,8 +99,6 @@ def _pending_action(pending_writes: object, interrupt_id: str) -> Mapping[str, o
 
 def _objective(messages: object, message_id: str) -> str:
     """The `message` of Team's start envelope, never its file metadata."""
-    from agent_runtime import RuntimeContractError
-
     if not isinstance(messages, Sequence):
         raise RuntimeContractError("pending turn message is unavailable")
     matches = [message for message in messages if getattr(message, "id", None) == message_id]
@@ -115,8 +112,6 @@ def _objective(messages: object, message_id: str) -> str:
 
 def pending_request(checkpoint_tuple: object, pending: PendingAction) -> PurposeRequest:
     """Bind the request to the exact pending Action interrupt and read only the turn's own start message."""
-    from agent_runtime import RuntimeContractError
-
     if checkpoint_tuple is None:
         raise RuntimeContractError("conversation has no pending Action request")
     interrupt = _pending_action(getattr(checkpoint_tuple, "pending_writes", None), pending.interrupt_id)
@@ -165,9 +160,7 @@ def capped(model: BaseChatModel) -> BaseChatModel:
 
 def create(model: Callable[[], BaseChatModel], provider: str, request: PurposeRequest) -> str | None:
     """One stateless structured call; a sentence that breaks the plain-text rule yields None."""
-    from structured import bounded_value
-
-    parsed = bounded_value(
+    parsed = structured.bounded_value(
         lambda: capped(model()),
         provider,
         PurposeOutput,

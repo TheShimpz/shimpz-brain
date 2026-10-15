@@ -15,12 +15,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import structured
 import tool_refusal
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict
+from runtime_errors import ProviderRequestError
 
 TOOL_NAME = "shimpz_memory"
 # The memory, skill, and message bounds are Team's chat-turn protocol, applied through the Brain's pinned mirror.
@@ -354,13 +356,10 @@ def checker(model: Callable[[], Any], provider: str) -> Callable[[str], Confirma
     The raw response passes the closed structured-response validator, so a refusal, a duplicate key, or a reply that
     disagrees with the adapter's parse is CheckUnavailableError like any failed request.
     """
-    from langchain_core.messages import HumanMessage
-    from runtime_errors import ProviderRequestError
-    from structured import bounded_value
 
     def ask(prompt: str) -> Confirmation:
         try:
-            return bounded_value(
+            return structured.bounded_value(
                 model,
                 provider,
                 Confirmation,
