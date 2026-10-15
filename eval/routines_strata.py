@@ -141,7 +141,6 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
     card = response.get("routine_proposal")
     if card is None:
         return Outcome("no-card")
-    seen = dict(card["schedule"])
     calls = attempt.fixture.calls
     binding = _twin_miss(attempt, card) if stratum.twin else _selector_miss(card, stratum.zones)
     checks = (
@@ -152,10 +151,6 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
             and all(map(attempt.fixture.listed, stratum.zones)),
         ),
         ("invented-schedule", attempt.person.stated),
-        ("schedule", stratum.schedule(attempt.person, card["schedule"])),
-        # The description the person confirms says how often it runs, exactly as the card schedules it.
-        ("description-schedule", attempt.team.modules.phrase.stated(card["description"]) == (card["schedule"],)),
-        (f"output:{card['output']['mode']}", card["output"]["mode"] == attempt.person.output),
         (binding or "binding", binding is None),
         (_change_miss(attempt, card, stratum) or "change", _change_miss(attempt, card, stratum) is None),
         (attempt.person.violations[0] if attempt.person.violations else "", not attempt.person.violations),
@@ -163,7 +158,23 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
         ("too-many-sends", len(attempt.sends) <= stratum.sends + attempt.questions.count(OVER_BUDGET)),
     )
     failed = next((reason for reason, held in checks if not held), None)
-    return Outcome(failed, seen) if failed else Outcome(None, {**seen, "proposal_id": card["proposal_id"]})
+    return Outcome(failed) if failed else Outcome(None, {"proposal_id": card["proposal_id"]})
+
+
+def _defined_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum, routine: object) -> str | None:
+    """Why the confirmed Routine does not run when and how the person said, as its card's description says, or None.
+
+    The card leaves its schedule and output to its description, so they are read from the Routine its confirmation
+    committed.
+    """
+    mode = routine.plan["output"]["mode"]
+    checks = (
+        ("schedule", stratum.schedule(attempt.person, routine.schedule)),
+        # The description the person confirmed says how often it runs, exactly as Team scheduled it.
+        ("description-schedule", attempt.team.modules.phrase.stated(card["description"]) == (routine.schedule,)),
+        (f"output:{mode}", mode == attempt.person.output),
+    )
+    return next((reason for reason, held in checks if not held), None)
 
 
 def _judged(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
@@ -171,11 +182,13 @@ def _judged(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> 
     carded = _card(attempt, response, stratum)
     if not carded:
         return carded
-    seen = dict(carded.schedule)
-    answer = attempt.confirm(seen.pop("proposal_id"))
+    answer = attempt.confirm(carded.schedule["proposal_id"])
     if answer["status"] != "created":
-        return Outcome(f"confirm:{answer['status']}", seen)
-    return Outcome(_replay_miss(attempt, stratum), seen)
+        return Outcome(f"confirm:{answer['status']}")
+    (routine,) = attempt.team.service.routine_store.load("team_1").routines
+    seen = dict(routine.schedule)
+    defined = _defined_miss(attempt, response["routine_proposal"], stratum, routine)
+    return Outcome(defined, seen) if defined else Outcome(_replay_miss(attempt, stratum), seen)
 
 
 def _replay_miss(attempt: Attempt, stratum: Stratum) -> str | None:
@@ -285,12 +298,12 @@ def _expected_records(zone: str) -> set[tuple[object, ...]]:
 def _continuous(person: Person, schedule: dict[str, object]) -> bool:
     """The exact interval the person last stated, running all day: its cap is ceil(86400 / gap), never lowered."""
     gap = person.gap
-    expected = {"kind": "continuous", "gap": gap, "cap": -(-86_400 // gap)} if gap else None
+    expected = {"kind": "continuous", "gap": gap} if gap else None
     return schedule == expected
 
 
 def _hourly(_person: Person, schedule: dict[str, object]) -> bool:
-    return schedule == {"kind": "hourly", "every": 1}
+    return schedule == {"kind": "continuous", "gap": 3600}
 
 
 def _daily_nine(_person: Person, schedule: dict[str, object]) -> bool:

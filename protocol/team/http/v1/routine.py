@@ -26,8 +26,8 @@ MAX_ROUTINE_STEPS = 256
 MIN_CONTINUOUS_GAP_SECONDS = 5
 MAX_CONTINUOUS_GAP_SECONDS = 366 * 86_400
 DAY_SECONDS = 86_400
-# A continuous Routine's cap is always its gap's whole day, never lowered, so the interval a person stated is what
-# runs; the Team's daily Action-step budget alone bounds the sum (ADR-0101).
+# A continuous Routine's daily cap is always its gap's whole day (``continuous_cap``), never lowered, so the interval a
+# person stated is what runs; the Team's daily Action-step budget alone bounds the sum (ADR-0101).
 MAX_CONTINUOUS_CAP = -(-DAY_SECONDS // MIN_CONTINUOUS_GAP_SECONDS)
 # The healthy runs one minute bucket rolls up: runs start their gap apart, but a run that outlasted it or a confirmed
 # change starts the next at once, so the bound is one a second.
@@ -60,24 +60,22 @@ OUTCOMES = frozenset(
 # whose ``choice`` says which. ``healthy`` rolls up a continuous Routine's healthy runs that ended in one minute,
 # starting at the notice's instant (ADR-0092 section 9). ``deleted`` closes the Routine's timeline (ADR-0101).
 ROUTINE_OUTCOMES = ("skipped", "scope-changed", "created", "changed", "healthy", "deleted")
-# Why a held run's Routine was paused (ADR-0092): the recovery decision, a decision that could not be made, the spent
-# recovery budget, a Team-detected policy fault such as a secret echo or an invalid frame, or recovery evidence that
-# could not be read.
-PAUSE_REASONS = ("decided", "unavailable", "exhausted", "policy", "evidence")
+# Why a held run's Routine was paused (ADR-0092): the spent recovery budget, a Team-detected policy fault such as a
+# secret echo or an invalid frame, or recovery evidence Team never classified.
+PAUSE_REASONS = ("exhausted", "policy", "evidence")
 ERROR_CODE_RE = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 # The interface languages: the same closed set as payload.CHAT_LOCALES, pinned equal by a Team test.
 LOCALES = frozenset({"ar", "de", "en", "es", "fr", "ja", "pt", "zh"})
-SCHEDULE_KINDS = frozenset({"hourly", "daily", "weekly", "monthly", "continuous"})
+SCHEDULE_KINDS = frozenset({"daily", "weekly", "monthly", "continuous"})
 ROUTINE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 # An IANA zone name such as "UTC" or "America/Argentina/Buenos_Aires"; Team also requires that it loads.
 TIMEZONE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}\Z")
 _TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
 _FIELDS = {
-    "hourly": frozenset({"kind", "every"}),
     "daily": frozenset({"kind", "time"}),
     "weekly": frozenset({"kind", "weekday", "time"}),
     "monthly": frozenset({"kind", "day", "time"}),
-    "continuous": frozenset({"kind", "gap", "cap"}),
+    "continuous": frozenset({"kind", "gap"}),
 }
 
 
@@ -98,21 +96,14 @@ def _wall_clock(value: dict[str, object]) -> bool:
 def canonical_schedule(value: object) -> dict[str, object] | None:
     """The exact schedule, or None.
 
-    Hourly every 1..24 hours, daily, weekly (0 = Monday), monthly on day 1..28, or continuous: ``gap`` seconds (5 to
-    366 days) apart, and ``cap`` exactly ``continuous_cap(gap)`` starts in any rolling 24 hours.
+    Daily, weekly (0 = Monday), or monthly on day 1..28 at a wall-clock time, or continuous: runs ``gap`` seconds (5 to
+    366 days) apart, start to start, the first right after confirmation.
     """
     kind = value.get("kind") if isinstance(value, dict) else None
     if not isinstance(kind, str) or kind not in SCHEDULE_KINDS or set(value) != _FIELDS[kind]:
         return None
     if kind == "continuous":
-        gap = value["gap"]
-        valid = (
-            _whole(gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
-            and type(value["cap"]) is int
-            and value["cap"] == continuous_cap(gap)
-        )
-    elif kind == "hourly":
-        valid = _whole(value["every"], 1, 24)
+        valid = _whole(value["gap"], MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
     else:
         valid = _wall_clock(value)
     return dict(value) if valid else None
@@ -169,9 +160,7 @@ def daily_rate(schedule: dict[str, object]) -> Fraction:
     """The runs per day a canonical schedule allows, its cap for a continuous one."""
     kind = schedule["kind"]
     if kind == "continuous":
-        return Fraction(schedule["cap"])
-    if kind == "hourly":
-        return Fraction(24, schedule["every"])
+        return Fraction(continuous_cap(schedule["gap"]))
     return {"daily": Fraction(1), "weekly": Fraction(1, 7), "monthly": Fraction(1, 28)}[kind]
 
 
@@ -216,22 +205,15 @@ def _scope_changed(detail: dict[str, object]) -> bool:
     )
 
 
-# Where one Action call stands in a run (ADR-0101 section 10): a replay step by its 1-based position among its plan's
-# steps. Notices, incidents, freezes, cards, and run records use it.
-PHASES = ("replay",)
-
-
+# Where one Action call stands in a run (ADR-0101 section 10): its step's 1-based position among its plan's steps.
+# Notices, incidents, freezes, cards, and run records use it.
 def _position(value: object, maximum: int = MAX_ROUTINE_STEPS) -> bool:
     return type(value) is int and 1 <= value <= maximum
 
 
-def canonical_position(value: object, steps: object) -> dict[str, object] | None:
-    """A call's position: a replay step among ``steps``; or None."""
-    if not isinstance(value, dict) or not _whole(steps, 0, MAX_ROUTINE_STEPS):
-        return None
-    if value.get("phase") == "replay" and set(value) == {"phase", "step"} and _position(value["step"], steps):
-        return {"phase": "replay", "step": value["step"]}
-    return None
+def canonical_position(value: object, steps: object) -> int | None:
+    """A call's position among a plan's ``steps``, or None."""
+    return value if _whole(steps, 0, MAX_ROUTINE_STEPS) and _position(value, steps) else None
 
 
 # A Routine's plan as a Supervisor inspects it (ADR-0092): each step's Action, every input's source, and the Stored
@@ -537,13 +519,8 @@ def canonical_output(value: object) -> dict[str, object] | None:
     return copy.deepcopy(value) if valid else None
 
 
-# A run's model usage, in the shape of a chat reply's (ADR-0082, ADR-0101): its active duration and, per provider and
-# model, the tokens its recovery calls reported; a run that needed no recovery has no model.
+# A run's usage, in the shape of a chat reply's (ADR-0082, ADR-0101): its active duration; a Routine run asks no model.
 canonical_run_usage = payload.canonical_run_usage
-
-
-# The model providers a claimed run's recovery may use.
-MODEL_PROVIDERS = ("anthropic", "openai")
 
 
 def canonical_permitted(value: object) -> dict[str, int] | None:

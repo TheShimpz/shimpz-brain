@@ -82,7 +82,7 @@ def _action(call_id: str = "a1") -> dict:
 
 
 # The schedule Team read from the person's "a cada 30 segundos", which the default description says.
-EVERY_30_SECONDS = {"kind": "continuous", "gap": 30, "cap": 2880}
+EVERY_30_SECONDS = {"kind": "continuous", "gap": 30}
 
 
 def _chat(routines=(), schedule=EVERY_30_SECONDS):
@@ -457,7 +457,7 @@ class RoutineModeTests(unittest.TestCase):
             None,
             "not json",
             '{"kind": "continuous", "gap": 30}',
-            '{"cap":2880,"kind":"continuous","gap":30}',
+            '{"gap":4,"kind":"continuous"}',
         ):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore_schedule({turn_pins.SCHEDULE_METADATA: value})
