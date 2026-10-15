@@ -4,6 +4,7 @@ import copy
 import dataclasses
 import datetime
 import json
+import math
 import zoneinfo
 from collections.abc import Callable
 
@@ -521,10 +522,22 @@ def failure_cause(attempt: Attempt, reason: str) -> str:
     return reason if reason.startswith(kept) else reason.split(":", 1)[0]
 
 
+# The judged replay and both variants each start a run within one day, so a Routine whose interval caps it below that
+# (every 2 days runs once in any 24 hours) cannot host them.
+VARIANT_STARTS = 3
+
+
+def _hosts_variants(item: Stratum) -> bool:
+    gap = item.person().gap
+    return not gap or math.ceil(86_400 / gap) >= VARIANT_STARTS
+
+
 # The strata whose plan binds shimpz.com alone through list-zones into list-dns-records: the replay variants run from
 # the first passing attempt of any of them.
 VARIANT_STRATA = frozenset(
-    item.id for item in STRATA if item.zones == (SHIMPZ,) and not item.twin and item.shows == "list-dns-records"
+    item.id
+    for item in STRATA
+    if item.zones == (SHIMPZ,) and not item.twin and item.shows == "list-dns-records" and _hosts_variants(item)
 )
 
 
