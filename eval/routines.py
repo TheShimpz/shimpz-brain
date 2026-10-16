@@ -523,7 +523,7 @@ def _patched(modules: Modules):
 
     with (
         mock.patch.object(modules.local_authority, "routine_key_fingerprint", return_value=ROUTINE_KEY),
-        mock.patch.object(modules.local_audit, "record_request", return_value="a" * 32),
+        mock.patch.object(modules.local_audit, "record_request"),
         mock.patch.object(modules.local_audit, "record", return_value="a" * 32),
         mock.patch.object(modules.brain_usage, "record", metered),
     ):

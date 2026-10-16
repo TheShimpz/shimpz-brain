@@ -285,7 +285,6 @@ _HINTS: tuple[tuple[str, str], ...] = (
 _TOPICS = ("work", "frequency", "zone", "timezone", "output")
 
 
-# Topics the agent never asks: Team owns the schedule and its limits, and the browser gives the zone.
 # Topics no one ever asks: the browser gives the zone, and Team judges the limits.
 _FORBIDDEN = {"timezone": "asked-timezone", "limits": "asked-limits"}
 
@@ -312,7 +311,7 @@ def asked_topics(question: str) -> list[str]:
     matched = _matched(asked) or _matched(whole)
     if not matched and any(word in asked for word in _WHICH):
         matched = ["zone"]
-    return [topic for topic in matched if topic is not None]
+    return matched
 
 
 # The topics one question may ask, from the agent or Team, whichever comes first, while the person has not stated it;
