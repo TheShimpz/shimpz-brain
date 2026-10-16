@@ -20,6 +20,7 @@ if __package__:
         Fixture,
     )
     from protocol.team.http.v1 import payload as team_payload
+    from protocol.team.http.v1 import phrase as team_phrase
     from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
@@ -35,6 +36,7 @@ else:  # run as a script from Team, beside its sibling modules
     )
 
     from protocol.http.v1 import payload as team_payload
+    from protocol.http.v1 import phrase as team_phrase
     from protocol.http.v1 import routine_proposal as team_routine_proposal
 
 
@@ -67,13 +69,6 @@ OUTPUT_WORDS = {"show": "Mostrar sempre", "changes": "Mostrar só quando mudar",
 LOCALE = "pt"
 # Team's Portuguese labels for its output question, which Admin offers in a Portuguese interface.
 OUTPUT_LABELS = team_routine_proposal.OUTPUT_CHOICES[LOCALE]
-
-
-OUTPUT_OPTIONS = {
-    "show": r"sempre|toda|cada execu",
-    "changes": r"mud|altera",
-    "none": r"nada|não mostr|nenhum|sem mostrar",
-}
 
 
 # An option stands for the person's output choice only when it is about showing the result, and never names the work.
@@ -414,7 +409,8 @@ def _answer(person: Person, response: dict[str, object]) -> tuple[str | None, bo
         (
             item["label"]
             for item in options
-            if re.search(OUTPUT_OPTIONS[person.output], item["label"].casefold())
+            # Team's own reader says which output choice the option states.
+            if team_phrase.outputs(item["label"]) == (person.output,)
             and not re.search(SCHEDULE_WORDS, item["label"].casefold())
             and not re.search(WORK_WORDS, item["label"].casefold())
             and re.search(OUTPUT_VERBS, item["label"].casefold())
