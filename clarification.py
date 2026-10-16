@@ -171,7 +171,7 @@ def _team_owned(asked: Clarification) -> bool:
     return any(team_phrase.team_asks(text) for text in (asked.question, *(option.label for option in asked.options)))
 
 
-def _review(messages: list[Any], *, allowed: bool, routine_mode: bool = False) -> str | None:
+def _review(messages: list[Any], *, allowed: bool, routine_mode: bool) -> str | None:
     """Return why the latest model response must not run, or None when it may run.
 
     A turn's start runs no Action before it suspends, and every resume follows an Action, so a clarification is

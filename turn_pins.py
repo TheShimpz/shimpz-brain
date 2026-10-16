@@ -1,6 +1,8 @@
 """What one logical turn records at its start and keeps across every resume.
 
-Its date and the Team's knowledge, and its interface language and exact start message (ADR-0090).
+Its date and the zone it was read in; the Team's knowledge and Routine listing; what Team sent about its Routine
+recording: the question, mode, rerun work, schedule, and output; the model it started on (ADR-0101); its interface
+language and exact start message (ADR-0090); and its attachments' commitment and token charge (ADR-0093).
 """
 
 import datetime
