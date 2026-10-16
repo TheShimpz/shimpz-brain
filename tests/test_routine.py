@@ -7,6 +7,7 @@ from unittest import mock
 
 import agent_runtime
 import runtime_api
+import test_agent_runtime
 import test_attachments
 import tool_refusal
 import turn_pins
@@ -505,6 +506,122 @@ class RoutineModeTests(unittest.TestCase):
         system = system_text(model.seen_messages[-1])
         self.assertIn("If this message asks for a Routine", system)
         self.assertIn("The Team needs this work run again", system)
+
+
+LIST_TOOL = agent_runtime.tool_name("hello-pulse", "list")
+# Work whose name only a lookup returns: hello's name is fresh, and list is where Team found it.
+FRESH = (
+    {
+        "assistant": "hello-pulse",
+        "action": "hello",
+        "count": 1,
+        "inputs": [
+            {
+                "member": "name",
+                "kind": "fresh",
+                "value": None,
+                "chosen": False,
+                "source": {"assistant": "hello-pulse", "action": "list"},
+            }
+        ],
+    },
+)
+ZONE = "023e105f4ecef8ad9ca31a8372d0c353"
+
+
+def _hello(name: object, call_id: str = "h1") -> dict:
+    return {"name": ACTION_TOOL, "args": {"name": name}, "id": call_id, "type": "tool_call"}
+
+
+def _turn(message: str, *later) -> list:
+    """An earlier exchange whose result held the zone, then this turn's message and what followed it."""
+    earlier = [
+        HumanMessage(envelope("Liste a zona"), id="h0"),
+        ToolMessage(json.dumps({"zones": [{"id": ZONE}]}), tool_call_id="old", name=LIST_TOOL),
+    ]
+    return [*earlier, HumanMessage(envelope(message), id="h1"), *later]
+
+
+class RerunGuardTests(unittest.TestCase):
+    def _review(self, messages, checked=None):
+        return routine._rerun_review(
+            messages, checked=checked or {ACTION_TOOL: frozenset({"name"})}, actions=frozenset({ACTION_TOOL, LIST_TOOL})
+        )
+
+    def test_a_fresh_input_must_come_from_a_result_of_this_turn(self):
+        remembered = AIMessage("", tool_calls=[_hello(ZONE)])
+        # A value remembered from the conversation, even one an earlier turn's result held, is refused.
+        self.assertEqual(self._review(_turn("pode buscar de novo", remembered)), "fresh")
+        for result in (
+            json.dumps({"zones": [{"id": "other"}, {"id": ZONE, "tags": ["a"]}]}),
+            ZONE,
+        ):
+            with self.subTest(result=result):
+                looked_up = ToolMessage(result, tool_call_id="l1", name=LIST_TOOL)
+                self.assertIsNone(self._review(_turn("pode buscar de novo", looked_up, remembered)))
+        # A correction or a Brain tool's message is no result, whatever it says.
+        for name in (routine.TOOL_NAME, None):
+            with self.subTest(name=name):
+                other = ToolMessage(ZONE, tool_call_id="x1", name=name)
+                self.assertEqual(self._review(_turn("pode buscar de novo", other, remembered)), "fresh")
+        # Equal JSON values match as values: an integral float is its integer.
+        number = AIMessage("", tool_calls=[_hello(424242)])
+        found = ToolMessage(json.dumps({"id": 424242.0}), tool_call_id="l1", name=LIST_TOOL)
+        self.assertIsNone(self._review(_turn("sim", found, number)))
+        self.assertEqual(self._review(_turn("sim", number)), "fresh")
+
+    def test_a_value_the_person_writes_now_needs_no_lookup(self):
+        for value, message in ((ZONE, f"use a zona {ZONE}"), (424242, "a conta 424242")):
+            with self.subTest(value=value):
+                call = AIMessage("", tool_calls=[_hello(value)])
+                self.assertIsNone(self._review(_turn(message, call)))
+        # Only what the person wrote counts, never Team's composed question; other values are never written.
+        asked = f"pode buscar\n\nPergunta: {ZONE}?\nResposta: sim"
+        self.assertEqual(self._review(_turn(asked, AIMessage("", tool_calls=[_hello(ZONE)]))), "fresh")
+        for value in (True, {"id": ZONE}, ""):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self._review(_turn(f"{ZONE} True", AIMessage("", tool_calls=[_hello(value)]))), "fresh"
+                )
+
+    def test_only_a_fresh_member_of_a_checked_action_in_an_answerable_response_is_reviewed(self):
+        self.assertIsNone(self._review([]))
+        self.assertIsNone(self._review(_turn("sim", AIMessage("Pronto."))))
+        self.assertIsNone(self._review(_turn("sim", AIMessage("", tool_calls=[{**_hello(ZONE), "args": {}}]))))
+        self.assertIsNone(self._review(_turn("sim", AIMessage("", tool_calls=[{**_hello(ZONE), "name": LIST_TOOL}]))))
+        unparsable = AIMessage(
+            "",
+            tool_calls=[_hello(ZONE)],
+            invalid_tool_calls=[{"name": ACTION_TOOL, "args": "{", "id": "x", "error": None}],
+        )
+        self.assertIsNone(self._review(_turn("sim", unparsable)))
+        # An Action checks only members every slot of it marks fresh.
+        kept = {**FRESH[0]["inputs"][0], "kind": "value", "value": '"ana"', "source": None}
+        twice = (*FRESH, {**FRESH[0], "inputs": [kept]}, {**FRESH[0], "action": "list", "inputs": [kept]})
+        guard = routine.rerun_guard(twice, agent_runtime.tool_name, frozenset())
+        self.assertEqual(guard.review.keywords["checked"], {})
+        guard = routine.rerun_guard(FRESH, agent_runtime.tool_name, frozenset())
+        self.assertEqual(guard.review.keywords["checked"], {ACTION_TOOL: frozenset({"name"})})
+
+    def test_a_refused_rerun_call_never_runs_and_the_looked_up_value_does(self):
+        runtime, model = GraphTests._runtime(
+            None,
+            AIMessage("", tool_calls=[_hello(ZONE)]),
+            AIMessage("", tool_calls=[{"name": LIST_TOOL, "args": {}, "id": "l1", "type": "tool_call"}]),
+            AIMessage("", tool_calls=[_hello(ZONE, "h2")]),
+        )
+        pulse = test_agent_runtime.assistant(
+            "hello-pulse", test_agent_runtime.action("hello"), test_agent_runtime.action("list")
+        )
+        chat = dataclasses.replace(
+            _chat([LISTED]), assistants=(pulse,), routine_question=RERUN_QUESTION, routine_rerun=FRESH
+        )
+        listed = runtime.start(chat, envelope("pode buscar de novo"))
+        self.assertEqual([item.action for item in listed.actions], ["list"])
+        corrections = {message.content for message in model.seen_messages[-1] if isinstance(message, ToolMessage)}
+        self.assertEqual(corrections, {routine._RERUN_CORRECTION})
+        rerun = runtime.resume(chat, {listed.actions[0].interrupt_id: {"zones": [{"id": ZONE}]}})
+        self.assertEqual([(item.action, item.input) for item in rerun.actions], [("hello", {"name": ZONE})])
 
 
 class ContinuationFrameTests(unittest.TestCase):

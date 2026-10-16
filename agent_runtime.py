@@ -363,6 +363,10 @@ def tool_name(assistant_id: str, action_id: str) -> str:
     return f"a_{assistant_slug}__a_{action_slug}__{digest}"
 
 
+def _action_names(tools: list[Any]) -> frozenset[str]:
+    return frozenset(tool.name for tool in tools if isinstance(tool, action_tool.ActionTool))
+
+
 def _assistant_scope(context: TurnContext) -> str:
     """Bind durable conversation state to the exact available Assistant contract."""
     contract = [
@@ -665,6 +669,11 @@ class AgentRuntime:
                 ),
                 *([team_memory.guard(allowed=clarification_allowed)] if memory_tool else []),
                 *([team_routine.guard(context)] if routine_tool else []),
+                *(
+                    [team_routine.rerun_guard(context.routine_rerun, tool_name, _action_names(tools))]
+                    if context.routine_rerun is not None
+                    else []
+                ),
                 # The innermost model-call wrapper sees each provider response before any other middleware.
                 _termination_guard_class()(),
             ],

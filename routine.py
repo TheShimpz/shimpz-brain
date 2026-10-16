@@ -12,12 +12,15 @@ approves, or authorizes anything: Brain only reports what the agent asked to rec
 
 import functools
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
+import context_budget
+import memory
 import tool_refusal
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
@@ -97,6 +100,14 @@ _CORRECTIONS = {
     "reply": _NOT_DONE + "Give the person an empty reply, or text that says something, of at most "
     f"{MAX_REPLY_CHARS} characters with no control characters other than line breaks and tabs.",
 }
+
+
+# How a rerun call that sends a 'fresh' input no result of this turn holds is answered: nothing ran.
+_RERUN_CORRECTION = (
+    "Not done: no Action in this response ran. The Team needs each 'fresh' input of its rerun work to come from a "
+    "result in this turn: first run the listed source Action, or an Action that returns the value, then send the value "
+    "from that result; never send a value you remember."
+)
 
 
 class RoutineContractError(ValueError):
@@ -285,3 +296,76 @@ def recorded(messages: list[Any]) -> tuple[str, dict[str, object]] | None:
     if not isinstance(value, Mapping) or set(value) != {"routine", "reply"}:
         return None
     return value["reply"], value["routine"]
+
+
+def rerun_guard(work: tuple[dict[str, object], ...], tool_name: Callable[[str, str], str], actions: frozenset[str]):
+    """The guard that refuses a response sending a rerun's 'fresh' input that no result of this turn holds.
+
+    The rerun prompt asks for each fresh input from a result of this turn; this enforces it, so the agent never sends
+    a remembered value Team would only ask about again. Team's recorder stays the authority. A member is checked only
+    where every slot of its Action marks it fresh, and a value passes when it equals any value inside an Action result
+    of this turn (``actions`` names the Action tools) or the person's current message writes it.
+    """
+    slots: dict[str, list[set[str]]] = {}
+    for entry in work:
+        fresh = {item["member"] for item in entry["inputs"] if item["kind"] == "fresh"}
+        slots.setdefault(tool_name(entry["assistant"], entry["action"]), []).append(fresh)
+    checked = {name: frozenset(members) for name, sets in slots.items() if (members := set.intersection(*sets))}
+    review = functools.partial(_rerun_review, checked=checked, actions=actions)
+    return tool_refusal.guard("RerunGuard", review, {"fresh": _RERUN_CORRECTION})
+
+
+def _rerun_review(messages: list[Any], *, checked: Mapping[str, frozenset[str]], actions: frozenset[str]) -> str | None:
+    latest = messages[-1] if messages else None
+    if not isinstance(latest, AIMessage) or latest.invalid_tool_calls:
+        # A response with an unparsable call cannot be answered whole; Team's recorder still decides.
+        return None
+    calls = [call for call in latest.tool_calls or [] if call.get("name") in checked]
+    if not calls:
+        return None
+    start = max(index for index, message in enumerate(messages) if isinstance(message, HumanMessage))
+    turn = messages[start:]
+    results = [
+        node
+        for message in turn
+        if isinstance(message, ToolMessage) and message.name in actions
+        for node in _values(_result(message.content))
+    ]
+    current = memory.turn_message(turn[0].content) or ""
+    written = team_payload.authored_segments(current)
+    for call in calls:
+        sent = call["args"]
+        for member in checked[call["name"]] & sent.keys():
+            value = sent[member]
+            if not any(value == node for node in results) and not _written(value, written):
+                return "fresh"
+    return None
+
+
+def _result(content: object) -> object:
+    """An Action result as the model read it: its JSON value, or its text when it is not JSON."""
+    text = context_budget.message_text(content)
+    try:
+        return json.loads(text)
+    except ValueError, RecursionError:
+        return text
+
+
+def _values(value: object) -> Iterator[object]:
+    """The value and every value inside it."""
+    yield value
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _values(item)
+
+
+def _written(value: object, segments: tuple[str, ...]) -> bool:
+    """Whether the person's current message writes this value: a string or a number's JSON text inside it."""
+    if isinstance(value, str):
+        return bool(value) and any(value in segment for segment in segments)
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return any(json.dumps(value) in segment for segment in segments)
+    return False
