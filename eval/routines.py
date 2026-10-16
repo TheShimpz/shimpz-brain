@@ -43,15 +43,15 @@ The harness answers the agent's questions and Team's recoverable Routine questio
 the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
 chosen zone by its id), its description and confirmed Routine carry the schedule the person stated, it takes no more
-sends than its missing pieces need, "Criar rotina" creates the Routine, and one replay through Team's real claim and
-run shows that work's exact result.
+sends than its missing pieces need, confirming the card creates the Routine, and one replay through Team's real claim
+and run shows that work's exact result.
 One frequency question and one output question are each allowed, from the agent or Team, whichever comes first, while
 the person has not stated it; asking it again, after it was stated, or by both is a miss, as is any timezone or limits
 question. Team's output question gets its protocol label as the answer, and the card's description must state the
 person's choice, exactly the output Team persisted.
-After the first passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records, two
-replay variants run with no model: shimpz.com under a new zone id, and two zones named shimpz.com, which must never
-dispatch list-dns-records.
+After the first passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records and whose
+interval lets three runs start within one day, two replay variants run with no model: shimpz.com under a new zone id,
+and two zones named shimpz.com, which must never dispatch list-dns-records.
 The gate exits non-zero unless every stratum of every shipped model passed every attempt and both variants held.
 The gate also fails on a counted attempt whose cost is unknown, a reservation never settled, a response that reached
 the eval's output limit, provider evidence no attempt received, an attempt that stayed throttled through every retry,
