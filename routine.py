@@ -25,13 +25,13 @@ from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 from protocol.team.http.v1 import turn as team_turn
 
 TOOL_NAME = "shimpz_routine"
-# Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
 # Brain's own request bound on the listing: each Routine's steps, encoded, at most 256 KiB, and the Team's together
 # 1 MiB, as Team's plans are bounded, so a listing never outgrows the turn request Brain admits.
 MAX_LISTED_STEPS_BYTES = 256 * 1024
 MAX_LISTING_STEPS_BYTES = 1024 * 1024
 # The reply the person reads beside the card: the result of the work the agent ran.
 MAX_REPLY_CHARS = 4000
+# Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
 _NAME_CHARS = team_routine_protocol.MAX_ROUTINE_NAME_CHARS
 _DESCRIPTION_CHARS = team_routine_protocol.MAX_ROUTINE_DESCRIPTION_CHARS
 _DAY = team_routine_protocol.DAY_SECONDS
