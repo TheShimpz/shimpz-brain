@@ -1,6 +1,7 @@
 """Routines: the chat agent runs the work once and records it; Brain only checks the closed record (ADR-0101)."""
 
 import dataclasses
+import datetime
 import json
 import unittest
 from unittest import mock
@@ -23,6 +24,7 @@ from turn_envelope import envelope
 import routine
 
 ACTION_TOOL = agent_runtime.tool_name("hello-pulse", "hello")
+TODAY = datetime.datetime.now(datetime.UTC).date()
 MESSAGE = "Cria uma rotina: a cada 30 segundos liste os registros DNS de shimpz.com"
 LISTED = {
     "routine_id": "a" * 32,
@@ -114,11 +116,17 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(routine.canonical_routines([LISTED]), (LISTED,))
         unzoned = {**LISTED, "timezone": "UTC", "timezone_source": "none"}
         self.assertEqual(routine.canonical_routines([unzoned]), (unzoned,))
-        for value in (None, [{**LISTED, "extra": 1}], [{**LISTED, "timezone_source": "guessed"}], [LISTED, LISTED]):
+        for value in (
+            None,
+            [{**LISTED, "extra": 1}],
+            [{**LISTED, "timezone_source": "guessed"}],
+            [{**LISTED, "output": {"mode": []}}],
+            [LISTED, LISTED],
+        ):
             with self.subTest(value=value), self.assertRaises(routine.RoutineContractError):
                 routine.canonical_routines(value)
 
-    def test_a_listing_holds_at_most_brains_own_encoded_request_bound(self):
+    def test_a_listing_holds_at_most_teams_encoded_steps_bounds(self):
         step = LISTED["steps"][0]
 
         def listed(index: int, size: int) -> dict:
@@ -131,13 +139,13 @@ class ContractTests(unittest.TestCase):
                 used = len(json.dumps(steps, separators=(",", ":")).encode())
             return {**LISTED, "routine_id": f"{index:032x}", "steps": steps}
 
-        within = listed(0, routine.MAX_LISTED_STEPS_BYTES)
+        within = listed(0, routine.team_routine_context.MAX_LISTED_STEPS_BYTES)
         self.assertEqual(len(routine.canonical_routines([within])), 1)
         over = {**within, "steps": [*within["steps"], *within["steps"][:2]]}
         over["steps"] = [{**item, "id": f"s{index}"} for index, item in enumerate(over["steps"])]
         with self.assertRaises(routine.RoutineContractError):
             routine.canonical_routines([over])
-        whole = [listed(index, routine.MAX_LISTED_STEPS_BYTES) for index in range(5)]
+        whole = [listed(index, routine.team_routine_context.MAX_LISTED_STEPS_BYTES) for index in range(5)]
         with self.assertRaises(routine.RoutineContractError):
             routine.canonical_routines(whole)
 
@@ -571,10 +579,15 @@ class RerunGuardTests(unittest.TestCase):
         self.assertEqual(self._review(_turn("sim", number)), "fresh")
 
     def test_a_value_the_person_writes_now_needs_no_lookup(self):
-        for value, message in ((ZONE, f"use a zona {ZONE}"), (424242, "a conta 424242")):
+        for value, message in ((ZONE, f"use a zona {ZONE}"), (424242, "a conta 424242"), (-424242, "saldo -424242")):
             with self.subTest(value=value):
                 call = AIMessage("", tool_calls=[_hello(value)])
                 self.assertIsNone(self._review(_turn(message, call)))
+        # A number is written only as a whole token, as Team's recorder reads one: never inside a longer number.
+        for value, message in ((424242, "a conta 4242421"), (424242, "a conta 424242.5"), (424242, "saldo -424242")):
+            with self.subTest(value=value, message=message):
+                call = AIMessage("", tool_calls=[_hello(value)])
+                self.assertEqual(self._review(_turn(message, call)), "fresh")
         # Only what the person wrote counts, never Team's composed question.
         asked = f"pode buscar\n\nPergunta: {ZONE}?\nResposta: sim"
         self.assertEqual(self._review(_turn(asked, AIMessage("", tool_calls=[_hello(ZONE)]))), "fresh")
@@ -589,13 +602,26 @@ class RerunGuardTests(unittest.TestCase):
             True,
             {"id": ZONE},
             ["a"],
-            "2026-10-05",
-            "news-05/10",
-            "10月15日号",
+            # A word writing a date Team may read as each run's own is left to Team.
+            TODAY.isoformat(),
+            f"news-{TODAY:%d/%m}",
+            f"{TODAY.month}月{TODAY.day}日号",
         ):
             with self.subTest(value=value):
                 self.assertIsNone(self._review(_turn("sim", AIMessage("", tool_calls=[_hello(value)]))))
-        for value in ("zone-1", -424242, "123e4567-e89b-12d3-a456-426614174000"):
+        # Any other word holding digits and separators is an identifier Team asks about again: an address, a version, a
+        # year alone, or a date Team never reads as the run's.
+        for value in (
+            "zone-1",
+            -424242,
+            "123e4567-e89b-12d3-a456-426614174000",
+            "203.0.113.10",
+            "v1.2.3",
+            "release-2.1",
+            "2026年度",
+            f"{TODAY.year - 2}-01-01",
+            f"news-{TODAY.isoformat()}",
+        ):
             with self.subTest(value=value):
                 self.assertEqual(self._review(_turn("sim", AIMessage("", tool_calls=[_hello(value)]))), "fresh")
 

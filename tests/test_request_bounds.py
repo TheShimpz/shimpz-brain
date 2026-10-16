@@ -145,7 +145,8 @@ def _largest_uncounted() -> dict[str, object]:
                 "daily_steps": team_routine.team_routine_context.MAX_LISTED_DAILY_STEPS,
                 "output": {"mode": "changes"},
                 "steps": _listed_steps(
-                    team_routine.MAX_LISTING_STEPS_BYTES // team_routine.team_routine_protocol.MAX_ROUTINES
+                    team_routine.team_routine_context.MAX_LISTING_STEPS_BYTES
+                    // team_routine.team_routine_protocol.MAX_ROUTINES
                 ),
             }
             for index in range(team_routine.team_routine_protocol.MAX_ROUTINES)

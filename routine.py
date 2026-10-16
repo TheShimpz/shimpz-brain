@@ -10,9 +10,9 @@ trace of the person's sends and shows the person a card to confirm, or a questio
 approves, or authorizes anything: Brain only reports what the agent asked to record.
 """
 
+import datetime
 import functools
 import json
-import re
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
@@ -28,10 +28,6 @@ from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 from protocol.team.http.v1 import turn as team_turn
 
 TOOL_NAME = "shimpz_routine"
-# Brain's own request bound on the listing: each Routine's steps, encoded, at most 256 KiB, and the Team's together
-# 1 MiB, as Team's plans are bounded, so a listing never outgrows the turn request Brain admits.
-MAX_LISTED_STEPS_BYTES = 256 * 1024
-MAX_LISTING_STEPS_BYTES = 1024 * 1024
 # The reply the person reads beside the card: the result of the work the agent ran.
 MAX_REPLY_CHARS = 4000
 # Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
@@ -103,8 +99,6 @@ _CORRECTIONS = {
 }
 
 
-# A numeric date inside a word, such as 2026-10-05, 05/10, or 10月15日, which Team may read as each run's own date.
-_DATED_RE = re.compile(r"(?<!\d)\d{1,4}[-/.]\d{1,2}(?!\d)|\d[年月]")
 # How a rerun call that sends a 'fresh' input no result of this turn holds is answered: nothing ran.
 _RERUN_CORRECTION = (
     "Not done: no Action in this response ran. The Team needs each 'fresh' input of its rerun work to come from a "
@@ -182,9 +176,6 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
     """The Team's Routines as data, exactly as Team's protocol admits its listing, or a contract error."""
     listed = team_routine_context.canonical_routine_listings(value)
     if listed is None:
-        raise RoutineContractError("invalid routines")
-    sizes = [len(json.dumps(item["steps"], ensure_ascii=False, separators=(",", ":")).encode()) for item in listed]
-    if any(size > MAX_LISTED_STEPS_BYTES for size in sizes) or sum(sizes) > MAX_LISTING_STEPS_BYTES:
         raise RoutineContractError("invalid routines")
     return tuple(listed)
 
@@ -339,11 +330,16 @@ def _rerun_review(messages: list[Any], *, checked: Mapping[str, frozenset[str]],
     ]
     current = memory.turn_message(turn[0].content) or ""
     written = team_payload.authored_segments(current)
+    today = datetime.datetime.now(datetime.UTC).date()
     for call in calls:
         sent = call["args"]
         for member in checked[call["name"]] & sent.keys():
             value = sent[member]
-            if _identifier(value) and not any(value == node for node in results) and not _written(value, written):
+            if (
+                _identifier(value, today)
+                and not any(value == node for node in results)
+                and not _written(value, written)
+            ):
                 return "fresh"
     return None
 
@@ -368,12 +364,12 @@ def _values(value: object) -> Iterator[object]:
             yield from _values(item)
 
 
-def _identifier(value: object) -> bool:
+def _identifier(value: object, today: datetime.date) -> bool:
     """Whether Team would ask where a value no result holds came from: an identifier, as its recorder shapes one.
 
     One word or whole number at least as long as Team's mirrored identifier bounds (Team's ``routine.provenance``);
-    any other value Team keeps as the agent's own choice, such as a short lookup term a helper call sends. A word
-    holding a numeric date is left to Team, which may read it as each run's date.
+    any other value Team keeps as the agent's own choice, such as a short lookup term a helper call sends. A word that
+    writes a date Team may read as each run's own (its mirrored ``may_write_date``) is left to Team.
     """
     if type(value) is int:
         return len(str(abs(value))) >= team_routine_context.MIN_IDENTIFIER_DIGITS
@@ -381,11 +377,13 @@ def _identifier(value: object) -> bool:
         isinstance(value, str)
         and len(value) >= team_routine_context.MIN_IDENTIFIER_CHARS
         and not any(character.isspace() for character in value)
-        and _DATED_RE.search(value) is None
+        and not team_routine_context.may_write_date(value, today)
     )
 
 
 def _written(value: str | int, segments: tuple[str, ...]) -> bool:
-    """Whether the person's current message writes this identifier."""
-    text = value if isinstance(value, str) else str(value)
-    return any(text in segment for segment in segments)
+    """Whether the person's current message writes this identifier: a text within it, a number as a whole token."""
+    if isinstance(value, str):
+        return any(value in segment for segment in segments)
+    tokens = team_routine_context.NUMBER_TOKEN_RE
+    return any(match.group() == str(value) for segment in segments for match in tokens.finditer(segment))
