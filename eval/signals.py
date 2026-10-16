@@ -54,30 +54,30 @@ TEAM_READ_OUTCOMES = ("invoked", "cached", "rejected", "failed", "limited", "fen
 
 
 def recovery_signals(engineering: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """The Luna-99 mechanisms' extra work, each counted on every engineering attempt (zero where an arm lacks it).
+    """The Luna-99 mechanisms' extra work, which every engineering attempt records, an undispatched one as zero.
 
     Every dispatched helper request is counted, its answer usable or not, and a refused one apart; triggers (relax,
     rewrite candidates) are kept apart from the reads Team actually made; a K second pass reports the first pass's
     oracle too.
     """
-    first = [a["first_pass"] for a in engineering if a.get("first_pass")]
+    first = [a["first_pass"] for a in engineering if a["first_pass"]]
     return {
-        "relax_triggers": sum(int(a.get("relax_triggers", 0)) for a in engineering),
-        "rewrite_candidates": sum(int(a.get("rewrite_candidates", 0)) for a in engineering),
-        "recoveries": sum(int(a.get("recoveries", 0)) for a in engineering),
-        "critic_revisions": sum(int(a.get("critic_revisions", 0)) for a in engineering),
-        "replays_refused": sum(int(a.get("replays_refused", 0)) for a in engineering),
+        "relax_triggers": sum(int(a["relax_triggers"]) for a in engineering),
+        "rewrite_candidates": sum(int(a["rewrite_candidates"]) for a in engineering),
+        "recoveries": sum(int(a["recoveries"]) for a in engineering),
+        "critic_revisions": sum(int(a["critic_revisions"]) for a in engineering),
+        "replays_refused": sum(int(a["replays_refused"]) for a in engineering),
         "first_pass_oracle_passed": sum(bool(item["oracle"]["passed"]) for item in first),
         "team_reads": {
-            outcome: sum(int((a.get("team_reads") or {}).get(outcome, 0)) for a in engineering)
+            outcome: sum(int((a["team_reads"] or {}).get(outcome, 0)) for a in engineering)
             for outcome in TEAM_READ_OUTCOMES
         },
-        "helper_calls": sum(int(a.get("helper_calls", 0)) for a in engineering),
-        "helper_failures": sum(int(a.get("helper_failures", 0)) for a in engineering),
-        "helper_refused": sum(int(a.get("helper_refused", 0)) for a in engineering),
-        "helper_unusable": sum(int(a.get("helper_unusable", 0)) for a in engineering),
-        "helper_usd": round(sum(float(a.get("helper_usd", 0.0)) for a in engineering), 6),
-        "helper_usd_known": all(bool(a.get("helper_usd_known", True)) for a in engineering),
+        "helper_calls": sum(int(a["helper_calls"]) for a in engineering),
+        "helper_failures": sum(int(a["helper_failures"]) for a in engineering),
+        "helper_refused": sum(int(a["helper_refused"]) for a in engineering),
+        "helper_unusable": sum(int(a["helper_unusable"]) for a in engineering),
+        "helper_usd": round(sum(float(a["helper_usd"]) for a in engineering), 6),
+        "helper_usd_known": all(bool(a["helper_usd_known"]) for a in engineering),
         "language": language_signals(engineering),
     }
 
@@ -111,7 +111,7 @@ LANGUAGE_RECOVERY = ("candidates", "ranked_candidates")
 
 def language_signals(engineering: Sequence[Mapping[str, object]]) -> dict[str, object] | None:
     """The language arms' summed counts and service time, with how many attempts had work and how many candidates."""
-    recorded = [a["language"] for a in engineering if a.get("language")]
+    recorded = [a["language"] for a in engineering if a["language"]]
     if not recorded:
         return None
     return {
