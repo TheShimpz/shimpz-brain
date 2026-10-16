@@ -212,6 +212,18 @@ class RecordTests(unittest.TestCase):
         for code in ("schedule", "unstated-schedule"):
             self.assertTrue(routine._CORRECTIONS[code].startswith("Not done: nothing was recorded."))
 
+    def test_a_description_is_read_with_only_the_chat_languages_negations(self) -> None:
+        # Portuguese "no Cloudflare" ("in the Cloudflare") negates nothing in a chat whose language is Portuguese.
+        said = "Quero listar os registros DNS no Cloudflare a cada 30 segundos, sem alterar nenhum registro."
+        self.assertEqual(routine.record(_args(description=said), _chat())["routine"]["description"], said)
+        # Every language's phrases still count, so a second schedule is never hidden.
+        mixed = "Listar no Cloudflare a cada 30 segundos e every minute."
+        self.assertEqual(routine.record(_args(description=mixed), _chat()), "schedule")
+        self.assertEqual(routine.record(_args(description=mixed), _chat(schedule=None)), "unstated-schedule")
+        # Without a chat language, a negation in any language rejects every reading it reaches.
+        unknown = dataclasses.replace(_chat(), locale=None)
+        self.assertEqual(routine.record(_args(description=said), unknown), "schedule")
+
     def test_a_description_says_the_output_exactly_as_team_read_it_from_the_person(self) -> None:
         listed = {**LISTED, "output": {"mode": "none"}}
         said = "A cada 30 segundos, lista as zonas da sua Cloudflare. Mostrar somente quando mudar."

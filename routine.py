@@ -225,13 +225,15 @@ def _output_miss(description: str, output: object, replaced: object) -> str:
     return "unstated-output"
 
 
-def _schedule_miss(description: str, schedule: object, replaced: object) -> str:
+def _schedule_miss(description: str, schedule: object, replaced: object, locale: str | None) -> str:
     """Whether a description says how often the Routine runs as Team read it from the person, "" when it does.
 
     Team's own reading is the authority: with one schedule, the description must state exactly it; with none, it
-    states none, except a replacement's own listed schedule, which it keeps.
+    states none, except a replacement's own listed schedule, which it keeps. The model writes the description in the
+    chat's language, so only that language's negations reject a reading (a Portuguese "no" is "in the"); without one,
+    every language's do.
     """
-    stated = team_phrase.stated(description)
+    stated = team_phrase.stated(description, locale)
     if schedule is not None:
         return "" if stated == (schedule,) else "schedule"
     kept = () if replaced is None else (replaced["schedule"],)
@@ -256,7 +258,7 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     refused = next((field for field, valid in checks if not valid), None)
     if refused is not None:
         return refused
-    missed = _schedule_miss(description, context.routine_schedule, replaced) or _output_miss(
+    missed = _schedule_miss(description, context.routine_schedule, replaced, context.locale) or _output_miss(
         description, context.routine_output, replaced
     )
     if missed:
