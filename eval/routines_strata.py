@@ -21,6 +21,7 @@ if __package__:
         ZONE_SET,
     )
     from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
+    from protocol.team.http.v1 import phrase as team_phrase
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         EXAMPLE,
@@ -34,6 +35,8 @@ else:  # run as a script from Team, beside its sibling modules
         ZONE_SET,
     )
     from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
+
+    from protocol.http.v1 import phrase as team_phrase
 
 
 @dataclasses.dataclass(frozen=True)
@@ -159,6 +162,15 @@ def _recording_change_miss(attempt: Attempt, stratum: Stratum) -> str | None:
     return None if written else "recording-change:content"
 
 
+def _describes_settings(description: str) -> bool:
+    """Whether a card's description states a schedule, an output, or a zone of its own.
+
+    Edit offers the description beside the card's settings as one text Team reads back (ADR-0101, 2026-10-16), so it
+    reads back as exactly the card's settings only when the description states none.
+    """
+    return bool(team_phrase.stated(description) or team_phrase.outputs(description) or team_phrase.zones(description))
+
+
 def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
     """The recording turn's card, judged; a miss names its first closed reason."""
     if "routine_refusal" in response:
@@ -172,6 +184,7 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
     binding = _twin_miss(attempt, card) if stratum.twin else _selector_miss(card, stratum.zones)
     checks = (
         ("card-invalid", attempt.team.modules.http_routine_proposal.canonical_proposal(card) == card),
+        ("description-settings", not _describes_settings(card["description"])),
         (
             "calls",
             any(action == "list-zones" for action, _payload in calls)
