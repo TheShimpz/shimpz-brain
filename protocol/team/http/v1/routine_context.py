@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import re
 
@@ -20,6 +21,10 @@ _LISTING_FIELDS = frozenset(
 )
 # A Routine's Action units in any rolling 24 hours: every start of its whole cap may use every unit.
 MAX_LISTED_DAILY_STEPS = routine.MAX_CONTINUOUS_CAP * routine.MAX_ROUTINE_STEPS
+# The listed steps' compact UTF-8 JSON: at most this for each Routine, and for the whole listing together. Team bounds a
+# Routine's plan, and every plan of a Team together, by these, and a listing's steps are a part of its plans.
+MAX_LISTED_STEPS_BYTES = 256 * 1024
+MAX_LISTING_STEPS_BYTES = 1024 * 1024
 
 
 def _members_listed(value: object, limit: int, maximum: int) -> bool:
@@ -33,11 +38,13 @@ def _members_listed(value: object, limit: int, maximum: int) -> bool:
 
 
 def _listed_output(value: object, total: int) -> bool:
-    """A listed Routine's output: its mode; a shown mode shows the last step."""
-    if not isinstance(value, dict) or set(value) != {"mode"}:
-        return False
-    shown = total if value["mode"] in routine.SHOWN_MODES else None
-    return routine.canonical_disposition({**value, "step": shown}, total) is not None
+    """A listed Routine's output: its mode alone, of a plan with steps; a shown mode shows the last step."""
+    return (
+        isinstance(value, dict)
+        and set(value) == {"mode"}
+        and value["mode"] in routine.OUTPUT_MODES
+        and routine.whole(total, 1, routine.MAX_ROUTINE_STEPS)
+    )
 
 
 def _listed_step(value: object) -> bool:
@@ -71,12 +78,19 @@ def canonical_routine_listing(value: object) -> dict[str, object] | None:
     return copy.deepcopy(value) if valid else None
 
 
+def _steps_bytes(listed: dict[str, object]) -> int:
+    return len(json.dumps(listed["steps"], ensure_ascii=False, separators=(",", ":")).encode())
+
+
 def canonical_routine_listings(value: object) -> list[dict[str, object]] | None:
-    """The Team's whole Routine listing: at most MAX_ROUTINES, each admitted, no Routine twice."""
+    """The Team's whole Routine listing: at most MAX_ROUTINES, each admitted, none twice, within its byte bounds."""
     if not isinstance(value, list | tuple) or len(value) > routine.MAX_ROUTINES:
         return None
     listed = [canonical_routine_listing(item) for item in value]
     if any(item is None for item in listed) or len({item["routine_id"] for item in listed}) != len(listed):
+        return None
+    sizes = [_steps_bytes(item) for item in listed]
+    if any(size > MAX_LISTED_STEPS_BYTES for size in sizes) or sum(sizes) > MAX_LISTING_STEPS_BYTES:
         return None
     return listed if list(value) == listed else None
 
@@ -94,6 +108,53 @@ MAX_RERUN_LITERAL_CHARS = 1024
 # result can source; any shorter value is the agent's own choice. The Brain reads them to check rerun work as Team does.
 MIN_IDENTIFIER_CHARS = 6
 MIN_IDENTIFIER_DIGITS = 6
+# A complete number as written, its sign and exponent included, never a fragment of a longer number or word: Team's
+# recorder takes a number as the person's only when one of their texts writes it as one such token.
+NUMBER_TOKEN_RE = re.compile(r"(?<![\w.,+-])[-+]?\d+(?:[.,]\d+)*(?:[eE][-+]?\d+)?(?!\w|[.,]\d)")
+# The date forms without a space that Team's recorder writes again for each run's own date inside a text no result
+# holds (``routine.dates``), and only near the date the send that recorded it started on: ISO, numeric with a year,
+# short ``d/m``, and CJK, a numeric one day or month first and a missing year the nearest one.
+MAX_DATE_OFFSET_DAYS = 31
+UNSPACED_DATE_FORMS = (
+    ("iso", re.compile(r"(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d-])")),
+    ("numeric", re.compile(r"(?<![\d/.])(\d{1,2})([/.])(\d{1,2})\2(\d{4})(?![\d/]|\.\d)")),
+    ("short", re.compile(r"(?<![\d/.])(\d{1,2})/(\d{1,2})(?![\d/]|\.\d)")),
+    ("cjk", re.compile(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日")),
+)
+
+
+def may_write_date(text: str, today: datetime.date) -> bool:
+    """Whether a text writes a date Team's recorder may read as each run's own: in an unspaced form, near ``today``.
+
+    It reads every match in either numeric order and a day more than Team's reach, so the date a send started on in
+    any zone counts. The Brain leaves such a text to Team, which decides.
+    """
+    return any(
+        _near(year, month, day, today)
+        for kind, pattern in UNSPACED_DATE_FORMS
+        for match in pattern.finditer(text)
+        for year, month, day in _dates_written(kind, match.groups())
+    )
+
+
+def _dates_written(kind: str, groups: tuple[str | None, ...]) -> tuple[tuple[str | None, str, str], ...]:
+    """Each (year, month, day) a match may write, a missing year None: a numeric form day first or month first."""
+    if kind in ("iso", "cjk"):
+        return ((groups[0], groups[1], groups[2]),)
+    first, second, year = (groups[0], groups[2], groups[3]) if kind == "numeric" else (groups[0], groups[1], None)
+    return ((year, second, first), (year, first, second))
+
+
+def _near(year: str | None, month: str, day: str, today: datetime.date) -> bool:
+    years = (int(year),) if year else (today.year - 1, today.year, today.year + 1)
+    for candidate in years:
+        try:
+            written = datetime.date(candidate, int(month), int(day))
+        except ValueError:
+            continue
+        if abs((written - today).days) <= MAX_DATE_OFFSET_DAYS + 1:
+            return True
+    return False
 
 
 def _rejected_constant(_text: str) -> object:
