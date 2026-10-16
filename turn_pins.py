@@ -11,6 +11,8 @@ from collections.abc import Callable, Mapping
 
 import interface_language
 import memory as team_memory
+from protocol.team.http.v1 import routine as team_routine_protocol
+from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 
 import routine as team_routine
 
@@ -143,9 +145,9 @@ def restore_routine(
     str | None,
 ]:
     """The exact Routine context a start recorded; anything else, a missing pin included, is corrupt state."""
-    question = _optional(metadata, QUESTION_METADATA, team_routine.canonical_question)
+    question = _optional(metadata, QUESTION_METADATA, team_routine_proposal.canonical_question)
     rerun = _optional(metadata, RERUN_METADATA, team_routine.canonical_rerun)
-    schedule = _optional(metadata, SCHEDULE_METADATA, team_routine.canonical_schedule)
+    schedule = _optional(metadata, SCHEDULE_METADATA, team_routine_protocol.canonical_schedule)
     output = _optional(metadata, OUTPUT_METADATA, team_routine.canonical_output)
     mode = metadata.get(MODE_METADATA)
     if mode not in ("true", "false"):

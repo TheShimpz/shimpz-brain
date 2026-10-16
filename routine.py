@@ -123,9 +123,9 @@ def admit_context(context: Any) -> None:
     if type(context.routine_mode) is not bool or (context.routine_mode and context.routines is None):
         raise RoutineContractError("invalid Routine mode")
     for field, canonical, name in (
-        ("routine_question", canonical_question, "question"),
+        ("routine_question", team_routine_proposal.canonical_question, "question"),
         ("routine_rerun", canonical_rerun, "rerun"),
-        ("routine_schedule", canonical_schedule, "schedule"),
+        ("routine_schedule", team_routine_protocol.canonical_schedule, "schedule"),
         ("routine_output", canonical_output, "output"),
     ):
         value = getattr(context, field)
@@ -169,11 +169,6 @@ def canonical_routines(value: object) -> tuple[dict[str, object], ...]:
     return tuple(listed)
 
 
-def canonical_question(value: object) -> dict[str, object] | None:
-    """The Routine question Team asked the person in this recording, as Team's closed form, or None."""
-    return team_routine_proposal.canonical_question(value)
-
-
 def canonical_rerun(value: object) -> tuple[dict[str, object], ...] | None:
     """The work Team asks the agent to run again before it records, as Team's closed form, or None."""
     work = team_routine_context.canonical_rerun(value)
@@ -192,11 +187,6 @@ def _reply(value: object) -> str | None:
     ):
         return None
     return value
-
-
-def canonical_schedule(value: object) -> dict[str, object] | None:
-    """A schedule in Team's closed form, as Team's protocol admits it, or None."""
-    return team_routine_protocol.canonical_schedule(value)
 
 
 def canonical_output(value: object) -> str | None:

@@ -13,6 +13,7 @@ import turn_prompt
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
 from test_runtime_api import TOKEN, body
 from tool_fake import FixedFactory, system_text
@@ -370,10 +371,10 @@ class GraphTests(unittest.TestCase):
 
 class PendingQuestionTests(unittest.TestCase):
     def test_a_pending_question_is_teams_own_protocol_form(self):
-        self.assertEqual(routine.canonical_question(QUESTION), QUESTION)
+        self.assertEqual(team_routine_proposal.canonical_question(QUESTION), QUESTION)
         for value in (None, {**QUESTION, "extra": 1}, {**QUESTION, "code": "unsupported"}):
             with self.subTest(value=value):
-                self.assertIsNone(routine.canonical_question(value))
+                self.assertIsNone(team_routine_proposal.canonical_question(value))
 
     def test_only_a_recording_chat_turn_carries_a_valid_question(self):
         asked = dataclasses.replace(_chat(), routine_question=QUESTION)
