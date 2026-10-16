@@ -227,7 +227,6 @@ class Modules:
     http_routine_proposal: object
     record: object
     dates: object
-    phrase: object
     # The real Assistant every attempt's Team runs, admitted once.
     assistant: Admitted
 
@@ -242,7 +241,6 @@ def _team_modules(assistant: Generated) -> Modules:
     from local import app as local_app
     from local import audit as local_audit
     from local import authority as local_authority
-    from protocol.http.v1 import phrase
     from protocol.http.v1 import routine_proposal as http_routine_proposal
     from routine import dates, record
 
@@ -257,7 +255,6 @@ def _team_modules(assistant: Generated) -> Modules:
         http_routine_proposal,
         record,
         dates,
-        phrase,
         admitted(assistant),
     )
 
