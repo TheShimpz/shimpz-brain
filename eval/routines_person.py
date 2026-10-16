@@ -63,8 +63,10 @@ class Team:
 OUTPUT_WORDS = {"show": "Mostrar sempre", "changes": "Mostrar só quando mudar", "none": "Não precisa mostrar nada"}
 
 
+# The interface language every person of the eval chats in.
+LOCALE = "pt"
 # Team's Portuguese labels for its output question, which Admin offers in a Portuguese interface.
-OUTPUT_LABELS = team_routine_proposal.OUTPUT_CHOICES["pt"]
+OUTPUT_LABELS = team_routine_proposal.OUTPUT_CHOICES[LOCALE]
 
 
 OUTPUT_OPTIONS = {
@@ -85,8 +87,6 @@ WORK_WORDS = r"zona|domínio|dominio|dns|registro|list|consult"
 SCHEDULE_WORDS = r"\bcada\b|hora|dia|semana|mês|mes\b|segundo|minuto|\d+\s*h\b"
 
 
-# The interface language every person of the eval chats in.
-LOCALE = "pt"
 # The whole set of topics a person states in a fully specified request.
 FULL = frozenset({"work", "zone", "frequency"})
 
@@ -240,7 +240,7 @@ class Attempt:
             if result["status"] != "frozen":
                 break
             self.performed_when_frozen.append(len(self.fixture.performed))
-            opened = service.open_routine_challenge("team_1", run_id, "pt")
+            opened = service.open_routine_challenge("team_1", run_id, LOCALE)
             if opened.get("request", {}).get("kind") != "auth:password":
                 break
             answer = {"challenge_id": opened["challenge_id"], "decision": "submit", "value": True}
@@ -449,7 +449,7 @@ def _team_answer(person: Person, question: dict[str, object]) -> str | None:
     if code == OVER_BUDGET and isinstance(question.get("value"), int):
         # The person takes the shortest interval Team says fits.
         person.gap = question["value"]
-        person.frequency = team_routine_proposal.OVER_BUDGET_ANSWERS["pt"].replace("{seconds}", str(person.gap))
+        person.frequency = team_routine_proposal.OVER_BUDGET_ANSWERS[LOCALE].replace("{seconds}", str(person.gap))
         return person.frequency
     return _FIXED_ANSWERS.get(code)
 
@@ -521,6 +521,6 @@ def conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
         if answer is None:
             return response
         if composed:
-            answer = team_payload.compose_clarified(message, asked, answer, "pt")
+            answer = team_payload.compose_clarified(message, asked, answer, LOCALE)
         message = answer
     return response
