@@ -33,6 +33,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
+from protocol.team.http.v1 import routine_context as team_routine_context
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
 
 import routine as team_routine
@@ -153,7 +154,7 @@ class TurnContextInput(ClosedInput):
     routine_question: dict[str, Any] | None
     # Whether Team read that this chat is about a Routine (advisory), and the work a pending question asks to run again.
     routine_mode: StrictBool
-    routine_rerun: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_STEPS)] | None
+    routine_rerun: Annotated[list[dict[str, Any]], Field(max_length=team_routine_context.MAX_RERUN_ENTRIES)] | None
     # The one schedule Team read from the person's own words, which the record call's description must say.
     routine_schedule: dict[str, Any] | None
     # The one output mode Team read from the person's own words, which the record call's description must say.
