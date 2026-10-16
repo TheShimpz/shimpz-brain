@@ -329,8 +329,8 @@ def _rerun_review(messages: list[Any], *, checked: Mapping[str, frozenset[str]],
     if not calls:
         return None
     if latest.invalid_tool_calls:
-        # A checked call beside an unparsable one cannot be judged whole, so the response is refused.
-        return "fresh"
+        # A checked call beside an unparsable one cannot be judged or answered whole: a contract error, as elsewhere.
+        raise tool_refusal.UnanswerableToolCallError("RerunGuard arrived with an unparsable tool call")
     start = max(index for index, message in enumerate(messages) if isinstance(message, HumanMessage))
     turn = messages[start:]
     results = [

@@ -609,8 +609,9 @@ class RerunGuardTests(unittest.TestCase):
             tool_calls=[_hello(ZONE)],
             invalid_tool_calls=[{"name": ACTION_TOOL, "args": "{", "id": "x", "error": None}],
         )
-        # A checked call beside an unparsable one cannot be judged whole, so the response is refused.
-        self.assertEqual(self._review(_turn("sim", unparsable)), "fresh")
+        # A checked call beside an unparsable one cannot be judged or answered whole: a contract error.
+        with self.assertRaises(routine.tool_refusal.UnanswerableToolCallError):
+            self._review(_turn("sim", unparsable))
         # An Action checks only members every slot of it marks fresh.
         kept = {**FRESH[0]["inputs"][0], "kind": "value", "value": '"ana"', "source": None}
         twice = (*FRESH, {**FRESH[0], "inputs": [kept]}, {**FRESH[0], "action": "list", "inputs": [kept]})
