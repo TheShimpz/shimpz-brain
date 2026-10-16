@@ -1,16 +1,18 @@
 {
   "repository": "https://github.com/TheShimpz/shimpz-teams",
-  "commit": "8128f6ac9b35954dbf3f0215e534be81418b3529",
+  "commit": "cfd8c3a4f15437bb3ce2dc29e155507f25871d90",
   "path": "protocol/http/v1",
   "files": {
     "identifiers.py": "29d382154e787e2e8d3ad5224d1440db6408ef81783b6d04a7c84bc810762f6e",
     "payload.py": "c29c6575458a8d3fb9650c72bebe99e5547d2cf073f27eeb86582c3cd600fe43",
     "phrase.py": "5e95cbda5fa113fca5603e014e38ee97afb181730b2d39185c4f73fb0cbb5e12",
+    "progress.py": "c77854a2198b343cab339f7d5dd989eed230c038120bb78b9d13d814f05ebc59",
     "purpose.py": "317aa40e43d2b714a51a6d3cb54754d3ea750910e2b2c242f6757f0e26ab2f29",
-    "routine.py": "63afe50a3614d529e0f1c7b8c02d2d29864bbe7e380b05273e8ee4bcb460a092",
+    "routine.py": "4d3e6256a0be2bfa1dead83552770c2f207656b9263f8bf9cfdcad90155a3481",
     "routine_context.py": "f8b74c60f7566e40ad10dc5410b73f049e5e0dff2a1da3d9bbc04ea1ae2d6251",
-    "routine_notice.py": "0916c384b30300dcb260ed9e187c932b1103b9d80410483da7c1afeaabfd2f87",
+    "routine_notice.py": "c27c327f53b939af1fe2bb8b6224f7588e1e65fedaa9e20cb85d5f071a939f96",
     "routine_proposal.py": "c3de14f549fedccb9aac0f03d1a94fcf79edc063113d0070c0e7311544b015ef",
+    "strict_json.py": "0b87b37033ce542f15fba86ba98af2aeb7468359b4553d7ea602355b2b803f4e",
     "turn.py": "b55e273a0a908278f7ecba2956bd29d8bd921b85f3eaf25c7266672fd382a427"
   }
 }
