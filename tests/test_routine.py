@@ -178,6 +178,8 @@ class RecordTests(unittest.TestCase):
             (_args(replaces="b" * 32), "replaces"),
             (_args(reply="   "), "reply"),
             (_args(reply="a\x00b"), "reply"),
+            (_args(reply="a\x01b"), "reply"),
+            (_args(reply="a\x7fb"), "reply"),
             (_args(reply="x" * (routine.MAX_REPLY_CHARS + 1)), "reply"),
             (_args(reply=1), "reply"),
         )

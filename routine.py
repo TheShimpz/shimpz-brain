@@ -22,6 +22,7 @@ from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
+from protocol.team.http.v1 import turn as team_turn
 
 TOOL_NAME = "shimpz_routine"
 # Every Team->Brain Routine form and bound is Team's own, read from its mirrored protocol, never copied here.
@@ -182,7 +183,12 @@ def _reply(value: object) -> str | None:
     """The reply the person reads beside the card: empty, or text that says something."""
     if value == "":
         return value
-    if not isinstance(value, str) or "\x00" in value or not value.strip() or len(value) > MAX_REPLY_CHARS:
+    if (
+        not isinstance(value, str)
+        or team_turn.REPLY_CONTROL_RE.search(value) is not None
+        or not value.strip()
+        or len(value) > MAX_REPLY_CHARS
+    ):
         return None
     return value
 
