@@ -286,9 +286,7 @@ def system_prompt(context: TurnContext) -> str:
     # A settings answer only records again, so nothing in the prompt tells its turn to run work, and the Actions it is
     # not offered are no limit of the Team's.
     records_only = context.routine_settings_answer
-    question = None if context.attachments else context.routine_question
-    routines = None if context.attachments else context.routines
-    settings = routine.settings_question(question)
+    settings = routine.settings_question(context.routine_question)
     assistant_contracts = [
         {
             "genesis": assistant.genesis,
@@ -360,10 +358,10 @@ def system_prompt(context: TurnContext) -> str:
         f"{capabilities}\n\n"
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
-        f"{_routines_section(routines, records_only, settings, context.routine_mode)}"
-        f"{_question_section(question, records_only)}"
-        f"{_routine_mode_section(context.routine_mode and not context.attachments, records_only, settings)}"
-        f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
+        f"{_routines_section(context.routines, records_only, settings, context.routine_mode)}"
+        f"{_question_section(context.routine_question, records_only)}"
+        f"{_routine_mode_section(context.routine_mode, records_only, settings)}"
+        f"{_rerun_section(context.routine_rerun)}"
         f"{_attachments_section(context.attachments)}"
         f"{_language_section(context.locale)}"
         # The date changes daily, so it stays last and everything before it remains a stable cacheable prefix.

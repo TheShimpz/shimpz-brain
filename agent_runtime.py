@@ -313,9 +313,8 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
     """Whether this turn offers the memory and the Routine tool."""
-    # A turn that carries attachments learns nothing and changes no Routine (ADR-0093).
-    writable = not context.attachments
-    return writable and context.memories is not None, writable and context.routines is not None
+    # A turn that carries attachments learns nothing (ADR-0093); its admitted context carries no Routines.
+    return not context.attachments and context.memories is not None, context.routines is not None
 
 
 def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnContext:
