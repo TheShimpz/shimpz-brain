@@ -20,7 +20,7 @@ if __package__:
         ZONE_RECORDS,
         ZONE_SET,
     )
-    from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
+    from eval.routines_person import FULL, LOCALE, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         EXAMPLE,
@@ -33,7 +33,7 @@ else:  # run as a script from Team, beside its sibling modules
         ZONE_RECORDS,
         ZONE_SET,
     )
-    from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
+    from routines_person import FULL, LOCALE, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 
 
 @dataclasses.dataclass(frozen=True)
@@ -202,8 +202,9 @@ def _defined_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum, r
     phrase = attempt.team.modules.phrase
     checks = (
         ("schedule", stratum.schedule(attempt.person, routine.schedule)),
-        # The description the person confirmed says how often it runs, exactly as Team scheduled it.
-        ("description-schedule", phrase.stated(card["description"]) == (routine.schedule,)),
+        # The description the person confirmed says how often it runs, exactly as Team scheduled it, read in the
+        # chat's language like the Brain's own check.
+        ("description-schedule", phrase.stated(card["description"], LOCALE) == (routine.schedule,)),
         (f"output:{mode}", mode == attempt.person.output),
         # And what each run does with its result, exactly as Team persisted it.
         (f"description-output:{mode}", phrase.outputs(card["description"]) == (mode,)),

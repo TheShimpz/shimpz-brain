@@ -85,6 +85,8 @@ WORK_WORDS = r"zona|domínio|dominio|dns|registro|list|consult"
 SCHEDULE_WORDS = r"\bcada\b|hora|dia|semana|mês|mes\b|segundo|minuto|\d+\s*h\b"
 
 
+# The interface language every person of the eval chats in.
+LOCALE = "pt"
 # The whole set of topics a person states in a fully specified request.
 FULL = frozenset({"work", "zone", "frequency"})
 
@@ -158,7 +160,7 @@ class Attempt:
             "files": [],
             "assistant_ids": [ASSISTANT],
             "conversation": list(self.conversation[-8:]),
-            "locale": "pt",
+            "locale": LOCALE,
             "request": {"issued_at": int(time.time()), "nonce": secrets.token_hex(16)},
             "timezone": TIMEZONE,
         }
