@@ -17,6 +17,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import purpose as team_purpose
+from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict
 from runtime_errors import RuntimeContractError
 
@@ -58,13 +59,11 @@ class PendingAction:
     action_summary: str
 
     def __post_init__(self) -> None:
-        from agent_runtime import IDENTIFIER_RE
-
         if (
             not isinstance(self.thread_id, str)
-            or IDENTIFIER_RE.fullmatch(self.thread_id) is None
+            or team_turn.SAFE_ID_RE.fullmatch(self.thread_id) is None
             or not isinstance(self.interrupt_id, str)
-            or IDENTIFIER_RE.fullmatch(self.interrupt_id) is None
+            or team_turn.SAFE_ID_RE.fullmatch(self.interrupt_id) is None
             or team_identifiers.canonical_assistant_id(self.assistant_id) is None
             or team_identifiers.canonical_action_id(self.action_id) is None
             or not _public_text(self.assistant_name, MAX_ASSISTANT_NAME_CHARS)

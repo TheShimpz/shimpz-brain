@@ -12,7 +12,6 @@ import datetime
 import functools
 import hashlib
 import json
-import re
 import secrets
 import threading
 import weakref
@@ -53,8 +52,6 @@ MODELS_BY_PROVIDER = {
     provider["id"]: frozenset(model["id"] for model in provider["models"]) for provider in _MODEL_CATALOG["providers"]
 }
 PROVIDERS = frozenset(MODELS_BY_PROVIDER)
-IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
-TEAM_NAME_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 # A turn names at most every Assistant its Team may have installed (Team's MAX_CHAT_ASSISTANTS, 16), each with at
 # most 128 Actions, so these two bounds are the total: a request carries at most 2,048 Actions, exactly what Team can
 # admit.
@@ -78,14 +75,12 @@ MAX_API_KEY_CHARS = 8192
 ASSISTANT_SCOPE_METADATA = "shimpz_assistant_scope"
 
 
-def normalize_team_name(value: str) -> str:
-    """Return bounded display data while rejecting control-character injection."""
-    if not isinstance(value, str) or TEAM_NAME_CONTROL_RE.search(value):
+def require_team_name(value: object) -> str:
+    """The Team's display name exactly as Team sends it, by Team's own rule: it is never trimmed or repaired here."""
+    name = team_payload.canonical_team_name(value)
+    if name is None:
         raise RuntimeContractError("invalid Team name")
-    normalized = value.strip()
-    if not 1 <= len(normalized) <= MAX_TEAM_NAME_CHARS:
-        raise RuntimeContractError("invalid Team name")
-    return normalized
+    return name
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,9 +226,9 @@ class TurnContext:
             or self.attachment_charge < 0
         ):
             raise RuntimeContractError("invalid attachments")
-        if IDENTIFIER_RE.fullmatch(self.thread_id) is None:
+        if team_turn.SAFE_ID_RE.fullmatch(self.thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
-        object.__setattr__(self, "team_name", normalize_team_name(self.team_name))
+        require_team_name(self.team_name)
         if len(self.assistants) > MAX_ASSISTANTS:
             raise RuntimeContractError(f"a turn may name at most {MAX_ASSISTANTS} Assistants")
         assistant_ids = [assistant.id for assistant in self.assistants]
@@ -604,7 +599,7 @@ class AgentRuntime:
 
     def delete_thread(self, thread_id: str) -> None:
         """Permanently remove one conversation without revealing whether it existed."""
-        if not isinstance(thread_id, str) or IDENTIFIER_RE.fullmatch(thread_id) is None:
+        if not isinstance(thread_id, str) or team_turn.SAFE_ID_RE.fullmatch(thread_id) is None:
             raise RuntimeContractError("invalid conversation thread")
         lock = self._thread_lock(thread_id)
         try:

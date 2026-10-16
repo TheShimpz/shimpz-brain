@@ -41,7 +41,7 @@ def _greeter(assistant_id: str, genesis: str, summary: str) -> dict:
 def body(**updates):
     value = {
         "thread_id": "team:hello-pulse:conversation-1",
-        "team_name": "  Greeting Crew  ",
+        "team_name": "Greeting Crew",
         "assistants": [
             _greeter("hello-pulse", "Combine declared greeting Actions for a friendly welcome.", "Return a greeting."),
             _greeter(

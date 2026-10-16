@@ -33,10 +33,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
+from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
+from protocol.team.http.v1 import turn as team_turn
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
-
-import routine as team_routine
 
 # The modules requests import lazily (provider SDKs, LangChain, LangGraph), loaded before the startup freeze.
 WARM_IMPORTS = (
@@ -149,7 +149,7 @@ class TurnContextInput(ClosedInput):
     # The procedures the Team learned (ADR-0085); null where learning is unavailable.
     skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
     # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
-    routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine.MAX_ROUTINES)] | None
+    routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine_protocol.MAX_ROUTINES)] | None
     # The question Team asked the person about this recording, which the person's message may answer (ADR-0101).
     routine_question: dict[str, Any] | None
     # Whether Team read that this chat is about a Routine (advisory), and the work a pending question asks to run again.
@@ -167,10 +167,10 @@ class TurnContextInput(ClosedInput):
 
     @field_validator("team_name", mode="before")
     @classmethod
-    def normalize_team_name(cls, value: object) -> object:
+    def canonical_team_name(cls, value: object) -> object:
         if not isinstance(value, str):
             return value
-        return agent_runtime.normalize_team_name(value)
+        return agent_runtime.require_team_name(value)
 
     def runtime_context(self, **turn: Any) -> agent_runtime.TurnContext:
         """The turn's context, built once: a start's own fields come in `turn`, so its knowledge is admitted once."""
@@ -315,7 +315,7 @@ class DeleteThreadInput(ClosedInput):
     @field_validator("thread_id")
     @classmethod
     def validate_thread_id(cls, value: str) -> str:
-        if agent_runtime.IDENTIFIER_RE.fullmatch(value) is None:
+        if team_turn.SAFE_ID_RE.fullmatch(value) is None:
             raise ValueError("invalid conversation thread")
         return value
 
