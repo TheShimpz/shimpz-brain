@@ -102,6 +102,8 @@ _CORRECTIONS = {
 }
 
 
+# The shortest word or whole number Team's recorder treats as an identifier that only a result can source.
+MIN_IDENTIFIER_CHARS = 6
 # How a rerun call that sends a 'fresh' input no result of this turn holds is answered: nothing ran.
 _RERUN_CORRECTION = (
     "Not done: no Action in this response ran. The Team needs each 'fresh' input of its rerun work to come from a "
@@ -303,8 +305,9 @@ def rerun_guard(work: tuple[dict[str, object], ...], tool_name: Callable[[str, s
 
     The rerun prompt asks for each fresh input from a result of this turn; this enforces it, so the agent never sends
     a remembered value Team would only ask about again. Team's recorder stays the authority. A member is checked only
-    where every slot of its Action marks it fresh, and a value passes when it equals any value inside an Action result
-    of this turn (``actions`` names the Action tools) or the person's current message writes it.
+    where every slot of its Action marks it fresh, and only an identifier-shaped value, which Team would otherwise ask
+    about again; it passes when it equals any value inside an Action result of this turn (``actions`` names the Action
+    tools) or the person's current message writes it.
     """
     slots: dict[str, list[set[str]]] = {}
     for entry in work:
@@ -337,7 +340,7 @@ def _rerun_review(messages: list[Any], *, checked: Mapping[str, frozenset[str]],
         sent = call["args"]
         for member in checked[call["name"]] & sent.keys():
             value = sent[member]
-            if not any(value == node for node in results) and not _written(value, written):
+            if _identifier(value) and not any(value == node for node in results) and not _written(value, written):
                 return "fresh"
     return None
 
@@ -362,10 +365,18 @@ def _values(value: object) -> Iterator[object]:
             yield from _values(item)
 
 
-def _written(value: object, segments: tuple[str, ...]) -> bool:
-    """Whether the person's current message writes this value: a string or a number's JSON text inside it."""
-    if isinstance(value, str):
-        return bool(value) and any(value in segment for segment in segments)
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        return any(json.dumps(value) in segment for segment in segments)
-    return False
+def _identifier(value: object) -> bool:
+    """Whether Team would ask where a value no result holds came from: an identifier, as its recorder shapes one.
+
+    One word of at least six characters or a whole number of at least six digits (Team's ``routine.provenance``);
+    any other value Team keeps as the agent's own choice, such as a short lookup term a helper call sends.
+    """
+    if type(value) is int:
+        return len(str(abs(value))) >= MIN_IDENTIFIER_CHARS
+    return isinstance(value, str) and len(value) >= MIN_IDENTIFIER_CHARS and not any(c.isspace() for c in value)
+
+
+def _written(value: str | int, segments: tuple[str, ...]) -> bool:
+    """Whether the person's current message writes this identifier."""
+    text = value if isinstance(value, str) else str(value)
+    return any(text in segment for segment in segments)

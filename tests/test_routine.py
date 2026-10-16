@@ -575,14 +575,18 @@ class RerunGuardTests(unittest.TestCase):
             with self.subTest(value=value):
                 call = AIMessage("", tool_calls=[_hello(value)])
                 self.assertIsNone(self._review(_turn(message, call)))
-        # Only what the person wrote counts, never Team's composed question; other values are never written.
+        # Only what the person wrote counts, never Team's composed question.
         asked = f"pode buscar\n\nPergunta: {ZONE}?\nResposta: sim"
         self.assertEqual(self._review(_turn(asked, AIMessage("", tool_calls=[_hello(ZONE)]))), "fresh")
-        for value in (True, {"id": ZONE}, ""):
+
+    def test_only_an_identifier_needs_a_source(self):
+        # Team keeps any other value as the agent's own choice, such as the term a helper lookup sends.
+        for value in ("me", "my zone list", 42424, 4242.5, True, {"id": ZONE}, ["a"]):
             with self.subTest(value=value):
-                self.assertEqual(
-                    self._review(_turn(f"{ZONE} True", AIMessage("", tool_calls=[_hello(value)]))), "fresh"
-                )
+                self.assertIsNone(self._review(_turn("sim", AIMessage("", tool_calls=[_hello(value)]))))
+        for value in ("zone-1", -424242):
+            with self.subTest(value=value):
+                self.assertEqual(self._review(_turn("sim", AIMessage("", tool_calls=[_hello(value)]))), "fresh")
 
     def test_only_a_fresh_member_of_a_checked_action_in_an_answerable_response_is_reviewed(self):
         self.assertIsNone(self._review([]))
