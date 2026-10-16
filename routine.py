@@ -104,7 +104,8 @@ _CORRECTIONS = {
     "unstated-output": _NOT_DONE + "The person has not changed what is done with each run's result: say the "
     "Routine's own output or leave it out of the description.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
-    "reply": _NOT_DONE + f"Give the person an empty reply or one of at most {MAX_REPLY_CHARS} characters.",
+    "reply": _NOT_DONE + f"Give the person an empty reply or one of at most {MAX_REPLY_CHARS} characters with no "
+    "control characters.",
 }
 
 
