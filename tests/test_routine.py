@@ -270,6 +270,10 @@ class RecordTests(unittest.TestCase):
                 self.assertIsNone(routine.recorded(messages))
 
 
+def _routine_pins(question=None, mode=False, rerun=None, schedule=None, output=None) -> dict[str, str]:
+    return turn_pins.record_routine(question, mode, rerun, schedule, output)
+
+
 def _runtime(*responses):
     model = RecordingToolAwareFakeModel(responses=list(responses))
     return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model)), model
@@ -437,9 +441,9 @@ class RoutineModeTests(unittest.TestCase):
     def test_the_mode_and_rerun_are_pinned_for_the_logical_turn(self):
         for mode, rerun in ((False, None), (True, RERUN)):
             with self.subTest(mode=mode):
-                pins = turn_pins.record_routine_mode(mode, rerun)
-                self.assertEqual(turn_pins.restore_routine_mode(pins), (mode, rerun))
-        pins = turn_pins.record_routine_mode(True, RERUN)
+                pins = _routine_pins(mode=mode, rerun=rerun)
+                self.assertEqual(turn_pins.restore_routine(pins)[1:3], (mode, rerun))
+        pins = _routine_pins(mode=True, rerun=RERUN)
         for key, value in (
             (turn_pins.MODE_METADATA, None),
             (turn_pins.MODE_METADATA, "1"),
@@ -449,15 +453,15 @@ class RoutineModeTests(unittest.TestCase):
             (turn_pins.RERUN_METADATA, json.dumps([dict(reversed(list(RERUN[0].items())))], ensure_ascii=False)),
         ):
             with self.subTest(key=key, value=value), self.assertRaises(turn_pins.PinError):
-                turn_pins.restore_routine_mode({**pins, key: value})
-        # A rerun that is not JSON text is refused before the mode is judged, even when the mode is not hashable.
+                turn_pins.restore_routine({**pins, key: value})
+        # A mode that is not hashable is still only corrupt state.
         with self.assertRaises(turn_pins.PinError):
-            turn_pins.restore_routine_mode({turn_pins.MODE_METADATA: [], turn_pins.RERUN_METADATA: None})
+            turn_pins.restore_routine({**pins, turn_pins.MODE_METADATA: []})
 
     def test_the_persons_schedule_is_pinned_for_the_logical_turn(self):
         for schedule in (None, EVERY_30_SECONDS):
             with self.subTest(schedule=schedule):
-                self.assertEqual(turn_pins.restore_schedule(turn_pins.record_schedule(schedule)), schedule)
+                self.assertEqual(turn_pins.restore_routine(_routine_pins(schedule=schedule))[3], schedule)
         for value in (
             None,
             "not json",
@@ -465,20 +469,22 @@ class RoutineModeTests(unittest.TestCase):
             '{"gap":4,"kind":"continuous"}',
         ):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
-                turn_pins.restore_schedule({turn_pins.SCHEDULE_METADATA: value})
+                turn_pins.restore_routine({**_routine_pins(), turn_pins.SCHEDULE_METADATA: value})
         with self.assertRaises(agent_runtime.RuntimeContractError):
             dataclasses.replace(_chat(), routines=None, routine_schedule=EVERY_30_SECONDS)
 
     def test_the_persons_output_is_pinned_for_the_logical_turn(self):
         for output in (None, "changes"):
             with self.subTest(output=output):
-                self.assertEqual(turn_pins.restore_output(turn_pins.record_output(output)), output)
+                self.assertEqual(turn_pins.restore_routine(_routine_pins(output=output))[4], output)
         # No output read from the person is pinned as JSON null; a missing pin is corrupt state.
-        self.assertEqual(turn_pins.record_output(None), {turn_pins.OUTPUT_METADATA: "null"})
+        self.assertEqual(_routine_pins()[turn_pins.OUTPUT_METADATA], "null")
+        pins = _routine_pins()
+        del pins[turn_pins.OUTPUT_METADATA]
         corrupt = ("not json", '"sometimes"', "1", " null")
-        for metadata in ({}, *({turn_pins.OUTPUT_METADATA: value} for value in corrupt)):
+        for metadata in (pins, *({**_routine_pins(), turn_pins.OUTPUT_METADATA: value} for value in corrupt)):
             with self.subTest(metadata=metadata), self.assertRaises(turn_pins.PinError):
-                turn_pins.restore_output(metadata)
+                turn_pins.restore_routine(metadata)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
             dataclasses.replace(_chat(schedule=None), routines=None, routine_output="changes")
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Routine output"):
@@ -614,12 +620,12 @@ class PromptPinAndEndpointTests(unittest.TestCase):
     def test_a_pending_question_is_pinned_for_the_logical_turn(self):
         for question in (None, QUESTION):
             with self.subTest(question=question):
-                self.assertEqual(turn_pins.restore_question(turn_pins.record_question(question)), question)
-        pins = turn_pins.record_question(QUESTION)
+                self.assertEqual(turn_pins.restore_routine(_routine_pins(question=question))[0], question)
+        pins = _routine_pins(question=QUESTION)
         reordered = json.dumps(dict(reversed(list(QUESTION.items()))), ensure_ascii=False)
         for value in (None, "not json", '{"code": "x"}', reordered):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
-                turn_pins.restore_question({**pins, turn_pins.QUESTION_METADATA: value})
+                turn_pins.restore_routine({**pins, turn_pins.QUESTION_METADATA: value})
 
     def test_routines_are_pinned_for_the_logical_turn(self):
         date = turn_prompt.today()

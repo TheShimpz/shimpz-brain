@@ -7,7 +7,7 @@ import datetime
 import json
 import re
 import zoneinfo
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import interface_language
 import memory as team_memory
@@ -112,66 +112,55 @@ def restore(
     return recorded_date, recorded_memory, recorded_skills, recorded_routines
 
 
-def record_question(question: dict[str, object] | None) -> dict[str, str]:
-    """The checkpoint entry holding the Routine question Team asked before this turn started, or none."""
-    return {QUESTION_METADATA: _json(question)}
+def record_routine(
+    question: dict[str, object] | None,
+    mode: bool,
+    rerun: tuple[dict[str, object], ...] | None,
+    schedule: dict[str, object] | None,
+    output: str | None,
+) -> dict[str, str]:
+    """The checkpoint entries of the turn's Routine context, each JSON with None as null.
+
+    The Routine question Team asked before this turn started, whether the turn is about a Routine, the work Team asked
+    to run again, and the one schedule and output mode Team read from the person, which a description must say.
+    """
+    return {
+        QUESTION_METADATA: _json(question),
+        MODE_METADATA: _json(mode),
+        RERUN_METADATA: _json(rerun),
+        SCHEDULE_METADATA: _json(schedule),
+        OUTPUT_METADATA: _json(output),
+    }
 
 
-def restore_question(metadata: Mapping[str, object]) -> dict[str, object] | None:
-    """The exact Routine question a start recorded; anything else is corrupt state."""
-    value = metadata.get(QUESTION_METADATA)
+def restore_routine(
+    metadata: Mapping[str, object],
+) -> tuple[
+    dict[str, object] | None,
+    bool,
+    tuple[dict[str, object], ...] | None,
+    dict[str, object] | None,
+    str | None,
+]:
+    """The exact Routine context a start recorded; anything else, a missing pin included, is corrupt state."""
+    question = _optional(metadata, QUESTION_METADATA, team_routine.canonical_question)
+    rerun = _optional(metadata, RERUN_METADATA, team_routine.canonical_rerun)
+    schedule = _optional(metadata, SCHEDULE_METADATA, team_routine.canonical_schedule)
+    output = _optional(metadata, OUTPUT_METADATA, team_routine.canonical_output)
+    mode = metadata.get(MODE_METADATA)
+    if mode not in ("true", "false"):
+        raise PinError("recorded turn pins are invalid")
+    return question, mode == "true", rerun, schedule, output
+
+
+def _optional[T](metadata: Mapping[str, object], key: str, canonical: Callable[[object], T | None]) -> T | None:
+    """The exact value a start pinned under ``key``, JSON null for none; anything else is corrupt state."""
+    value = metadata.get(key)
     decoded = _decoded(value)
-    question = None if decoded is None else team_routine.canonical_question(decoded)
-    if (decoded is not None and question is None) or _json(question) != value:
+    admitted = None if decoded is None else canonical(decoded)
+    if (decoded is not None and admitted is None) or _json(admitted) != value:
         raise PinError("recorded turn pins are invalid")
-    return question
-
-
-def record_routine_mode(mode: bool, rerun: tuple[dict[str, object], ...] | None) -> dict[str, str]:
-    """The checkpoint entries holding whether the turn is about a Routine and the work Team asked to run again."""
-    return {MODE_METADATA: _json(mode), RERUN_METADATA: _json(None if rerun is None else list(rerun))}
-
-
-def restore_routine_mode(metadata: Mapping[str, object]) -> tuple[bool, tuple[dict[str, object], ...] | None]:
-    """The exact Routine mode and rerun a start recorded; anything else is corrupt state."""
-    mode, rerun = metadata.get(MODE_METADATA), metadata.get(RERUN_METADATA)
-    if not isinstance(rerun, str) or mode not in {"true", "false"}:
-        raise PinError("recorded turn pins are invalid")
-    decoded = _decoded(rerun)
-    work = None if decoded is None else team_routine.canonical_rerun(decoded)
-    if (decoded is not None and work is None) or _json(None if work is None else list(work)) != rerun:
-        raise PinError("recorded turn pins are invalid")
-    return mode == "true", work
-
-
-def record_schedule(schedule: dict[str, object] | None) -> dict[str, str]:
-    """The checkpoint entry holding the one schedule Team read from the person, which a description must say."""
-    return {SCHEDULE_METADATA: _json(schedule)}
-
-
-def restore_schedule(metadata: Mapping[str, object]) -> dict[str, object] | None:
-    """The exact schedule a start recorded; anything else is corrupt state."""
-    value = metadata.get(SCHEDULE_METADATA)
-    decoded = _decoded(value)
-    schedule = None if decoded is None else team_routine.canonical_schedule(decoded)
-    if (decoded is not None and schedule is None) or _json(schedule) != value:
-        raise PinError("recorded turn pins are invalid")
-    return schedule
-
-
-def record_output(output: str | None) -> dict[str, str]:
-    """The checkpoint entry holding the one output mode Team read from the person, which a description must say."""
-    return {OUTPUT_METADATA: _json(output)}
-
-
-def restore_output(metadata: Mapping[str, object]) -> str | None:
-    """The exact output mode a start recorded, None included; anything else, a missing pin included, is corrupt."""
-    value = metadata.get(OUTPUT_METADATA)
-    decoded = _decoded(value)
-    output = None if decoded is None else team_routine.canonical_output(decoded)
-    if (decoded is not None and output is None) or _json(output) != value:
-        raise PinError("recorded turn pins are invalid")
-    return output
+    return admitted
 
 
 def record_model(provider: str, model: str) -> dict[str, str]:

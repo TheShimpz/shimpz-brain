@@ -328,10 +328,7 @@ def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnConte
     """A resumed turn's context with exactly the pins its start recorded."""
     try:
         turn_date, rules, skills, routines = turn_pins.restore(metadata)
-        question = turn_pins.restore_question(metadata)
-        mode, rerun = turn_pins.restore_routine_mode(metadata)
-        schedule = turn_pins.restore_schedule(metadata)
-        output = turn_pins.restore_output(metadata)
+        question, mode, rerun, schedule, output = turn_pins.restore_routine(metadata)
         provider, model = turn_pins.restore_model(metadata)
         locale, turn_message_id = turn_pins.restore_turn(metadata)
         zone = turn_pins.restore_zone(metadata)
@@ -623,10 +620,13 @@ class AgentRuntime:
             "metadata": {
                 ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
                 **turn_pins.record(context.turn_date, context.memories, context.skills, context.routines),
-                **turn_pins.record_question(context.routine_question),
-                **turn_pins.record_routine_mode(context.routine_mode, context.routine_rerun),
-                **turn_pins.record_schedule(context.routine_schedule),
-                **turn_pins.record_output(context.routine_output),
+                **turn_pins.record_routine(
+                    context.routine_question,
+                    context.routine_mode,
+                    context.routine_rerun,
+                    context.routine_schedule,
+                    context.routine_output,
+                ),
                 **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
                 **turn_pins.record_zone(context.timezone),
