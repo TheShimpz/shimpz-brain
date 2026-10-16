@@ -67,16 +67,20 @@ def _attachment(case: Case) -> tuple[turn_attachments.Attachment, ...]:
 
 
 def context(case: Case, provider: agent_runtime.ProviderConfig, thread_id: str) -> agent_runtime.TurnContext:
-    """A production chat context: memories and Routines offered, the interface in English, the case's attachment."""
+    """A production chat context: memories offered, the interface in English, and the case's attachment.
+
+    Its Routines are offered too unless the case attaches a file, since Team lists them only for a send without files.
+    """
+    attachments = _attachment(case)
     return agent_runtime.TurnContext(
         thread_id,
         "Eval Team",
         tuple(ASSISTANTS[name] for name in case.assistants),
         provider,
         memories=(),
-        routines=(),
+        routines=None if attachments else (),
         locale="en",
-        attachments=_attachment(case),
+        attachments=attachments,
     )
 
 

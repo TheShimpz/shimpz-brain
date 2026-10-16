@@ -7,6 +7,7 @@ from unittest import mock
 
 import agent_runtime
 import runtime_api
+import test_attachments
 import tool_refusal
 import turn_pins
 import turn_prompt
@@ -82,14 +83,18 @@ def _action(call_id: str = "a1") -> dict:
 
 # The schedule Team read from the person's "a cada 30 segundos", which the default description says.
 EVERY_30_SECONDS = {"kind": "continuous", "gap": 30}
+# The question rerun work comes beside.
+RERUN_QUESTION = {"code": "routine-work-rerun", "options": [], "value": None}
 
 
 def _chat(routines=(), schedule=EVERY_30_SECONDS):
+    # A schedule the person states makes the chat about a Routine, as Team reads it.
     return dataclasses.replace(
         context(),
         memories=(),
         routines=tuple(routines),
         locale="pt",
+        routine_mode=schedule is not None,
         routine_schedule=schedule,
     )
 
@@ -408,7 +413,7 @@ class RoutineModeTests(unittest.TestCase):
                 self.assertIsNone(routine.canonical_rerun(rerun))
 
     def test_only_a_recording_chat_turn_carries_a_mode_or_a_rerun(self):
-        chat = dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN)
+        chat = dataclasses.replace(_chat(), routine_question=RERUN_QUESTION, routine_rerun=RERUN)
         self.assertEqual((chat.routine_mode, chat.routine_rerun), (True, RERUN))
         for changes, error in (
             ({"routine_mode": True}, "invalid Routine mode"),
@@ -422,7 +427,9 @@ class RoutineModeTests(unittest.TestCase):
 
     def test_the_prompt_adds_the_routine_mode_and_rerun_sections_only_when_sent(self):
         runtime, model = _runtime(AIMessage(content="Ok."))
-        runtime.start(dataclasses.replace(_chat(), routine_mode=True, routine_rerun=RERUN), envelope("Sim"))
+        runtime.start(
+            dataclasses.replace(_chat(), routine_question=RERUN_QUESTION, routine_rerun=RERUN), envelope("Sim")
+        )
         system = system_text(model.seen_messages[-1])
         self.assertIn("If this message asks for a Routine", system)
         self.assertIn("what to do with each run's result from the user's words and asks about them itself", system)
@@ -430,7 +437,7 @@ class RoutineModeTests(unittest.TestCase):
         self.assertIn("The Team needs this work run again before it can record", system)
         self.assertIn(json.dumps(list(RERUN), ensure_ascii=False), system)
         runtime, model = _runtime(AIMessage(content="Ok."))
-        runtime.start(_chat(), envelope("Oi"))
+        runtime.start(_chat(schedule=None), envelope("Oi"))
         system = system_text(model.seen_messages[-1])
         self.assertNotIn("If this message asks for a Routine", system)
         self.assertNotIn("The Team needs this work run again", system)
@@ -557,7 +564,7 @@ class RoutineModeTests(unittest.TestCase):
         runtime, model = GraphTests._runtime(
             None, AIMessage(content="", tool_calls=[_action()]), AIMessage(content="Ok.")
         )
-        started = dataclasses.replace(_chat([LISTED]), routine_mode=True, routine_rerun=RERUN)
+        started = dataclasses.replace(_chat([LISTED]), routine_question=RERUN_QUESTION, routine_rerun=RERUN)
         suspended = runtime.start(started, envelope("Sim"))
         runtime.resume(_chat([LISTED]), {suspended.actions[0].interrupt_id: {"records": ["A"]}})
         system = system_text(model.seen_messages[-1])
@@ -643,6 +650,27 @@ class PromptPinAndEndpointTests(unittest.TestCase):
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid routines"):
             dataclasses.replace(context(), routines=({"routine_id": "x"},))
 
+    def test_the_context_admits_the_recording_fields_only_together_as_team_sends_them(self):
+        recorded = dataclasses.replace(
+            _chat([LISTED]), routine_question=RERUN_QUESTION, routine_rerun=RERUN, routine_output="changes"
+        )
+        self.assertEqual((recorded.routine_question, recorded.routine_rerun), (RERUN_QUESTION, RERUN))
+        # Team reads an output choice outside Routine mode too.
+        self.assertEqual(dataclasses.replace(_chat(schedule=None), routine_output="changes").routine_output, "changes")
+        attachment = test_attachments.turn_context("openai", "gpt-6-luna", test_attachments.team_attachment("text"))
+        for changes, error in (
+            ({"routine_mode": False}, "invalid Routine question"),
+            ({"routine_mode": False, "routine_question": None, "routine_rerun": None}, "invalid Routine schedule"),
+            ({"routine_question": QUESTION}, "invalid Routine rerun"),
+            ({"routine_question": None}, "invalid Routine rerun"),
+            ({"attachments": attachment.attachments}, "invalid routines"),
+        ):
+            with (
+                self.subTest(changes=sorted(changes)),
+                self.assertRaisesRegex(agent_runtime.RuntimeContractError, error),
+            ):
+                dataclasses.replace(recorded, routine_schedule=EVERY_30_SECONDS, **changes)
+
     def test_the_turn_endpoint_carries_routines_and_returns_the_record(self):
         headers = {"Authorization": f"Bearer {TOKEN}"}
         model = ToolAwareFakeModel(responses=[AIMessage(content="", tool_calls=[_call()])])
@@ -650,7 +678,9 @@ class PromptPinAndEndpointTests(unittest.TestCase):
         api = TestClient(runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN))
         response = api.post(
             "/v1/turns",
-            json=body(message=envelope(MESSAGE), routines=[LISTED], routine_schedule=EVERY_30_SECONDS),
+            json=body(
+                message=envelope(MESSAGE), routines=[LISTED], routine_mode=True, routine_schedule=EVERY_30_SECONDS
+            ),
             headers=headers,
         )
         self.assertEqual(response.status_code, 200)

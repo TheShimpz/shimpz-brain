@@ -86,7 +86,8 @@ def turn_context(provider: str, model: str, *items: dict[str, object]) -> agent_
         agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789abcdef"),
         memories=(),
         skills=(),
-        routines=(),
+        # Team lists Routines only for a send without files, which alone records one.
+        routines=None if items else (),
         attachments=turn_attachments.admit(list(items)),
     )
 
@@ -713,7 +714,7 @@ class TurnEndpointTests(unittest.TestCase):
         )
         api = TestClient(runtime_api.create_app(runtime=runtime, token_reader=lambda: TOKEN))
         headers = {"Authorization": f"Bearer {TOKEN}"}
-        attached = body(attachments=[team_attachment("image")])
+        attached = body(attachments=[team_attachment("image")], routines=None)
         self.assertEqual(api.post("/v1/turns", json=attached, headers=headers).status_code, 200)
         resume = {key: value for key, value in attached.items() if key not in {"message", "conversation", "locale"}}
         resume["results"] = {"interrupt-1": {"ok": True}}
@@ -721,7 +722,7 @@ class TurnEndpointTests(unittest.TestCase):
         self.assertEqual([len(context.attachments) for context in contexts], [1, 1])
         bad = team_attachment("image")
         bad["content"]["sha256"] = "0" * 64
-        refused = api.post("/v1/turns", json=body(attachments=[bad]), headers=headers)
+        refused = api.post("/v1/turns", json=body(attachments=[bad], routines=None), headers=headers)
         self.assertEqual((refused.status_code, refused.json()), (400, {"detail": "invalid attachments"}))
         missing = body()
         del missing["attachments"]

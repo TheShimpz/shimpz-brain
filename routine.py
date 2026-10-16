@@ -116,9 +116,14 @@ class RoutineContractError(ValueError):
 def admit_context(context: Any) -> None:
     """Canonicalize a turn's Routines and what Team sends about its recording in place; refuse anything invalid.
 
-    Everything about a recording comes only beside the Team's Routines, which offer the Routine tool.
+    Everything about a recording comes only beside the Team's Routines, which offer the Routine tool, and only in the
+    combinations Team's recording makes (Team's protocol README): never with attachments, a question or schedule only
+    in Routine mode, and rerun work only beside a rerun question.
     """
     if context.routines is not None:
+        if context.attachments:
+            # Only a send without files records.
+            raise RoutineContractError("invalid routines")
         object.__setattr__(context, "routines", canonical_routines(context.routines))
     if type(context.routine_mode) is not bool or (context.routine_mode and context.routines is None):
         raise RoutineContractError("invalid Routine mode")
@@ -131,12 +136,23 @@ def admit_context(context: Any) -> None:
         value = getattr(context, field)
         if value is None:
             continue
-        admitted = None if context.routines is None else canonical(value)
+        admitted = None if context.routines is None or not _sent_with(context, field) else canonical(value)
         if admitted is None:
             raise RoutineContractError(f"invalid Routine {name}")
         object.__setattr__(context, field, admitted)
     if type(context.routine_settings_answer) is not bool or (context.routine_settings_answer and not _settled(context)):
         raise RoutineContractError("invalid Routine settings answer")
+
+
+def _sent_with(context: Any, field: str) -> bool:
+    """Whether Team sends this recording field beside the others the context carries, the question already admitted."""
+    if field in {"routine_question", "routine_schedule"}:
+        # A pending question or a stated schedule makes the chat about a Routine.
+        return context.routine_mode
+    if field == "routine_rerun":
+        question = context.routine_question
+        return question is not None and question["code"] == "routine-work-rerun"
+    return True
 
 
 def settings_question(question: Mapping[str, Any] | None) -> bool:
