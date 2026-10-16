@@ -581,10 +581,21 @@ class RerunGuardTests(unittest.TestCase):
 
     def test_only_an_identifier_needs_a_source(self):
         # Team keeps any other value as the agent's own choice, such as the term a helper lookup sends.
-        for value in ("me", "my zone list", 42424, 4242.5, True, {"id": ZONE}, ["a"]):
+        for value in (
+            "me",
+            "my zone list",
+            42424,
+            4242.5,
+            True,
+            {"id": ZONE},
+            ["a"],
+            "2026-10-05",
+            "news-05/10",
+            "10月15日号",
+        ):
             with self.subTest(value=value):
                 self.assertIsNone(self._review(_turn("sim", AIMessage("", tool_calls=[_hello(value)]))))
-        for value in ("zone-1", -424242):
+        for value in ("zone-1", -424242, "123e4567-e89b-12d3-a456-426614174000"):
             with self.subTest(value=value):
                 self.assertEqual(self._review(_turn("sim", AIMessage("", tool_calls=[_hello(value)]))), "fresh")
 
