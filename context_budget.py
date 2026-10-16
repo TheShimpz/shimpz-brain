@@ -1,6 +1,7 @@
 """Bound the conversation a chat turn carries to its model.
 
-Memory is the most recent whole exchanges: one user message and every Action round and reply that followed it.
+Memory is the most recent whole exchanges: one user message and every Action round and reply that followed it; a
+quoted bridge of presentation history belongs to the exchange of the turn it preceded.
 A new turn keeps at most ``MAX_HISTORY_EXCHANGES`` completed ones within ``HISTORY_BUDGET_TOKENS``, a Shimpz cost and
 latency policy far below any catalog model window, and forgets every unfinished one. Separately, an estimated preflight
 guard refuses a call whose system prompt, tools, conversation, and output reserve would exceed ``MODEL_WINDOW_TOKENS``.
@@ -31,6 +32,10 @@ INCOMPLETE_TERMINATION = {
 }
 
 
+# The id prefix of the one user-role message quoting committed presentation history before a turn (ADR-0065).
+BRIDGE_ID_PREFIX = "shimpz-context-"
+
+
 class ContextStateError(RuntimeError):
     """Persisted conversation state cannot be decomposed into whole exchanges."""
 
@@ -49,18 +54,27 @@ def message_tokens(message: BaseMessage) -> int:
 
 
 def exchanges(messages: Sequence[BaseMessage]) -> list[tuple[BaseMessage, ...]]:
-    """Split history at user messages; a message without an id or history that precedes any user message fails."""
+    """Split history at user messages; a message without an id or history that precedes any user message fails.
+
+    A bridge and the turn message right after it are one exchange, so the turn keeps the context it was read in for
+    as long as it is remembered, and both are forgotten together.
+    """
     groups: list[list[BaseMessage]] = []
     for message in messages:
         if not isinstance(message, BaseMessage) or not isinstance(message.id, str) or not message.id:
             raise ContextStateError("conversation history has a message without an id")
-        if isinstance(message, HumanMessage):
+        joins = bool(groups) and len(groups[-1]) == 1 and _bridge(groups[-1][0])
+        if isinstance(message, HumanMessage) and not joins:
             groups.append([message])
         elif not groups:
             raise ContextStateError("conversation history does not start with a user message")
         else:
             groups[-1].append(message)
     return [tuple(group) for group in groups]
+
+
+def _bridge(message: BaseMessage) -> bool:
+    return isinstance(message, HumanMessage) and message.id.startswith(BRIDGE_ID_PREFIX)
 
 
 def message_text(value: object) -> str:
@@ -119,15 +133,15 @@ def history_to_drop(
     """Return what a new turn must forget: every unfinished exchange, and completed ones beyond the newest run kept.
 
     An unfinished exchange is a failed turn (a lone user message or an unanswered Action round); resending it would
-    replay a request the user already saw fail. An exchange whose user message is ``forgotten``, such as one that read
-    attachments, is forgotten whole however recent it is (ADR-0093).
+    replay a request the user already saw fail. An exchange holding a ``forgotten`` message, such as a user message
+    that read attachments, is forgotten whole however recent it is (ADR-0093).
     """
     ensure_window(fixed_tokens, current_tokens)
     groups = exchanges(history)
     kept: set[int] = set()
     used = 0
     for index in reversed(range(len(groups))):
-        if not completed(groups[index]) or forgotten(groups[index][0]):
+        if not completed(groups[index]) or any(forgotten(message) for message in groups[index]):
             continue
         size = sum(message_tokens(message) for message in groups[index])
         if (

@@ -116,6 +116,26 @@ class ExchangeTests(unittest.TestCase):
         with self.assertRaises(context_budget.ContextStateError):
             context_budget.exchanges([AIMessage("orphan", id="a1")])
 
+    def test_a_bridge_is_one_exchange_with_the_turn_it_precedes(self):
+        bridge = f"{context_budget.BRIDGE_ID_PREFIX}1"
+        history = [
+            HumanMessage("quoted", id=bridge),
+            HumanMessage("a", id="h1"),
+            AIMessage("r1", id="a1"),
+            HumanMessage("b", id="h2"),
+            AIMessage("r2", id="a2"),
+        ]
+        self.assertEqual([len(group) for group in context_budget.exchanges(history)], [3, 2])
+        self.assertEqual(context_budget.history_to_drop(history, 0, 1), ())
+        with mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 1):
+            dropped = context_budget.history_to_drop(history, 0, 1)
+        self.assertEqual([message.id for message in dropped], [bridge, "h1", "a1"])
+        # A failed bridged turn, or one that read attachments, is forgotten whole, its bridge included.
+        failed = [HumanMessage("quoted", id=bridge), HumanMessage("a", id="h1")]
+        self.assertEqual([message.id for message in context_budget.history_to_drop(failed, 0, 1)], [bridge, "h1"])
+        dropped = context_budget.history_to_drop(history, 0, 1, lambda message: message.id == "h1")
+        self.assertEqual([message.id for message in dropped], [bridge, "h1", "a1"])
+
     def test_newest_whole_exchanges_are_kept_within_count_and_budget(self):
         history = [
             message

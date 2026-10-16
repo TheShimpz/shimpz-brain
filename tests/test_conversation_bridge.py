@@ -44,7 +44,7 @@ def _bridges(messages: Sequence[Any]) -> list[str]:
     return [
         str(message.content)
         for message in messages
-        if isinstance(message, HumanMessage) and str(message.id).startswith(agent_runtime.CONVERSATION_BRIDGE_ID_PREFIX)
+        if isinstance(message, HumanMessage) and str(message.id).startswith(context_budget.BRIDGE_ID_PREFIX)
     ]
 
 
@@ -62,7 +62,7 @@ class ConversationBridgeTests(unittest.TestCase):
         model = RecordingModel(responses=list(responses))
         return agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
 
-    def test_a_fresh_thread_quotes_the_window_through_its_action_rounds_then_forgets_it(self):
+    def test_a_fresh_thread_quotes_the_window_through_its_action_rounds_and_keeps_it_with_that_exchange(self):
         runtime = self._runtime(
             AIMessage(
                 "",
@@ -77,6 +77,7 @@ class ConversationBridgeTests(unittest.TestCase):
             ),
             AIMessage("example.com answered."),
             AIMessage("You asked about example.com."),
+            AIMessage("Done."),
         )
         turn = _context()
         pending = runtime.start(turn, "Check it now.", WINDOW)
@@ -91,11 +92,17 @@ class ConversationBridgeTests(unittest.TestCase):
         self.assertEqual(done.reply, "example.com answered.")
         self.assertEqual(len(_bridges(RecordingModel.seen[-1])), 1)
 
+        # The next turn still reads the context the bridged turn was read in, quoted once, never a second window.
         self.assertEqual(runtime.start(turn, "What did I ask?", WINDOW).reply, "You asked about example.com.")
-        self.assertEqual(_bridges(RecordingModel.seen[-1]), [])
+        self.assertEqual(_bridges(RecordingModel.seen[-1]), [bridge])
         self.assertEqual(_users(RecordingModel.seen[-1]), ["Check it now.", "What did I ask?"])
         stored = runtime._checkpointer.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
-        self.assertEqual(_bridges(stored), [])
+        self.assertEqual(_bridges(stored), [bridge])
+        # Forgetting the bridged exchange forgets its bridge with it.
+        with mock.patch.object(context_budget, "MAX_HISTORY_EXCHANGES", 1):
+            runtime.start(turn, "And now?", WINDOW)
+        self.assertEqual(_bridges(RecordingModel.seen[-1]), [])
+        self.assertEqual(_users(RecordingModel.seen[-1]), ["What did I ask?", "And now?"])
 
     def test_the_system_prompt_ranks_quoted_history_below_the_current_message(self):
         prompt = turn_prompt.system_prompt(_context())
