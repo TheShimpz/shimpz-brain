@@ -166,12 +166,17 @@ def tool() -> StructuredTool:
     )
 
 
-def _team_owned(asked: Clarification) -> bool:
-    """Whether a clarification asks what Team reads from the person's words itself, by Team's own phrase tables."""
-    return any(team_phrase.team_asks(text) for text in (asked.question, *(option.label for option in asked.options)))
+def _team_owned(asked: Clarification, locale: str | None) -> bool:
+    """Whether a clarification asks what Team reads from the person's words itself, by Team's own phrase tables.
+
+    The model writes it in the chat's language, so only that language's negations reject a schedule it states (a
+    Portuguese "no" is "in the"); without one, every language's do.
+    """
+    texts = (asked.question, *(option.label for option in asked.options))
+    return any(team_phrase.team_asks(text, locale) for text in texts)
 
 
-def _review(messages: list[Any], *, allowed: bool, routine_mode: bool) -> str | None:
+def _review(messages: list[Any], *, allowed: bool, routine_mode: bool, locale: str | None) -> str | None:
     """Return why the latest model response must not run, or None when it may run.
 
     A turn's start runs no Action before it suspends, and every resume follows an Action, so a clarification is
@@ -183,22 +188,22 @@ def _review(messages: list[Any], *, allowed: bool, routine_mode: bool) -> str | 
         return call
     if not allowed:
         return "after-action"
-    return _refused(call.get("args"), routine_mode)
+    return _refused(call.get("args"), routine_mode, locale)
 
 
-def _refused(arguments: object, routine_mode: bool) -> str | None:
+def _refused(arguments: object, routine_mode: bool, locale: str | None) -> str | None:
     """Why one lone clarification's own arguments may not run: malformed, or Team's question in a Routine turn."""
     asked = parse(arguments)
     if asked is None:
         return "invalid"
-    if routine_mode and _team_owned(asked):
+    if routine_mode and _team_owned(asked, locale):
         return "team-owned"
     return None
 
 
-def guard(*, allowed: bool, routine_mode: bool = False):
-    """The middleware that reviews every model response before its tools run."""
-    review = functools.partial(_review, allowed=allowed, routine_mode=routine_mode)
+def guard(*, allowed: bool, routine_mode: bool = False, locale: str | None = None):
+    """The middleware that reviews every model response before its tools run, in the chat's ``locale``."""
+    review = functools.partial(_review, allowed=allowed, routine_mode=routine_mode, locale=locale)
     return tool_refusal.guard("ClarificationGuard", review, _CORRECTIONS)
 
 

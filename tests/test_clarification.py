@@ -105,6 +105,20 @@ class GraphTests(unittest.TestCase):
         self.assertNotIn("✓", result.reply)
         self.assertEqual(result.reply, result.clarification.render())
 
+    def test_a_routine_turn_reads_a_schedule_question_in_the_chats_language(self):
+        # Portuguese "no" ("in the") is a Spanish and English negation; in a Portuguese chat it hides no schedule.
+        question = "Quer que eu liste os registros no Cloudflare a cada 30 segundos ou a cada minuto?"
+        asked = {**VALID, "question": question}
+        runtime, saver = self._runtime(
+            AIMessage(content="", tool_calls=[_clarify(asked)]), AIMessage(content="", tool_calls=[_clarify(VALID)])
+        )
+        turn = dataclasses.replace(context(assistant("hello-pulse", action())), routine_mode=True, routines=())
+        turn = dataclasses.replace(turn, locale="pt")
+        result = runtime.start(turn, "Cria uma rotina pra mim")
+        refused = next(m for m in _messages(saver, turn.thread_id) if isinstance(m, ToolMessage))
+        self.assertTrue(refused.content.startswith("Not asked: the Team asks"))
+        self.assertEqual(result.clarification.question, VALID["question"])
+
     def test_a_clarification_mixed_with_an_action_is_refused_before_either_runs(self):
         runtime, saver = self._runtime(
             AIMessage(content="", tool_calls=[_clarify(VALID), _action()]),
@@ -233,8 +247,8 @@ def _routine_question(question: str, labels: tuple[str, ...] = ("Sim", "Não")) 
 
 
 class TeamOwnedQuestionTests(unittest.TestCase):
-    def review(self, response: AIMessage, routine_mode: bool) -> dict | None:
-        return clarification.guard(allowed=True, routine_mode=routine_mode).after_model(
+    def review(self, response: AIMessage, routine_mode: bool, locale: str | None = None) -> dict | None:
+        return clarification.guard(allowed=True, routine_mode=routine_mode, locale=locale).after_model(
             {"messages": [HumanMessage(content="Oi"), response]}, None
         )
 
@@ -257,6 +271,13 @@ class TeamOwnedQuestionTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertIsNone(self.review(_routine_question(question, ("shimpz.com", "example.com")), True))
         self.assertIsNone(self.review(_routine_question("Com que frequência a rotina deve rodar?"), False))
+
+    def test_a_schedule_question_is_read_with_only_the_chats_negations(self):
+        question = _routine_question("Qual zona você quer consultar no Cloudflare a cada 30 segundos?")
+        self.assertIsNotNone(self.review(question, routine_mode=True, locale="pt"))
+        # Without the chat's language, every language's negations read it, so "no" negates the schedule.
+        self.assertIsNone(self.review(question, routine_mode=True))
+        self.assertIsNone(self.review(_routine_question("Devo listar os registros no Cloudflare?"), True, "pt"))
 
     def test_time_options_follow_the_question_they_answer(self):
         times = ("09:00", "18:00")
