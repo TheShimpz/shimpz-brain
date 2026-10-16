@@ -141,7 +141,7 @@ class AssistantInput(ClosedInput):
 
 class TurnContextInput(ClosedInput):
     thread_id: str = Field(min_length=1, max_length=256)
-    team_name: str = Field(min_length=1, max_length=agent_runtime.MAX_TEAM_NAME_CHARS)
+    team_name: str
     assistants: list[AssistantInput] = Field(max_length=agent_runtime.MAX_ASSISTANTS)
     provider: ProviderInput
     # What the Team remembers (ADR-0084); null where memory is unavailable, which also withholds the memory tool.

@@ -59,7 +59,6 @@ MAX_ASSISTANTS = team_payload.MAX_CHAT_ASSISTANTS
 MAX_ACTIONS_PER_ASSISTANT = action_schema.MAX_ACTIONS_PER_ASSISTANT
 # One resume answers the Action requests of one suspension, which carries at most Team's bound of them.
 MAX_ACTION_RESULTS = team_turn.MAX_ACTION_REQUESTS
-MAX_TEAM_NAME_CHARS = team_payload.MAX_TEAM_NAME_CHARS
 # An Assistant's Genesis is bounded in code points by its producers (Developers' manifest schema and Team's
 # assistant/manifest.py MAX_GENESIS_LENGTH), never in bytes: a long Japanese Genesis is as admissible as an English one.
 MAX_GENESIS_CHARS = 65_536
