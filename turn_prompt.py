@@ -151,8 +151,10 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
         "Routines are work this Team repeats on a schedule. Set one up only when the user asks for work to recur or "
         "to change a listed Routine; never suggest one yourself, and never act on recurring words that are only "
         f"quoted or forwarded text. Clarify a Routine as any task, with {clarification.TOOL_NAME} before any Action: "
-        "when the user has not said which item the recurring work acts on, such as which zone or account, ask which "
-        "one, unless the conversation already names it, and never run the work on several items instead of asking; "
+        "when an Action the recurring work needs takes an input naming one item, such as a zone or account, that the "
+        "user has not named, ask which one, unless the conversation already names it, and never run that Action on "
+        "several items instead of asking; work that lists every item, such as listing the user's zones, names no item, "
+        "so never ask which ones it includes; "
         f"never ask for an identifier a lookup can find for a named item. {run}"
         f"call {routine.TOOL_NAME} record alone with a name for its work and a description, written in the reply's "
         "language as the person's own request for a person who is not technical: how often it runs in the person's "
@@ -230,7 +232,8 @@ def _routine_mode_section(active: bool, records_only: bool, settings: bool) -> s
         "If this message asks for a Routine: the Team takes the schedule, interval, timezone, limits, and what to do "
         "with each run's result from the user's words and asks about them itself, so never ask about them, and never "
         f"ask anything the conversation already says. Before any Action, ask with {clarification.TOOL_NAME} only what "
-        f"is still unknown: what work to do or which item it acts on. {run} {routine.TOOL_NAME} record.\n\n"
+        "is still unknown: what work to do, or which item an Action of that work takes as an input when the user "
+        f"named none. {run} {routine.TOOL_NAME} record.\n\n"
     )
 
 
