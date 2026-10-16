@@ -300,7 +300,7 @@ def _matched(text: str) -> list[str]:
     return [topic for topic, pattern in _HINTS if re.search(pattern, text)]
 
 
-def asked_topics(question: str) -> list[str]:
+def _asked_topics(question: str) -> list[str]:
     """The topics a question asks, by its own words: the sentences that ask first, the surrounding text otherwise."""
     # "Fuso horário" asks the timezone, never the hour; "só quando mudar" asks the output, never the time; a domain's
     # dot never ends a sentence.
@@ -348,13 +348,13 @@ def _judge_question(person: Person, topics: list[str]) -> None:
         person.asked.append(topic)
 
 
-def _parts(question: str, person: Person, judged: bool = True) -> list[str]:
+def _parts(question: str, person: Person, judged: bool) -> list[str]:
     """The person's answers to every topic the question asks, in their own order.
 
     With nothing matched, the owner's next topic not given yet answers it. A question the agent asked is judged
     against what the person already said before it is answered.
     """
-    wanted = asked_topics(question)
+    wanted = _asked_topics(question)
     if judged:
         _judge_question(person, wanted)
     if not wanted and person.pending:

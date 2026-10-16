@@ -685,11 +685,11 @@ class Settings:
 
     attempts: int
     budget: float
+    workers: int
+    threads: int
     only: frozenset[str] = frozenset()
     trace_dir: Path | None = None
     cpus: int = 1
-    workers: int = 1
-    threads: int = DEFAULT_THREADS
     brain_logs: Path | None = None
 
 
@@ -865,11 +865,16 @@ def main() -> int:
     models = [(provider, model, keys[provider]) for provider, model in chosen.items() if keys[provider]]
     if not models:
         raise SystemExit("name at least one key file")
-    workers = args.cpus if args.workers is None else args.workers
     settings = Settings(
-        args.attempts, args.budget, frozenset(args.only), args.trace_dir, args.cpus, workers, args.threads
+        args.attempts,
+        args.budget,
+        workers=args.cpus if args.workers is None else args.workers,
+        threads=args.threads,
+        only=frozenset(args.only),
+        trace_dir=args.trace_dir,
+        cpus=args.cpus,
+        brain_logs=args.brain_logs,
     )
-    settings = dataclasses.replace(settings, brain_logs=args.brain_logs)
     # A stop request ends the run through its cleanup: every process it started stops and its directory goes.
     signal.signal(signal.SIGTERM, lambda *_signal: sys.exit(143))
     report = run(models, settings, assistant=assistant)

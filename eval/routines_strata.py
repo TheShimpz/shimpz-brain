@@ -44,11 +44,11 @@ class Stratum:
     play: Callable[[Attempt], dict[str, object] | Outcome]
     person: Callable[[], Person]
     schedule: Callable[[Person, dict[str, object]], bool]
-    zones: tuple[str, ...] = (SHIMPZ,)
-    twin: bool = False
     # The owner's rule, never make the person retype: the most sends it may take, its scripted sends plus one per
     # piece the person genuinely left out; an interval Team says does not fit adds the one send that chooses another.
-    sends: int = 1
+    sends: int
+    zones: tuple[str, ...] = (SHIMPZ,)
+    twin: bool = False
     # The Action whose result the Routine shows: the records of a zone, the zones themselves, or the change it made.
     shows: str = "list-dns-records"
     # Whether the work replaces the content of the TXT record verify.shimpz.com with each run's date.

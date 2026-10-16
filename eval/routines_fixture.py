@@ -161,6 +161,8 @@ def _failure() -> Exception:
 class Fixture:
     """The real Cloudflare Assistant's simulated provider: what its reads answer, and every call it saw, in order."""
 
+    # With --trace-dir, the attempt's ordered transcript, which every send, Brain turn, and Action call joins.
+    events: list[dict[str, object]] | None
     shimpz: str = SHIMPZ
     twin: bool = False
     calls: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
@@ -168,8 +170,6 @@ class Fixture:
     performed: list[tuple[str, dict[str, object]]] = dataclasses.field(default_factory=list)
     # The request the real Assistant's Action makes before a change, as Team admits it: set by the harness.
     ask: object = None
-    # With --trace-dir, the attempt's ordered transcript, which every send, Brain turn, and Action call joins.
-    events: list[dict[str, object]] | None = None
 
     def invoke(self, _team, _assistant, action, payload, evidence) -> dict[str, object]:
         self.calls.append((action, dict(payload)))

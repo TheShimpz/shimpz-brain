@@ -245,7 +245,7 @@ def evaluation_app(ledger: Path, events: Path, token: str):
     return app
 
 
-def serve_brain(token_file: Path, ledger: Path, events: Path, log: Path | None = None) -> int:
+def serve_brain(token_file: Path, ledger: Path, events: Path, log: Path | None) -> int:
     """One Brain of a run, from Brain's own environment: its port on stdout, then served until stdin closes."""
     import uvicorn
 
