@@ -1,8 +1,8 @@
 #!/usr/local/bin/python3
 """egress-proxy — the only internet route for the shared Space Brain.
 
-The Brain reaches this proxy over its dedicated runtime-egress network. The proxy is never attached
-to a Team core, Assistant, or data plane, and its own `egress_out` network is its only internet route.
+The Brain reaches this proxy over its dedicated `brain_egress` network. The proxy is never attached
+to a Team core, Assistant, or data plane, and its own `brain_egress_out` network is its only internet route.
 Internal datastores therefore remain unreachable and every outbound destination is audited.
 The exact :443 allowlist is derived from the packaged neutral model catalog. Missing, invalid, or
 wildcard catalog policy prevents the proxy from binding.
