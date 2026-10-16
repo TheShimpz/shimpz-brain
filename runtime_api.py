@@ -155,9 +155,9 @@ class TurnContextInput(ClosedInput):
     # Whether Team read that this chat is about a Routine (advisory), and the work a pending question asks to run again.
     routine_mode: StrictBool
     routine_rerun: Annotated[list[dict[str, Any]], Field(max_length=team_routine_context.MAX_RERUN_ENTRIES)] | None
-    # The one schedule Team read from the person's own words, which the record call's description must say.
+    # The one schedule Team read from the person's own words, beside which the Brain admits a settings answer.
     routine_schedule: dict[str, Any] | None
-    # The one output mode Team read from the person's own words, which the record call's description must say.
+    # The one output mode Team read from the person's own words, beside which the Brain admits a settings answer.
     routine_output: str | None
     # Whether the message is exactly one fixed answer Admin offers to Team's schedule, over-budget, or output question:
     # the work already ran, so the turn only records again and is offered no Action.

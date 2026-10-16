@@ -196,10 +196,11 @@ class TurnContext:
     # question asks to run again; both pinned like the question (ADR-0101).
     routine_mode: bool = False
     routine_rerun: tuple[dict[str, object], ...] | None = None
-    # The one schedule Team read from the person's own words, which the record call's description must say; None when
-    # the person stated none or several (ADR-0101); pinned like the question.
+    # The one schedule Team read from the person's own words, beside which the Brain admits a settings answer; None
+    # when the person stated none or several (ADR-0101); pinned like the question.
     routine_schedule: dict[str, object] | None = None
-    # The one output mode Team read from the person's own words, which the description must say; pinned likewise.
+    # The one output mode Team read from the person's own words, beside which a settings answer is admitted; pinned
+    # likewise.
     routine_output: str | None = None
     # Whether the message is exactly the person's pick of one fixed answer to Team's schedule, over-budget, or output
     # question (record only).

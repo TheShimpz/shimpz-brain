@@ -126,7 +126,8 @@ def record_routine(
     """The checkpoint entries of the turn's Routine context, each JSON with None as null.
 
     The Routine question Team asked before this turn started, whether the turn is about a Routine, the work Team asked
-    to run again, and the one schedule and output mode Team read from the person, which a description must say.
+    to run again, and the one schedule and output mode Team read from the person, beside which a settings answer is
+    admitted.
     """
     return {
         QUESTION_METADATA: _json(question),
