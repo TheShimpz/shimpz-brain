@@ -20,7 +20,7 @@ if __package__:
         ZONE_RECORDS,
         ZONE_SET,
     )
-    from eval.routines_person import FULL, LOCALE, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
+    from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         EXAMPLE,
@@ -33,7 +33,7 @@ else:  # run as a script from Team, beside its sibling modules
         ZONE_RECORDS,
         ZONE_SET,
     )
-    from routines_person import FULL, LOCALE, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
+    from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 
 
 @dataclasses.dataclass(frozen=True)
@@ -193,21 +193,17 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
 
 
 def _defined_miss(attempt: Attempt, card: dict[str, object], stratum: Stratum, routine: object) -> str | None:
-    """Why the confirmed Routine does not run when and how the person said, as its card's description says, or None.
+    """Why the confirmed Routine does not run when and how the person said, as its card showed, or None.
 
-    The card leaves its schedule and output to its description, so they are read from the Routine its confirmation
-    committed, and the description must state exactly both, also after an answer the person composed.
+    The card shows Team's own schedule, zone, and output, so the Routine its confirmation committed must be exactly
+    what the card showed, and both what the person meant.
     """
     mode = routine.plan["output"]["mode"]
-    phrase = attempt.team.modules.phrase
+    shown = (card["schedule"], card["timezone"], card["timezone_source"], card["output"])
     checks = (
         ("schedule", stratum.schedule(attempt.person, routine.schedule)),
-        # The description the person confirmed says how often it runs, exactly as Team scheduled it, read in the
-        # chat's language like the Brain's own check.
-        ("description-schedule", phrase.stated(card["description"], LOCALE) == (routine.schedule,)),
         (f"output:{mode}", mode == attempt.person.output),
-        # And what each run does with its result, exactly as Team persisted it.
-        (f"description-output:{mode}", phrase.outputs(card["description"]) == (mode,)),
+        ("card-settings", shown == (routine.schedule, routine.plan["timezone"], routine.timezone_source, mode)),
     )
     return next((reason for reason, held in checks if not held), None)
 

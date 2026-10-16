@@ -4,9 +4,9 @@ A Routine is never compiled. When the person asks for work to recur, the chat ag
 recurring work once in the same turn with the Team's Actions, and then calls one closed tool, ``shimpz_routine``
 ``record``, with the Routine's name, a plain-language description of the work for the card, the Routine it replaces,
 and the reply the person reads. The schedule, timezone, and output are never the model's: Team derives them from the
-person's own words and asks when they are missing (ADR-0101), and the description must say the schedule and
-output exactly as Team read them. The guard checks that closed shape and ends the turn; Team builds the plan from its
-own trace of the person's sends and shows the person a card to confirm, or a question. Nothing here schedules,
+person's own words, asks when they are missing, and shows them on the card in its own fixed words, so the description
+says only the work (ADR-0101). The guard checks that closed shape and ends the turn; Team builds the plan from its own
+trace of the person's sends and shows the person a card to confirm, or a question. Nothing here schedules,
 approves, or authorizes anything: Brain only reports what the agent asked to record.
 """
 
@@ -18,7 +18,6 @@ from typing import Any
 import tool_refusal
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
-from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
@@ -55,11 +54,10 @@ SCHEMA = {
             "type": "string",
             "description": (
                 f"One plain paragraph, at most {_DESCRIPTION_CHARS} characters, written as the person's own request "
-                "for this Routine, "
-                "in everyday words for a person who is not technical: how often it runs, in the person's own words, "
-                "what every run does and on what, and what is done with each run's result only as the person said "
-                "it. Describe only the work you ran, say plainly when a run changes something, and never promise how "
-                "the result reaches the person."
+                "for this Routine's work, in everyday words for a person who is not technical: what every run does "
+                "and on what. Describe only the work you ran and say plainly when a run changes something; never say "
+                "how often it runs, its timezone, or what is done with each run's result, which the Team's card shows "
+                "itself."
             ),
         },
         "replaces": {
@@ -83,9 +81,9 @@ DESCRIPTION = (
     "Routine's schedule or output changes or the person answers the Team's question about how often it runs or what to "
     "do with each run's result without changing the work, and alone in your response. It takes no schedule, timezone, "
     f"or output: the Team reads how often (any interval from {INTERVALS}, at most ceil({_DAY} / interval) runs a day) "
-    "and what to do with each run's result from the person's own words, in the person's own timezone, and asks the "
-    "person itself when something is missing or does not fit. It ends the turn; the Team then shows the person a card "
-    "to confirm, so never say a Routine was created."
+    "and what to do with each run's result from the person's own words, in the person's own timezone, asks the person "
+    "itself when something is missing or does not fit, and shows them on its card. It ends the turn; the Team then "
+    "shows the person that card to confirm, so never say a Routine was created."
 )
 # How a call outside the closed shape is answered: nothing was recorded, and the model may call again.
 _NOT_DONE = "Not done: nothing was recorded. "
@@ -95,14 +93,6 @@ _CORRECTIONS = {
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
     "name": _NOT_DONE + f"Give a name of one line, at most {_NAME_CHARS} characters.",
     "description": _NOT_DONE + f"Give a description of one plain paragraph, at most {_DESCRIPTION_CHARS} characters.",
-    "schedule": _NOT_DONE + "Say in the description how often the Routine runs in the person's own words, and no other "
-    "schedule.",
-    "unstated-schedule": _NOT_DONE + "The person has not said how often it runs yet: leave how often out of the "
-    "description; the Team asks them.",
-    "output": _NOT_DONE + "Say in the description what is done with each run's result as the person chose it, in "
-    "these words, and no other choice: ",
-    "unstated-output": _NOT_DONE + "The person has not changed what is done with each run's result: say the "
-    "Routine's own output or leave it out of the description.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person an empty reply, or text that says something, of at most "
     f"{MAX_REPLY_CHARS} characters with no control characters other than line breaks and tabs.",
@@ -210,36 +200,6 @@ def canonical_output(value: object) -> str | None:
     return value if isinstance(value, str) and value in team_routine_protocol.OUTPUT_MODES else None
 
 
-def _output_miss(description: str, output: object, replaced: object) -> str:
-    """Whether a description says what each run does with its result as the person chose it, "" when it does.
-
-    Team's reading is the authority once the person chose: the description states exactly that output. A new
-    Routine's output not chosen yet is asked before any card, and the answer has the description written again, so it
-    is not checked here; a replacement keeps its listed output unasked, so its description states that one or none.
-    """
-    stated = team_phrase.outputs(description)
-    if output is not None:
-        return "" if stated == (output,) else "output"
-    if replaced is None or stated in ((), (replaced["output"]["mode"],)):
-        return ""
-    return "unstated-output"
-
-
-def _schedule_miss(description: str, schedule: object, replaced: object, locale: str | None) -> str:
-    """Whether a description says how often the Routine runs as Team read it from the person, "" when it does.
-
-    Team's own reading is the authority: with one schedule, the description must state exactly it; with none, it
-    states none, except a replacement's own listed schedule, which it keeps. The model writes the description in the
-    chat's language, so only that language's negations reject a reading (a Portuguese "no" is "in the"); without one,
-    every language's do.
-    """
-    stated = team_phrase.stated(description, locale)
-    if schedule is not None:
-        return "" if stated == (schedule,) else "schedule"
-    kept = () if replaced is None else (replaced["schedule"],)
-    return "" if stated in ((), kept) else "unstated-schedule"
-
-
 def record(arguments: object, context: Any) -> dict[str, object] | str:
     """The recorded outcome and reply of one valid call, or the closed correction of the first invalid field."""
     if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
@@ -258,21 +218,8 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     refused = next((field for field, valid in checks if not valid), None)
     if refused is not None:
         return refused
-    missed = _schedule_miss(description, context.routine_schedule, replaced, context.locale) or _output_miss(
-        description, context.routine_output, replaced
-    )
-    if missed:
-        return missed
     routine = {"name": name, "description": description, "replaces": replaces}
     return {"routine": routine, "reply": reply}
-
-
-def correction(outcome: str, context: Any) -> str:
-    """The closed correction of a refused record; an output miss names the person's choice in the chat's words."""
-    if outcome != "output":
-        return _CORRECTIONS[outcome]
-    label = team_routine_proposal.OUTPUT_CHOICES[context.locale or "en"][context.routine_output]
-    return f"{_CORRECTIONS[outcome]}{json.dumps(label, ensure_ascii=False)}."
 
 
 def _review(messages: list[Any], context: Any) -> object:
@@ -307,7 +254,7 @@ def _guard_class():
                     "messages": [ToolMessage(content=content, tool_call_id=calls[0]["id"], name=TOOL_NAME)],
                     "jump_to": "end",
                 }
-            return tool_refusal.refusal(calls, correction(outcome, self.context))
+            return tool_refusal.refusal(calls, _CORRECTIONS[outcome])
 
     return RoutineGuard
 

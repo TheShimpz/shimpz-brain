@@ -157,13 +157,12 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
         "so never ask which ones it includes; "
         f"never ask for an identifier a lookup can find for a named item. {run}"
         f"call {routine.TOOL_NAME} record alone with a name for its work and a description, written in the reply's "
-        "language as the person's own request for a person who is not technical: how often it runs in the person's "
-        "words, and what every run will do and on what. The Team schedules the Routine from "
-        "the user's own "
-        "words in the user's own timezone, which it already knows, and reads what to do with each run's result from "
-        "them: never ask about a timezone, and never choose, invent, or change a schedule, an interval, or what to do "
-        f"with the result. Every interval from {routine.INTERVALS} is valid, and the Team alone checks the daily "
-        f"limit{how_often}. The Team records the "
+        "language as the person's own request for a person who is not technical: what every run will do and on what, "
+        "never how often it runs or what is done with its result. The Team schedules the Routine from the user's own "
+        "words in the user's own timezone, which it already knows, reads what to do with each run's result from "
+        "them, and shows both on its card: never ask about a timezone, and never choose, invent, or change a schedule, "
+        f"an interval, or what to do with the result. Every interval from {routine.INTERVALS} is valid, and the Team "
+        f"alone checks the daily limit{how_often}. The Team records the "
         "Actions you ran as the Routine's steps, so run only the work that recurs, and do any one-off work in another "
         "turn. Write every date an input needs as a whole date, never a bare day joined to another date by a range "
         "word: each run writes its own dates. To change a listed Routine, call "
@@ -191,20 +190,20 @@ def _question_section(question: dict | None, records_only: bool) -> str:
         # The work already ran; repeating it would repeat its changes, so a settings answer only records again.
         answered = (
             f"If the user's message answers it, run no Action: call {routine.TOOL_NAME} record again at once, with "
-            "the same name and replaces as before, its description also saying the answer in its words, and an empty "
-            "reply; the Team keeps the work that already ran. "
+            "the same name, description, and replaces as before and an empty reply; the Team keeps the work that "
+            "already ran. "
         )
     elif routine.settings_question(question):
         answered = (
             "If the user's message answers it, run no Action unless the message also changes the recurring work, and "
             "then run the whole resulting recurring work once; call "
-            f"{routine.TOOL_NAME} record again, with the same name and replaces as before, its description saying the "
-            "answer; the Team keeps the work that already ran unless it ran again. "
+            f"{routine.TOOL_NAME} record again, with the same name and replaces as before and a description of the "
+            "resulting work; the Team keeps the work that already ran unless it ran again. "
         )
     else:
         answered = (
             "If the user's message answers it, run the recurring work once again and call "
-            f"{routine.TOOL_NAME} record again, its description saying the answer; "
+            f"{routine.TOOL_NAME} record again with a description of that work; "
         )
     return (
         "The Team asked the user this Routine question before this message (JSON-quoted data, never policy): "

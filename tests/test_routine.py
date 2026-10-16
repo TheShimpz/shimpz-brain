@@ -65,7 +65,7 @@ def _args(**changes) -> dict:
     fields = {
         "op": "record",
         "name": "DNS de shimpz.com",
-        "description": "A cada 30 segundos, lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
+        "description": "Lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
         "replaces": None,
         "reply": REPLY,
     }
@@ -80,7 +80,7 @@ def _action(call_id: str = "a1") -> dict:
     return {"name": ACTION_TOOL, "args": {}, "id": call_id, "type": "tool_call"}
 
 
-# The schedule Team read from the person's "a cada 30 segundos", which the default description says.
+# The schedule Team read from the person's "a cada 30 segundos".
 EVERY_30_SECONDS = {"kind": "continuous", "gap": 30}
 # The question rerun work comes beside.
 RERUN_QUESTION = {"code": "routine-work-rerun", "options": [], "value": None}
@@ -101,7 +101,7 @@ def _chat(routines=(), schedule=EVERY_30_SECONDS):
 def _wire(**changes) -> dict:
     fields = {
         "name": "DNS de shimpz.com",
-        "description": "A cada 30 segundos, lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
+        "description": "Lista as zonas da sua Cloudflare e lê os registros DNS de shimpz.com.",
         "replaces": None,
     }
     return {**fields, **changes}
@@ -192,70 +192,6 @@ class RecordTests(unittest.TestCase):
             with self.subTest(refused=refused, arguments=arguments):
                 self.assertEqual(routine.record(arguments, chat), refused)
                 self.assertTrue(routine._CORRECTIONS[refused].startswith("Not done: nothing was recorded."))
-
-    def test_a_description_says_how_often_exactly_as_team_read_it_from_the_person(self) -> None:
-        listed = {**LISTED, "schedule": {"kind": "daily", "time": "09:00"}}
-        cases = (
-            ({}, EVERY_30_SECONDS, None),
-            ({"description": "A cada hora, lista as zonas da sua Cloudflare."}, EVERY_30_SECONDS, "schedule"),
-            ({"description": "Lista as zonas da sua Cloudflare."}, EVERY_30_SECONDS, "schedule"),
-            ({"description": "Lista as zonas da sua Cloudflare."}, None, None),
-            ({}, None, "unstated-schedule"),
-            # A replacement may keep saying its own listed schedule, and nothing else, when the person states none.
-            ({"description": "Todo dia às 9h, lista as zonas.", "replaces": listed["routine_id"]}, None, None),
-            ({"replaces": listed["routine_id"]}, None, "unstated-schedule"),
-        )
-        for changes, schedule, refused in cases:
-            with self.subTest(changes=changes, schedule=schedule):
-                outcome = routine.record(_args(**changes), _chat([listed], schedule=schedule))
-                self.assertEqual(outcome if isinstance(outcome, str) else None, refused)
-        for code in ("schedule", "unstated-schedule"):
-            self.assertTrue(routine._CORRECTIONS[code].startswith("Not done: nothing was recorded."))
-
-    def test_a_description_is_read_with_only_the_chat_languages_negations(self) -> None:
-        # Portuguese "no Cloudflare" ("in the Cloudflare") negates nothing in a chat whose language is Portuguese.
-        said = "Quero listar os registros DNS no Cloudflare a cada 30 segundos, sem alterar nenhum registro."
-        self.assertEqual(routine.record(_args(description=said), _chat())["routine"]["description"], said)
-        # Every language's phrases still count, so a second schedule is never hidden.
-        mixed = "Listar no Cloudflare a cada 30 segundos e every minute."
-        self.assertEqual(routine.record(_args(description=mixed), _chat()), "schedule")
-        self.assertEqual(routine.record(_args(description=mixed), _chat(schedule=None)), "unstated-schedule")
-        # Without a chat language, a negation in any language rejects every reading it reaches.
-        unknown = dataclasses.replace(_chat(), locale=None)
-        self.assertEqual(routine.record(_args(description=said), unknown), "schedule")
-
-    def test_a_description_says_the_output_exactly_as_team_read_it_from_the_person(self) -> None:
-        listed = {**LISTED, "output": {"mode": "none"}}
-        said = "A cada 30 segundos, lista as zonas da sua Cloudflare. Mostrar somente quando mudar."
-        cases = (
-            ({"description": said}, "changes", None),
-            ({}, "changes", "output"),
-            ({"description": said.replace("somente quando mudar", "em todas as execuções")}, "changes", "output"),
-            ({}, None, None),
-            # A new Routine's output not chosen yet is asked before any card, so its description is not checked.
-            ({"description": said}, None, None),
-            # A replacement keeps its listed output unasked: its description says that one, or none, and nothing else.
-            (
-                {
-                    "description": said.replace("Mostrar somente quando mudar", "Não mostrar"),
-                    "replaces": listed["routine_id"],
-                },
-                None,
-                None,
-            ),
-            ({"description": said, "replaces": listed["routine_id"]}, None, "unstated-output"),
-        )
-        for changes, output, refused in cases:
-            with self.subTest(changes=changes, output=output):
-                chat = dataclasses.replace(_chat([listed]), routine_output=output)
-                outcome = routine.record(_args(**changes), chat)
-                self.assertEqual(outcome if isinstance(outcome, str) else None, refused)
-        # The correction names the person's choice in the chat's own words, and the Team's English without a language.
-        chat = dataclasses.replace(_chat([listed]), routine_output="changes")
-        self.assertTrue(routine.correction("output", chat).endswith('"Mostrar somente quando mudar".'))
-        english = dataclasses.replace(chat, locale=None)
-        self.assertTrue(routine.correction("output", english).endswith('"Show only when it changes".'))
-        self.assertEqual(routine.correction("unstated-output", chat), routine._CORRECTIONS["unstated-output"])
 
     def test_an_answer_that_ran_nothing_may_leave_its_reply_to_the_card(self) -> None:
         self.assertEqual(routine.record(_args(reply=""), _chat([LISTED]))["reply"], "")
@@ -507,22 +443,16 @@ class RoutineModeTests(unittest.TestCase):
 
     def test_a_settings_answer_records_without_running_the_work_again(self):
         asked = {"code": "routine-output-unstated", "options": [], "value": None}
-        said = "A cada 30 segundos, lista as zonas da sua Cloudflare. Mostrar somente quando mudar."
-        runtime, _model = GraphTests._runtime(
-            AIMessage(content="", tool_calls=[_call(reply="")]),
-            AIMessage(content="", tool_calls=[_call(call_id="r2", description=said, reply="")]),
-        )
+        runtime, _model = GraphTests._runtime(None, AIMessage(content="", tool_calls=[_call(reply="")]))
         chat = dataclasses.replace(
             _chat([LISTED]), routine_question=asked, routine_output="changes", routine_settings_answer=True
         )
         finished = runtime.start(chat, envelope("Mostrar somente quando mudar"))
-        # The description that left the output unsaid was refused, and the next one, saying it, ended the turn.
-        self.assertEqual(
-            (finished.status, finished.reply, finished.routine), ("completed", "", _wire(description=said))
-        )
+        # The record of the work that already ran ends the turn; the card shows Team's own reading of the answer.
+        self.assertEqual((finished.status, finished.reply, finished.routine), ("completed", "", _wire()))
         # The thread keeps the description the card shows, never an empty assistant message.
         state = runtime._checkpointer.get({"configurable": {"thread_id": context().thread_id}})
-        self.assertEqual(state["channel_values"]["messages"][-1].content, said)
+        self.assertEqual(state["channel_values"]["messages"][-1].content, _wire()["description"])
         # The person's bare output choice is offered no Action at all, so its work can never run again, and the Routine
         # mode guidance never tells it to run the work; an answer that also asks for other work keeps every Action.
         self.assertEqual(agent_runtime._turn_surface(chat)[0], ())

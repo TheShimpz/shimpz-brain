@@ -42,13 +42,13 @@ the authorized run writes that day's date.
 The harness answers the agent's questions and Team's recoverable Routine questions as
 the person would, a Team question always in Admin's composed form and a target by its option's exact JSON text. A
 stratum passes when the card binds every zone the person meant through a reference (the twin stratum: the person's
-chosen zone by its id), its description and confirmed Routine carry the schedule the person stated, it takes no more
-sends than its missing pieces need, confirming the card creates the Routine, and one replay through Team's real claim
-and run shows that work's exact result.
+chosen zone by its id), its confirmed Routine carries the schedule the person stated, exactly as its card showed it,
+it takes no more sends than its missing pieces need, confirming the card creates the Routine, and one replay through
+Team's real claim and run shows that work's exact result.
 One frequency question and one output question are each allowed, from the agent or Team, whichever comes first, while
 the person has not stated it; asking it again, after it was stated, or by both is a miss, as is any timezone or limits
-question. Team's output question gets its protocol label as the answer, and the card's description must state the
-person's choice, exactly the output Team persisted.
+question. Team's output question gets its protocol label as the answer, and the card must show the person's choice,
+exactly the output, schedule, and zone Team persisted.
 After the first passing attempt of any stratum that binds shimpz.com through list-zones into list-dns-records and whose
 interval lets three runs start within one day, two replay variants run with no model: shimpz.com under a new zone id,
 and two zones named shimpz.com, which must never dispatch list-dns-records.
