@@ -113,12 +113,14 @@ def _runs(steps: list[dict[str, object]]) -> list[list[object]]:
     return runs
 
 
-def _routines_section(routines: tuple | None, records_only: bool, settings: bool) -> str:
+def _routines_section(routines: tuple | None, records_only: bool, settings: bool, mode: bool) -> str:
     """The Routine policy and the Team's Routines as data in a chat turn; nothing when the Routine tool is withheld.
 
     A settings answer's turn already has its work, so it is told to record it, never to run it; while Team's settings
     question is pending, the work already ran, so the turn runs nothing unless the message changes the work, and then
-    the whole resulting work once, since Team records the calls of the one send that ran Actions as the work.
+    the whole resulting work once, since Team records the calls of the one send that ran Actions as the work. In a
+    Routine-mode turn (``mode``) the Team asks how often itself and refuses the agent's own question about it, so the
+    turn is never told to ask it.
     """
     if routines is None:
         return ""
@@ -132,6 +134,7 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
         )
     else:
         run = "Then run exactly the recurring work once in this same turn with the enabled Assistants, and afterwards "
+    how_often = "" if mode else "; if the user has not said how often, ask how often while you clarify"
     listed = [
         {
             "routine_id": item["routine_id"],
@@ -158,7 +161,7 @@ def _routines_section(routines: tuple | None, records_only: bool, settings: bool
         "words in the user's own timezone, which it already knows, and reads what to do with each run's result from "
         "them: never ask about a timezone, and never choose, invent, or change a schedule, an interval, or what to do "
         f"with the result. Every interval from {routine.INTERVALS} is valid, and the Team alone checks the daily "
-        "limit; if the user has not said how often, ask how often while you clarify. The Team records the "
+        f"limit{how_often}. The Team records the "
         "Actions you ran as the Routine's steps, so run only the work that recurs, and do any one-off work in another "
         "turn. Write every date an input needs as a whole date, never a bare day joined to another date by a range "
         "word: each run writes its own dates. To change a listed Routine, call "
@@ -284,6 +287,7 @@ def system_prompt(context: TurnContext) -> str:
     # not offered are no limit of the Team's.
     records_only = context.routine_settings_answer
     question = None if context.attachments else context.routine_question
+    routines = None if context.attachments else context.routines
     settings = routine.settings_question(question)
     assistant_contracts = [
         {
@@ -356,7 +360,7 @@ def system_prompt(context: TurnContext) -> str:
         f"{capabilities}\n\n"
         f"{_memory_section(context.memories, learnable)}"
         f"{_skills_section(context.skills, learnable)}"
-        f"{_routines_section(None if context.attachments else context.routines, records_only, settings)}"
+        f"{_routines_section(routines, records_only, settings, context.routine_mode)}"
         f"{_question_section(question, records_only)}"
         f"{_routine_mode_section(context.routine_mode and not context.attachments, records_only, settings)}"
         f"{_rerun_section(None if context.attachments else context.routine_rerun)}"
