@@ -103,8 +103,6 @@ _CORRECTIONS = {
 }
 
 
-# The shortest word or whole number Team's recorder treats as an identifier that only a result can source.
-MIN_IDENTIFIER_CHARS = 6
 # A numeric date inside a word, such as 2026-10-05, 05/10, or 10月15日, which Team may read as each run's own date.
 _DATED_RE = re.compile(r"(?<!\d)\d{1,4}[-/.]\d{1,2}(?!\d)|\d[年月]")
 # How a rerun call that sends a 'fresh' input no result of this turn holds is answered: nothing ran.
@@ -373,15 +371,15 @@ def _values(value: object) -> Iterator[object]:
 def _identifier(value: object) -> bool:
     """Whether Team would ask where a value no result holds came from: an identifier, as its recorder shapes one.
 
-    One word of at least six characters or a whole number of at least six digits (Team's ``routine.provenance``);
+    One word or whole number at least as long as Team's mirrored identifier bounds (Team's ``routine.provenance``);
     any other value Team keeps as the agent's own choice, such as a short lookup term a helper call sends. A word
     holding a numeric date is left to Team, which may read it as each run's date.
     """
     if type(value) is int:
-        return len(str(abs(value))) >= MIN_IDENTIFIER_CHARS
+        return len(str(abs(value))) >= team_routine_context.MIN_IDENTIFIER_DIGITS
     return (
         isinstance(value, str)
-        and len(value) >= MIN_IDENTIFIER_CHARS
+        and len(value) >= team_routine_context.MIN_IDENTIFIER_CHARS
         and not any(character.isspace() for character in value)
         and _DATED_RE.search(value) is None
     )
