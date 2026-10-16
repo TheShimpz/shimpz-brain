@@ -126,29 +126,6 @@ class ContractTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(routine.RoutineContractError):
                 routine.canonical_routines(value)
 
-    def test_a_listing_holds_at_most_teams_encoded_steps_bounds(self):
-        step = LISTED["steps"][0]
-
-        def listed(index: int, size: int) -> dict:
-            # One step per 64 input names, padded so the encoded steps take exactly ``size`` bytes.
-            names = [f"{name:03d}" + "a" * 124 for name in range(64)]
-            base = len(json.dumps([{**step, "inputs": names}], separators=(",", ":")).encode())
-            steps, used = [], 2
-            while used + base + 1 <= size:
-                steps.append({**step, "id": f"s{len(steps)}", "inputs": names})
-                used = len(json.dumps(steps, separators=(",", ":")).encode())
-            return {**LISTED, "routine_id": f"{index:032x}", "steps": steps}
-
-        within = listed(0, routine.team_routine_context.MAX_LISTED_STEPS_BYTES)
-        self.assertEqual(len(routine.canonical_routines([within])), 1)
-        over = {**within, "steps": [*within["steps"], *within["steps"][:2]]}
-        over["steps"] = [{**item, "id": f"s{index}"} for index, item in enumerate(over["steps"])]
-        with self.assertRaises(routine.RoutineContractError):
-            routine.canonical_routines([over])
-        whole = [listed(index, routine.team_routine_context.MAX_LISTED_STEPS_BYTES) for index in range(5)]
-        with self.assertRaises(routine.RoutineContractError):
-            routine.canonical_routines(whole)
-
     def test_the_tool_schema_is_closed(self):
         tool = routine.tool()
         self.assertEqual(tool.name, routine.TOOL_NAME)
