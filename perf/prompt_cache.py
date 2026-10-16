@@ -87,7 +87,7 @@ _LIMITS = threading.Lock()
 def _saturated(history: Sequence[object], dropped: Sequence[object], forgotten: Callable[[object], bool]) -> bool:
     gone = {id(message) for message in dropped}
     return any(
-        context_budget.completed(group) and not forgotten(group[0]) and id(group[0]) in gone
+        context_budget.completed(group) and not any(forgotten(message) for message in group) and id(group[0]) in gone
         for group in context_budget.exchanges(history)
     )
 
