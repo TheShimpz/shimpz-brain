@@ -323,12 +323,14 @@ def rerun_guard(work: tuple[dict[str, object], ...], tool_name: Callable[[str, s
 
 def _rerun_review(messages: list[Any], *, checked: Mapping[str, frozenset[str]], actions: frozenset[str]) -> str | None:
     latest = messages[-1] if messages else None
-    if not isinstance(latest, AIMessage) or latest.invalid_tool_calls:
-        # A response with an unparsable call cannot be answered whole; Team's recorder still decides.
+    if not isinstance(latest, AIMessage):
         return None
     calls = [call for call in latest.tool_calls or [] if call.get("name") in checked]
     if not calls:
         return None
+    if latest.invalid_tool_calls:
+        # A checked call beside an unparsable one cannot be judged whole, so the response is refused.
+        return "fresh"
     start = max(index for index, message in enumerate(messages) if isinstance(message, HumanMessage))
     turn = messages[start:]
     results = [
