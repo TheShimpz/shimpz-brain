@@ -418,11 +418,44 @@ def _attempt_team(
     case = modules.harness.LocalContractCase("_chat_controller")
     controller = case._chat_controller(directory, client if events is None else _traced(client, fixture))
     _bind_real_assistant(modules, controller, modules.assistant)
+    # The Browser is offered as the owner's Local offers it (ADR-0117), so a recording turn carries its tool and policy.
+    offered = _OfferedBrowser(fixture)
+    controller.browser_service = controller.chat_turn_service.browser_service = offered
     fixture.ask = _asker(modules.assistant)
     controller.assistant_lifecycle.invoke = fixture.invoke
     controller.space_id = controller.chat_turn_service.space_id = space
     controller.inference_store.save("team_1", modules.inference_config.normalize(provider, model))
     return case, Team(controller.chat_turn_service, modules), fixture
+
+
+class _OfferedBrowser:
+    """The Browser as the owner's Local offers it: available to every chat turn, never to a Routine run.
+
+    No task runs here: a call is recorded among the provider's calls, where no stratum expects it, so a recording that
+    turns to the web is a miss, and Team gets a failed task, as when the Browser is busy.
+    """
+
+    available = True
+
+    def __init__(self, fixture: Fixture) -> None:
+        self._fixture = fixture
+
+    def run(self, _turn, _context, request) -> tuple[dict[str, object], dict[str, object]]:
+        self._fixture.calls.append(("browser", {"objective": request.objective}))
+        self._fixture.note({"kind": "browser", "objective": request.objective})
+        return {"status": "failed", "reason": "browser-busy", "files": []}, {"files": [], "lost": [], "skipped": 0}
+
+    def startup(self) -> bool:
+        return True
+
+    def clean(self) -> None:
+        return None
+
+    def remove_team(self, _team_id: str) -> None:
+        return None
+
+    def interrupt(self, _team_id: str, _token: str) -> None:
+        return None
 
 
 def _plain(value: object) -> object:

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from eval import routines, routines_pool, routines_strata
-from eval.routines_fixture import MODELS, SHIMPZ, TIMEZONE, VERIFY
+from eval.routines_fixture import MODELS, SHIMPZ, TIMEZONE, VERIFY, Fixture
 from eval.routines_strata import CASES, VARIANT_STRATA
 from routines_fake_worker import counted
 
@@ -288,6 +288,22 @@ class StrataTests(unittest.TestCase):
         ):
             with self.subTest(stated=stated):
                 self.assertTrue(routines_strata._describes_settings(stated))
+
+
+class OfferedBrowserTests(unittest.TestCase):
+    def test_the_offered_browser_runs_nothing_and_its_call_is_one_no_stratum_expects(self):
+        fixture = Fixture(events=[])
+        offered = routines._OfferedBrowser(fixture)
+        self.assertTrue(offered.available)
+        result, terminal = offered.run(None, None, SimpleNamespace(objective="Veja o site."))
+        self.assertEqual(result, {"status": "failed", "reason": "browser-busy", "files": []})
+        self.assertEqual(terminal, {"files": [], "lost": [], "skipped": 0})
+        self.assertEqual(fixture.calls, [("browser", {"objective": "Veja o site."})])
+        self.assertEqual(fixture.events, [{"kind": "browser", "objective": "Veja o site."}])
+        self.assertTrue(offered.startup())
+        self.assertIsNone(offered.clean())
+        self.assertIsNone(offered.remove_team("team_1"))
+        self.assertIsNone(offered.interrupt("team_1", "0" * 32))
 
 
 if __name__ == "__main__":
