@@ -278,16 +278,27 @@ class StrataTests(unittest.TestCase):
         self.assertEqual(miss(plain, ("replace-dns-record", {**change, "content": "x"})), "recording-change:content")
         self.assertIsNone(miss(reading, once))
 
-    def test_a_card_description_passes_only_when_it_states_no_schedule_output_or_zone(self):
+    def test_a_card_description_passes_only_when_it_states_no_setting_but_the_cards_own(self):
         plain = "Checks the zones in the Cloudflare account and lists the DNS records of shimpz.com."
-        self.assertFalse(routines_strata._describes_settings(plain))
-        for stated in (
-            f"{plain} Every day at 09:00.",
-            "Check the DNS records and show me the results.",
-            f"{plain} In America/Sao_Paulo.",
+        card = {
+            "description": plain,
+            "schedule": {"kind": "daily", "time": "09:00"},
+            "timezone": "America/Sao_Paulo",
+            "timezone_source": "person",
+            "output": "show",
+        }
+        self.assertTrue(routines_strata._description_agrees(card))
+        # The card's own settings, repeated, read back as the same ones.
+        repeated = f"{plain} Show me the results. In America/Sao_Paulo."
+        self.assertTrue(routines_strata._description_agrees({**card, "description": repeated}))
+        for stated, changes in (
+            (f"{plain} Every Monday at 08:00.", {}),
+            ("Check the DNS records and show me the results.", {"output": "none"}),
+            (f"{plain} In Europe/Lisbon.", {}),
+            (f"{plain} In UTC.", {"timezone": "UTC", "timezone_source": "none"}),
         ):
             with self.subTest(stated=stated):
-                self.assertTrue(routines_strata._describes_settings(stated))
+                self.assertFalse(routines_strata._description_agrees({**card, **changes, "description": stated}))
 
 
 class OfferedBrowserTests(unittest.TestCase):

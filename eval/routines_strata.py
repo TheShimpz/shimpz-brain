@@ -162,13 +162,19 @@ def _recording_change_miss(attempt: Attempt, stratum: Stratum) -> str | None:
     return None if written else "recording-change:content"
 
 
-def _describes_settings(description: str) -> bool:
-    """Whether a card's description states a schedule, an output, or a zone of its own.
+def _description_agrees(card: dict[str, object]) -> bool:
+    """Whether a card's description states no schedule, output, or zone but the card's own.
 
-    Edit offers the description beside the card's settings as one text Team reads back (ADR-0101, 2026-10-16), so it
-    reads back as exactly the card's settings only when the description states none.
+    Edit offers the description beside the card's settings as one text Team reads back (ADR-0101, 2026-10-16), so a
+    setting the description repeats reads back as the same one, and only a different one would change or confuse it.
     """
-    return bool(team_phrase.stated(description) or team_phrase.outputs(description) or team_phrase.zones(description))
+    description = str(card["description"])
+    zones = {card["timezone"]} if card["timezone_source"] != "none" else set()
+    return (
+        all(schedule == card["schedule"] for schedule in team_phrase.stated(description))
+        and set(team_phrase.outputs(description)) <= {card["output"]}
+        and set(team_phrase.zones(description)) <= zones
+    )
 
 
 def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Outcome:
@@ -184,7 +190,7 @@ def _card(attempt: Attempt, response: dict[str, object], stratum: Stratum) -> Ou
     binding = _twin_miss(attempt, card) if stratum.twin else _selector_miss(card, stratum.zones)
     checks = (
         ("card-invalid", attempt.team.modules.http_routine_proposal.canonical_proposal(card) == card),
-        ("description-settings", not _describes_settings(card["description"])),
+        ("description-settings", _description_agrees(card)),
         (
             "calls",
             any(action == "list-zones" for action, _payload in calls)
