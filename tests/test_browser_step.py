@@ -4,6 +4,9 @@ import base64
 import json
 import unittest
 
+import agent_runtime
+import browser_step
+import provider_client
 from browser_step import BROWSER_MODELS, PNG_SIGNATURE, StepAnswer, _prompt, model, step, validate
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from runtime_errors import ProviderResponseError, RuntimeContractError
@@ -38,6 +41,15 @@ class BrowserStepTests(unittest.TestCase):
         )
         with self.assertRaises(RuntimeContractError):
             model("gemini")
+
+    def test_both_providers_send_the_step_output_cap(self):
+        for provider in ("openai", "anthropic"):
+            config = agent_runtime.ProviderConfig(provider=provider, model=model(provider), api_key="secret-test-key")
+            client = provider_client.provider_model(config)
+            payload = browser_step.capped(client)._get_request_payload([("user", "hi")])
+            with self.subTest(provider=provider):
+                key = "max_output_tokens" if provider == "openai" else "max_tokens"
+                self.assertEqual(payload[key], browser_step.MAX_STEP_OUTPUT_TOKENS)
 
     def test_the_page_is_sent_as_data_and_a_screenshot_as_an_image(self):
         image = base64.b64encode(PNG_SIGNATURE + b"pixels").decode()

@@ -24,6 +24,8 @@ from runtime_errors import ProviderResponseError, RuntimeContractError
 # The cheapest catalog model of each provider, until the Browser evaluation selects another (ADR-0117 §5.4).
 BROWSER_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 MAX_RESPONSE_CHARS = 8 * 1024
+# A step's whole answer, its longest summary included, fits well within this output cap.
+MAX_STEP_OUTPUT_TOKENS = 2_048
 MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SYSTEM = (
@@ -114,11 +116,21 @@ def _prompt(request: Mapping[str, object]) -> list:
     return [SystemMessage(content=SYSTEM), HumanMessage(content=content)]
 
 
+def capped(model: BaseChatModel) -> BaseChatModel:
+    """The same provider client with the step's output bound; both providers send it as their output token cap."""
+    return model.model_copy(update={"max_tokens": MAX_STEP_OUTPUT_TOKENS})
+
+
 def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
     """One canonical step for the task; an answer outside the closed set is a provider response failure."""
     admitted = validate(request)
     answer = structured.bounded_value(
-        model_factory, provider, StepAnswer, lambda: _prompt(admitted), "Browser step", MAX_RESPONSE_CHARS
+        lambda: capped(model_factory()),
+        provider,
+        StepAnswer,
+        lambda: _prompt(admitted),
+        "Browser step",
+        MAX_RESPONSE_CHARS,
     )
     canonical = browser_protocol.canonical_step(answer.model_dump())
     if canonical is None:
