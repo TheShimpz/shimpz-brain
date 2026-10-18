@@ -128,6 +128,7 @@ class BrowserTurnTests(unittest.TestCase):
                 "summary": None,
                 "reason": None,
                 "sentence": None,
+                "note": None,
             }
         )
         from structured_fake import StructuredFakeModel

@@ -15,11 +15,26 @@ from structured_fake import StructuredFakeModel
 REQUEST = {
     "objective": "Veja o prazo do edital.",
     "language": "pt-BR",
-    "history": [{"step": {"kind": "navigate", "url": "https://example.com"}, "outcome": "ok"}],
+    "history": [
+        {
+            "step": {"kind": "navigate", "url": "https://example.com"},
+            "outcome": "ok",
+            "page": {"url": "about:blank", "title": ""},
+        }
+    ],
     "observation": 'url: https://example.com\ntitle: Example\nactions:\np1:0 link "Edital" (click)\npage:\n- heading',
     "screenshot": None,
 }
-NULLS = {"url": None, "ref": None, "text": None, "direction": None, "summary": None, "reason": None, "sentence": None}
+NULLS = {
+    "url": None,
+    "ref": None,
+    "text": None,
+    "direction": None,
+    "summary": None,
+    "reason": None,
+    "sentence": None,
+    "note": None,
+}
 
 
 def _answer(**fields):
@@ -64,6 +79,12 @@ class BrowserStepTests(unittest.TestCase):
         self.assertEqual(human.content[2], {"type": "image", "base64": image, "mime_type": "image/png"})
         self.assertEqual(len(_prompt(validate(REQUEST))[1].content), 2)
 
+    def test_a_step_keeps_the_agents_note_for_its_history(self):
+        fake = StructuredFakeModel(responses=[_answer(kind="click", ref="p1:0", note="Latest: Python 3.15.0")])
+        self.assertEqual(
+            step(lambda: fake, "openai", REQUEST), {"kind": "click", "ref": "p1:0", "note": "Latest: Python 3.15.0"}
+        )
+
     def test_an_answer_outside_the_closed_set_is_a_response_failure(self):
         for answer in (_answer(kind="click"), _answer(kind="wait", url="https://example.com"), AIMessage(content="no")):
             with self.subTest(answer=answer.content), self.assertRaises(ProviderResponseError):
@@ -74,7 +95,7 @@ class BrowserStepTests(unittest.TestCase):
         for change in (
             {"objective": ""},
             {"language": "fr"},
-            {"history": [{"step": {"kind": "done", "summary": "x"}, "outcome": "ok"}]},
+            {"history": [{**REQUEST["history"][0], "step": {"kind": "done", "summary": "x"}}]},
             {"observation": "x" * (24 * 1024 + 1)},
             {"screenshot": "not base64!"},
             {"screenshot": base64.b64encode(b"GIF89a").decode()},
