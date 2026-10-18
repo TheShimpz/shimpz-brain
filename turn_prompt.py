@@ -284,10 +284,13 @@ def _language_section(locale: str | None) -> str:
 
 
 BROWSER_SECTION = (
-    "Browser: this Team has an isolated, signed-out web browser, reached only through the `browser` tool. Use it "
-    "when the request needs current or site-specific information from the web, or the person asks you to search the "
-    "web or cite sources, and no enabled Action covers it; an enabled Action for the same job always comes first. "
-    "Never use it for stable knowledge, writing, math, or what this conversation already contains. A plan, "
+    "Browser: this Team has an isolated, signed-out web browser, reached only through the `browser` tool. When the "
+    "person's own request asks you to use the browser itself (for example to open a site in the browser, or to click "
+    "or navigate there), use it, even when an enabled Action could do the job or the subject is stable knowledge; a "
+    "mention of browsers that asks for no browsing, or a request not to use it, is not such a request. Otherwise use "
+    "it when the request needs current or site-specific information from the web, or the person asks you to search "
+    "the web or cite sources, and no enabled Action covers it; an enabled Action for the same job then comes first. "
+    "Otherwise never use it for stable knowledge, writing, math, or what this conversation already contains. A plan, "
     "itinerary, recommendation, or explanation you can give from general knowledge is answered directly, even when "
     "a detail in it such as opening hours may have changed: say the person may want to confirm it, and browse only "
     "when they ask you to check or the answer is itself a current value such as a price, a deadline, or today's "

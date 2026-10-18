@@ -25,8 +25,9 @@ from runtime_errors import RuntimeContractError
 TOOL_NAME = "browser"
 DESCRIPTION = (
     "Operate this Team's isolated, signed-out web browser on public websites: search, read and compare pages, and "
-    "download public files. Use it only when the request needs current or site-specific web content, or the person "
-    "asks to search the web or cite sources, and no available Action covers it. Never use it for general knowledge, "
+    "download public files. Use it when the person asks you to use the browser itself, even when an Action could do "
+    "the job; otherwise only when the request needs current or site-specific web content, or the person asks to "
+    "search the web or cite sources, and no available Action covers it. Never use it otherwise for general knowledge, "
     "writing, math, or what the conversation already contains. It cannot sign in, buy, or send messages or forms. "
     "Write one self-contained objective in the person's language: the site or search, every value to use, and what "
     "to report back. Call it alone, at most once per message; it takes about a minute."
