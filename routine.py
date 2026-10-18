@@ -22,7 +22,6 @@ import tool_refusal
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import payload as team_payload
-from protocol.team.http.v1 import phrase as team_phrase
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
@@ -54,11 +53,11 @@ SCHEMA = {
         "description": {
             "type": "string",
             "description": (
-                f"One plain paragraph, at most {_DESCRIPTION_CHARS} characters, written as the person's own request "
-                "for this Routine's work, in everyday words for a person who is not technical: what every run does "
-                "and on what. Describe only the work you ran and say plainly when a run changes something; never say "
-                "how often or when it runs, its timezone, or whether or when the result is shown to the person (such "
-                "as 'show me the result' or 'only when it changes'): the Team's card shows those itself."
+                f"One plain paragraph, at most {_DESCRIPTION_CHARS} characters, in everyday words for a person who is "
+                "not technical: what every run does and on what. Describe only the work you ran and say plainly when a "
+                "run changes something. Leave out the person's words about how often or when it runs, its timezone, "
+                "and whether or when the result is shown to them (such as 'show me the result' or 'only when it "
+                "changes'): the Team's card shows those itself."
             ),
         },
         "replaces": {
@@ -94,8 +93,6 @@ _CORRECTIONS = {
     "invalid": _NOT_DONE + "Call it with op record and exactly the members its schema names.",
     "name": _NOT_DONE + f"Give a name of one line, at most {_NAME_CHARS} characters.",
     "description": _NOT_DONE + f"Give a description of one plain paragraph, at most {_DESCRIPTION_CHARS} characters.",
-    "settings": _NOT_DONE + "The description says how often or when it runs, its timezone, or whether its result is "
-    "shown, which the Team's card shows itself; describe only the work, without those words.",
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person an empty reply, or text that says something, of at most "
     f"{MAX_REPLY_CHARS} characters with no control characters other than line breaks and tabs.",
@@ -214,15 +211,12 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
         return "invalid"
     name = team_routine_protocol.canonical_name(arguments["name"])
     description = arguments["description"]
-    canonical = team_routine_protocol.canonical_description(description)
     replaces = arguments["replaces"]
     reply = _reply(arguments["reply"])
     replaced = next((item for item in context.routines if item["routine_id"] == replaces), None)
     checks = (
         ("name", bool(name)),
-        ("description", canonical is not None),
-        # Edit reads the description back beside the card's settings, so it may state none of them (ADR-0101).
-        ("settings", canonical is None or not _states_settings(canonical)),
+        ("description", team_routine_protocol.canonical_description(description) is not None),
         ("replaces", replaces is None or replaced is not None),
         ("reply", reply is not None),
     )
@@ -231,11 +225,6 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
         return refused
     routine = {"name": name, "description": description, "replaces": replaces}
     return {"routine": routine, "reply": reply}
-
-
-def _states_settings(description: str) -> bool:
-    """Whether a description states a schedule, an output, or a timezone, as Team reads a person's own words."""
-    return bool(team_phrase.stated(description) or team_phrase.outputs(description) or team_phrase.zones(description))
 
 
 def _review(messages: list[Any], context: Any) -> object:
