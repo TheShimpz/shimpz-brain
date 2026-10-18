@@ -68,7 +68,7 @@ class BrowserTurnTests(unittest.TestCase):
 
     def test_the_browser_is_never_offered_with_attachments_or_routine_work(self):
         offered = {"browser": True, "attachments": (), "routine_mode": False, "routine_settings_answer": False}
-        self.assertTrue(agent_runtime._offers_browser(SimpleNamespace(**offered)))
+        self.assertTrue(browser_tool.offered(SimpleNamespace(**offered)))
         for change in (
             {"browser": False},
             {"attachments": ("file",)},
@@ -76,7 +76,7 @@ class BrowserTurnTests(unittest.TestCase):
             {"routine_settings_answer": True},
         ):
             with self.subTest(change=change):
-                self.assertFalse(agent_runtime._offers_browser(SimpleNamespace(**{**offered, **change})))
+                self.assertFalse(browser_tool.offered(SimpleNamespace(**{**offered, **change})))
 
     def test_an_objective_outside_its_bounds_gets_a_correction_not_a_suspension(self):
         runtime = self.runtime(
@@ -110,12 +110,12 @@ class BrowserTurnTests(unittest.TestCase):
         self.assertFalse(browser_tool.read(HumanMessage(content="hi")))
         self.assertTrue(agent_runtime._forgotten(ToolMessage(content="{}", tool_call_id="c", name="browser")))
         writes = [("task", "__interrupt__", [type("I", (), {"value": {"kind": "browser"}})()])]
-        self.assertTrue(agent_runtime._pending_browser(writes))
+        self.assertTrue(browser_tool.answered(writes))
         self.assertTrue(
-            agent_runtime._pending_browser([("task", "__interrupt__", type("I", (), {"value": {"kind": "browser"}})())])
+            browser_tool.answered([("task", "__interrupt__", type("I", (), {"value": {"kind": "browser"}})())])
         )
-        self.assertFalse(agent_runtime._pending_browser([("task", "messages", [])]))
-        self.assertFalse(agent_runtime._pending_browser(None))
+        self.assertFalse(browser_tool.answered([("task", "messages", [])]))
+        self.assertFalse(browser_tool.answered(None))
 
     def test_a_browser_step_runs_on_the_providers_fixed_browser_model(self):
         answer = json.dumps(

@@ -12,6 +12,7 @@ import base64
 import binascii
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from typing import Literal
 
 import structured
@@ -114,6 +115,12 @@ def _prompt(request: Mapping[str, object]) -> list:
     if request["screenshot"] is not None:
         content.append({"type": "image", "base64": request["screenshot"], "mime_type": "image/png"})
     return [SystemMessage(content=SYSTEM), HumanMessage(content=content)]
+
+
+def on_provider(model_factory: Callable, provider, request: Mapping[str, object]) -> tuple[dict, str]:
+    """One step on the fixed Browser model of `provider`'s provider, and that model."""
+    config = replace(provider, model=model(provider.provider))
+    return step(lambda: model_factory(config), config.provider, request), config.model
 
 
 def capped(model: BaseChatModel) -> BaseChatModel:

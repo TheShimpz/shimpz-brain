@@ -42,7 +42,6 @@ from action_purpose import PendingAction
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from protocol.team.action.v1 import schema as action_protocol
-from protocol.team.http.v1 import browser as browser_protocol
 from protocol.team.http.v1 import identifiers as team_identifiers
 from protocol.team.http.v1 import payload as team_payload
 from protocol.team.http.v1 import turn as team_turn
@@ -272,14 +271,6 @@ class ActionRequest:
 
 
 @dataclass(frozen=True, slots=True)
-class BrowserCall:
-    """The chat agent's one `browser` call a turn suspended on (ADR-0117)."""
-
-    interrupt_id: str
-    objective: str
-
-
-@dataclass(frozen=True, slots=True)
 class TurnResult:
     status: Literal["completed", "action-required", "browser-required"]
     reply: str = ""
@@ -289,7 +280,7 @@ class TurnResult:
     memory: tuple[team_memory.Change, ...] = ()
     # The Routine the agent recorded from this turn's work (ADR-0101); Team builds its card from its own trace.
     routine: dict[str, object] | None = None
-    browser: BrowserCall | None = None
+    browser: browser_tool.BrowserCall | None = None
 
 
 class Checkpointer(Protocol):
@@ -325,58 +316,14 @@ def _turn_surface(context: TurnContext) -> tuple[tuple[Any, ...], bool, bool, st
         () if context.routine_settings_answer else turn_attachments.exposed(context.assistants, context.attachments)
     )
     memory_tool, routine_tool = _knowledge_tools(context)
-    surface = replace(context, assistants=exposed, browser=_offers_browser(context))
+    surface = replace(context, assistants=exposed, browser=browser_tool.offered(context))
     return exposed, memory_tool, routine_tool, turn_prompt.system_prompt(surface)
-
-
-def _offers_browser(context: TurnContext) -> bool:
-    """Whether this turn offers the Browser: where Team offered it, outside Routine work and attachment content."""
-    return (
-        context.browser and not context.attachments and not context.routine_mode and not context.routine_settings_answer
-    )
 
 
 def _knowledge_tools(context: TurnContext) -> tuple[bool, bool]:
     """Whether this turn offers the memory and the Routine tool."""
     # A turn that carries attachments learns nothing (ADR-0093); its admitted context carries no Routines.
     return not context.attachments and context.memories is not None, context.routines is not None
-
-
-def _restored(context: TurnContext, metadata: Mapping[str, object]) -> TurnContext:
-    """A resumed turn's context with exactly the pins its start recorded."""
-    try:
-        turn_date, rules, skills, routines = turn_pins.restore(metadata)
-        question, mode, rerun, schedule, output = turn_pins.restore_routine(metadata)
-        provider, model = turn_pins.restore_model(metadata)
-        locale, turn_message_id = turn_pins.restore_turn(metadata)
-        zone = turn_pins.restore_zone(metadata)
-        commitment, charge = turn_pins.restore_attachments(metadata)
-    except turn_pins.PinError as exc:
-        raise RuntimeStateError("checkpoint state is invalid") from exc
-    if provider != context.provider.provider:
-        # A turn's model keeps its key; a resume under another provider's credential is never the same turn.
-        raise RuntimeContractError("model provider changed during the pending turn")
-    if commitment != turn_attachments.commitment(context.attachments):
-        # Team rehydrates the exact files the turn started with; anything else ends the turn explicitly (ADR-0093).
-        raise RuntimeContractError("attachments changed during the pending turn")
-    return replace(
-        context,
-        # The turn finishes on the model it started on, whatever model the resume names (ADR-0101).
-        provider=replace(context.provider, model=model),
-        turn_date=turn_date,
-        timezone=zone,
-        memories=rules,
-        skills=skills,
-        routines=routines,
-        routine_question=question,
-        routine_mode=mode,
-        routine_rerun=rerun,
-        routine_schedule=schedule,
-        routine_output=output,
-        locale=locale,
-        turn_message_id=turn_message_id,
-        attachment_charge=charge,
-    )
 
 
 def tool_name(assistant_id: str, action_id: str) -> str:
@@ -414,29 +361,12 @@ def _assistant_scope(context: TurnContext) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _browser_result(pending: Sequence[object]) -> TurnResult:
-    """A suspension on the turn's one Browser call, which nothing accompanies."""
-    if len(pending) != 1:
-        raise RuntimeContractError("a Browser call must be the only suspension")
-    item = pending[0]
-    value, interrupt_id = getattr(item, "value", None), getattr(item, "id", None)
-    if (
-        not isinstance(value, Mapping)
-        or set(value) != {"kind", "objective"}
-        or not isinstance(interrupt_id, str)
-        or not interrupt_id
-        or browser_protocol.canonical_objective(value["objective"]) != value["objective"]
-    ):
-        raise RuntimeContractError("invalid Browser suspension")
-    return TurnResult(status="browser-required", browser=BrowserCall(interrupt_id, str(value["objective"])))
-
-
 def _pending_result(pending: object) -> TurnResult:
     requests: list[ActionRequest] = []
     if not isinstance(pending, Sequence):
         raise RuntimeContractError("invalid suspended graph state")
     if any(browser_tool.pending(getattr(item, "value", None)) for item in pending):
-        return _browser_result(pending)
+        return TurnResult(status="browser-required", browser=browser_tool.suspension(pending))
     for item in pending:
         value = getattr(item, "value", None)
         interrupt_id = getattr(item, "id", None)
@@ -508,16 +438,6 @@ def _turn_reply(state: Mapping[str, Any], turn_start: int) -> AIMessage | None:
 
 def _forgotten(message: object) -> bool:
     return turn_attachments.read(message) or browser_tool.read(message)
-
-
-def _pending_browser(pending_writes: object) -> bool:
-    """Whether the pending interrupt a resume answers is the turn's Browser call."""
-    for write in pending_writes or ():
-        if write[1] == "__interrupt__":
-            interrupts = write[2] if isinstance(write[2], Sequence) else (write[2],)
-            if any(browser_tool.pending(getattr(item, "value", None)) for item in interrupts):
-                return True
-    return False
 
 
 def _has_pending_interrupt(pending_writes: object) -> bool:
@@ -707,7 +627,7 @@ class AgentRuntime:
             for action in assistant.actions
         ]
         tools.append(clarifier.tool())
-        browser = _offers_browser(context)
+        browser = browser_tool.offered(context)
         if browser:
             tools.append(browser_tool.tool())
         if memory_tool:
@@ -791,7 +711,7 @@ class AgentRuntime:
             return context, ()
         pending_writes = getattr(checkpoint_tuple, "pending_writes", None)
         has_pending_interrupt = _has_pending_interrupt(pending_writes)
-        if resume and _pending_browser(pending_writes):
+        if resume and browser_tool.answered(pending_writes):
             context = replace(context, after_browser=True)
         if resume and not has_pending_interrupt:
             raise RuntimeContractError("conversation has no pending Action request")
@@ -813,7 +733,7 @@ class AgentRuntime:
         messages = channel_values.get("messages", ())
         if not isinstance(messages, Sequence):
             raise RuntimeStateError("checkpoint state is invalid")
-        return (_restored(context, metadata) if resume else context), tuple(messages)
+        return (turn_pins.restored(context, metadata) if resume else context), tuple(messages)
 
     @staticmethod
     def _fixed_tokens(context: TurnContext) -> int:
@@ -824,10 +744,8 @@ class AgentRuntime:
             for action in assistant.actions
         ]
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
-        if _offers_browser(context):
-            tools.append(
-                {"name": browser_tool.TOOL_NAME, "summary": browser_tool.DESCRIPTION, "schema": browser_tool.SCHEMA}
-            )
+        if browser_tool.offered(context):
+            tools.append(browser_tool.SUMMARY)
         for included, module in ((memory_tool, team_memory), (routine_tool, team_routine)):
             if included:
                 tools.append({"name": module.TOOL_NAME, "summary": module.DESCRIPTION, "schema": module.SCHEMA})
@@ -955,8 +873,7 @@ class AgentRuntime:
 
     def browser_step(self, provider: ProviderConfig, request: Mapping[str, object]) -> tuple[dict, str]:
         """One stateless Browser agent step on the provider's fixed Browser model, and that model (ADR-0117)."""
-        config = replace(provider, model=browser_step.model(provider.provider))
-        return browser_step.step(lambda: self._model_factory(config), config.provider, request), config.model
+        return browser_step.on_provider(self._model_factory, provider, request)
 
     def capability_plan(
         self,

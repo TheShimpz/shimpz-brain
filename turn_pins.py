@@ -10,11 +10,15 @@ import json
 import re
 import zoneinfo
 from collections.abc import Callable, Mapping
+from dataclasses import replace
+from typing import Any
 
+import attachments as turn_attachments
 import interface_language
 import memory as team_memory
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
+from runtime_errors import RuntimeContractError, RuntimeStateError
 
 import routine as team_routine
 
@@ -255,4 +259,41 @@ def valid_turn(locale: object, message_id: object, *, started: bool = True) -> b
     return (locale is None or interface_language.valid(locale)) and (
         (message_id is None and not started)
         or (isinstance(message_id, str) and TURN_MESSAGE_RE.fullmatch(message_id) is not None)
+    )
+
+
+def restored(context: Any, metadata: Mapping[str, object]) -> Any:
+    """A resumed turn's context with exactly the pins its start recorded."""
+    try:
+        turn_date, rules, skills, routines = restore(metadata)
+        question, mode, rerun, schedule, output = restore_routine(metadata)
+        provider, model = restore_model(metadata)
+        locale, turn_message_id = restore_turn(metadata)
+        zone = restore_zone(metadata)
+        commitment, charge = restore_attachments(metadata)
+    except PinError as exc:
+        raise RuntimeStateError("checkpoint state is invalid") from exc
+    if provider != context.provider.provider:
+        # A turn's model keeps its key; a resume under another provider's credential is never the same turn.
+        raise RuntimeContractError("model provider changed during the pending turn")
+    if commitment != turn_attachments.commitment(context.attachments):
+        # Team rehydrates the exact files the turn started with; anything else ends the turn explicitly (ADR-0093).
+        raise RuntimeContractError("attachments changed during the pending turn")
+    return replace(
+        context,
+        # The turn finishes on the model it started on, whatever model the resume names (ADR-0101).
+        provider=replace(context.provider, model=model),
+        turn_date=turn_date,
+        timezone=zone,
+        memories=rules,
+        skills=skills,
+        routines=routines,
+        routine_question=question,
+        routine_mode=mode,
+        routine_rerun=rerun,
+        routine_schedule=schedule,
+        routine_output=output,
+        locale=locale,
+        turn_message_id=turn_message_id,
+        attachment_charge=charge,
     )

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import functools
 import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import tool_refusal
@@ -18,6 +20,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from protocol.team.http.v1 import browser as browser_protocol
 from pydantic import BaseModel, ConfigDict, Field
+from runtime_errors import RuntimeContractError
 
 TOOL_NAME = "browser"
 DESCRIPTION = (
@@ -34,12 +37,56 @@ SCHEMA = {
     "required": ["objective"],
     "properties": {"objective": {"type": "string", "maxLength": browser_protocol.MAX_OBJECTIVE_CHARS}},
 }
+# The tool as a turn's fixed token count measures it.
+SUMMARY = {"name": TOOL_NAME, "summary": DESCRIPTION, "schema": SCHEMA}
 CORRECTION = (
     "The browser was not called: give one self-contained objective of at most 2,000 characters naming the site or "
     "search, every value to use, and what to report back."
 )
 ALONE = "The browser must be the only tool call of a response. Call it again alone, or answer without it."
 AFTER = "The browser task is done and its result is above. Do not call any tool; write the reply to the person now."
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserCall:
+    """The chat agent's one `browser` call a turn suspended on."""
+
+    interrupt_id: str
+    objective: str
+
+
+def offered(context: Any) -> bool:
+    """Whether a turn offers the Browser: where Team offered it, outside Routine work and attachment content."""
+    return (
+        context.browser and not context.attachments and not context.routine_mode and not context.routine_settings_answer
+    )
+
+
+def suspension(pending: Sequence[object]) -> BrowserCall:
+    """The turn's one Browser call a suspension holds, which nothing accompanies; anything else is a contract error."""
+    if len(pending) != 1:
+        raise RuntimeContractError("a Browser call must be the only suspension")
+    item = pending[0]
+    value, interrupt_id = getattr(item, "value", None), getattr(item, "id", None)
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != {"kind", "objective"}
+        or not isinstance(interrupt_id, str)
+        or not interrupt_id
+        or browser_protocol.canonical_objective(value["objective"]) != value["objective"]
+    ):
+        raise RuntimeContractError("invalid Browser suspension")
+    return BrowserCall(interrupt_id, str(value["objective"]))
+
+
+def answered(pending_writes: object) -> bool:
+    """Whether the pending interrupt a resume answers is the turn's Browser call."""
+    for write in pending_writes or ():
+        if write[1] == "__interrupt__":
+            interrupts = write[2] if isinstance(write[2], Sequence) else (write[2],)
+            if any(pending(getattr(item, "value", None)) for item in interrupts):
+                return True
+    return False
 
 
 class _BrowserInput(BaseModel):
