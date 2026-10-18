@@ -22,6 +22,7 @@ if __package__:
     )
     from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
     from protocol.team.http.v1 import phrase as team_phrase
+    from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         EXAMPLE,
@@ -37,6 +38,7 @@ else:  # run as a script from Team, beside its sibling modules
     from routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
 
     from protocol.http.v1 import phrase as team_phrase
+    from protocol.http.v1 import routine_proposal as team_routine_proposal
 
 
 @dataclasses.dataclass(frozen=True)
@@ -170,9 +172,11 @@ def _description_agrees(card: dict[str, object]) -> bool:
     """
     description = str(card["description"])
     zones = {card["timezone"]} if card["timezone_source"] != "none" else set()
+    # Read beside the card's own output label in every interface language, as Edit offers them together.
+    labels = [choices[card["output"]] for choices in team_routine_proposal.OUTPUT_CHOICES.values()]
     return (
         all(schedule == card["schedule"] for schedule in team_phrase.stated(description))
-        and set(team_phrase.outputs(description)) <= {card["output"]}
+        and all(team_phrase.outputs(f"{description}\n{label}") == (card["output"],) for label in labels)
         and set(team_phrase.zones(description)) <= zones
     )
 

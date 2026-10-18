@@ -296,6 +296,8 @@ class StrataTests(unittest.TestCase):
             ("Check the DNS records and show me the results.", {"output": "none"}),
             (f"{plain} In Europe/Lisbon.", {}),
             (f"{plain} In UTC.", {"timezone": "UTC", "timezone_source": "none"}),
+            # A condition alone states nothing, but beside the "show every run" label it asks a second choice.
+            (f"{plain} Whenever something changes.", {}),
         ):
             with self.subTest(stated=stated):
                 self.assertFalse(routines_strata._description_agrees({**card, **changes, "description": stated}))
