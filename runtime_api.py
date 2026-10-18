@@ -17,6 +17,7 @@ from typing import Annotated, Any, Literal, Protocol, Self
 import action_purpose
 import agent_runtime
 import attachments as turn_attachments
+import browser_step
 import capability_plan
 import intent_fast_path
 import intent_route
@@ -33,6 +34,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
+from protocol.team.http.v1 import browser as browser_protocol
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import turn as team_turn
@@ -57,6 +59,8 @@ STATE_PATH = Path(os.environ.get("SHIMPZ_BRAIN_RUNTIME_STATE", "/var/lib/shimpz-
 MAX_TOKEN_BYTES = 4 * 1024
 CAPABILITY_PLAN_CONCURRENCY = 2
 INTENT_ROUTE_CONCURRENCY = 2
+# One Browser runs per Space at a time (ADR-0117), so its steps never need more than this.
+BROWSER_STEP_CONCURRENCY = 2
 # Team sends compact canonical JSON, and a start or resume succeeds only when what the model window counts (genesis,
 # Assistant and Action ids and summaries, input schemas, start-time knowledge, and the message or Action results) fits
 # the smallest window: (1,000,000 - 128,000) tokens of 3 bytes, about 2.5 MiB. What a canonical request carries beyond
@@ -164,6 +168,8 @@ class TurnContextInput(ClosedInput):
     routine_settings_answer: StrictBool
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
     attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
+    # Whether Team offers the Browser this turn (ADR-0117).
+    browser_available: StrictBool
 
     @field_validator("team_name", mode="before")
     @classmethod
@@ -189,6 +195,7 @@ class TurnContextInput(ClosedInput):
             routine_output=self.routine_output,
             routine_settings_answer=self.routine_settings_answer,
             attachments=_attachments(self.attachments),
+            browser=self.browser_available,
             **turn,
         )
 
@@ -344,6 +351,26 @@ class CapabilityCandidateInput(ClosedInput):
         )
 
 
+class BrowserStepInput(ClosedInput):
+    """One Browser agent step (ADR-0117): the Team's provider, the task, and the bounded current page."""
+
+    provider: ProviderInput
+    objective: str = Field(min_length=1, max_length=browser_protocol.MAX_OBJECTIVE_CHARS)
+    language: Literal["en", "pt-BR"]
+    history: list[dict[str, Any]] = Field(max_length=browser_protocol.MAX_HISTORY)
+    observation: str = Field(max_length=browser_protocol.MAX_OBSERVATION_BYTES)
+    screenshot: str | None = Field(max_length=browser_step.MAX_SCREENSHOT_BYTES * 4 // 3 + 4)
+
+    def runtime_request(self) -> dict[str, object]:
+        return {
+            "objective": self.objective,
+            "language": self.language,
+            "history": self.history,
+            "observation": self.observation,
+            "screenshot": self.screenshot,
+        }
+
+
 class CapabilityPlanInput(ClosedInput):
     provider: ProviderInput
     objective: str = Field(min_length=1, max_length=capability_plan.MAX_OBJECTIVE_CHARS)
@@ -458,6 +485,10 @@ class RuntimeLike(Protocol):
         provider: agent_runtime.ProviderConfig,
         pending: PendingAction,
     ) -> str | None: ...
+
+    def browser_step(
+        self, provider: agent_runtime.ProviderConfig, request: Mapping[str, object]
+    ) -> tuple[dict, str]: ...
 
     def capability_plan(
         self,
@@ -667,6 +698,9 @@ def _response(result: agent_runtime.TurnResult) -> dict[str, object]:
         "clarification": None if result.clarification is None else result.clarification.to_dict(),
         "memory": [change.to_dict() for change in result.memory],
         "routine": result.routine,
+        "browser": None
+        if result.browser is None
+        else {"interrupt_id": result.browser.interrupt_id, "objective": result.browser.objective},
         "actions": [
             {
                 "interrupt_id": request.interrupt_id,
@@ -706,6 +740,22 @@ def _lane(slots: threading.BoundedSemaphore, detail: str) -> Iterator[None]:
         yield
     finally:
         slots.release()
+
+
+async def _run_browser_step(
+    request: Request,
+    current_runtime: Callable[[], RuntimeLike],
+    slots: threading.BoundedSemaphore,
+    body: BrowserStepInput,
+) -> dict[str, object]:
+    """One Browser agent step in its own lane; Stop closing the request cancels its provider I/O (ADR-0079)."""
+    with _lane(slots, "Browser step capacity reached"):
+        (step, model), usage = await _cancellable(
+            request,
+            lambda: current_runtime().browser_step(body.provider.runtime(), body.runtime_request()),
+            "Browser step cancelled",
+        )
+    return {"step": step, "model": model, "usage": usage}
 
 
 async def _run_capability_plan(
@@ -778,6 +828,10 @@ def _register_decisions(
     async def create_capability_plan(request: Request, body: CapabilityPlanInput) -> dict[str, object]:
         return await _run_capability_plan(request, current_runtime, app.state.capability_plan_slots, body)
 
+    @app.post("/v1/browser-step", dependencies=[Depends(require_auth)])
+    async def create_browser_step(request: Request, body: BrowserStepInput) -> dict[str, object]:
+        return await _run_browser_step(request, current_runtime, app.state.browser_step_slots, body)
+
     @app.post("/v1/intent-route", dependencies=[Depends(require_auth)])
     def create_intent_route(body: IntentRouteInput) -> dict[str, object]:
         return _run_intent_route(current_runtime(), app.state.intent_route_slots, body)
@@ -835,6 +889,7 @@ def create_app(
     app.state.runtime_lock = threading.Lock()
     app.state.capability_plan_slots = threading.BoundedSemaphore(CAPABILITY_PLAN_CONCURRENCY)
     app.state.intent_route_slots = threading.BoundedSemaphore(INTENT_ROUTE_CONCURRENCY)
+    app.state.browser_step_slots = threading.BoundedSemaphore(BROWSER_STEP_CONCURRENCY)
     app.add_exception_handler(agent_runtime.RuntimeStateError, _state_error_response)
     app.add_exception_handler(RequestValidationError, _validation_error_response)
     app.add_middleware(

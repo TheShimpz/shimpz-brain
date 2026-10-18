@@ -59,6 +59,7 @@ def body(**updates):
         "routine_output": None,
         "routine_settings_answer": False,
         "attachments": [],
+        "browser_available": False,
         "message": "Hello",
         "conversation": [],
         "locale": "pt",
@@ -178,6 +179,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "actions": [],
                 "memory": [],
                 "routine": None,
+                "browser": None,
                 "usage": NO_USAGE,
             },
         )
@@ -202,6 +204,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "actions": [],
                 "memory": [],
                 "routine": None,
+                "browser": None,
                 "usage": NO_USAGE,
             },
         )
@@ -257,6 +260,7 @@ class RuntimeApiTests(unittest.TestCase):
                 "clarification": None,
                 "memory": [],
                 "routine": None,
+                "browser": None,
                 "actions": [
                     {
                         "interrupt_id": "interrupt-1",

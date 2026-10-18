@@ -31,6 +31,7 @@ class TeamProtocolMirrorTests(unittest.TestCase):
                 "action/v1/contract-files.sha256",
                 "action/v1/schema.py",
                 "http/upstream.json",
+                "http/v1/browser.py",
                 "http/v1/identifiers.py",
                 "http/v1/payload.py",
                 "http/v1/phrase.py",
