@@ -57,14 +57,16 @@ class BrowserStepTests(unittest.TestCase):
         with self.assertRaises(RuntimeContractError):
             model("gemini")
 
-    def test_both_providers_send_the_step_output_cap(self):
+    def test_both_providers_send_the_step_output_cap_and_its_low_effort(self):
         for provider in ("openai", "anthropic"):
             config = agent_runtime.ProviderConfig(provider=provider, model=model(provider), api_key="secret-test-key")
             client = provider_client.provider_model(config)
-            payload = browser_step.capped(client)._get_request_payload([("user", "hi")])
+            payload = browser_step.capped(client, provider)._get_request_payload([("user", "hi")])
             with self.subTest(provider=provider):
                 key = "max_output_tokens" if provider == "openai" else "max_tokens"
                 self.assertEqual(payload[key], browser_step.MAX_STEP_OUTPUT_TOKENS)
+                effort = payload["reasoning"] if provider == "openai" else payload["output_config"]
+                self.assertEqual(effort, {"effort": "low"})
 
     def test_the_page_is_sent_as_data_and_a_screenshot_as_an_image(self):
         image = base64.b64encode(PNG_SIGNATURE + b"pixels").decode()

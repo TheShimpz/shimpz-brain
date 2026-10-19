@@ -27,6 +27,8 @@ BROWSER_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
 MAX_RESPONSE_CHARS = 8 * 1024
 # A step's whole answer, its longest summary included, fits well within this output cap.
 MAX_STEP_OUTPUT_TOKENS = 2_048
+# The reasoning effort every Browser step runs at (ADR-0113 keeps effort in the Brain).
+BROWSER_EFFORT = "low"
 MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SYSTEM = (
@@ -128,16 +130,22 @@ def on_provider(model_factory: Callable, provider, request: Mapping[str, object]
     return step(lambda: model_factory(config), config.provider, request), config.model
 
 
-def capped(model: BaseChatModel) -> BaseChatModel:
-    """The same provider client with the step's output bound; both providers send it as their output token cap."""
-    return model.model_copy(update={"max_tokens": MAX_STEP_OUTPUT_TOKENS})
+def capped(model: BaseChatModel, provider: str) -> BaseChatModel:
+    """The same provider client with the step's output bound and its fixed reasoning effort.
+
+    Both providers send the bound as their output token cap. A step reasons at BROWSER_EFFORT: measured on real pages,
+    it cut a step from 4.5 to 1.9 s on OpenAI and from 2.7 to 2.0 s on Anthropic, with the same completion and the
+    same refusals on sign-in, payment, captcha, form, and injected-instruction pages (ADR-0117).
+    """
+    effort = {"openai": "reasoning_effort", "anthropic": "effort"}[provider]
+    return model.model_copy(update={"max_tokens": MAX_STEP_OUTPUT_TOKENS, effort: BROWSER_EFFORT})
 
 
 def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
     """One canonical step for the task; an answer outside the closed set is a provider response failure."""
     admitted = validate(request)
     answer = structured.bounded_value(
-        lambda: capped(model_factory()),
+        lambda: capped(model_factory(), provider),
         provider,
         StepAnswer,
         lambda: _prompt(admitted),
