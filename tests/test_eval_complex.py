@@ -8,7 +8,7 @@ from eval.complex import world as complex_world
 from eval.corpus import LOCALES
 from eval.world import ActionFailedError
 
-DIGEST = "sha256:213f64eb8fe47ad1d14eb61982eb394696744c0c7b5f559cacb652d20acab9be"
+DIGEST = "sha256:80a24205938f8f4d120e824408b4bbe5616ae6e9add1c0e32c4a9b90fbb3b2cd"
 LENA = complex_world.customer_id("Lena Fischer", "Berlin")
 
 
@@ -127,6 +127,12 @@ class EpisodeTests(unittest.TestCase):
         for value in broken:
             with self.assertRaises(ValueError):
                 model.validate(value)
+        # A reference workflow may use only the Assistants its episode offers.
+        unoffered = tuple(
+            dataclasses.replace(t, assistants=("crm",)) if t.id == "s5-which-ana" else t for t in templates.TEMPLATES
+        )
+        with self.assertRaisesRegex(ValueError, "does not offer"):
+            model.validate(unoffered)
 
     def test_the_scripted_user_answers_one_clarification_and_logs_limitations(self):
         template = templates.TEMPLATES_BY_ID["s5-which-ana"]
@@ -217,6 +223,29 @@ class OracleMutationTests(unittest.TestCase):
         )
         self.assertEqual(model.oracle(cross, world, checkpoints).cross_team_writes, 1)
         self.assertEqual([model._length_class(n) for n in (2, 6, 15, 40)], ["1-2", "3-6", "7-15", "16-40"])
+
+    def test_a_dictated_text_must_appear_in_what_was_written(self):
+        template = templates.TEMPLATES_BY_ID["s1-task-and-event"]
+        title = template.steps[0].parts[0][1]["title"]["de"]
+
+        def turns(task_title: str, event_title: str = "Team lunch") -> list[dict]:
+            record = [
+                {"assistant": "tasks", "action": "create-task", "input": {"title": task_title}},
+                {"assistant": "calendar", "action": "create-event", "input": {"title": event_title}},
+                {"assistant": "tasks", "action": "list-tasks", "input": {}},
+            ]
+            return [{"step": 0, "user": "...", "record": record}]
+
+        # Quoting, punctuation, and case never decide a match; a different or translated text does.
+        self.assertEqual(model.undictated(template, "de", turns(f"„{title.upper()}“.")), 0)
+        self.assertEqual(model.undictated(template, "de", turns("Renew the passport")), 1)
+        self.assertEqual(model.undictated(template, "de", turns(title, "Lunch")), 1)
+        world, checkpoints = model.run_reference(template)
+        result = model.oracle(template, world, checkpoints, turns("Something else"), "de")
+        self.assertEqual((result.passed, result.undictated), (False, 1))
+        # A step that dictates nothing, such as "tell Ops that", lets the solver compose the text.
+        quiet = dataclasses.replace(template, steps=(dataclasses.replace(template.steps[0], parts=(("thanks", {}),)),))
+        self.assertEqual(model.undictated(quiet, "de", turns("anything", "anything")), 0)
 
 
 if __name__ == "__main__":

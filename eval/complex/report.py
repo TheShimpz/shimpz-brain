@@ -35,6 +35,7 @@ ORACLE_COUNTS = (
     "duplicates",
     "cross_team_writes",
     "violations",
+    "undictated",
 )
 ACCOUNTING = (
     "user_turns",

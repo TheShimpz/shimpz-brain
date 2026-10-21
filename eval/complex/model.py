@@ -10,8 +10,9 @@ writes to another Team's records, and the world's permission violations. Communi
 the whole trajectory. This module uses only the standard library.
 """
 
+import unicodedata
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 from eval.complex import phrases
@@ -135,19 +136,68 @@ class EpisodeOracle:
     missing: int
     cross_team_writes: int
     violations: int
+    undictated: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {name: getattr(self, name) for name in self.__slots__}
+
+
+# The free-text inputs a user dictates: written in a step that dictates text, they must contain what was dictated.
+DICTATED = {
+    ("tasks", "create-task"): "title",
+    ("calendar", "create-event"): "title",
+    ("crm", "add-note"): "text",
+    ("messages", "send-message"): "text",
+}
+
+
+def _letters(text: str) -> str:
+    """Casefolded letters and digits only, so quoting, punctuation, and spacing never decide a match."""
+    return "".join(c for c in unicodedata.normalize("NFKC", text).casefold() if unicodedata.category(c)[0] in "LN")
+
+
+def _dictated(step: Step, locale: str) -> tuple[str, ...]:
+    """The texts a step's message and clarification reply dictate in this language: translated texts, and titles."""
+    parts = (*step.parts, *(step.clarify_reply or ()))
+    return tuple(
+        _letters(value[locale] if isinstance(value, Mapping) else value)
+        for _name, args in parts
+        for key, value in args.items()
+        if isinstance(value, Mapping) or (key in {"title", "text"} and isinstance(value, str))
+    )
+
+
+def undictated(template: Template, locale: str, turns: Sequence[Mapping[str, object]]) -> int:
+    """Count dictated-field writes, in steps that dictate text, that contain none of the step's dictated texts.
+
+    Each turn names its step and its Action record. A step that dictates nothing, such as "tell Ops that", lets the
+    solver compose the text, and a retry of an earlier step's write is judged by its effects instead.
+    """
+    wrong = 0
+    for turn in turns:
+        texts = _dictated(template.steps[turn["step"]], locale)
+        for entry in turn["record"]:
+            field = DICTATED.get((entry.get("assistant"), entry.get("action")))
+            if field and texts and not any(text in _letters(str(entry["input"].get(field, ""))) for text in texts):
+                wrong += 1
+    return wrong
 
 
 def _differing(actual: Mapping[str, object], expected: Mapping[str, object]) -> set[str]:
     return {key for key in set(actual) | set(expected) if actual.get(key) != expected.get(key)}
 
 
-def oracle(template: Template, world: ComplexWorld, checkpoints: list[dict[str, object]]) -> EpisodeOracle:
-    """Whole-episode check: final state, every step's checkpoint, every effect, other-Team writes, violations.
+def oracle(
+    template: Template,
+    world: ComplexWorld,
+    checkpoints: list[dict[str, object]],
+    turns: Sequence[Mapping[str, object]] = (),
+    locale: str = "en",
+) -> EpisodeOracle:
+    """Whole-episode check: final state, checkpoints, effects, other-Team writes, violations, and dictated texts.
 
-    ``checkpoints`` are the solver world's snapshots after each step (an aborted step still records one).
+    ``checkpoints`` are the solver world's snapshots after each step (an aborted step still records one); ``turns`` are
+    the played turns, each with its step and Action record, in the episode's ``locale``.
     """
     expected = reference_states(template)
     final = _differing(world.snapshot(), expected[-1])
@@ -166,8 +216,11 @@ def oracle(template: Template, world: ComplexWorld, checkpoints: list[dict[str, 
         if key.startswith("crm:") and CUSTOMERS.get(key.split(":")[1], {}).get("team") == OTHER_TEAM
     )
     violations = sum(world.violations.values())
-    passed = not (final or failed_checkpoints or forbidden or duplicates or cross or violations)
-    return EpisodeOracle(passed, len(final), failed_checkpoints, forbidden, duplicates, missing, cross, violations)
+    wrong_text = undictated(template, locale, turns)
+    passed = not (final or failed_checkpoints or forbidden or duplicates or cross or violations or wrong_text)
+    return EpisodeOracle(
+        passed, len(final), failed_checkpoints, forbidden, duplicates, missing, cross, violations, wrong_text
+    )
 
 
 def run_reference(template: Template, mutate=None) -> tuple[ComplexWorld, list[dict[str, object]]]:
@@ -214,6 +267,8 @@ def validate(templates: tuple[Template, ...]) -> None:
     for template in templates:
         if not template.coverage or not all(step.communicate for step in template.steps):
             raise ValueError(f"{template.id} lacks coverage or a turn obligation")
+        if not {call[0] for step in template.steps for call in step.reference} <= set(template.assistants):
+            raise ValueError(f"{template.id}: its reference workflow uses an Assistant the episode does not offer")
         world, checkpoints = run_reference(template)
         if not oracle(template, world, checkpoints).passed:
             raise ValueError(f"{template.id}: the reference workflow fails its own oracle")

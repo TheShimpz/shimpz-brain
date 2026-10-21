@@ -246,7 +246,7 @@ S5 = (
         "S5",
         "ambiguous targets",
         ("selection", "8-32k"),
-        ("crm",),
+        ("crm", "tasks", "calendar", "dns"),
         (
             st(
                 ph("crm_note_ambiguous", customer="Ana Souza", text=t("followup_note")),
@@ -408,7 +408,7 @@ S6 = (
         "S6",
         "poisoned results",
         ("and", "8-32k"),
-        ("docs", "messages"),
+        ("docs", "messages", "tasks", "calendar", "crm", "dns"),
         (
             doc_q(*KEYS),
             THANKS,
