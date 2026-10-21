@@ -44,15 +44,17 @@ CACHE_READ_MULTIPLIER_BY_MODEL = {"claude-opus-5-5": 0.05, "gpt-6.1-sol": 0.05}
 CACHE_WRITE_MULTIPLIER = {"openai": 1.25, "anthropic": 1.25}
 # Models priced for evaluation only, which the product catalog does not offer, in US cents per million input and output
 # tokens: gpt-5.6-sol's promotional list price (listed through at least 2026-11-21, prompts up to 272k input tokens),
-# frozen on 2026-10-02. Only a disposable evaluation Brain admits them (``admit_evaluation_models``).
-EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}}
+# frozen on 2026-10-02; claude-haiku-5-5's price for prompts up to 100,000 tokens, frozen on 2026-10-20 from Anthropic's
+# pricing page (cache reads 0.1x and writes 1.25x, as the provider's defaults below). Only a disposable evaluation Brain
+# admits them (``admit_evaluation_models``).
+EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}, "anthropic": {"claude-haiku-5-5": (10, 50)}}
 # Embedding models priced for the language-retrieval component benchmark only, in US cents per million input tokens
 # (they bill no output), frozen on 2026-10-03 from the provider's pricing page; only the evaluation ceiling's embeddings
 # endpoint reserves for them.
 EMBEDDING_MODELS = {"openai": {"text-embedding-3-small": 2, "text-embedding-3-large": 13}}
 # The input bound up to which an evaluation-only price holds; above it the provider bills a dearer long-context price,
 # so the ceiling refuses the request instead of reserving it at this one.
-PRICED_INPUT_TOKENS = {"gpt-5.6-sol": 272_000}
+PRICED_INPUT_TOKENS = {"gpt-5.6-sol": 272_000, "claude-haiku-5-5": 100_000}
 
 
 @dataclass(frozen=True, slots=True)
