@@ -189,6 +189,37 @@ class ExchangeTests(unittest.TestCase):
                 self.assertFalse(context_budget.truncated(finished))
                 self.assertEqual(context_budget.final_reply(finished), "answer")
 
+    def test_older_action_results_give_way_to_placeholders_only_at_the_trigger(self):
+        def exchange(index: int, *, result: str = "r" * 300, name: str = TOOL) -> list:
+            return [
+                HumanMessage(f"q{index}", id=f"h{index}"),
+                AIMessage("", tool_calls=[_call("x", f"c{index}")], id=f"t{index}"),
+                ToolMessage(result, tool_call_id=f"c{index}", name=name, status="error", id=f"m{index}"),
+                AIMessage(f"done {index}", id=f"a{index}"),
+            ]
+
+        history = [*exchange(0), *exchange(1, name="other"), *exchange(2), *exchange(3), *exchange(4)]
+        history.append(HumanMessage("failed", id="hf"))
+        history.extend(exchange(5)[1:3])
+
+        def action(message: ToolMessage) -> bool:
+            return message.name == TOOL
+
+        with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
+            omitted = context_budget.results_to_omit(history, action, lambda message: message.id == "h2")
+        # Exchanges 3 and 4 are the newest completed ones; 2 is forgotten whole, 1 holds no Action result, and the
+        # unfinished one is dropped whole instead.
+        self.assertEqual([message.id for message in omitted], ["m0"])
+        self.assertEqual(
+            (omitted[0].content, omitted[0].tool_call_id, omitted[0].name, omitted[0].status),
+            (context_budget.OMITTED_RESULT, "c0", TOOL, "error"),
+        )
+        # Below the trigger nothing changes, and an omitted result is never omitted again.
+        self.assertEqual(context_budget.results_to_omit(history, action), ())
+        with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
+            settled = [*exchange(0, result=context_budget.OMITTED_RESULT), *exchange(3), *exchange(4)]
+            self.assertEqual(context_budget.results_to_omit(settled, action), ())
+
     def test_fixed_prompt_and_current_message_alone_can_exceed_the_window(self):
         with self.assertRaises(context_budget.ContextWindowError):
             context_budget.history_to_drop([], context_budget.MODEL_WINDOW_TOKENS, 1)
@@ -255,6 +286,35 @@ class RuntimeBudgetTests(unittest.TestCase):
         fresh = self._runtime()
         stored = fresh._checkpointer.get_tuple(fresh._config(turn))
         self.assertEqual(_user_texts(stored.checkpoint["channel_values"]["messages"]), ["four", "five"])
+
+    def test_a_new_turn_omits_older_action_results_in_place_and_keeps_the_newest_whole(self):
+        turn = _context()
+        hosts = ("a.example", "b.example", "c.example")
+        runtime = self._runtime(
+            *(
+                message
+                for index, host in enumerate(hosts, 1)
+                for message in (AIMessage("", tool_calls=[_call(host, f"c{index}")]), AIMessage(f"{host} answered"))
+            ),
+            AIMessage("r4"),
+        )
+        for host in hosts:
+            pending = runtime.start(turn, host)
+            runtime.resume(turn, {pending.actions[0].interrupt_id: {"status": "ok", "host": host}})
+        with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
+            self.assertEqual(runtime.start(turn, "four").reply, "r4")
+
+        def results(messages: Sequence[Any]) -> dict[str, str]:
+            return {m.tool_call_id: str(m.content) for m in messages if isinstance(m, ToolMessage)}
+
+        seen = results(RecordingModel.seen[-1])
+        # The oldest result gives way in place, still paired with its call; the newest two stay whole.
+        self.assertEqual(seen["c1"], context_budget.OMITTED_RESULT)
+        self.assertIn("b.example", seen["c2"])
+        self.assertIn("c.example", seen["c3"])
+        self.assertEqual(_user_texts(RecordingModel.seen[-1]), [*hosts, "four"])
+        stored = runtime._checkpointer.get_tuple(runtime._config(turn))
+        self.assertEqual(results(stored.checkpoint["channel_values"]["messages"]), seen)
 
     def test_window_guards_refuse_before_any_provider_call(self):
         turn = _context()

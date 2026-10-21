@@ -444,6 +444,10 @@ def _turn_reply(state: Mapping[str, Any], turn_start: int) -> AIMessage | None:
     )
 
 
+def _removal(message: Any) -> RemoveMessage:
+    return RemoveMessage(id=message.id)
+
+
 def _forgotten(message: object) -> bool:
     return turn_attachments.read(message) or browser_tool.read(message)
 
@@ -768,14 +772,20 @@ class AgentRuntime:
         turn: HumanMessage,
         conversation: tuple[intent_router.ConversationEntry, ...],
     ) -> tuple[HumanMessage, ...]:
-        """Forget the oldest whole exchanges before a new turn and return what precedes the turn message.
+        """Omit older Action results, forget the oldest whole exchanges, and return what precedes the turn message.
 
         Trimming never runs while an Action round is pending. When no completed exchange survives, a non-empty window
         of committed presentation history precedes the turn as one quoted user-role message; it belongs to that turn's
         exchange, kept and forgotten with it.
         """
         fixed = self._fixed_tokens(context)
+        actions = {
+            tool_name(assistant.id, action.id) for assistant in context.assistants for action in assistant.actions
+        }
         try:
+            omitted = context_budget.results_to_omit(history, lambda message: message.name in actions, _forgotten)
+            replaced = {message.id: message for message in omitted}
+            history = tuple(replaced.get(getattr(message, "id", None), message) for message in history)
             # An exchange that read attachments or the web is forgotten whole before the next turn (ADR-0093, ADR-0117).
             drop = context_budget.history_to_drop(history, fixed, context_budget.message_tokens(turn), _forgotten)
             bridge = _conversation_bridge(conversation) if len(drop) == len(history) and conversation else ()
@@ -787,11 +797,11 @@ class AgentRuntime:
             raise RuntimeContractError(str(exc)) from exc
         except context_budget.ContextStateError as exc:
             raise RuntimeStateError("checkpoint state is invalid") from exc
-        if drop:
+        dropped = {message.id for message in drop}
+        edits = [*(message for message in omitted if message.id not in dropped), *map(_removal, drop)]
+        if edits:
             try:
-                agent.update_state(
-                    self._config(context), {"messages": [RemoveMessage(id=message.id) for message in drop]}
-                )
+                agent.update_state(self._config(context), {"messages": edits})
             except Exception as exc:
                 raise RuntimeStateError("checkpoint trimming failed") from exc
             self._prune_history(context.thread_id)

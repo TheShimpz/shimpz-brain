@@ -5,6 +5,9 @@ quoted bridge of presentation history belongs to the exchange of the turn it pre
 A new turn keeps at most ``MAX_HISTORY_EXCHANGES`` completed ones within ``HISTORY_BUDGET_TOKENS``, a Shimpz cost and
 latency policy far below any catalog model window, and forgets every unfinished one. Separately, an estimated preflight
 guard refuses a call whose system prompt, tools, conversation, and output reserve would exceed ``MODEL_WINDOW_TOKENS``.
+Within what is kept, the Action results of completed exchanges older than the newest ``KEEP_RESULT_EXCHANGES`` give
+way to ``OMITTED_RESULT`` once they reach ``OMIT_RESULTS_TRIGGER_TOKENS`` together: a batch at a time, so the provider's
+cached prompt prefix breaks rarely instead of at every turn.
 
 Token counts are a pessimistic byte heuristic, not a tokenizer: a preflight estimate, never an exact bound.
 """
@@ -12,7 +15,7 @@ Token counts are a pessimistic byte heuristic, not a tokenizer: a preflight esti
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 MAX_HISTORY_EXCHANGES = 24
 HISTORY_BUDGET_TOKENS = 128_000
@@ -31,6 +34,16 @@ INCOMPLETE_TERMINATION = {
     "stop_reason": frozenset({"max_tokens", "model_context_window_exceeded"}),
 }
 
+
+# Measured on the 21 longest precision episode templates with GPT-6 Luna (2026-10-21, 126 episodes per arm): about
+# 24% fewer input tokens and 14% fewer dollars at equal correctness and duplicate effects. Omitting at every turn
+# instead spent more dollars than keeping everything, because each edit breaks the provider's cached prefix.
+KEEP_RESULT_EXCHANGES = 2
+OMIT_RESULTS_TRIGGER_TOKENS = 8_000
+OMITTED_RESULT = (
+    "[Earlier Action result omitted to save context. The call completed; any change it made already happened. Never "
+    "repeat a change to recover this result. If the current request needs its data, read it again.]"
+)
 
 # The id prefix of the one user-role message quoting committed presentation history before a turn (ADR-0065).
 BRIDGE_ID_PREFIX = "shimpz-context-"
@@ -157,3 +170,37 @@ def history_to_drop(
 
 def fixed_tokens(system_prompt: str, tools: Iterable[Mapping[str, object]]) -> int:
     return estimated_tokens(system_prompt) + sum(estimated_tokens(tool) for tool in tools)
+
+
+def results_to_omit(
+    history: Sequence[BaseMessage],
+    action_result: Callable[[ToolMessage], bool],
+    forgotten: Callable[[BaseMessage], bool] = lambda _message: False,
+) -> tuple[ToolMessage, ...]:
+    """Return placeholders for the older Action results a new turn omits, or nothing below the trigger.
+
+    Only completed exchanges older than the newest ``KEEP_RESULT_EXCHANGES`` completed ones give results; an unfinished
+    or ``forgotten`` exchange is dropped whole instead. Each placeholder keeps its message's id, call pairing, and
+    status, so it replaces that result in place.
+    """
+    groups = exchanges(history)
+    done = [index for index, group in enumerate(groups) if completed(group) and not any(map(forgotten, group))]
+    older = done[: max(0, len(done) - KEEP_RESULT_EXCHANGES)]
+    results = [
+        message
+        for index in older
+        for message in groups[index]
+        if isinstance(message, ToolMessage) and action_result(message) and message.content != OMITTED_RESULT
+    ]
+    if sum(message_tokens(message) for message in results) < OMIT_RESULTS_TRIGGER_TOKENS:
+        return ()
+    return tuple(
+        ToolMessage(
+            content=OMITTED_RESULT,
+            id=message.id,
+            tool_call_id=message.tool_call_id,
+            name=message.name,
+            status=message.status,
+        )
+        for message in results
+    )
