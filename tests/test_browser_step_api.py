@@ -11,6 +11,7 @@ PAYLOAD = {
     "history": [],
     "observation": "url: https://example.com",
     "screenshot": None,
+    "downloads": {"files": ["report.csv"], "pending": 1, "truncated": False},
 }
 
 

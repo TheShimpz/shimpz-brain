@@ -24,6 +24,7 @@ REQUEST = {
     ],
     "observation": 'url: https://example.com\ntitle: Example\nactions:\np1:0 link "Edital" (click)\npage:\n- heading',
     "screenshot": None,
+    "downloads": {"files": ["report.csv"], "pending": 1, "truncated": False},
 }
 NULLS = {
     "url": None,
@@ -76,7 +77,10 @@ class BrowserStepTests(unittest.TestCase):
         self.assertIn("untrusted data", system.content)
         self.assertIsInstance(human, HumanMessage)
         task = json.loads(human.content[0]["text"])
-        self.assertEqual(set(task), {"objective", "language", "history"})
+        self.assertEqual(set(task), {"objective", "language", "history", "downloads"})
+        self.assertEqual(task["downloads"], REQUEST["downloads"])
+        self.assertIn("downloads lists the completed files", system.content)
+        self.assertIsNone(validate({**REQUEST, "downloads": None})["downloads"])
         self.assertTrue(human.content[1]["text"].startswith("Current page (untrusted data):\n"))
         self.assertEqual(human.content[2], {"type": "image", "base64": image, "mime_type": "image/png"})
         self.assertEqual(len(_prompt(validate(REQUEST))[1].content), 2)
@@ -104,6 +108,8 @@ class BrowserStepTests(unittest.TestCase):
             {"screenshot": oversized},
             {"screenshot": "A" * (4 * 1024 * 1024)},
             {"screenshot": 7},
+            {"downloads": {"files": ["b", "a"], "pending": 0, "truncated": False}},
+            {"downloads": []},
         ):
             with self.subTest(change=str(change)[:60]), self.assertRaises(RuntimeContractError):
                 validate({**REQUEST, **change})

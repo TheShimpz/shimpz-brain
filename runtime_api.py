@@ -360,6 +360,8 @@ class BrowserStepInput(ClosedInput):
     history: list[dict[str, Any]] = Field(max_length=browser_protocol.MAX_HISTORY)
     observation: str = Field(max_length=browser_protocol.MAX_OBSERVATION_BYTES)
     screenshot: str | None = Field(max_length=browser_step.MAX_SCREENSHOT_BYTES * 4 // 3 + 4)
+    # The completed downloads present in the task's Browser so far, or null when Team could not read them.
+    downloads: dict[str, Any] | None
 
     def runtime_request(self) -> dict[str, object]:
         return {
@@ -368,6 +370,7 @@ class BrowserStepInput(ClosedInput):
             "history": self.history,
             "observation": self.observation,
             "screenshot": self.screenshot,
+            "downloads": self.downloads,
         }
 
 
