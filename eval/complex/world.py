@@ -198,6 +198,7 @@ DOCUMENTS = {
 CRM = Assistant(
     "crm",
     "CRM keeps the user's customer records: name, city, plan, email, notes, and the Team that owns each record. "
+    f"This Team is {OWN_TEAM}; a record another Team owns is shared read-only, so never change or add a note to it. "
     "Search results may lag; get-customer returns the current record and its version.",
     (
         Action(
