@@ -100,10 +100,16 @@ def price(model: str, catalog: Path = CATALOG) -> Price:
     raise ValueError("unknown model")
 
 
-def admit_evaluation_models(models_by_provider: dict[str, frozenset[str]]) -> None:
-    """Let one disposable evaluation Brain run the evaluation-only models; no product process calls this."""
+def admit_evaluation_models(
+    models_by_provider: dict[str, frozenset[str]], chat_models_by_provider: dict[str, frozenset[str]]
+) -> None:
+    """Let one disposable evaluation Brain run the evaluation-only models as chat models; no product process calls this.
+
+    The catalog's own non-chat models stay out of the chat registry.
+    """
     for provider, models in EVALUATION_MODELS.items():
         models_by_provider[provider] = models_by_provider[provider] | frozenset(models)
+        chat_models_by_provider[provider] = chat_models_by_provider[provider] | frozenset(models)
 
 
 @dataclass(frozen=True, slots=True)
