@@ -6,7 +6,7 @@ A new turn keeps at most ``MAX_HISTORY_EXCHANGES`` completed ones within ``HISTO
 latency policy far below any catalog model window, and forgets every unfinished one. Separately, an estimated preflight
 guard refuses a call whose system prompt, tools, conversation, and output reserve would exceed ``MODEL_WINDOW_TOKENS``.
 Within what is kept, the Action results of completed exchanges older than the newest ``KEEP_RESULT_EXCHANGES`` give
-way to ``OMITTED_RESULT`` once they reach ``OMIT_RESULTS_TRIGGER_TOKENS`` together: a batch at a time, so the provider's
+way to ``OMITTED_RESULT`` once that saves ``OMIT_RESULTS_TRIGGER_TOKENS`` together: a batch at a time, so the provider's
 cached prompt prefix breaks rarely instead of at every turn.
 
 Token counts are a pessimistic byte heuristic, not a tokenizer: a preflight estimate, never an exact bound.
@@ -36,13 +36,16 @@ INCOMPLETE_TERMINATION = {
 
 
 # Measured on the 21 longest precision episode templates with GPT-6 Luna (2026-10-21, 126 episodes per arm): about
-# 24% fewer input tokens and 14% fewer dollars at equal correctness and duplicate effects. Omitting at every turn
-# instead spent more dollars than keeping everything, because each edit breaks the provider's cached prefix.
+# 23% fewer input tokens and 15% fewer dollars, with 84/126 episodes correct against 82/126 without omission and 5
+# duplicate effects against 6; an observation, not proven equivalence. Omitting at every turn instead spent more
+# dollars than keeping everything, because each edit breaks the provider's cached prefix.
 KEEP_RESULT_EXCHANGES = 2
 OMIT_RESULTS_TRIGGER_TOKENS = 8_000
+# Claims nothing about the call: an omitted message may have been a result or a refusal to run it.
 OMITTED_RESULT = (
-    "[Earlier Action result omitted to save context. The call completed; any change it made already happened. Never "
-    "repeat a change to recover this result. If the current request needs its data, read it again.]"
+    "[Earlier Action result omitted to save context. This note does not say whether the call ran or what it changed; "
+    "the reply that ended that exchange does. Never repeat a change to recover this result. If the current request "
+    "needs its data, read it again.]"
 )
 
 # The id prefix of the one user-role message quoting committed presentation history before a turn (ADR-0065).
@@ -180,27 +183,28 @@ def results_to_omit(
     """Return placeholders for the older Action results a new turn omits, or nothing below the trigger.
 
     Only completed exchanges older than the newest ``KEEP_RESULT_EXCHANGES`` completed ones give results; an unfinished
-    or ``forgotten`` exchange is dropped whole instead. Each placeholder keeps its message's id, call pairing, and
-    status, so it replaces that result in place.
+    or ``forgotten`` exchange is dropped whole instead. A result no larger than its placeholder stays, and the trigger
+    counts the tokens the placeholders save. Each placeholder keeps its message's id, call pairing, and status, so it
+    replaces that result in place.
     """
     groups = exchanges(history)
     done = [index for index, group in enumerate(groups) if completed(group) and not any(map(forgotten, group))]
     older = done[: max(0, len(done) - KEEP_RESULT_EXCHANGES)]
-    results = [
-        message
-        for index in older
-        for message in groups[index]
-        if isinstance(message, ToolMessage) and action_result(message) and message.content != OMITTED_RESULT
-    ]
-    if sum(message_tokens(message) for message in results) < OMIT_RESULTS_TRIGGER_TOKENS:
-        return ()
-    return tuple(
-        ToolMessage(
+    placeholders: list[ToolMessage] = []
+    saved = 0
+    for message in (message for index in older for message in groups[index]):
+        if not isinstance(message, ToolMessage) or not action_result(message):
+            continue
+        placeholder = ToolMessage(
             content=OMITTED_RESULT,
             id=message.id,
             tool_call_id=message.tool_call_id,
             name=message.name,
             status=message.status,
         )
-        for message in results
-    )
+        # An omitted result saves nothing, so it is never omitted again.
+        gain = message_tokens(message) - message_tokens(placeholder)
+        if gain > 0:
+            placeholders.append(placeholder)
+            saved += gain
+    return tuple(placeholders) if saved >= OMIT_RESULTS_TRIGGER_TOKENS else ()

@@ -190,7 +190,7 @@ class ExchangeTests(unittest.TestCase):
                 self.assertEqual(context_budget.final_reply(finished), "answer")
 
     def test_older_action_results_give_way_to_placeholders_only_at_the_trigger(self):
-        def exchange(index: int, *, result: str = "r" * 300, name: str = TOOL) -> list:
+        def exchange(index: int, *, result: str = "r" * 3_000, name: str = TOOL) -> list:
             return [
                 HumanMessage(f"q{index}", id=f"h{index}"),
                 AIMessage("", tool_calls=[_call("x", f"c{index}")], id=f"t{index}"),
@@ -219,6 +219,14 @@ class ExchangeTests(unittest.TestCase):
         with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
             settled = [*exchange(0, result=context_budget.OMITTED_RESULT), *exchange(3), *exchange(4)]
             self.assertEqual(context_budget.results_to_omit(settled, action), ())
+        # A result no larger than its placeholder stays, and only the tokens placeholders save count toward the trigger:
+        # many short results never grow the history.
+        short = [message for index in range(40) for message in exchange(index, result="ok")]
+        with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
+            self.assertEqual(context_budget.results_to_omit(short, action), ())
+        saving = context_budget.message_tokens(history[2]) - context_budget.message_tokens(omitted[0])
+        with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", saving + 1):
+            self.assertEqual(context_budget.results_to_omit(history, action, lambda message: message.id == "h2"), ())
 
     def test_fixed_prompt_and_current_message_alone_can_exceed_the_window(self):
         with self.assertRaises(context_budget.ContextWindowError):
@@ -300,7 +308,7 @@ class RuntimeBudgetTests(unittest.TestCase):
         )
         for host in hosts:
             pending = runtime.start(turn, host)
-            runtime.resume(turn, {pending.actions[0].interrupt_id: {"status": "ok", "host": host}})
+            runtime.resume(turn, {pending.actions[0].interrupt_id: {"status": "ok", "host": host, "body": "x" * 3_000}})
         with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
             self.assertEqual(runtime.start(turn, "four").reply, "r4")
 
@@ -315,6 +323,29 @@ class RuntimeBudgetTests(unittest.TestCase):
         self.assertEqual(_user_texts(RecordingModel.seen[-1]), [*hosts, "four"])
         stored = runtime._checkpointer.get_tuple(runtime._config(turn))
         self.assertEqual(results(stored.checkpoint["channel_values"]["messages"]), seen)
+
+    def test_a_refusal_shorter_than_the_placeholder_stays_while_a_large_older_result_gives_way(self):
+        turn = _context()
+        invalid = {"name": TOOL, "args": {"unknown": 1}, "id": "c1", "type": "tool_call"}
+        runtime = self._runtime(
+            AIMessage("", tool_calls=[invalid]),
+            AIMessage("the arguments were wrong"),
+            AIMessage("", tool_calls=[_call("big.example", "c2")]),
+            AIMessage("big answered"),
+            AIMessage("r3"),
+            AIMessage("r4"),
+            AIMessage("r5"),
+        )
+        runtime.start(turn, "one")
+        pending = runtime.start(turn, "two")
+        runtime.resume(turn, {pending.actions[0].interrupt_id: {"status": "ok", "body": "x" * 3_000}})
+        runtime.start(turn, "three")
+        runtime.start(turn, "four")
+        with mock.patch.object(context_budget, "OMIT_RESULTS_TRIGGER_TOKENS", 1):
+            self.assertEqual(runtime.start(turn, "five").reply, "r5")
+        seen = {m.tool_call_id: str(m.content) for m in RecordingModel.seen[-1] if isinstance(m, ToolMessage)}
+        self.assertTrue(seen["c1"].startswith("Action not executed"))
+        self.assertEqual(seen["c2"], context_budget.OMITTED_RESULT)
 
     def test_window_guards_refuse_before_any_provider_call(self):
         turn = _context()
