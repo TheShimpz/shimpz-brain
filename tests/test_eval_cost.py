@@ -80,6 +80,8 @@ class PriceTests(unittest.TestCase):
         self.assertAlmostEqual(haiku.input, 0.1e-6)
         self.assertAlmostEqual(haiku.output, 0.5e-6)
         self.assertAlmostEqual(haiku.cache_read, 0.01e-6)
+        # Its listed price holds only up to its prompt tier, which the ceiling enforces.
+        self.assertEqual(cost.PRICED_INPUT_TOKENS["claude-haiku-5-5"], 100_000)
 
     def test_a_call_bound_prices_every_input_token_at_the_dearest_input_rate(self):
         self.assertAlmostEqual(cost.call_bound("claude-sonnet-5-5", 1_000, 100), (1_000 * 2.5 + 100 * 10) * 1e-6)

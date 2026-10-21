@@ -226,6 +226,9 @@ class TurnContext:
     after_browser: bool = False
 
     def __post_init__(self) -> None:
+        # A turn runs on the Team's chat model, never one the Brain only runs itself, however it was built or restored.
+        if self.provider.model not in CHAT_MODELS_BY_PROVIDER.get(self.provider.provider, frozenset()):
+            raise RuntimeContractError("unsupported model for provider")
         if type(self.turn_date) is not datetime.date or not turn_pins.valid_zone(self.timezone):
             raise RuntimeContractError("invalid turn date")
         if not turn_pins.valid_turn(self.locale, self.turn_message_id, started=False):

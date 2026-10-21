@@ -213,6 +213,11 @@ class AgentRuntimeTests(unittest.TestCase):
 
         self.assertEqual(ToolAwareFakeModel.bound_tools, [clarification.TOOL_NAME])
 
+    def test_a_turn_never_runs_on_a_model_the_brain_only_runs_itself(self):
+        browser_only = agent_runtime.ProviderConfig("anthropic", "claude-haiku-5-5", "secret-test-key")
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model for provider"):
+            dataclasses.replace(context(), provider=browser_only)
+
     def test_same_thread_never_reuses_a_prior_reply_after_an_invalid_tool_call(self):
         model = ToolAwareFakeModel(
             responses=[

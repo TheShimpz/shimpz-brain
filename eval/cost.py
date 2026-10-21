@@ -50,9 +50,10 @@ EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}}
 # (they bill no output), frozen on 2026-10-03 from the provider's pricing page; only the evaluation ceiling's embeddings
 # endpoint reserves for them.
 EMBEDDING_MODELS = {"openai": {"text-embedding-3-small": 2, "text-embedding-3-large": 13}}
-# The input bound up to which an evaluation-only price holds; above it the provider bills a dearer long-context price,
-# so the ceiling refuses the request instead of reserving it at this one.
-PRICED_INPUT_TOKENS = {"gpt-5.6-sol": 272_000}
+# The input bound up to which a model's listed price holds; above it the provider bills a dearer long-context price, so
+# the ceiling refuses the request instead of reserving it at this one: gpt-5.6-sol's evaluation-only price, and Claude
+# Haiku 5.5's catalog price, which holds for prompts up to 100,000 tokens.
+PRICED_INPUT_TOKENS = {"gpt-5.6-sol": 272_000, "claude-haiku-5-5": 100_000}
 
 
 @dataclass(frozen=True, slots=True)
