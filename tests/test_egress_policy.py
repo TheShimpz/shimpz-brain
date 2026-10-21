@@ -101,6 +101,9 @@ class BrainEgressPolicyTests(unittest.TestCase):
         invalid_price = copy.deepcopy(self.catalog)
         invalid_price["providers"][0]["models"][0]["input_usd_per_million_cents"] = True
         candidates.append(invalid_price)
+        invalid_chat = copy.deepcopy(self.catalog)
+        invalid_chat["providers"][0]["models"][0]["chat"] = "yes"
+        candidates.append(invalid_chat)
         invalid_default_model = copy.deepcopy(self.catalog)
         invalid_default_model["providers"][0]["default_model"] = "missing"
         candidates.append(invalid_default_model)

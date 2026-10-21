@@ -53,6 +53,11 @@ _MODEL_CATALOG = json.loads(Path(__file__).with_name("model_catalog.json").read_
 MODELS_BY_PROVIDER = {
     provider["id"]: frozenset(model["id"] for model in provider["models"]) for provider in _MODEL_CATALOG["providers"]
 }
+# The models a person may choose for a Team's chat; the rest are ones the Brain runs itself, such as the Browser's.
+CHAT_MODELS_BY_PROVIDER = {
+    provider["id"]: frozenset(model["id"] for model in provider["models"] if model["chat"] is True)
+    for provider in _MODEL_CATALOG["providers"]
+}
 PROVIDERS = frozenset(MODELS_BY_PROVIDER)
 # A turn names at most every Assistant its Team may have installed (Team's MAX_CHAT_ASSISTANTS, 16), each with at
 # most 128 Actions, so these two bounds are the total: a request carries at most 2,048 Actions, exactly what Team can

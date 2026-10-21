@@ -386,6 +386,8 @@ class RuntimeApiTests(unittest.TestCase):
             ("openai", "gpt-well-formed-but-unknown"),
             ("openai", "claude-sonnet-5-5"),
             ("anthropic", "gpt-6.1-sol"),
+            # A catalog model the Brain runs itself (the Browser's) is never a Team's chat model.
+            ("anthropic", "claude-haiku-5-5"),
         ):
             payload = body()
             payload["provider"] = {"provider": provider, "model": model, "api_key": SECRET}

@@ -3,11 +3,22 @@
 import base64
 import json
 import unittest
+from unittest import mock
 
 import agent_runtime
 import browser_step
 import provider_client
-from browser_step import BROWSER_MODELS, PNG_SIGNATURE, StepAnswer, _prompt, model, step, validate
+from browser_step import (
+    BROWSER_MODELS,
+    MAX_PRICED_INPUT_TOKENS,
+    PNG_SIGNATURE,
+    StepAnswer,
+    _prompt,
+    input_bound,
+    model,
+    step,
+    validate,
+)
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from runtime_errors import ProviderResponseError, RuntimeContractError
 from structured_fake import StructuredFakeModel
@@ -95,6 +106,28 @@ class BrowserStepTests(unittest.TestCase):
         for answer in (_answer(kind="click"), _answer(kind="wait", url="https://example.com"), AIMessage(content="no")):
             with self.subTest(answer=answer.content), self.assertRaises(ProviderResponseError):
                 step(lambda answer=answer: StructuredFakeModel(responses=[answer]), "openai", REQUEST)
+
+    def test_a_request_past_its_priced_bound_is_refused_before_any_model_call(self):
+        def unreachable():
+            raise AssertionError("no model call")
+
+        within = validate(REQUEST)
+        self.assertLessEqual(input_bound(within), MAX_PRICED_INPUT_TOKENS)
+        crowded = [
+            {
+                "step": {"kind": "wait", "note": "n" * 300},
+                "outcome": "ok",
+                "page": {"url": "u" * 2048, "title": "t" * 300},
+            }
+        ] * 40
+        with (
+            self.assertRaisesRegex(RuntimeContractError, "priced bound"),
+            mock.patch.object(
+                browser_step, "MAX_PRICED_INPUT_TOKENS", input_bound(validate({**REQUEST, "history": crowded})) - 1
+            ),
+        ):
+            step(unreachable, "anthropic", {**REQUEST, "history": crowded})
+        self.assertEqual(browser_step.BROWSER_MODELS["anthropic"], "claude-haiku-5-5")
 
     def test_a_malformed_request_is_refused_before_any_model_call(self):
         oversized = base64.b64encode(PNG_SIGNATURE + b"x" * (2 * 1024 * 1024)).decode()

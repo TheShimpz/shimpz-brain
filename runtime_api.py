@@ -124,6 +124,9 @@ class ProviderInput(ClosedInput):
     api_key: SecretStr = Field(min_length=agent_runtime.MIN_API_KEY_CHARS, max_length=agent_runtime.MAX_API_KEY_CHARS)
 
     def runtime(self) -> agent_runtime.ProviderConfig:
+        # Team names the Team's chat model; a model the Brain only runs itself is never one.
+        if self.model not in agent_runtime.CHAT_MODELS_BY_PROVIDER.get(self.provider, frozenset()):
+            raise agent_runtime.RuntimeContractError("unsupported model for provider")
         return agent_runtime.ProviderConfig(self.provider, self.model, self.api_key.get_secret_value())
 
 

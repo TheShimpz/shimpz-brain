@@ -73,16 +73,13 @@ class PriceTests(unittest.TestCase):
             cost.admit_evaluation_models(agent_runtime.MODELS_BY_PROVIDER)
             self.assertEqual(agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key").model, "gpt-5.6-sol")
             self.assertIn("gpt-6.1-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
-            config = agent_runtime.ProviderConfig("anthropic", "claude-haiku-5-5", "offline-key")
-            self.assertEqual(config.model, "claude-haiku-5-5")
         self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
-        self.assertNotIn("claude-haiku-5-5", agent_runtime.MODELS_BY_PROVIDER["anthropic"])
+        # A catalog model no person chooses for chat is priced from the catalog like any other.
         haiku = cost.price("claude-haiku-5-5")
         self.assertEqual(haiku.provider, "anthropic")
         self.assertAlmostEqual(haiku.input, 0.1e-6)
         self.assertAlmostEqual(haiku.output, 0.5e-6)
         self.assertAlmostEqual(haiku.cache_read, 0.01e-6)
-        self.assertEqual(cost.PRICED_INPUT_TOKENS["claude-haiku-5-5"], 100_000)
 
     def test_a_call_bound_prices_every_input_token_at_the_dearest_input_rate(self):
         self.assertAlmostEqual(cost.call_bound("claude-sonnet-5-5", 1_000, 100), (1_000 * 2.5 + 100 * 10) * 1e-6)

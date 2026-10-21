@@ -22,8 +22,15 @@ from protocol.team.http.v1 import browser as browser_protocol
 from pydantic import BaseModel, ConfigDict, Field
 from runtime_errors import ProviderResponseError, RuntimeContractError
 
-# The cheapest catalog model of each provider, until the Browser evaluation selects another (ADR-0117 §5.4).
-BROWSER_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5-5"}
+# Each provider's Browser model, as the Browser evaluation selected it (ADR-0117 §5.4, 2026-10-20 amendment): the
+# cheapest that passed. Claude Haiku 5.5 is a catalog model no person chooses for chat.
+BROWSER_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-haiku-5-5"}
+# The largest prompt every Browser model is priced for at its listed rate (Haiku 5.5 bills more above it). No token
+# encodes less than one UTF-8 byte, so a request's bytes, one screenshot's tokens, and the step schema's allowance
+# bound it from above; a request past it is refused before any provider call.
+MAX_PRICED_INPUT_TOKENS = 100_000
+IMAGE_TOKENS = 3_000
+SCHEMA_TOKENS = 4_000
 MAX_RESPONSE_CHARS = 8 * 1024
 # A step's whole answer, its longest summary included, fits well within this output cap.
 MAX_STEP_OUTPUT_TOKENS = 2_048
@@ -154,9 +161,18 @@ def capped(model: BaseChatModel, provider: str) -> BaseChatModel:
     return model.model_copy(update={"max_tokens": MAX_STEP_OUTPUT_TOKENS, effort: BROWSER_EFFORT})
 
 
+def input_bound(admitted: Mapping[str, object]) -> int:
+    """The most input tokens the step's prompt can cost: its text's UTF-8 bytes, its screenshot, and the schema."""
+    text = sum(len(str(part.get("text", "")).encode()) for part in _prompt(admitted)[1].content)
+    image = IMAGE_TOKENS if admitted["screenshot"] is not None else 0
+    return len(SYSTEM.encode()) + text + image + SCHEMA_TOKENS
+
+
 def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
     """One canonical step for the task; an answer outside the closed set is a provider response failure."""
     admitted = validate(request)
+    if input_bound(admitted) > MAX_PRICED_INPUT_TOKENS:
+        raise RuntimeContractError("Browser step request exceeds its priced bound")
     answer = structured.bounded_value(
         lambda: capped(model_factory(), provider),
         provider,

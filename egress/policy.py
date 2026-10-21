@@ -50,6 +50,7 @@ def _model_ids(value: object) -> frozenset[str]:
         model = _exact_object(
             raw_model,
             {
+                "chat",
                 "id",
                 "input_usd_per_million_cents",
                 "output_usd_per_million_cents",
@@ -57,6 +58,8 @@ def _model_ids(value: object) -> frozenset[str]:
             },
             "provider model",
         )
+        if not isinstance(model["chat"], bool):
+            raise ProviderPolicyError("model chat admission is invalid")
         model_id = _bounded_text(model["id"], 128, "model id")
         if ID_RE.fullmatch(model_id) is None or model_id in model_ids:
             raise ProviderPolicyError("model id is invalid")
