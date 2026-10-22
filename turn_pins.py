@@ -24,7 +24,6 @@ import routine as team_routine
 
 DATE_METADATA = "shimpz_turn_date"
 MEMORY_METADATA = "shimpz_turn_memory"
-SKILLS_METADATA = "shimpz_turn_skills"
 ROUTINES_METADATA = "shimpz_turn_routines"
 QUESTION_METADATA = "shimpz_turn_routine_question"
 MODE_METADATA = "shimpz_turn_routine_mode"
@@ -68,21 +67,19 @@ def _memory_json(memories: tuple[team_memory.Memory, ...] | None) -> str:
 
 
 def _listing_json(listing: tuple[dict[str, object], ...] | None) -> str:
-    """A pinned listing, the turn's skills or its Routines, as canonical JSON; None withholds it."""
+    """The turn's pinned Routine listing as canonical JSON; None withholds it."""
     return _json(None if listing is None else list(listing))
 
 
 def record(
     turn_date: datetime.date,
     memories: tuple[team_memory.Memory, ...] | None,
-    skills: tuple[dict[str, object], ...] | None,
     routines: tuple[dict[str, object], ...] | None,
 ) -> dict[str, str]:
     """The checkpoint metadata entries; metadata keeps only scalar values, so knowledge travels as canonical JSON."""
     return {
         DATE_METADATA: turn_date.isoformat(),
         MEMORY_METADATA: _memory_json(memories),
-        SKILLS_METADATA: _listing_json(skills),
         ROUTINES_METADATA: _listing_json(routines),
     }
 
@@ -93,31 +90,27 @@ def restore(
     datetime.date,
     tuple[team_memory.Memory, ...] | None,
     tuple[dict[str, object], ...] | None,
-    tuple[dict[str, object], ...] | None,
 ]:
     """The exact pins a start recorded; anything else is corrupt state, never replaced by today's values."""
-    keys = (DATE_METADATA, MEMORY_METADATA, SKILLS_METADATA, ROUTINES_METADATA)
+    keys = (DATE_METADATA, MEMORY_METADATA, ROUTINES_METADATA)
     values = [metadata.get(key) for key in keys]
     try:
         if not all(isinstance(value, str) for value in values):
             raise ValueError
-        date_value, memory_value, skills_value, routines_value = values
+        date_value, memory_value, routines_value = values
         recorded_date = datetime.date.fromisoformat(date_value)
-        decoded_memory, decoded_skills = json.loads(memory_value), json.loads(skills_value)
-        decoded_routines = json.loads(routines_value)
+        decoded_memory, decoded_routines = json.loads(memory_value), json.loads(routines_value)
         recorded_memory = None if decoded_memory is None else team_memory.canonical(decoded_memory)
-        recorded_skills = None if decoded_skills is None else team_memory.canonical_skills(decoded_skills)
         recorded_routines = None if decoded_routines is None else team_routine.canonical_routines(decoded_routines)
     except (ValueError, team_memory.MemoryContractError, team_routine.RoutineContractError) as exc:
         raise PinError("recorded turn pins are invalid") from exc
     if (
         recorded_date.isoformat() != date_value
         or _memory_json(recorded_memory) != memory_value
-        or _listing_json(recorded_skills) != skills_value
         or _listing_json(recorded_routines) != routines_value
     ):
         raise PinError("recorded turn pins are invalid")
-    return recorded_date, recorded_memory, recorded_skills, recorded_routines
+    return recorded_date, recorded_memory, recorded_routines
 
 
 def record_routine(
@@ -265,7 +258,7 @@ def valid_turn(locale: object, message_id: object, *, started: bool = True) -> b
 def restored(context: Any, metadata: Mapping[str, object]) -> Any:
     """A resumed turn's context with exactly the pins its start recorded."""
     try:
-        turn_date, rules, skills, routines = restore(metadata)
+        turn_date, rules, routines = restore(metadata)
         question, mode, rerun, schedule, output = restore_routine(metadata)
         provider, model = restore_model(metadata)
         locale, turn_message_id = restore_turn(metadata)
@@ -286,7 +279,6 @@ def restored(context: Any, metadata: Mapping[str, object]) -> Any:
         turn_date=turn_date,
         timezone=zone,
         memories=rules,
-        skills=skills,
         routines=routines,
         routine_question=question,
         routine_mode=mode,

@@ -219,10 +219,9 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(finished.reply, "Feito.")
         self.assertEqual([change.topic for change in finished.memory], ["language"])
 
-    def test_forgetting_every_memory_and_procedure_fits_the_bound_and_more_is_refused(self):
+    def test_forgetting_every_memory_fits_the_bound_and_more_is_refused(self):
         message = "Esqueça tudo o que você sabe sobre mim."
         topics = [f"topic-{index:02d}" for index in range(memory.MAX_MEMORIES)]
-        topics += [f"procedure-{index:012x}" for index in range(memory.MAX_SKILLS)]
 
         def forget(call_id: str, topic: str) -> dict:
             args = {"op": "forget", "topic": topic, "quote": "Esqueça tudo"}
@@ -234,10 +233,10 @@ class GraphTests(unittest.TestCase):
             AIMessage(content="", tool_calls=[forget("extra", "language")]),
             AIMessage(content="Esqueci tudo."),
         )
-        memories = [memory.Memory(topic, "Be brief.") for topic in topics[: memory.MAX_MEMORIES]]
+        memories = [memory.Memory(topic, "Be brief.") for topic in topics]
         turn = _with_memory(memories)
         result = runtime.start(turn, envelope(message))
-        self.assertEqual(memory.MAX_CHANGES, 40)
+        self.assertEqual(memory.MAX_CHANGES, memory.MAX_MEMORIES)
         self.assertEqual(result.reply, "Esqueci tudo.")
         self.assertEqual(result.memory, tuple(memory.Change("forget", topic, "") for topic in topics))
         state = runtime._checkpointer.get_tuple(runtime._config(turn)).checkpoint["channel_values"]["messages"]
@@ -306,14 +305,12 @@ class PromptAndPinTests(unittest.TestCase):
         date = turn_prompt.today()
         for memories in (None, (), (LANGUAGE,)):
             with self.subTest(memories=memories):
-                self.assertEqual(
-                    turn_pins.restore(turn_pins.record(date, memories, None, None)), (date, memories, None, None)
-                )
+                self.assertEqual(turn_pins.restore(turn_pins.record(date, memories, None)), (date, memories, None))
         for value in ("not json", "{}", '[{"topic":"Bad","preference":"x"}]', "[ ]"):
             pins = {
                 turn_pins.DATE_METADATA: date.isoformat(),
                 turn_pins.MEMORY_METADATA: value,
-                turn_pins.SKILLS_METADATA: "null",
+                turn_pins.ROUTINES_METADATA: "null",
             }
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):
                 turn_pins.restore(pins)

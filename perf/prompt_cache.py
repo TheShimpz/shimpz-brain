@@ -6,7 +6,7 @@ Evaluation-only: it patches the in-process ``AgentRuntime`` of this command and 
   then runs real turns; arms ``base`` and ``hyst``. ``hyst`` trims a saturated history, one whose new turn would drop
   a completed exchange, to ``LOW_EXCHANGES`` exchanges and ``LOW_TOKENS`` tokens instead of one exchange per turn.
 - ``mem`` runs real turns from an empty history with ten memories, one changed from turn 6; arms ``base`` and
-  ``stable``. ``stable`` takes the memories, skills, Routines, and date out of the system prompt and prepends them to
+  ``stable``. ``stable`` takes the memories, Routines, and date out of the system prompt and prepends them to
   the current message as quoted turn data; on Anthropic the previous reply also carries a cache breakpoint.
 
 Every turn asks for one task to be created (one exact ``create-task`` write with the asked title); the last asks for the
@@ -96,7 +96,6 @@ def _stable_context(context: agent_runtime.TurnContext) -> agent_runtime.TurnCon
     return dataclasses.replace(
         context,
         memories=None if context.memories is None else (),
-        skills=None if context.skills is None else (),
         routines=None if context.routines is None else (),
     )
 

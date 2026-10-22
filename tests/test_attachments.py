@@ -85,7 +85,6 @@ def turn_context(provider: str, model: str, *items: dict[str, object]) -> agent_
         (ASSISTANT,),
         agent_runtime.ProviderConfig(provider, model, "sk-test-0123456789abcdef"),
         memories=(),
-        skills=(),
         # Team lists Routines only for a send without files, which alone records one.
         routines=None if items else (),
         attachments=turn_attachments.admit(list(items)),

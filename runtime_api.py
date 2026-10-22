@@ -64,7 +64,7 @@ BROWSER_STEP_CONCURRENCY = 2
 # Team sends compact canonical JSON, and a start or resume succeeds only when what the model window counts (genesis,
 # Assistant and Action ids and summaries, input schemas, start-time knowledge, and the message or Action results) fits
 # the smallest window: (1,000,000 - 128,000) tokens of 3 bytes, about 2.5 MiB. What a canonical request carries beyond
-# that (resumed knowledge, skill contracts, the conversation window, provider settings, identifiers, and framing) stays
+# that (resumed knowledge, the conversation window, provider settings, identifiers, and framing) stays
 # under 0.6 MiB, and the other endpoints carry far less. A larger body could only fail after it was decoded, so it is
 # refused before it is read.
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
@@ -153,8 +153,6 @@ class TurnContextInput(ClosedInput):
     provider: ProviderInput
     # What the Team remembers (ADR-0084); null where memory is unavailable, which also withholds the memory tool.
     memories: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_MEMORIES)] | None
-    # The procedures the Team learned (ADR-0085); null where learning is unavailable.
-    skills: Annotated[list[dict[str, Any]], Field(max_length=team_memory.MAX_SKILLS)] | None
     # The Team's Routines as data (ADR-0086); null withholds the Routine tool.
     routines: Annotated[list[dict[str, Any]], Field(max_length=team_routine_protocol.MAX_ROUTINES)] | None
     # The question Team asked the person about this recording, which the person's message may answer (ADR-0101).
@@ -189,7 +187,6 @@ class TurnContextInput(ClosedInput):
             assistants=_assistants(self.assistants),
             provider=self.provider.runtime(),
             memories=_memories(self.memories),
-            skills=None if self.skills is None else tuple(self.skills),
             routines=None if self.routines is None else tuple(self.routines),
             routine_question=self.routine_question,
             routine_mode=self.routine_mode,

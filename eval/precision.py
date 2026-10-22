@@ -754,7 +754,6 @@ def validate() -> dict[str, object]:
             brain_assistants(scenario, set_name),
             provider,
             memories=(),
-            skills=(),
             routines=(),
         )
     return {

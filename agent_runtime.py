@@ -193,8 +193,6 @@ class TurnContext:
     # What the Team remembers about the user (ADR-0084); None where memory is unavailable. A resumed turn keeps the
     # memories its start recorded.
     memories: tuple[team_memory.Memory, ...] | None = None
-    # The procedures the Team learned from completed tasks (ADR-0085), pinned like memories; None where unavailable.
-    skills: tuple[dict[str, object], ...] | None = None
     # The Team's Routines as data (ADR-0086), pinned like memories; None withholds the Routine tool.
     routines: tuple[dict[str, object], ...] | None = None
     # The question Team asked the person about this recording, pinned like Routines; None when none is pending.
@@ -252,18 +250,13 @@ class TurnContext:
 
 
 def _admit_knowledge(context: TurnContext) -> None:
-    """Canonicalize the turn's memories, skills, and Routines in place, refusing any that is invalid."""
+    """Canonicalize the turn's memories and Routines in place, refusing any that is invalid."""
     if context.memories is not None:
         try:
             team_memory.canonical([{"topic": item.topic, "preference": item.preference} for item in context.memories])
         except (AttributeError, TypeError, team_memory.MemoryContractError) as exc:
             raise RuntimeContractError("invalid memory") from exc
         object.__setattr__(context, "memories", tuple(context.memories))
-    if context.skills is not None:
-        try:
-            object.__setattr__(context, "skills", team_memory.canonical_skills(context.skills))
-        except team_memory.MemoryContractError as exc:
-            raise RuntimeContractError("invalid skills") from exc
     try:
         team_routine.admit_context(context)
     except team_routine.RoutineContractError as exc:
@@ -605,7 +598,7 @@ class AgentRuntime:
             "configurable": {"thread_id": context.thread_id},
             "metadata": {
                 ASSISTANT_SCOPE_METADATA: _assistant_scope(context),
-                **turn_pins.record(context.turn_date, context.memories, context.skills, context.routines),
+                **turn_pins.record(context.turn_date, context.memories, context.routines),
                 **turn_pins.record_routine(
                     context.routine_question,
                     context.routine_mode,
@@ -868,7 +861,7 @@ class AgentRuntime:
 
     def _attach(self, result: TurnResult, state: Mapping[str, Any], context: TurnContext) -> TurnResult:
         """Attach a completed turn's independently confirmed memory changes."""
-        known = team_memory.describe(context.memories, context.skills)
+        known = team_memory.describe(context.memories)
         return team_memory.attach(result, state, self._memory_check(context), known)
 
     def _chat_model(self, provider: ProviderConfig) -> BaseChatModel:

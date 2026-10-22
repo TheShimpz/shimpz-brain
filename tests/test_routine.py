@@ -711,8 +711,8 @@ class PromptPinAndEndpointTests(unittest.TestCase):
 
     def test_routines_are_pinned_for_the_logical_turn(self):
         date = turn_prompt.today()
-        pins = turn_pins.record(date, (), None, (LISTED,))
-        self.assertEqual(turn_pins.restore(pins), (date, (), None, (LISTED,)))
+        pins = turn_pins.record(date, (), (LISTED,))
+        self.assertEqual(turn_pins.restore(pins), (date, (), (LISTED,)))
         reordered = json.dumps([dict(reversed(list(LISTED.items())))], ensure_ascii=False)
         for value in ("[{}]", "[1]", '{"a": 1}', reordered):
             with self.subTest(value=value), self.assertRaises(turn_pins.PinError):

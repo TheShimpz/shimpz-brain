@@ -218,7 +218,6 @@ def _drive(args: argparse.Namespace, port: int, token: Path) -> tuple[list[float
                 model="gpt-6-luna",
                 api_key="bench-key",
                 memories=(),
-                skills=(),
                 routines=None,
                 locale="en",
             )

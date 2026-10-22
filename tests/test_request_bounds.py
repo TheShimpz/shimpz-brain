@@ -19,7 +19,6 @@ import runtime_api
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.http.v1 import identifiers as team_identifiers
-from protocol.team.http.v1 import turn as team_turn
 from test_agent_runtime import ToolAwareFakeModel
 from test_runtime_api import TOKEN, FakeRuntime, body, client
 from tool_fake import FixedFactory
@@ -112,19 +111,6 @@ def _encoded(value: object) -> bytes:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
 
 
-def _skill(index: int) -> dict[str, object]:
-    steps = [
-        {
-            "assistant_id": f"s{step:02d}-" + "a" * 36,
-            "action": f"a{index}" + "b" * 126,
-            "inputs": [f"i{name:02d}" + "x" * 61 for name in range(32)],
-        }
-        for step in range(16)
-    ]
-    contracts = {step["assistant_id"]: "sha256:" + "0" * 64 for step in steps}
-    return {"key": team_turn.skill_key(contracts, steps), "contracts": contracts, "steps": steps, "usable": False}
-
-
 def _largest_uncounted() -> dict[str, object]:
     """Every field of a resume that the model window does not count, each at the most its validation admits."""
     return {
@@ -133,7 +119,6 @@ def _largest_uncounted() -> dict[str, object]:
             {"topic": f"t{index:02d}" + "a" * 37, "preference": WIDE * team_memory.MAX_PREFERENCE_CHARS}
             for index in range(team_memory.MAX_MEMORIES)
         ],
-        "skills": [_skill(index) for index in range(team_memory.MAX_SKILLS)],
         "routines": [
             {
                 "routine_id": f"{index:032x}",

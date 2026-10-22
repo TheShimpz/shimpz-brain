@@ -50,7 +50,6 @@ def body(**updates):
         ],
         "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
         "memories": [],
-        "skills": [],
         "routines": [],
         "routine_question": None,
         "routine_mode": False,
