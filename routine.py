@@ -85,6 +85,80 @@ DESCRIPTION = (
     "itself when something is missing or does not fit, and shows them on its card. It ends the turn; the Team then "
     "shows the person that card to confirm, so never say a Routine was created."
 )
+# While the person's send selects one Routine (ADR-0122), the same tool also refines it: op ``refine`` edits that
+# Routine by its step ids and the calls of this turn by their Team handles, and the members only one op uses are null
+# for the other, so the shape stays one closed object every provider admits.
+REFINE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "op": {"type": "string", "enum": ["record", "refine"]},
+        "name": {
+            **SCHEMA["properties"]["name"],
+            "type": ["string", "null"],
+            "description": (
+                SCHEMA["properties"]["name"]["description"] + " Null with op refine, which keeps the Routine's name."
+            ),
+        },
+        "description": {
+            "type": "string",
+            "description": SCHEMA["properties"]["description"]["description"]
+            + " With op refine, describe the whole refined Routine.",
+        },
+        "replaces": {
+            **SCHEMA["properties"]["replaces"],
+            "description": SCHEMA["properties"]["replaces"]["description"] + " Null with op refine.",
+        },
+        "routine_id": {
+            "type": ["string", "null"],
+            "description": "With op refine, the routine_id of the selected Routine; null with op record.",
+        },
+        "base_revision": {
+            "type": ["integer", "null"],
+            "description": "With op refine, the selected Routine's revision as shown; null with op record.",
+        },
+        "edits": {
+            "type": ["array", "null"],
+            "description": (
+                "With op refine, the changes to the selected Routine's steps, at most one per step; null with op "
+                "record. insert adds the calls you ran in this message after a step, in the order you ran them; "
+                "replace puts one such call in a step's place; remove drops a step."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": list(team_routine_context.REFINE_KINDS)},
+                    "step": {"type": "string", "description": "The id of a step of the selected Routine."},
+                    "calls": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "The call handles of Action results of this message, such as c1: one or more to insert, "
+                            "exactly one to replace, none to remove."
+                        ),
+                    },
+                },
+                "required": ["kind", "step", "calls"],
+                "additionalProperties": False,
+            },
+        },
+        "reply": SCHEMA["properties"]["reply"],
+    },
+    "required": ["op", "name", "description", "replaces", "routine_id", "base_revision", "edits", "reply"],
+    "additionalProperties": False,
+}
+REFINE_DESCRIPTION = (
+    DESCRIPTION
+    + " With op refine it instead changes the selected Routine: after you ran in this message only the new or "
+    "corrected calls, it adds, replaces, or removes steps by their ids and those calls by their handles, and the Team "
+    "keeps every other step as it is."
+)
+
+
+def offered(refinable: bool) -> tuple[dict[str, object], str]:
+    """The tool's schema and description: with refine only while the send selects a Routine (ADR-0122)."""
+    return (REFINE_SCHEMA, REFINE_DESCRIPTION) if refinable else (SCHEMA, DESCRIPTION)
+
+
 # How a call outside the closed shape is answered: nothing was recorded, and the model may call again.
 _NOT_DONE = "Not done: nothing was recorded. "
 _CORRECTIONS = {
@@ -96,6 +170,14 @@ _CORRECTIONS = {
     "replaces": _NOT_DONE + "replaces must be the routine_id of a listed Routine, or null for a new one.",
     "reply": _NOT_DONE + "Give the person an empty reply, or text that says something, of at most "
     f"{MAX_REPLY_CHARS} characters with no control characters other than line breaks and tabs.",
+    "refine": _NOT_DONE + "With op refine, give routine_id and base_revision exactly as the selected Routine shows "
+    "them, name null, replaces null, and edits with at most one edit per step id it lists; with op record, give "
+    "routine_id, base_revision, and edits null.",
+    "calls": _NOT_DONE + "Name in edits only the call handles of Action results of this message, each once: one or "
+    "more to insert, exactly one to replace, none to remove. Run the missing work first.",
+    "dependency": _NOT_DONE + "A step you remove or replace is read by a step you keep. Record that whole Routine "
+    "again with op record and replaces instead, after running all of its work once.",
+    "empty": _NOT_DONE + "Change at least one step or the description.",
 }
 
 
@@ -130,6 +212,7 @@ def admit_context(context: Any) -> None:
         ("routine_rerun", canonical_rerun, "rerun"),
         ("routine_schedule", team_routine_protocol.canonical_schedule, "schedule"),
         ("routine_output", canonical_output, "output"),
+        ("routine_selected", team_routine_context.canonical_selected_routine, "selection"),
     ):
         value = getattr(context, field)
         if value is None:
@@ -144,8 +227,8 @@ def admit_context(context: Any) -> None:
 
 def _sent_with(context: Any, field: str) -> bool:
     """Whether Team sends this recording field beside the others the context carries, the question already admitted."""
-    if field in {"routine_question", "routine_schedule"}:
-        # A pending question or a stated schedule makes the chat about a Routine.
+    if field in {"routine_question", "routine_schedule", "routine_selected"}:
+        # A pending question, a stated schedule, or a selected Routine makes the chat about a Routine.
         return context.routine_mode
     if field == "routine_rerun":
         question = context.routine_question
@@ -205,9 +288,22 @@ def canonical_output(value: object) -> str | None:
     return value if isinstance(value, str) and value in team_routine_protocol.OUTPUT_MODES else None
 
 
-def record(arguments: object, context: Any) -> dict[str, object] | str:
-    """The recorded outcome and reply of one valid call, or the closed correction of the first invalid field."""
-    if not isinstance(arguments, dict) or set(arguments) != set(SCHEMA["required"]) or arguments["op"] != "record":
+def record(arguments: object, context: Any, handles: frozenset[str] = frozenset()) -> dict[str, object] | str:
+    """The recorded outcome and reply of one valid call, or the closed correction of the first invalid field.
+
+    ``handles`` are the call handles of this turn's Action results, which a refinement may name.
+    """
+    selected = getattr(context, "routine_selected", None)
+    schema, _description = offered(selected is not None)
+    if not isinstance(arguments, dict) or set(arguments) != set(schema["required"]):
+        return "invalid"
+    if arguments["op"] == "refine" and selected is not None:
+        return _refined(arguments, selected, handles)
+    if selected is not None and any(
+        arguments[member] is not None for member in ("routine_id", "base_revision", "edits")
+    ):
+        return "refine"
+    if arguments["op"] != "record":
         return "invalid"
     name = team_routine_protocol.canonical_name(arguments["name"])
     description = arguments["description"]
@@ -227,11 +323,79 @@ def record(arguments: object, context: Any) -> dict[str, object] | str:
     return {"routine": routine, "reply": reply}
 
 
+def _refined(arguments: dict[str, object], selected: Mapping[str, Any], handles: frozenset[str]) -> dict | str:
+    """A valid refinement of the selected Routine and its reply, or the closed correction of the first invalid field.
+
+    Team checks every edit again against its own trace (ADR-0122); this only lets the agent correct itself first.
+    """
+    edits = team_routine_context.canonical_edits(arguments["edits"])
+    # Only edits of the selected Routine's own steps are read further.
+    named = edits is not None and _names_selection(arguments, selected, edits)
+    reply = _reply(arguments["reply"])
+    checks = (
+        ("refine", named),
+        ("description", team_routine_protocol.canonical_description(arguments["description"]) is not None),
+        ("calls", named and all(call in handles for edit in edits for call in edit["calls"])),
+        ("dependency", named and not _read_after(selected, edits)),
+        ("empty", bool(edits) or arguments["description"] != selected["description"]),
+        ("reply", reply is not None),
+    )
+    refused = next((field for field, valid in checks if not valid), None)
+    if refused is not None:
+        return refused
+    refine = {
+        "routine_id": selected["routine_id"],
+        "base_revision": selected["revision"],
+        "description": arguments["description"],
+        "edits": edits,
+    }
+    return {"routine": refine, "reply": reply}
+
+
+def _names_selection(arguments: dict[str, object], selected: Mapping[str, Any], edits: list[dict[str, object]]) -> bool:
+    """Whether a refine names exactly the selected Routine as shown, no record member, and only its own step ids."""
+    steps = {step["id"] for step in selected["steps"]}
+    return (
+        arguments["routine_id"] == selected["routine_id"]
+        and type(arguments["base_revision"]) is int
+        and arguments["base_revision"] == selected["revision"]
+        and arguments["name"] is None
+        and arguments["replaces"] is None
+        and all(edit["step"] in steps for edit in edits)
+    )
+
+
+def _read_after(selected: Mapping[str, Any], edits: list[dict[str, object]]) -> bool:
+    """Whether a step the edits keep reads a step they remove or replace, by its plan position."""
+    positions = {step["id"]: step["position"] for step in selected["steps"]}
+    gone = {positions[edit["step"]] for edit in edits if edit["kind"] in ("remove", "replace")}
+    return any(
+        item["source"] == "step_output" and item["step"] in gone
+        for step in selected["steps"]
+        if step["position"] not in gone
+        for item in step["inputs"]
+    )
+
+
+def call_handles(messages: list[Any]) -> frozenset[str]:
+    """The Team handles of this turn's Action results: each traced call's result came as {"call", "result"}."""
+    start = max((index for index, message in enumerate(messages) if isinstance(message, HumanMessage)), default=0)
+    found = set()
+    for message in messages[start:]:
+        if not isinstance(message, ToolMessage):
+            continue
+        value = _result(message.content)
+        handle = value.get("call") if isinstance(value, dict) and set(value) == {"call", "result"} else None
+        if isinstance(handle, str) and team_routine_context.CALL_HANDLE_RE.fullmatch(handle):
+            found.add(handle)
+    return frozenset(found)
+
+
 def _review(messages: list[Any], context: Any) -> object:
     call = tool_refusal.lone_call(messages, TOOL_NAME, label="a Routine record")
     if call is None or isinstance(call, str):
         return call
-    return record(call.get("args"), context)
+    return record(call.get("args"), context, call_handles(messages))
 
 
 @functools.cache
@@ -268,14 +432,15 @@ def guard(context: Any):
     return _guard_class()(context)
 
 
-def tool() -> StructuredTool:
+def tool(refinable: bool = False) -> StructuredTool:
     """The Routine tool; its guard always answers before it could run, so running it is a contract error."""
 
     def routine_record(**_arguments):
         raise RoutineContractError("the Routine tool runs only through its guard")
 
+    schema, description = offered(refinable)
     return StructuredTool.from_function(
-        routine_record, name=TOOL_NAME, description=DESCRIPTION, args_schema=SCHEMA, infer_schema=False
+        routine_record, name=TOOL_NAME, description=description, args_schema=schema, infer_schema=False
     )
 
 

@@ -1,8 +1,9 @@
 """What one logical turn records at its start and keeps across every resume.
 
 Its date and the zone it was read in; the Team's knowledge and Routine listing; what Team sent about its Routine
-recording: the question, mode, rerun work, schedule, and output; the model it started on (ADR-0101); its interface
-language and exact start message (ADR-0090); and its attachments' commitment and token charge (ADR-0093).
+recording: the question, mode, rerun work, schedule, output, and the Routine the send selects (ADR-0122); the model
+it started on (ADR-0101); its interface language and exact start message (ADR-0090); and its attachments'
+commitment and token charge (ADR-0093).
 """
 
 import datetime
@@ -17,6 +18,7 @@ import attachments as turn_attachments
 import interface_language
 import memory as team_memory
 from protocol.team.http.v1 import routine as team_routine_protocol
+from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import routine_proposal as team_routine_proposal
 from runtime_errors import RuntimeContractError, RuntimeStateError
 
@@ -30,6 +32,7 @@ MODE_METADATA = "shimpz_turn_routine_mode"
 RERUN_METADATA = "shimpz_turn_routine_rerun"
 SCHEDULE_METADATA = "shimpz_turn_routine_schedule"
 OUTPUT_METADATA = "shimpz_turn_routine_output"
+SELECTED_METADATA = "shimpz_turn_routine_selected"
 MODEL_METADATA = "shimpz_turn_model"
 LOCALE_METADATA = "shimpz_turn_locale"
 ZONE_METADATA = "shimpz_turn_zone"
@@ -119,12 +122,13 @@ def record_routine(
     rerun: tuple[dict[str, object], ...] | None,
     schedule: dict[str, object] | None,
     output: str | None,
+    selected: dict[str, object] | None,
 ) -> dict[str, str]:
     """The checkpoint entries of the turn's Routine context, each JSON with None as null.
 
     The Routine question Team asked before this turn started, whether the turn is about a Routine, the work Team asked
-    to run again, and the one schedule and output mode Team read from the person, beside which a settings answer is
-    admitted.
+    to run again, the one schedule and output mode Team read from the person, beside which a settings answer is
+    admitted, and the Routine the person's send selects (ADR-0122).
     """
     return {
         QUESTION_METADATA: _json(question),
@@ -132,6 +136,7 @@ def record_routine(
         RERUN_METADATA: _json(rerun),
         SCHEDULE_METADATA: _json(schedule),
         OUTPUT_METADATA: _json(output),
+        SELECTED_METADATA: _json(selected),
     }
 
 
@@ -143,16 +148,18 @@ def restore_routine(
     tuple[dict[str, object], ...] | None,
     dict[str, object] | None,
     str | None,
+    dict[str, object] | None,
 ]:
     """The exact Routine context a start recorded; anything else, a missing pin included, is corrupt state."""
     question = _optional(metadata, QUESTION_METADATA, team_routine_proposal.canonical_question)
     rerun = _optional(metadata, RERUN_METADATA, team_routine.canonical_rerun)
     schedule = _optional(metadata, SCHEDULE_METADATA, team_routine_protocol.canonical_schedule)
     output = _optional(metadata, OUTPUT_METADATA, team_routine.canonical_output)
+    selected = _optional(metadata, SELECTED_METADATA, team_routine_context.canonical_selected_routine)
     mode = metadata.get(MODE_METADATA)
     if mode not in ("true", "false"):
         raise PinError("recorded turn pins are invalid")
-    return question, mode == "true", rerun, schedule, output
+    return question, mode == "true", rerun, schedule, output, selected
 
 
 def _optional[T](metadata: Mapping[str, object], key: str, canonical: Callable[[object], T | None]) -> T | None:
@@ -259,7 +266,7 @@ def restored(context: Any, metadata: Mapping[str, object]) -> Any:
     """A resumed turn's context with exactly the pins its start recorded."""
     try:
         turn_date, rules, routines = restore(metadata)
-        question, mode, rerun, schedule, output = restore_routine(metadata)
+        question, mode, rerun, schedule, output, selected = restore_routine(metadata)
         provider, model = restore_model(metadata)
         locale, turn_message_id = restore_turn(metadata)
         zone = restore_zone(metadata)
@@ -285,6 +292,7 @@ def restored(context: Any, metadata: Mapping[str, object]) -> Any:
         routine_rerun=rerun,
         routine_schedule=schedule,
         routine_output=output,
+        routine_selected=selected,
         locale=locale,
         turn_message_id=turn_message_id,
         attachment_charge=charge,

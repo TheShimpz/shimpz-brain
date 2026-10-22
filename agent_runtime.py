@@ -210,6 +210,8 @@ class TurnContext:
     # Whether the message is exactly the person's pick of one fixed answer to Team's schedule, over-budget, or output
     # question (record only).
     routine_settings_answer: bool = False
+    # The one Routine the person's send selects, which the turn may refine (ADR-0122); pinned like the question.
+    routine_selected: dict[str, object] | None = None
     # The interface language every reply follows (ADR-0090); None follows the user's message. A resumed turn keeps the
     # language its start recorded, and the id of the message that started it.
     locale: str | None = None
@@ -605,6 +607,7 @@ class AgentRuntime:
                     context.routine_rerun,
                     context.routine_schedule,
                     context.routine_output,
+                    context.routine_selected,
                 ),
                 **turn_pins.record_model(context.provider.provider, context.provider.model),
                 **turn_pins.record_turn(context.locale, context.turn_message_id),
@@ -638,7 +641,7 @@ class AgentRuntime:
         if memory_tool:
             tools.append(team_memory.tool())
         if routine_tool:
-            tools.append(team_routine.tool())
+            tools.append(team_routine.tool(context.routine_selected is not None))
         if len({tool.name for tool in tools}) != len(tools):
             raise RuntimeContractError("Action tool name collision")
         return create_agent(
@@ -751,9 +754,13 @@ class AgentRuntime:
         tools.append({"name": clarifier.TOOL_NAME, "summary": clarifier.DESCRIPTION, "schema": clarifier.SCHEMA})
         if browser_tool.offered(context):
             tools.append(browser_tool.SUMMARY)
-        for included, module in ((memory_tool, team_memory), (routine_tool, team_routine)):
-            if included:
-                tools.append({"name": module.TOOL_NAME, "summary": module.DESCRIPTION, "schema": module.SCHEMA})
+        if memory_tool:
+            tools.append(
+                {"name": team_memory.TOOL_NAME, "summary": team_memory.DESCRIPTION, "schema": team_memory.SCHEMA}
+            )
+        if routine_tool:
+            schema, description = team_routine.offered(context.routine_selected is not None)
+            tools.append({"name": team_routine.TOOL_NAME, "summary": description, "schema": schema})
         # Every provider call of an attachment turn carries the attachments, so their charge is fixed context too.
         return context_budget.fixed_tokens(prompt, tools) + context.attachment_charge
 

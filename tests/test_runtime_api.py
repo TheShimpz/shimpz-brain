@@ -57,6 +57,7 @@ def body(**updates):
         "routine_schedule": None,
         "routine_output": None,
         "routine_settings_answer": False,
+        "routine_selected": None,
         "attachments": [],
         "browser_available": False,
         "message": "Hello",

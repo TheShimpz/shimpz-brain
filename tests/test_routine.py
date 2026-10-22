@@ -211,8 +211,8 @@ class RecordTests(unittest.TestCase):
                 self.assertIsNone(routine.recorded(messages))
 
 
-def _routine_pins(question=None, mode=False, rerun=None, schedule=None, output=None) -> dict[str, str]:
-    return turn_pins.record_routine(question, mode, rerun, schedule, output)
+def _routine_pins(question=None, mode=False, rerun=None, schedule=None, output=None, selected=None) -> dict[str, str]:
+    return turn_pins.record_routine(question, mode, rerun, schedule, output, selected)
 
 
 def _runtime(*responses):

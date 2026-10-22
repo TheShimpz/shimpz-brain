@@ -167,6 +167,8 @@ class TurnContextInput(ClosedInput):
     # Whether the message is exactly one fixed answer Admin offers to Team's schedule, over-budget, or output question:
     # the work already ran, so the turn only records again and is offered no Action.
     routine_settings_answer: StrictBool
+    # The one Routine the person's send selects, which the turn may refine (ADR-0122); null when none.
+    routine_selected: dict[str, Any] | None
     # The message's prepared files (ADR-0093), resent with every resume; request-local model content only.
     attachments: list[dict[str, Any]] = Field(max_length=turn_attachments.MAX_ATTACHMENTS)
     # Whether Team offers the Browser this turn (ADR-0117).
@@ -194,6 +196,7 @@ class TurnContextInput(ClosedInput):
             routine_schedule=self.routine_schedule,
             routine_output=self.routine_output,
             routine_settings_answer=self.routine_settings_answer,
+            routine_selected=self.routine_selected,
             attachments=_attachments(self.attachments),
             browser=self.browser_available,
             **turn,
