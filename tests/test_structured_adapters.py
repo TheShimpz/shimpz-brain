@@ -114,6 +114,25 @@ class SchemaTests(unittest.TestCase):
         )
         self.assertEqual(parsed, capability_plan.StructuredPlan.model_validate(PLAN))
 
+    def test_a_value_written_twice_agrees_but_two_different_values_never_do(self):
+        consistent = '{"status":"install-required","assistant_ids":["shimpz-cloudflare"]}'
+        other = '{"status":"sufficient","assistant_ids":["shimpz-cloudflare"]}'
+
+        def blocks(*texts):
+            return AIMessage(content=[{"type": "text", "text": text} for text in texts])
+
+        twice = {"raw": blocks(consistent, consistent), "parsed": PLAN, "parsing_error": None}
+        value = structured.structured_value(twice, capability_plan.StructuredPlan, "plan", 2 * len(consistent))
+        self.assertEqual(value, capability_plan.StructuredPlan.model_validate(PLAN))
+        for content, bound in (
+            (blocks(other, consistent), 2 * len(consistent)),
+            (blocks(consistent, consistent), 2 * len(consistent) - 1),
+            (blocks(consistent, "{"), 2 * len(consistent)),
+        ):
+            result = {"raw": content, "parsed": PLAN, "parsing_error": None}
+            with self.subTest(content=content.content), self.assertRaises(agent_runtime.RuntimeContractError):
+                structured.structured_value(result, capability_plan.StructuredPlan, "plan", bound)
+
     def test_binding_and_raw_text_helpers_fail_closed(self):
         model = mock.Mock()
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model provider"):

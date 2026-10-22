@@ -36,16 +36,40 @@ def _closed_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-def _raw_text(content: object) -> str:
+def _raw_texts(content: object) -> list[str]:
     if isinstance(content, str):
-        return content
+        return [content]
     if not isinstance(content, list):
-        return ""
-    return "".join(
+        return []
+    return [
         block["text"]
         for block in content
         if isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str)
-    )
+    ]
+
+
+def _raw_text(content: object) -> str:
+    return "".join(_raw_texts(content))
+
+
+def _agrees[Schema: BaseModel](
+    content: object, parsed: Schema, schema: type[Schema], label: str, max_chars: int
+) -> bool:
+    """Whether the raw JSON text agrees with the adapter's value.
+
+    The text is read whole; a model that wrote the same value twice, as separate text blocks, agrees when every block
+    re-reads to that value. Two different values never agree, and the whole text stays within ``max_chars``.
+    """
+    text = _raw_text(content).strip()
+    if not text:
+        return True
+    try:
+        return _text_value(text, schema, label, max_chars) == parsed
+    except RuntimeContractError:
+        blocks = [block.strip() for block in _raw_texts(content) if block.strip()]
+        if len(blocks) < 2 or len(text) > max_chars:
+            raise
+        return all(_text_value(block, schema, label, max_chars) == parsed for block in blocks)
 
 
 def _text_value[Schema: BaseModel](text: str, schema: type[Schema], label: str, max_chars: int) -> Schema:
@@ -84,8 +108,7 @@ def structured_value[Schema: BaseModel](result: object, schema: type[Schema], la
             raise RuntimeContractError(f"invalid {label} response") from exc
     if not isinstance(parsed, schema):
         raise RuntimeContractError(f"invalid {label} response")
-    text = _raw_text(raw.content).strip()
-    if text and _text_value(text, schema, label, max_chars) != parsed:
+    if not _agrees(raw.content, parsed, schema, label, max_chars):
         raise RuntimeContractError(f"inconsistent {label} response")
     return parsed
 
