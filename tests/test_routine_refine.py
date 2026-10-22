@@ -93,6 +93,8 @@ class ContextTests(unittest.TestCase):
             # Only a Routine the listing shows, at the revision it shows, is selected.
             lambda: _selected_chat({**SELECTED, "revision": 3}),
             lambda: _selected_chat({**SELECTED, "routine_id": "b" * 32}),
+            lambda: _selected_chat({**SELECTED, "routine_id": []}),
+            lambda: _selected_chat({**SELECTED, "revision": {}}),
         ):
             with self.subTest(broken=broken), self.assertRaises(agent_runtime.RuntimeContractError):
                 broken()

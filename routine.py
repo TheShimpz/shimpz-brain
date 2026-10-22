@@ -230,8 +230,10 @@ def _sent_with(context: Any, field: str) -> bool:
     if field == "routine_selected":
         # A selected Routine makes the chat about a Routine, and it is one the listing shows at its revision.
         listed = {(item["routine_id"], item["revision"]) for item in context.routines}
-        selected = context.routine_selected
-        return context.routine_mode and (selected.get("routine_id"), selected.get("revision")) in listed
+        selected = team_routine_context.canonical_selected_routine(context.routine_selected)
+        return (
+            context.routine_mode and selected is not None and (selected["routine_id"], selected["revision"]) in listed
+        )
     if field in {"routine_question", "routine_schedule"}:
         # A pending question or a stated schedule makes the chat about a Routine.
         return context.routine_mode
