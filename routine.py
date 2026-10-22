@@ -227,8 +227,13 @@ def admit_context(context: Any) -> None:
 
 def _sent_with(context: Any, field: str) -> bool:
     """Whether Team sends this recording field beside the others the context carries, the question already admitted."""
-    if field in {"routine_question", "routine_schedule", "routine_selected"}:
-        # A pending question, a stated schedule, or a selected Routine makes the chat about a Routine.
+    if field == "routine_selected":
+        # A selected Routine makes the chat about a Routine, and it is one the listing shows at its revision.
+        listed = {(item["routine_id"], item["revision"]) for item in context.routines}
+        selected = context.routine_selected
+        return context.routine_mode and (selected.get("routine_id"), selected.get("revision")) in listed
+    if field in {"routine_question", "routine_schedule"}:
+        # A pending question or a stated schedule makes the chat about a Routine.
         return context.routine_mode
     if field == "routine_rerun":
         question = context.routine_question
@@ -296,7 +301,8 @@ def record(arguments: object, context: Any, handles: frozenset[str] = frozenset(
     selected = getattr(context, "routine_selected", None)
     schema, _description = offered(selected is not None)
     if not isinstance(arguments, dict) or set(arguments) != set(schema["required"]):
-        return "invalid"
+        # Beside a selection, the correction names both operations and their members.
+        return "invalid" if selected is None else "refine"
     if arguments["op"] == "refine" and selected is not None:
         return _refined(arguments, selected, handles)
     if selected is not None and any(

@@ -214,7 +214,7 @@ def _question_section(question: dict | None, records_only: bool) -> str:
     )
 
 
-def _routine_mode_section(active: bool, records_only: bool, settings: bool) -> str:
+def _routine_mode_section(active: bool, records_only: bool, settings: bool, selected: bool = False) -> str:
     """The Routine-mode guidance when Team read, with no model, that this chat is about a Routine; advisory only.
 
     A settings answer only records again, so its turn is told nothing about running the work; while Team's settings
@@ -229,6 +229,10 @@ def _routine_mode_section(active: bool, records_only: bool, settings: bool) -> s
         if settings
         else "Then run the work once and call"
     )
+    if selected:
+        # The selected Routine is changed by refining it, never by running its unchanged work again (ADR-0122).
+        refine = "To change the selected Routine, refine it as described above. For a new Routine,"
+        run = f"{refine} {run[0].lower()}{run[1:]}"
     return (
         "If this message asks for a Routine: the Team takes the schedule, interval, timezone, limits, and what to do "
         "with each run's result from the user's words and asks about them itself, so never ask about them, and never "
@@ -388,7 +392,7 @@ def system_prompt(context: TurnContext) -> str:
         f"{_routines_section(context.routines, records_only, settings, context.routine_mode)}"
         f"{_selected_section(context.routine_selected)}"
         f"{_question_section(context.routine_question, records_only)}"
-        f"{_routine_mode_section(context.routine_mode, records_only, settings)}"
+        f"{_routine_mode_section(context.routine_mode, records_only, settings, context.routine_selected is not None)}"
         f"{_rerun_section(context.routine_rerun)}"
         f"{_attachments_section(context.attachments)}"
         f"{_browser_section(context.browser)}"

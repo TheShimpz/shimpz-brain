@@ -90,6 +90,9 @@ class ContextTests(unittest.TestCase):
             lambda: dataclasses.replace(_chat([LISTED], schedule=None), routine_selected=SELECTED),
             lambda: dataclasses.replace(context(), routine_mode=False, routine_selected=SELECTED),
             lambda: _selected_chat({**SELECTED, "revision": 0}),
+            # Only a Routine the listing shows, at the revision it shows, is selected.
+            lambda: _selected_chat({**SELECTED, "revision": 3}),
+            lambda: _selected_chat({**SELECTED, "routine_id": "b" * 32}),
         ):
             with self.subTest(broken=broken), self.assertRaises(agent_runtime.RuntimeContractError):
                 broken()
@@ -108,6 +111,9 @@ class ContextTests(unittest.TestCase):
         self.assertIn("op refine", selected)
         self.assertNotIn("op refine", unselected)
         self.assertIn("ask which listed Routine they mean", unselected)
+        # The Routine-mode guidance changes the selected Routine by refining it, never by running it all again.
+        self.assertIn("To change the selected Routine, refine it as described above. For a new Routine, then", selected)
+        self.assertNotIn("To change the selected Routine", unselected)
 
     def test_the_tool_offers_refine_only_beside_a_selection(self):
         self.assertEqual(routine.offered(False), (routine.SCHEMA, routine.DESCRIPTION))
@@ -165,6 +171,7 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(routine.record({**record, "edits": []}, _selected_chat()), "refine")
         self.assertEqual(routine.record({**record, "op": "other"}, _selected_chat()), "invalid")
         self.assertEqual(routine.record(_refine(), _chat([LISTED])), "invalid")
+        self.assertEqual(routine.record(_args(), _selected_chat()), "refine")
 
     def test_only_this_turns_named_results_are_handles(self):
         earlier = [
