@@ -10,6 +10,7 @@ from eval.world import ActionFailedError
 
 DIGEST = "sha256:80a24205938f8f4d120e824408b4bbe5616ae6e9add1c0e32c4a9b90fbb3b2cd"
 LENA = complex_world.customer_id("Lena Fischer", "Berlin")
+CRM_TEMPLATE = next(t.id for t in templates.TEMPLATES if "crm" in t.assistants)
 
 
 class WorldTests(unittest.TestCase):
@@ -112,16 +113,20 @@ class EpisodeTests(unittest.TestCase):
             tuple(dataclasses.replace(t, composition="and") for t in templates.TEMPLATES),
             tuple(dataclasses.replace(t, band="<8k") for t in templates.TEMPLATES),
             (dataclasses.replace(first, coverage=""), *templates.TEMPLATES[1:]),
-            (
+            # A reference that writes another Team's record fails its own oracle.
+            tuple(
                 dataclasses.replace(
-                    first,
+                    t,
                     steps=(
                         dataclasses.replace(
-                            first.steps[0], reference=(("crm", "add-note", {"customer_id": LENA, "text": "x"}),)
+                            t.steps[0], reference=(("crm", "add-note", {"customer_id": LENA, "text": "x"}),)
                         ),
+                        *t.steps[1:],
                     ),
-                ),
-                *templates.TEMPLATES[1:],
+                )
+                if t.id == CRM_TEMPLATE
+                else t
+                for t in templates.TEMPLATES
             ),
         )
         for value in broken:
