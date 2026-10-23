@@ -594,7 +594,42 @@ VARIANT_STRATA = frozenset(
 )
 
 
-CASES: tuple[tuple[str, Callable[[Attempt], Outcome]], ...] = tuple((item.id, _played(item)) for item in STRATA)
+# A Routine refined in place (ADR-0122): the person's daily list of shimpz.com, confirmed, then "also list example.com"
+# naming the Routine; the card keeps the schedule and the confirmed revision replays both zones' listings.
+REFINE_BASE = "Todo dia às 9h, liste os registros DNS de shimpz.com"
+REFINE_ASK = 'Na rotina "{name}", liste também os registros DNS de example.com'
+
+
+def _refined(attempt: Attempt) -> Outcome:
+    attempt.person = _person("Todo dia às 9h", output="show", said=set(FULL))()
+    attempt.fixture.twin = False
+    base = conversation_turns(attempt, REFINE_BASE)
+    if "routine_proposal" not in base:
+        return Outcome("base-no-card")
+    attempt.confirm(base["routine_proposal"]["proposal_id"])
+    store = attempt.team.service.routine_store
+    [routine] = store.load("team_1").routines
+    response = conversation_turns(attempt, REFINE_ASK.format(name=routine.name))
+    card = response.get("routine_refinement")
+    if card is None:
+        return Outcome(f"no-refinement:{attempt.sends[-1][0]}")
+    if card["routine_id"] != routine.routine_id or card["schedule"] != routine.schedule:
+        return Outcome("refinement-changed-routine-or-schedule")
+    attempt.confirm(card["proposal_id"])
+    [refined] = store.load("team_1").routines
+    if refined.revision != routine.revision + 1 or refined.schedule != routine.schedule:
+        return Outcome("refinement-not-committed")
+    attempt.fixture.calls.clear()
+    status, _notice = attempt.replay()
+    if status != "done" or not all(map(attempt.fixture.listed, (SHIMPZ, EXAMPLE))):
+        return Outcome(f"refined-replay:{status}")
+    return Outcome(None)
+
+
+CASES: tuple[tuple[str, Callable[[Attempt], Outcome]], ...] = (
+    *((item.id, _played(item)) for item in STRATA),
+    ("refine-add-zone", _refined),
+)
 
 
 def variants(attempt: Attempt) -> dict[str, object]:

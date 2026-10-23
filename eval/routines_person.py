@@ -158,6 +158,8 @@ class Attempt:
             "locale": LOCALE,
             "request": {"issued_at": int(time.time()), "nonce": secrets.token_hex(16)},
             "timezone": TIMEZONE,
+            # No Routine is chosen from the panel: a refinement names its Routine in the message (ADR-0122).
+            "refine": None,
         }
         before = len(self.fixture.calls)
         with self._person():
@@ -251,6 +253,7 @@ MAX_AUTHORIZATIONS = 4
 def _kind(response: dict[str, object]) -> str:
     for member, kind in (
         ("routine_proposal", "card"),
+        ("routine_refinement", "refinement"),
         ("routine_refusal", "refusal"),
         ("routine_question", "question"),
     ):
@@ -491,7 +494,7 @@ def conversation_turns(attempt: Attempt, first: str) -> dict[str, object]:
     response: dict[str, object] = {}
     for _send in range(MAX_SENDS):
         response = attempt.send(message)
-        if "routine_proposal" in response or "routine_refusal" in response:
+        if any(member in response for member in ("routine_proposal", "routine_refinement", "routine_refusal")):
             return response
         question = response.get("routine_question")
         if question is not None:

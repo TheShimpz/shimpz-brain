@@ -154,7 +154,7 @@ class BrowserStepTests(unittest.TestCase):
             "text": "é" * 6_000,
             "page": {"url": "https://example.com/" + "a" * 2_000, "title": "t" * 300},
         }
-        records = [{key: long_entry[key] for key in ("step", "outcome", "page")}] * 20
+        records = [{key: long_entry[key] for key in ("step", "outcome", "page")}] * 3
         thread = {**EMPTY, "folded": records, "notes": ["n" * 8_000], "steps": [long_entry] * 2}
         request = {**REQUEST, "thread": thread, "observation": "o" * 20_000}
         admitted = validate(request)
@@ -163,6 +163,22 @@ class BrowserStepTests(unittest.TestCase):
             admitted["objective"], thread, admitted["observation"], admitted["downloads"]
         )
         self.assertLessEqual(browser_thread.text_bytes(rendered[1:]), measured + len(browser_thread.FINAL.encode()))
+
+    def test_haikus_step_stays_within_the_protocols_measure(self):
+        record = {
+            "step": {"kind": "wait", "note": "n" * 300},
+            "outcome": "ok",
+            "page": {"url": "u" * 2_000, "title": "t" * 300},
+        }
+        lines = browser_protocol.MAX_FOLDED_BYTES // browser_protocol.record_bytes(record)
+        entry = {**record, "text": "x" * 1_000, "downloads": None, "screenshot": False}
+        thread = {**EMPTY, "folded": [record] * lines, "steps": [entry] * 5}
+        admitted = validate({**REQUEST, "thread": thread})
+        rendered = browser_thread.text_bytes([_prompt(admitted)[1]])
+        measured = browser_protocol.request_text_bytes(
+            admitted["objective"], thread, admitted["observation"], admitted["downloads"]
+        )
+        self.assertLessEqual(rendered, measured)
 
     def test_haiku_keeps_its_step_on_the_newest_records(self):
         image = base64.b64encode(PNG_SIGNATURE + b"pixels").decode()
