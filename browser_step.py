@@ -19,6 +19,7 @@ from dataclasses import replace
 from typing import Literal
 
 import browser_thread
+import context_budget
 import structured
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -245,21 +246,28 @@ def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Map
     return canonical
 
 
-def _written(model_factory: Callable[[], BaseChatModel], provider: str, rendered: list, limit: int) -> str | None:
-    """A plain-text answer to a rendered call, bounded to `limit` UTF-8 bytes; None when nothing usable came back."""
+def _written(
+    model_factory: Callable[[], BaseChatModel], provider: str, rendered: list, limit: int, *, whole: bool = False
+) -> str | None:
+    """A plain-text answer to a rendered call, bounded to `limit` UTF-8 bytes; None when nothing usable came back.
+
+    With `whole`, an answer the provider cut short at its output cap is nothing usable either.
+    """
     try:
         reply = capped(model_factory(), provider, MAX_WRITE_OUTPUT_TOKENS).invoke(_bounded(rendered, provider))
     except RuntimeContractError:
         raise
     except Exception as exc:
         raise ProviderResponseError("model provider response failed") from exc
+    if whole and context_budget.truncated(reply):
+        return None
     return browser_thread.plain(str(reply.text), limit)
 
 
 def fold(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
     """The agent's whole rewritten memory as steps leave its view; Haiku keeps none and makes no call.
 
-    A rewrite past the memory's bound is refused rather than cut, so Team keeps the memory it had.
+    A rewrite past the memory's bound, or one the provider cut short, is refused, so Team keeps the memory it had.
     """
     admitted = validate(request)
     first, last = request.get("first"), request.get("last")
@@ -270,7 +278,7 @@ def fold(model_factory: Callable[[], BaseChatModel], provider: str, request: Map
     instruction = browser_thread.FOLD.format(first=first, last=last, limit=MEMORY_CHARS)
     rendered = browser_thread.messages(admitted, instruction)
     # Twice the bound is kept, so an answer longer than the bound stays longer and is refused rather than cut to fit.
-    memory = _written(model_factory, provider, rendered, 2 * browser_protocol.MAX_MEMORY_BYTES)
+    memory = _written(model_factory, provider, rendered, 2 * browser_protocol.MAX_MEMORY_BYTES, whole=True)
     return {"memory": browser_protocol.canonical_memory(memory) if memory is not None else None}
 
 

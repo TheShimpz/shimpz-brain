@@ -95,13 +95,14 @@ def _page(number: int, text: str, downloads: object, shown: bool) -> str:
 
 
 def _earlier(thread: Mapping[str, object]) -> str | None:
-    folded, memory = thread["folded"], thread["memory"]
+    folded, memory, unnoted = thread["folded"], thread["memory"], thread["unnoted"]
     if not folded and not memory and not thread["folded_omitted"]:
         return None
     start = thread["folded_omitted"] + 1
     lines = [f"({thread['folded_omitted']} earlier steps omitted)"] if thread["folded_omitted"] else []
     lines += [_line(start + index, record) for index, record in enumerate(folded)]
-    return EARLIER + "\n".join(lines) + MEMORY + memory
+    gap = f"\n({unnoted} earlier steps' pages left with nothing written down; read them again if needed)"
+    return EARLIER + "\n".join(lines) + MEMORY + memory + (gap if unnoted else "")
 
 
 def messages(admitted: Mapping[str, object], instruction: str | None = None) -> list:

@@ -30,7 +30,7 @@ from protocol.team.http.v1 import browser as browser_protocol
 from runtime_errors import ProviderResponseError, RuntimeContractError
 from structured_fake import StructuredFakeModel
 
-EMPTY = {"folded": [], "folded_omitted": 0, "memory": "", "steps": []}
+EMPTY = {"folded": [], "folded_omitted": 0, "memory": "", "unnoted": 0, "steps": []}
 ENTRY = {
     "step": {"kind": "navigate", "url": "https://example.com"},
     "outcome": "ok",
@@ -72,14 +72,14 @@ class _Writer:
     """A plain model that answers one text and records what it was sent."""
 
     def __init__(self, text):
-        self.text, self.sent = text, []
+        self.text, self.sent, self.metadata = text, [], {}
 
     def model_copy(self, update):
         return self
 
     def invoke(self, messages):
         self.sent.append(messages)
-        return AIMessage(content=self.text)
+        return AIMessage(content=self.text, response_metadata=self.metadata)
 
 
 class BrowserStepTests(unittest.TestCase):
@@ -145,6 +145,11 @@ class BrowserStepTests(unittest.TestCase):
         earlier = rendered[2].content
         self.assertTrue(earlier.startswith(browser_thread.EARLIER + "(3 earlier steps omitted)\nStep 4 at about:blank"))
         self.assertTrue(earlier.endswith(browser_thread.MEMORY + "V101: R$ 9.500"))
+        # Steps whose pages left with nothing written down are said, even beside a memory at its bound.
+        full = {**thread, "memory": "m" * browser_protocol.MAX_MEMORY_BYTES, "unnoted": 2}
+        earlier = browser_thread.messages(validate({**REQUEST, "thread": full}))[2].content
+        said = "(2 earlier steps' pages left with nothing written down; read them again if needed)"
+        self.assertTrue(earlier.endswith(said))
         self.assertTrue(rendered[-1].content.startswith("Page at step 5:\n"))
 
     def test_the_rendered_text_stays_within_the_protocols_measure(self):
@@ -256,6 +261,13 @@ class BrowserFinishingTests(unittest.TestCase):
         # A rewrite longer than the memory's bound is refused, never cut to fit.
         long = _Writer("x" * (browser_protocol.MAX_MEMORY_BYTES + 1))
         self.assertEqual(fold(lambda: long, "openai", {**REQUEST, "first": 1, "last": 1}), {"memory": None})
+        # So is one the provider cut short at its output cap, however short the part that came back.
+        for metadata in ({"status": "incomplete"}, {"finish_reason": "length"}):
+            with self.subTest(metadata=metadata):
+                cut = _Writer("V101: R$ 9.500")
+                cut.metadata = metadata
+                answer = fold(lambda cut=cut: cut, "openai", {**REQUEST, "first": 1, "last": 1})
+                self.assertEqual(answer, {"memory": None})
         for numbers in ({"first": 0, "last": 1}, {"first": 2, "last": 1}, {"first": "1", "last": 1}):
             with self.subTest(numbers=numbers), self.assertRaises(RuntimeContractError):
                 fold(lambda: writer, "openai", {**REQUEST, **numbers})

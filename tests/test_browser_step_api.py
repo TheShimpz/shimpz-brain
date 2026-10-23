@@ -8,7 +8,7 @@ PAYLOAD = {
     "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
     "objective": "Veja o prazo do edital.",
     "language": "pt-BR",
-    "thread": {"folded": [], "folded_omitted": 0, "memory": "", "steps": []},
+    "thread": {"folded": [], "folded_omitted": 0, "memory": "", "unnoted": 0, "steps": []},
     "observation": "url: https://example.com",
     "screenshot": None,
     "downloads": {"files": ["report.csv"], "pending": 1, "truncated": False},

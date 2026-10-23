@@ -144,7 +144,7 @@ class BrowserTurnTests(unittest.TestCase):
         request = {
             "objective": OBJECTIVE,
             "language": "pt-BR",
-            "thread": {"folded": [], "folded_omitted": 0, "memory": "", "steps": []},
+            "thread": {"folded": [], "folded_omitted": 0, "memory": "", "unnoted": 0, "steps": []},
             "observation": "url: x",
             "screenshot": None,
         }
