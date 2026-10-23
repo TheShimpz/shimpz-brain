@@ -889,9 +889,11 @@ class AgentRuntime:
         request = action_purpose.pending_request(checkpoint, pending)
         return action_purpose.create(functools.partial(self._decision_model, provider), provider.provider, request)
 
-    def browser_step(self, provider: ProviderConfig, request: Mapping[str, object]) -> tuple[dict, str]:
-        """One stateless Browser agent step on the provider's fixed Browser model, and that model (ADR-0117)."""
-        return browser_step.on_provider(self._model_factory, provider, request)
+    def browser_call(
+        self, provider: ProviderConfig, operation: str, request: Mapping[str, object]
+    ) -> tuple[object, str]:
+        """One Browser operation of a Team's task on the provider's fixed Browser model (ADR-0117 §5)."""
+        return browser_step.on_provider(self._model_factory, provider, request, operation)
 
     def capability_plan(
         self,

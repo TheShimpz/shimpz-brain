@@ -355,12 +355,13 @@ class CapabilityCandidateInput(ClosedInput):
 
 
 class BrowserStepInput(ClosedInput):
-    """One Browser agent step (ADR-0117): the Team's provider, the task, and the bounded current page."""
+    """One Browser agent call (ADR-0117): the Team's provider, the task, its thread, and the bounded current page."""
 
     provider: ProviderInput
     objective: str = Field(min_length=1, max_length=browser_protocol.MAX_OBJECTIVE_CHARS)
     language: Literal["en", "pt-BR"]
-    history: list[dict[str, Any]] = Field(max_length=browser_protocol.MAX_HISTORY)
+    # The task's thread, admitted whole by the Browser protocol before any model call.
+    thread: dict[str, Any]
     observation: str = Field(max_length=browser_protocol.MAX_OBSERVATION_BYTES)
     screenshot: str | None = Field(max_length=browser_step.MAX_SCREENSHOT_BYTES * 4 // 3 + 4)
     # The completed downloads present in the task's Browser so far, or null when Team could not read them.
@@ -370,11 +371,33 @@ class BrowserStepInput(ClosedInput):
         return {
             "objective": self.objective,
             "language": self.language,
-            "history": self.history,
+            "thread": self.thread,
             "observation": self.observation,
             "screenshot": self.screenshot,
             "downloads": self.downloads,
         }
+
+
+class BrowserFoldInput(BrowserStepInput):
+    """A fold: the step request it extends, and the step numbers whose pages are about to leave the thread."""
+
+    first: int = Field(ge=1, le=browser_protocol.MAX_STEPS)
+    last: int = Field(ge=1, le=browser_protocol.MAX_STEPS)
+
+    def runtime_request(self) -> dict[str, object]:
+        return {**super().runtime_request(), "first": self.first, "last": self.last}
+
+
+class BrowserCheckInput(ClosedInput):
+    """The completeness check: the Team's provider, the objective, and the agent's done answer."""
+
+    provider: ProviderInput
+    objective: str = Field(min_length=1, max_length=browser_protocol.MAX_OBJECTIVE_CHARS)
+    language: Literal["en", "pt-BR"]
+    summary: str = Field(min_length=1, max_length=browser_protocol.MAX_SUMMARY_BYTES)
+
+    def runtime_request(self) -> dict[str, object]:
+        return {"objective": self.objective, "language": self.language, "summary": self.summary}
 
 
 class CapabilityPlanInput(ClosedInput):
@@ -492,9 +515,9 @@ class RuntimeLike(Protocol):
         pending: PendingAction,
     ) -> str | None: ...
 
-    def browser_step(
-        self, provider: agent_runtime.ProviderConfig, request: Mapping[str, object]
-    ) -> tuple[dict, str]: ...
+    def browser_call(
+        self, provider: agent_runtime.ProviderConfig, operation: str, request: Mapping[str, object]
+    ) -> tuple[object, str]: ...
 
     def capability_plan(
         self,
@@ -748,20 +771,22 @@ def _lane(slots: threading.BoundedSemaphore, detail: str) -> Iterator[None]:
         slots.release()
 
 
-async def _run_browser_step(
+async def _run_browser(
     request: Request,
     current_runtime: Callable[[], RuntimeLike],
     slots: threading.BoundedSemaphore,
-    body: BrowserStepInput,
+    operation: str,
+    body: BrowserStepInput | BrowserCheckInput,
 ) -> dict[str, object]:
-    """One Browser agent step in its own lane; Stop closing the request cancels its provider I/O (ADR-0079)."""
+    """One Browser operation in its own lane; Stop closing the request cancels its provider I/O (ADR-0079)."""
     with _lane(slots, "Browser step capacity reached"):
-        (step, model), usage = await _cancellable(
+        (answer, model), usage = await _cancellable(
             request,
-            lambda: current_runtime().browser_step(body.provider.runtime(), body.runtime_request()),
+            lambda: current_runtime().browser_call(body.provider.runtime(), operation, body.runtime_request()),
             "Browser step cancelled",
         )
-    return {"step": step, "model": model, "usage": usage}
+    fields = {"step": answer} if operation == "browser-step" else dict(answer)
+    return {**fields, "model": model, "usage": usage}
 
 
 async def _run_capability_plan(
@@ -836,7 +861,19 @@ def _register_decisions(
 
     @app.post("/v1/browser-step", dependencies=[Depends(require_auth)])
     async def create_browser_step(request: Request, body: BrowserStepInput) -> dict[str, object]:
-        return await _run_browser_step(request, current_runtime, app.state.browser_step_slots, body)
+        return await _run_browser(request, current_runtime, app.state.browser_step_slots, "browser-step", body)
+
+    @app.post("/v1/browser-fold", dependencies=[Depends(require_auth)])
+    async def create_browser_fold(request: Request, body: BrowserFoldInput) -> dict[str, object]:
+        return await _run_browser(request, current_runtime, app.state.browser_step_slots, "browser-fold", body)
+
+    @app.post("/v1/browser-check", dependencies=[Depends(require_auth)])
+    async def create_browser_check(request: Request, body: BrowserCheckInput) -> dict[str, object]:
+        return await _run_browser(request, current_runtime, app.state.browser_step_slots, "browser-check", body)
+
+    @app.post("/v1/browser-final", dependencies=[Depends(require_auth)])
+    async def create_browser_final(request: Request, body: BrowserStepInput) -> dict[str, object]:
+        return await _run_browser(request, current_runtime, app.state.browser_step_slots, "browser-final", body)
 
     @app.post("/v1/intent-route", dependencies=[Depends(require_auth)])
     def create_intent_route(body: IntentRouteInput) -> dict[str, object]:

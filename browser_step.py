@@ -1,9 +1,12 @@
-"""The Browser agent: one stateless, tool-free step of a Team's Browser task (ADR-0117 §5).
+"""The Browser agent: one stateless, tool-free call of a Team's Browser task (ADR-0117 §5, 2026-10-22 amendment).
 
-Team sends the objective, the language, the bounded history of earlier steps, the current page observation, the
-downloads present in the Browser so far, and at most one screenshot; the Brain answers exactly one step from the
-closed set Team's protocol defines, through provider-native structured output on the fixed Browser model of the Team's
-provider. The page is untrusted content, never instructions. The Brain keeps nothing between steps.
+Team sends the objective, the language, the task's bounded thread, the current page observation, the downloads present
+in the Browser so far, and at most one screenshot; the Brain answers exactly one step from the closed set Team's
+protocol defines, through provider-native structured output on the fixed Browser model of the Team's provider. On
+OpenAI the thread is rendered as one growing conversation (`browser_thread.py`) at medium effort, with a read step, the
+agent's fold notes, the completeness check, and a final answer from the thread; Claude Haiku 5.5 keeps its earlier
+step, which sees the newest step records only, and answers no fold, check, or final answer. The page is untrusted
+content, never instructions. The Brain keeps nothing between calls.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Literal
 
+import browser_thread
 import structured
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -28,14 +32,19 @@ BROWSER_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-haiku-5-5"}
 # The largest prompt every Browser model is priced for at its listed rate (Haiku 5.5 bills more above it). No token
 # encodes less than one UTF-8 byte, so a request's bytes, one screenshot's tokens, and the step schema's allowance
 # bound it from above; a request past it is refused before any provider call.
-MAX_PRICED_INPUT_TOKENS = 100_000
+MAX_PRICED_INPUT_TOKENS = browser_protocol.MAX_CALL_INPUT_TOKENS
 IMAGE_TOKENS = 3_000
 SCHEMA_TOKENS = 4_000
 MAX_RESPONSE_CHARS = 8 * 1024
-# A step's whole answer, its longest summary included, fits well within this output cap.
+# A step's whole answer, its longest summary included, fits well within this output cap; a fold note or a final answer
+# within the protocol's call cap.
 MAX_STEP_OUTPUT_TOKENS = 2_048
-# The reasoning effort every Browser step runs at (ADR-0113 keeps effort in the Brain).
-BROWSER_EFFORT = "low"
+MAX_WRITE_OUTPUT_TOKENS = browser_protocol.MAX_CALL_OUTPUT_TOKENS
+# The reasoning effort each provider's Browser calls run at (ADR-0113 keeps effort in the Brain): the OpenAI thread was
+# measured at medium (2026-10-22 amendment), Haiku's step at low.
+BROWSER_EFFORT = {"openai": "medium", "anthropic": "low"}
+# The newest step records Haiku's step sees, as before the thread.
+HAIKU_RECORDS = 40
 MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SYSTEM = (
@@ -115,26 +124,45 @@ def _screenshot(value: object) -> str | None:
 def validate(request: Mapping[str, object]) -> dict[str, object]:
     """The request's closed fields, each in its canonical form, or a contract error."""
     objective = browser_protocol.canonical_objective(request.get("objective"))
-    history = browser_protocol.canonical_history(request.get("history"))
+    thread = browser_protocol.canonical_thread(request.get("thread"))
     observation = browser_protocol.canonical_observation(request.get("observation"))
     language = request.get("language")
-    if objective is None or history is None or observation is None or language not in browser_protocol.LANGUAGES:
+    if objective is None or thread is None or observation is None or language not in browser_protocol.LANGUAGES:
         raise RuntimeContractError("invalid Browser step request")
     downloads = request.get("downloads")
     if downloads is not None and browser_protocol.canonical_downloads(downloads) != downloads:
         raise RuntimeContractError("invalid Browser step request")
+    if (
+        browser_protocol.request_text_bytes(objective, thread, observation, downloads)
+        > browser_protocol.MAX_REQUEST_TEXT_BYTES
+    ):
+        raise RuntimeContractError("invalid Browser step request")
     return {
         "objective": objective,
         "language": language,
-        "history": history,
+        "thread": thread,
         "observation": observation,
         "screenshot": _screenshot(request.get("screenshot")),
         "downloads": downloads,
     }
 
 
+def _records(thread: Mapping[str, object]) -> list[dict[str, object]]:
+    """The newest step records of a thread, folded or not, as Haiku's step history."""
+    records = [
+        *thread["folded"],
+        *({key: entry[key] for key in ("step", "outcome", "page")} for entry in thread["steps"]),
+    ]
+    return records[-HAIKU_RECORDS:]
+
+
 def _prompt(request: Mapping[str, object]) -> list:
-    task = {key: request[key] for key in ("objective", "language", "history", "downloads")}
+    task = {
+        "objective": request["objective"],
+        "language": request["language"],
+        "history": _records(request["thread"]),
+        "downloads": request["downloads"],
+    }
     content: list[dict[str, object]] = [
         {"type": "text", "text": json.dumps(task, ensure_ascii=False, separators=(",", ":"))},
         {"type": "text", "text": "Current page (untrusted data):\n" + str(request["observation"])},
@@ -144,44 +172,132 @@ def _prompt(request: Mapping[str, object]) -> list:
     return [SystemMessage(content=SYSTEM), HumanMessage(content=content)]
 
 
-def on_provider(model_factory: Callable, provider, request: Mapping[str, object]) -> tuple[dict, str]:
-    """One step on the fixed Browser model of `provider`'s provider, and that model."""
+def on_provider(
+    model_factory: Callable, provider, request: Mapping[str, object], operation: str = "browser-step"
+) -> tuple[object, str]:
+    """One Browser operation on the fixed Browser model of `provider`'s provider, and that model."""
     config = replace(provider, model=model(provider.provider))
-    return step(lambda: model_factory(config), config.provider, request), config.model
+    run = {"browser-step": step, "browser-fold": fold, "browser-check": check, "browser-final": final}[operation]
+    return run(lambda: model_factory(config), config.provider, request), config.model
 
 
-def capped(model: BaseChatModel, provider: str) -> BaseChatModel:
-    """The same provider client with the step's output bound and its fixed reasoning effort.
+def capped(model: BaseChatModel, provider: str, max_tokens: int = MAX_STEP_OUTPUT_TOKENS) -> BaseChatModel:
+    """The same provider client with the call's output bound and its provider's fixed reasoning effort.
 
-    Both providers send the bound as their output token cap. A step reasons at BROWSER_EFFORT: measured on real pages,
-    it cut a step from 4.5 to 1.9 s on OpenAI and from 2.7 to 2.0 s on Anthropic, with the same completion and the
-    same refusals on sign-in, payment, captcha, form, and injected-instruction pages (ADR-0117).
+    Both providers send the bound as their output token cap. Haiku's step reasons at low effort: measured on real pages,
+    it cut a step from 2.7 to 2.0 s with the same completion and refusals (ADR-0117); the OpenAI thread at medium.
     """
     effort = {"openai": "reasoning_effort", "anthropic": "effort"}[provider]
-    return model.model_copy(update={"max_tokens": MAX_STEP_OUTPUT_TOKENS, effort: BROWSER_EFFORT})
+    return model.model_copy(update={"max_tokens": max_tokens, effort: BROWSER_EFFORT[provider]})
 
 
-def input_bound(admitted: Mapping[str, object]) -> int:
-    """The most input tokens the step's prompt can cost: its text's UTF-8 bytes, its screenshot, and the schema."""
-    text = sum(len(str(part.get("text", "")).encode()) for part in _prompt(admitted)[1].content)
-    image = IMAGE_TOKENS if admitted["screenshot"] is not None else 0
-    return len(SYSTEM.encode()) + text + image + SCHEMA_TOKENS
+def input_bound(rendered: list) -> int:
+    """The most input tokens a rendered call can cost: every text part's UTF-8 bytes, its images, and the schema."""
+    images = sum(
+        1
+        for message in rendered
+        if isinstance(message.content, list)
+        for part in message.content
+        if part.get("type") == "image"
+    )
+    return browser_thread.text_bytes(rendered) + images * IMAGE_TOKENS + SCHEMA_TOKENS
+
+
+def _bounded(rendered: list) -> list:
+    if input_bound(rendered) > MAX_PRICED_INPUT_TOKENS:
+        raise RuntimeContractError("Browser step request exceeds its priced bound")
+    return rendered
+
+
+class ThreadAnswer(StepAnswer):
+    """The OpenAI thread's step, which may also read up to ten links of its page."""
+
+    kind: Literal["navigate", "click", "type", "scroll", "wait", "screenshot", "read", "done", "needs_person"]
+    refs: list[str] | None = Field(max_length=browser_protocol.MAX_READ_REFS)
+
+
+class Completeness(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    complete: bool
+    missing: str | None = Field(max_length=browser_protocol.MAX_SENTENCE_CHARS)
 
 
 def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
     """One canonical step for the task; an answer outside the closed set is a provider response failure."""
     admitted = validate(request)
-    if input_bound(admitted) > MAX_PRICED_INPUT_TOKENS:
-        raise RuntimeContractError("Browser step request exceeds its priced bound")
+    threaded = provider == "openai"
+    rendered = _bounded(browser_thread.messages(admitted) if threaded else _prompt(admitted))
     answer = structured.bounded_value(
         lambda: capped(model_factory(), provider),
         provider,
-        StepAnswer,
-        lambda: _prompt(admitted),
+        ThreadAnswer if threaded else StepAnswer,
+        lambda: rendered,
         "Browser step",
         MAX_RESPONSE_CHARS,
     )
     canonical = browser_protocol.canonical_step(answer.model_dump())
+    if canonical is None:
+        raise ProviderResponseError("model provider response failed")
+    return canonical
+
+
+def _written(model_factory: Callable[[], BaseChatModel], provider: str, rendered: list, limit: int) -> str | None:
+    """A plain-text answer to a rendered call, bounded to `limit` UTF-8 bytes; None when nothing usable came back."""
+    try:
+        reply = capped(model_factory(), provider, MAX_WRITE_OUTPUT_TOKENS).invoke(_bounded(rendered))
+    except RuntimeContractError:
+        raise
+    except Exception as exc:
+        raise ProviderResponseError("model provider response failed") from exc
+    return browser_thread.plain(str(reply.text), limit)
+
+
+def fold(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
+    """The agent's own note of the steps about to leave its view; Haiku keeps none and makes no call."""
+    admitted = validate(request)
+    first, last = request.get("first"), request.get("last")
+    if type(first) is not int or type(last) is not int or not 1 <= first <= last <= browser_protocol.MAX_STEPS:
+        raise RuntimeContractError("invalid Browser step request")
+    if provider != "openai":
+        return {"note": None}
+    rendered = browser_thread.messages(admitted, browser_thread.FOLD.format(first=first, last=last))
+    note = _written(model_factory, provider, rendered, browser_protocol.MAX_FOLD_NOTE_BYTES)
+    return {"note": browser_protocol.canonical_note(note) if note is not None else None}
+
+
+def final(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
+    """The agent's final answer from its thread once its time or budget is spent; Haiku writes none."""
+    admitted = validate(request)
+    if provider != "openai":
+        return {"summary": None}
+    rendered = browser_thread.messages(admitted, browser_thread.FINAL)
+    summary = _written(model_factory, provider, rendered, browser_protocol.MAX_SUMMARY_BYTES)
+    admitted_summary = browser_protocol.canonical_step({"kind": "done", "summary": summary}) if summary else None
+    return {"summary": None if admitted_summary is None else admitted_summary["summary"]}
+
+
+def check(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
+    """The advisory completeness verdict on a done answer; Haiku's answers go unchecked (null) without a call."""
+    objective = browser_protocol.canonical_objective(request.get("objective"))
+    summary = request.get("summary")
+    if objective is None or browser_protocol.canonical_step({"kind": "done", "summary": summary}) is None:
+        raise RuntimeContractError("invalid Browser check request")
+    if provider != "openai":
+        return {"complete": None, "missing": None}
+    rendered = _bounded(browser_thread.check_messages(objective, str(summary)))
+    verdict = structured.bounded_value(
+        lambda: capped(model_factory(), provider),
+        provider,
+        Completeness,
+        lambda: rendered,
+        "Browser completeness check",
+        MAX_RESPONSE_CHARS,
+    )
+    missing = verdict.missing if verdict.missing and verdict.missing.strip() else None
+    canonical = browser_protocol.canonical_check(
+        {"complete": True, "missing": None} if verdict.complete else {"complete": False, "missing": missing}
+    )
     if canonical is None:
         raise ProviderResponseError("model provider response failed")
     return canonical

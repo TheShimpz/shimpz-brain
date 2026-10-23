@@ -123,6 +123,7 @@ class BrowserTurnTests(unittest.TestCase):
                 "kind": "wait",
                 "url": None,
                 "ref": None,
+                "refs": None,
                 "text": None,
                 "direction": None,
                 "summary": None,
@@ -143,13 +144,13 @@ class BrowserTurnTests(unittest.TestCase):
         request = {
             "objective": OBJECTIVE,
             "language": "pt-BR",
-            "history": [],
+            "thread": {"folded": [], "folded_omitted": 0, "notes": [], "notes_omitted": 0, "steps": []},
             "observation": "url: x",
             "screenshot": None,
         }
         provider = context().provider
         self.assertEqual(
-            runtime.browser_step(provider, request),
+            runtime.browser_call(provider, "browser-step", request),
             ({"kind": "wait"}, "gpt-6-luna" if provider.provider == "openai" else "claude-sonnet-5-5"),
         )
         self.assertEqual(len(seen), 1)

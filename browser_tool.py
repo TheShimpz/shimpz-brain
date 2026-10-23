@@ -30,7 +30,9 @@ DESCRIPTION = (
     "search the web or cite sources, and no available Action covers it. Never use it otherwise for general knowledge, "
     "writing, math, or what the conversation already contains. It cannot sign in, buy, or send messages or forms. "
     "Write one self-contained objective in the person's language: the site or search, every value to use, and what "
-    "to report back. Call it alone, at most once per message; it takes about a minute."
+    "to report back. Call it alone, at most once per message; research can take several minutes. Its result may "
+    "list unscreened_urls (cited pages no page of the task showed) and a completeness other than complete: tell the "
+    "person plainly which sources were not confirmed and what is missing."
 )
 SCHEMA = {
     "type": "object",
