@@ -258,6 +258,30 @@ class BrowserFinishingTests(unittest.TestCase):
         with self.assertRaises(RuntimeContractError):
             check(lambda: complete, "openai", {**request, "summary": ""})
 
+    def test_a_written_answer_that_fails_or_a_verdict_outside_its_form_is_a_response_failure(self):
+        class Broken(_Writer):
+            def invoke(self, messages):
+                raise OSError("connection reset")
+
+        with self.assertRaises(ProviderResponseError):
+            final(lambda: Broken(""), "openai", REQUEST)
+        with (
+            mock.patch.object(browser_step, "MAX_PRICED_INPUT_TOKENS", 1),
+            self.assertRaisesRegex(RuntimeContractError, "priced bound"),
+        ):
+            final(lambda: _Writer("x"), "openai", REQUEST)
+        request = {"objective": REQUEST["objective"], "language": "pt-BR", "summary": "ok"}
+        vague = StructuredFakeModel(responses=[AIMessage(content=json.dumps({"complete": False, "missing": None}))])
+        with self.assertRaises(ProviderResponseError):
+            check(lambda: vague, "openai", request)
+
+    def test_a_request_past_the_request_measure_is_refused(self):
+        with (
+            mock.patch.object(browser_protocol, "MAX_REQUEST_TEXT_BYTES", 10),
+            self.assertRaises(RuntimeContractError),
+        ):
+            validate(REQUEST)
+
     def test_haiku_folds_checks_and_finishes_nothing_and_makes_no_call(self):
         def unreachable():
             raise AssertionError("no model call")
