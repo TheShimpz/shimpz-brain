@@ -17,7 +17,6 @@ from typing import Annotated, Any, Literal, Protocol, Self
 import action_purpose
 import agent_runtime
 import attachments as turn_attachments
-import browser_step
 import capability_plan
 import intent_fast_path
 import intent_route
@@ -27,6 +26,8 @@ import model_usage
 import provider_cancel
 import turn_pins
 from action_purpose import PendingAction
+from api_input import ClosedInput, ProviderInput
+from browser_api import BrowserCheckInput, BrowserFoldInput, BrowserStepInput
 from capability_plan import CapabilityCandidate, CapabilityPlan
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -34,11 +35,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from intent_route import DirectoryCandidate, IntentRoute, LifecycleContext, LifecycleIntent
 from langgraph.checkpoint.sqlite import SqliteSaver
-from protocol.team.http.v1 import browser as browser_protocol
 from protocol.team.http.v1 import routine as team_routine_protocol
 from protocol.team.http.v1 import routine_context as team_routine_context
 from protocol.team.http.v1 import turn as team_turn
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
+from pydantic import ConfigDict, Field, SecretStr, StrictBool, field_validator, model_validator
 
 # The modules requests import lazily (provider SDKs, LangChain, LangGraph), loaded before the startup freeze.
 WARM_IMPORTS = (
@@ -98,36 +98,6 @@ _PRUNE_CHECKPOINTS_SQL = (
     "SELECT 1 FROM latest WHERE latest.checkpoint_ns=checkpoints.checkpoint_ns "
     "AND latest.checkpoint_id=checkpoints.checkpoint_id)"
 )
-
-
-class ClosedInput(BaseModel):
-    """A request object refused whole, with one constant error, when it carries any field it does not declare.
-
-    Pydantic's own `extra="forbid"` reports each unknown field separately, and every error costs about a kilobyte of
-    memory, far more than the few body bytes that create it. One error per object keeps the errors a body can cause
-    bounded by the objects its lists admit.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    @model_validator(mode="before")
-    @classmethod
-    def refuse_unknown_fields(cls, value: object) -> object:
-        if isinstance(value, dict) and any(key not in cls.model_fields for key in value):
-            raise ValueError("unknown field")
-        return value
-
-
-class ProviderInput(ClosedInput):
-    provider: Literal["anthropic", "openai"]
-    model: str = Field(min_length=1, max_length=128)
-    api_key: SecretStr = Field(min_length=agent_runtime.MIN_API_KEY_CHARS, max_length=agent_runtime.MAX_API_KEY_CHARS)
-
-    def runtime(self) -> agent_runtime.ProviderConfig:
-        # Team names the Team's chat model; a model the Brain only runs itself is never one.
-        if self.model not in agent_runtime.CHAT_MODELS_BY_PROVIDER.get(self.provider, frozenset()):
-            raise agent_runtime.RuntimeContractError("unsupported model for provider")
-        return agent_runtime.ProviderConfig(self.provider, self.model, self.api_key.get_secret_value())
 
 
 class ActionInput(ClosedInput):
@@ -352,52 +322,6 @@ class CapabilityCandidateInput(ClosedInput):
                 capability_plan.CapabilityIntegration(id=item.id, provider=item.provider) for item in self.integrations
             ),
         )
-
-
-class BrowserStepInput(ClosedInput):
-    """One Browser agent call (ADR-0117): the Team's provider, the task, its thread, and the bounded current page."""
-
-    provider: ProviderInput
-    objective: str = Field(min_length=1, max_length=browser_protocol.MAX_OBJECTIVE_CHARS)
-    language: Literal["en", "pt-BR"]
-    # The task's thread, admitted whole by the Browser protocol before any model call.
-    thread: dict[str, Any]
-    observation: str = Field(max_length=browser_protocol.MAX_OBSERVATION_BYTES)
-    screenshot: str | None = Field(max_length=browser_step.MAX_SCREENSHOT_BYTES * 4 // 3 + 4)
-    # The completed downloads present in the task's Browser so far, or null when Team could not read them.
-    downloads: dict[str, Any] | None
-
-    def runtime_request(self) -> dict[str, object]:
-        return {
-            "objective": self.objective,
-            "language": self.language,
-            "thread": self.thread,
-            "observation": self.observation,
-            "screenshot": self.screenshot,
-            "downloads": self.downloads,
-        }
-
-
-class BrowserFoldInput(BrowserStepInput):
-    """A fold: the step request it extends, and the step numbers whose pages are about to leave the thread."""
-
-    first: int = Field(ge=1, le=browser_protocol.MAX_STEPS)
-    last: int = Field(ge=1, le=browser_protocol.MAX_STEPS)
-
-    def runtime_request(self) -> dict[str, object]:
-        return {**super().runtime_request(), "first": self.first, "last": self.last}
-
-
-class BrowserCheckInput(ClosedInput):
-    """The completeness check: the Team's provider, the objective, and the agent's done answer."""
-
-    provider: ProviderInput
-    objective: str = Field(min_length=1, max_length=browser_protocol.MAX_OBJECTIVE_CHARS)
-    language: Literal["en", "pt-BR"]
-    summary: str = Field(min_length=1, max_length=browser_protocol.MAX_SUMMARY_BYTES)
-
-    def runtime_request(self) -> dict[str, object]:
-        return {"objective": self.objective, "language": self.language, "summary": self.summary}
 
 
 class CapabilityPlanInput(ClosedInput):
