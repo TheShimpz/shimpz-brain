@@ -1,7 +1,7 @@
 """The OpenAI Browser agent's conversation: one task's thread rendered as messages (ADR-0117, 2026-10-22 amendment).
 
 Team sends the whole thread each call and the Brain keeps nothing: the system prompt, the objective, one earlier-steps
-message (folded step lines and the agent's own fold notes), each unfolded step's page and step record, then the
+message (folded step lines and the agent's own task memory), each unfolded step's page and step record, then the
 current page. The rendering is deterministic, and a step's page message is the very message that showed it as the
 current page (only an image becomes a fixed text), so consecutive requests only grow at their end and the provider
 reuses the cached prompt. A fold, a final answer, and the completeness check add their own one instruction.
@@ -57,11 +57,12 @@ SYSTEM = (
 ONE_STEP = "\n\nAnswer with exactly one next step, as one JSON object, nothing else."
 SCREENSHOT_SHOWN = "\n(screenshot shown at this step)"
 EARLIER = "Your earlier steps (their pages are omitted; read a page again if you need it):\n"
-NOTES = "\n\nWhat you wrote down from those pages (your own notes of untrusted pages):\n"
+MEMORY = "\n\nYour task memory (your own notes of untrusted pages):\n"
 FOLD = (
-    "The pages of steps {first} to {last} are about to leave your view. Write down, as plain lines, every fact they "
-    "show that the objective needs (exact names, values, and URLs), and which sources or lists you have fully covered. "
-    "Only what the pages show; no step, no JSON."
+    "The pages of steps {first} to {last} are about to leave your view. Rewrite your task memory; what you write "
+    "replaces it. Keep every fact of your current memory that the objective still needs, add every fact those pages "
+    "show that it needs (exact names, values, and URLs), and say which searches, sources, or lists you have covered or "
+    "found refused. Plain lines, at most {limit} characters in all; only what pages showed; no step, no JSON."
 )
 FINAL = (
     "Your time or budget for this task is spent. Write your final answer now, in the given language: everything you "
@@ -94,14 +95,13 @@ def _page(number: int, text: str, downloads: object, shown: bool) -> str:
 
 
 def _earlier(thread: Mapping[str, object]) -> str | None:
-    folded, notes = thread["folded"], thread["notes"]
-    if not folded and not notes and not thread["folded_omitted"]:
+    folded, memory = thread["folded"], thread["memory"]
+    if not folded and not memory and not thread["folded_omitted"]:
         return None
     start = thread["folded_omitted"] + 1
     lines = [f"({thread['folded_omitted']} earlier steps omitted)"] if thread["folded_omitted"] else []
     lines += [_line(start + index, record) for index, record in enumerate(folded)]
-    kept = [f"({thread['notes_omitted']} earlier notes omitted)"] if thread["notes_omitted"] else []
-    return EARLIER + "\n".join(lines) + NOTES + "\n\n".join([*kept, *notes])
+    return EARLIER + "\n".join(lines) + MEMORY + memory
 
 
 def messages(admitted: Mapping[str, object], instruction: str | None = None) -> list:

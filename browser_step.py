@@ -29,10 +29,13 @@ from runtime_errors import ProviderResponseError, RuntimeContractError
 # Each provider's Browser model, as the Browser evaluation selected it (ADR-0117 §5.4, 2026-10-20 amendment): the
 # cheapest that passed. Claude Haiku 5.5 is a catalog model no person chooses for chat.
 BROWSER_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-haiku-5-5"}
-# The largest prompt every Browser model is priced for at its listed rate (Haiku 5.5 bills more above it). No token
-# encodes less than one UTF-8 byte, so a request's bytes, one screenshot's tokens, and the step schema's allowance
+# The largest prompt each provider's Browser model is priced for at its listed rate: GPT-6 Luna bills more above
+# 272,000 tokens and Haiku 5.5 above 100,000 (Haiku's step never renders the thread, so its prompt stays small). No
+# token encodes less than one UTF-8 byte, so a request's bytes, one screenshot's tokens, and the step schema's allowance
 # bound it from above; a request past it is refused before any provider call.
-MAX_PRICED_INPUT_TOKENS = browser_protocol.MAX_CALL_INPUT_TOKENS
+# A memory rewrite is asked to stay within this many characters, so its UTF-8 bytes stay within the protocol's bound.
+MEMORY_CHARS = browser_protocol.MAX_MEMORY_BYTES * 3 // 4
+MAX_PRICED_INPUT_TOKENS = {"openai": browser_protocol.MAX_CALL_INPUT_TOKENS, "anthropic": 100_000}
 IMAGE_TOKENS = 3_000
 SCHEMA_TOKENS = 4_000
 MAX_RESPONSE_CHARS = 8 * 1024
@@ -203,8 +206,8 @@ def input_bound(rendered: list) -> int:
     return browser_thread.text_bytes(rendered) + images * IMAGE_TOKENS + SCHEMA_TOKENS
 
 
-def _bounded(rendered: list) -> list:
-    if input_bound(rendered) > MAX_PRICED_INPUT_TOKENS:
+def _bounded(rendered: list, provider: str) -> list:
+    if input_bound(rendered) > MAX_PRICED_INPUT_TOKENS[provider]:
         raise RuntimeContractError("Browser step request exceeds its priced bound")
     return rendered
 
@@ -227,7 +230,7 @@ def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Map
     """One canonical step for the task; an answer outside the closed set is a provider response failure."""
     admitted = validate(request)
     threaded = provider == "openai"
-    rendered = _bounded(browser_thread.messages(admitted) if threaded else _prompt(admitted))
+    rendered = _bounded(browser_thread.messages(admitted) if threaded else _prompt(admitted), provider)
     answer = structured.bounded_value(
         lambda: capped(model_factory(), provider),
         provider,
@@ -245,7 +248,7 @@ def step(model_factory: Callable[[], BaseChatModel], provider: str, request: Map
 def _written(model_factory: Callable[[], BaseChatModel], provider: str, rendered: list, limit: int) -> str | None:
     """A plain-text answer to a rendered call, bounded to `limit` UTF-8 bytes; None when nothing usable came back."""
     try:
-        reply = capped(model_factory(), provider, MAX_WRITE_OUTPUT_TOKENS).invoke(_bounded(rendered))
+        reply = capped(model_factory(), provider, MAX_WRITE_OUTPUT_TOKENS).invoke(_bounded(rendered, provider))
     except RuntimeContractError:
         raise
     except Exception as exc:
@@ -254,16 +257,21 @@ def _written(model_factory: Callable[[], BaseChatModel], provider: str, rendered
 
 
 def fold(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
-    """The agent's own note of the steps about to leave its view; Haiku keeps none and makes no call."""
+    """The agent's whole rewritten memory as steps leave its view; Haiku keeps none and makes no call.
+
+    A rewrite past the memory's bound is refused rather than cut, so Team keeps the memory it had.
+    """
     admitted = validate(request)
     first, last = request.get("first"), request.get("last")
     if type(first) is not int or type(last) is not int or not 1 <= first <= last <= browser_protocol.MAX_STEPS:
         raise RuntimeContractError("invalid Browser step request")
     if provider != "openai":
-        return {"note": None}
-    rendered = browser_thread.messages(admitted, browser_thread.FOLD.format(first=first, last=last))
-    note = _written(model_factory, provider, rendered, browser_protocol.MAX_FOLD_NOTE_BYTES)
-    return {"note": browser_protocol.canonical_note(note) if note is not None else None}
+        return {"memory": None}
+    instruction = browser_thread.FOLD.format(first=first, last=last, limit=MEMORY_CHARS)
+    rendered = browser_thread.messages(admitted, instruction)
+    # Twice the bound is kept, so an answer longer than the bound stays longer and is refused rather than cut to fit.
+    memory = _written(model_factory, provider, rendered, 2 * browser_protocol.MAX_MEMORY_BYTES)
+    return {"memory": browser_protocol.canonical_memory(memory) if memory is not None else None}
 
 
 def final(model_factory: Callable[[], BaseChatModel], provider: str, request: Mapping[str, object]) -> dict:
@@ -285,7 +293,7 @@ def check(model_factory: Callable[[], BaseChatModel], provider: str, request: Ma
         raise RuntimeContractError("invalid Browser check request")
     if provider != "openai":
         return {"complete": None, "missing": None}
-    rendered = _bounded(browser_thread.check_messages(objective, str(summary)))
+    rendered = _bounded(browser_thread.check_messages(objective, str(summary)), provider)
     verdict = structured.bounded_value(
         lambda: capped(model_factory(), provider),
         provider,

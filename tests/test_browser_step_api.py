@@ -8,7 +8,7 @@ PAYLOAD = {
     "provider": {"provider": "openai", "model": "gpt-6.1-sol", "api_key": SECRET},
     "objective": "Veja o prazo do edital.",
     "language": "pt-BR",
-    "thread": {"folded": [], "folded_omitted": 0, "notes": [], "notes_omitted": 0, "steps": []},
+    "thread": {"folded": [], "folded_omitted": 0, "memory": "", "steps": []},
     "observation": "url: https://example.com",
     "screenshot": None,
     "downloads": {"files": ["report.csv"], "pending": 1, "truncated": False},
@@ -17,7 +17,7 @@ PAYLOAD = {
 
 ANSWERS = {
     "browser-step": {"kind": "wait"},
-    "browser-fold": {"note": "V101: R$ 9.500"},
+    "browser-fold": {"memory": "V101: R$ 9.500"},
     "browser-check": {"complete": True, "missing": None},
     "browser-final": {"summary": "ok"},
 }

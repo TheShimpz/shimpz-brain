@@ -30,7 +30,7 @@ from protocol.team.http.v1 import browser as browser_protocol
 from runtime_errors import ProviderResponseError, RuntimeContractError
 from structured_fake import StructuredFakeModel
 
-EMPTY = {"folded": [], "folded_omitted": 0, "notes": [], "notes_omitted": 0, "steps": []}
+EMPTY = {"folded": [], "folded_omitted": 0, "memory": "", "steps": []}
 ENTRY = {
     "step": {"kind": "navigate", "url": "https://example.com"},
     "outcome": "ok",
@@ -138,14 +138,13 @@ class BrowserStepTests(unittest.TestCase):
         for earlier, later in itertools.pairwise(requests):
             self.assertEqual(later[: len(earlier)], earlier)
 
-    def test_folded_steps_and_notes_form_one_earlier_message_of_untrusted_notes(self):
+    def test_folded_steps_and_the_memory_form_one_earlier_message_of_untrusted_notes(self):
         folded = [{key: ENTRY[key] for key in ("step", "outcome", "page")}]
-        thread = {**EMPTY, "folded": folded, "folded_omitted": 3, "notes": ["V101: R$ 9.500"], "notes_omitted": 1}
+        thread = {**EMPTY, "folded": folded, "folded_omitted": 3, "memory": "V101: R$ 9.500"}
         rendered = browser_thread.messages(validate({**REQUEST, "thread": thread}))
         earlier = rendered[2].content
         self.assertTrue(earlier.startswith(browser_thread.EARLIER + "(3 earlier steps omitted)\nStep 4 at about:blank"))
-        self.assertIn("your own notes of untrusted pages", earlier)
-        self.assertTrue(earlier.endswith("(1 earlier notes omitted)\n\nV101: R$ 9.500"))
+        self.assertTrue(earlier.endswith(browser_thread.MEMORY + "V101: R$ 9.500"))
         self.assertTrue(rendered[-1].content.startswith("Page at step 5:\n"))
 
     def test_the_rendered_text_stays_within_the_protocols_measure(self):
@@ -155,7 +154,7 @@ class BrowserStepTests(unittest.TestCase):
             "page": {"url": "https://example.com/" + "a" * 2_000, "title": "t" * 300},
         }
         records = [{key: long_entry[key] for key in ("step", "outcome", "page")}] * 3
-        thread = {**EMPTY, "folded": records, "notes": ["n" * 8_000], "steps": [long_entry] * 2}
+        thread = {**EMPTY, "folded": records, "memory": "n" * 8_000, "steps": [long_entry] * 2}
         request = {**REQUEST, "thread": thread, "observation": "o" * 20_000}
         admitted = validate(request)
         rendered = browser_thread.messages(admitted, browser_thread.FINAL)
@@ -203,12 +202,28 @@ class BrowserStepTests(unittest.TestCase):
             raise AssertionError("no model call")
 
         rendered = browser_thread.messages(validate(REQUEST))
-        self.assertLessEqual(input_bound(rendered), MAX_PRICED_INPUT_TOKENS)
+        self.assertLessEqual(input_bound(rendered), MAX_PRICED_INPUT_TOKENS["openai"])
         with (
             self.assertRaisesRegex(RuntimeContractError, "priced bound"),
-            mock.patch.object(browser_step, "MAX_PRICED_INPUT_TOKENS", input_bound(rendered) - 1),
+            mock.patch.dict(browser_step.MAX_PRICED_INPUT_TOKENS, {"openai": input_bound(rendered) - 1}),
         ):
             step(unreachable, "openai", REQUEST)
+
+    def test_a_request_at_the_protocols_measure_stays_within_luna_s_priced_bound(self):
+        # Every part at its bound: the history's memory, folded lines, and unfolded pages, the page, and a fold's
+        # instruction; the rendered prompt's bytes, an image, and the schema stay within what Luna bills at its rate.
+        record = {"step": {"kind": "wait"}, "outcome": "ok", "page": {"url": "about:blank", "title": ""}}
+        lines = browser_protocol.MAX_FOLDED_BYTES // browser_protocol.record_bytes(record)
+        page = {**record, "text": "é" * (browser_protocol.MAX_OBSERVATION_BYTES // 2), "downloads": None}
+        thread = {**EMPTY, "folded": [record] * lines, "memory": "m" * browser_protocol.MAX_MEMORY_BYTES}
+        while browser_protocol.canonical_thread({**thread, "steps": [*thread["steps"], {**page, "screenshot": False}]}):
+            thread = {**thread, "steps": [*thread["steps"], {**page, "screenshot": False}]}
+        objective = "o" * browser_protocol.MAX_OBJECTIVE_CHARS
+        request = {**REQUEST, "objective": objective, "thread": thread, "observation": page["text"]}
+        instruction = browser_thread.FOLD.format(first=1, last=1, limit=browser_step.MEMORY_CHARS)
+        rendered = browser_thread.messages(validate(request), instruction)
+        self.assertLessEqual(input_bound(rendered) + browser_step.IMAGE_TOKENS, MAX_PRICED_INPUT_TOKENS["openai"])
+        self.assertLess(MAX_PRICED_INPUT_TOKENS["openai"], 272_000)
 
     def test_a_malformed_request_is_refused_before_any_model_call(self):
         oversized = base64.b64encode(PNG_SIGNATURE + b"x" * (2 * 1024 * 1024)).decode()
@@ -230,14 +245,17 @@ class BrowserStepTests(unittest.TestCase):
 
 
 class BrowserFinishingTests(unittest.TestCase):
-    def test_a_fold_extends_the_thread_with_its_instruction_and_returns_the_agents_note(self):
+    def test_a_fold_extends_the_thread_with_its_instruction_and_returns_the_rewritten_memory(self):
         writer = _Writer("Vaga V101: R$ 9.500\x07 por mês")
         answer = fold(lambda: writer, "openai", {**REQUEST, "first": 1, "last": 1})
-        self.assertEqual(answer, {"note": "Vaga V101: R$ 9.500  por mês"})
+        self.assertEqual(answer, {"memory": "Vaga V101: R$ 9.500  por mês"})
         sent = writer.sent[0]
         self.assertEqual(sent[:-1], browser_thread.messages(validate(REQUEST)))
-        self.assertEqual(sent[-1].content, browser_thread.FOLD.format(first=1, last=1))
-        self.assertEqual(fold(lambda: _Writer("   "), "openai", {**REQUEST, "first": 1, "last": 1}), {"note": None})
+        self.assertEqual(sent[-1].content, browser_thread.FOLD.format(first=1, last=1, limit=browser_step.MEMORY_CHARS))
+        self.assertEqual(fold(lambda: _Writer("   "), "openai", {**REQUEST, "first": 1, "last": 1}), {"memory": None})
+        # A rewrite longer than the memory's bound is refused, never cut to fit.
+        long = _Writer("x" * (browser_protocol.MAX_MEMORY_BYTES + 1))
+        self.assertEqual(fold(lambda: long, "openai", {**REQUEST, "first": 1, "last": 1}), {"memory": None})
         for numbers in ({"first": 0, "last": 1}, {"first": 2, "last": 1}, {"first": "1", "last": 1}):
             with self.subTest(numbers=numbers), self.assertRaises(RuntimeContractError):
                 fold(lambda: writer, "openai", {**REQUEST, **numbers})
@@ -266,7 +284,7 @@ class BrowserFinishingTests(unittest.TestCase):
         with self.assertRaises(ProviderResponseError):
             final(lambda: Broken(""), "openai", REQUEST)
         with (
-            mock.patch.object(browser_step, "MAX_PRICED_INPUT_TOKENS", 1),
+            mock.patch.dict(browser_step.MAX_PRICED_INPUT_TOKENS, {"openai": 1}),
             self.assertRaisesRegex(RuntimeContractError, "priced bound"),
         ):
             final(lambda: _Writer("x"), "openai", REQUEST)
@@ -287,7 +305,7 @@ class BrowserFinishingTests(unittest.TestCase):
             raise AssertionError("no model call")
 
         request = {"objective": REQUEST["objective"], "language": "pt-BR", "summary": "ok"}
-        self.assertEqual(fold(unreachable, "anthropic", {**REQUEST, "first": 1, "last": 1}), {"note": None})
+        self.assertEqual(fold(unreachable, "anthropic", {**REQUEST, "first": 1, "last": 1}), {"memory": None})
         self.assertEqual(final(unreachable, "anthropic", REQUEST), {"summary": None})
         self.assertEqual(check(unreachable, "anthropic", request), {"complete": None, "missing": None})
 
