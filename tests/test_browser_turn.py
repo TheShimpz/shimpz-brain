@@ -11,7 +11,7 @@ import turn_prompt
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from runtime_errors import RuntimeContractError
-from test_agent_runtime import ToolAwareFakeModel, context
+from test_agent_runtime import RecordingToolAwareFakeModel, ToolAwareFakeModel, context
 from tool_fake import FixedFactory
 
 OBJECTIVE = "Veja o prazo do edital no site da prefeitura."
@@ -46,6 +46,20 @@ class BrowserTurnTests(unittest.TestCase):
         self.assertEqual((resumed.status, resumed.reply), ("completed", "O prazo é 30/11."))
         self.assertIn(turn_prompt.BROWSER_SECTION, turn_prompt.system_prompt(_offered()))
         self.assertNotIn(turn_prompt.BROWSER_SECTION, turn_prompt.system_prompt(context()))
+
+    def test_the_reply_after_unread_downloads_is_told_no_file_reached_the_team(self):
+        model = RecordingToolAwareFakeModel(
+            responses=[AIMessage(content="", tool_calls=[_call()]), AIMessage(content="Nenhum arquivo chegou.")]
+        )
+        runtime = agent_runtime.AgentRuntime(InMemorySaver(), model_factory=FixedFactory(lambda _config: model))
+        turn = runtime.start(_offered(), "Baixe o edital.")
+        RecordingToolAwareFakeModel.seen_messages.clear()
+        unread = {**RESULT, "summary": "Baixei edital.pdf.", "downloads": "unread"}
+        runtime.resume(_offered(), {turn.browser.interrupt_id: unread})
+        # The reply pass, offered no tool, still reads the rule beside the result that calls for it.
+        final = RecordingToolAwareFakeModel.seen_messages[-1]
+        self.assertIn("When its downloads are unread", str(final[0].content))
+        self.assertIn('"downloads":"unread"', next(str(m.content) for m in final if isinstance(m, ToolMessage)))
 
     def test_a_tool_call_after_the_browser_result_is_refused_until_the_model_replies(self):
         runtime = self.runtime(
