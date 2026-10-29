@@ -935,7 +935,10 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_brain_applies_teams_whole_admission_predicate_to_both_schemas(self):
         lookahead = {**CLOSED, "properties": {"v": {"type": "string", "pattern": "(?=a)"}}}
+        # Case folding each wide class costs far more to compile than its program bound shows.
+        folded = {f"p{index}": {"type": "string", "pattern": f"(?P<p{index}>(?i:[A-\uffff]))?"} for index in range(512)}
         for schema, problem in (
+            ({**CLOSED, "properties": folded}, "must prepare its patterns within half the matching budget"),
             ({"type": "object"}, "must close every object"),
             ({**CLOSED, "properties": {"v": {"type": "object"}}}, "must close every object"),
             ({**CLOSED, "properties": {"v": True}}, "must not use a boolean subschema"),
@@ -949,6 +952,14 @@ class AgentRuntimeTests(unittest.TestCase):
                     self.assertRaisesRegex(agent_runtime.RuntimeContractError, f"^Action {kind} schema {problem}$"),
                 ):
                     agent_runtime.ActionDefinition(id="action", summary="Summary", **schemas)
+
+    def test_an_annotation_nested_as_deep_as_strict_json_admits_is_admitted(self):
+        nested: object = []
+        for _ in range(509):
+            nested = [nested]
+        deep = {**CLOSED, "default": nested}
+        action = agent_runtime.ActionDefinition(id="action", summary="Summary", input_schema=deep, output_schema=deep)
+        self.assertIs(action.output_schema, deep)
 
     def test_the_verdict_cache_holds_every_schema_one_turn_may_carry(self):
         self.assertGreaterEqual(

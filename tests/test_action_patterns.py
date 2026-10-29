@@ -122,12 +122,11 @@ class ActionPatternTests(unittest.TestCase):
 
     def test_one_validation_charges_every_search_against_one_budget(self) -> None:
         # `a.{900}c` is bounded by 15,333 instructions, which each search charges per subject byte after its
-        # preparation charged 256 times as many once.
+        # preparation was charged once.
         heavy = "a.{900}c"
         fits = (
-            action_protocol.MAX_PATTERN_WORK // action_pattern.pattern_program(heavy)
-            - action_protocol.PREPARATION_WEIGHT
-        )
+            action_protocol.MAX_PATTERN_WORK - action_pattern.pattern_preparation(heavy)
+        ) // action_pattern.pattern_program(heavy)
         self.assertFalse(action_protocol.pattern_matches(heavy, "b" * fits))
         with self.assertRaisesRegex(action_protocol.PatternError, "work budget"):
             action_protocol.pattern_matches(heavy, "\u00e9" * (fits // 2 + 1))
