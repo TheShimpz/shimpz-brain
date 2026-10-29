@@ -274,7 +274,7 @@ class _SlowServer:
 
 
 class PoolBoundTests(unittest.TestCase):
-    # Local Brain egress admits at most this many tunnels from Brain at once (egress/app.py MAX_SOURCE_CONCURRENCY).
+    # Local Brain egress admits at most this many tunnels from Brain at once (egress/src/lib.rs LIMITS).
     EGRESS_SOURCE_TUNNELS = 8
 
     def setUp(self) -> None:
