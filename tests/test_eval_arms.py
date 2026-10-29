@@ -5,6 +5,7 @@ import unittest
 import agent_runtime
 from eval import arms, contracts, corpus, split
 from eval import world as simulated
+from tool_fake import CLOSED
 
 Z = {"zone_id": "zn-7f3a"}
 
@@ -20,7 +21,10 @@ class ContractTests(unittest.TestCase):
             agent_runtime.AssistantDefinition(
                 a.id,
                 a.genesis,
-                tuple(agent_runtime.ActionDefinition(x.id, x.summary, x.input_schema) for x in a.actions),
+                tuple(
+                    agent_runtime.ActionDefinition(x.id, x.summary, x.input_schema, output_schema=CLOSED)
+                    for x in a.actions
+                ),
             )
             for a in contracts.ASSISTANTS_B.values()
             if a.relevant

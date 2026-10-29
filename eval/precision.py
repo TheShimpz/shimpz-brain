@@ -31,6 +31,7 @@ from pathlib import Path
 from eval import (
     arms,
     corpus,
+    fixtures,
     fresh,
     fresh2,
     fresh3,
@@ -781,7 +782,10 @@ def _brain_assistant(contracts: str, name: str) -> object:
     return agent_runtime.AssistantDefinition(
         assistant.id,
         assistant.genesis,
-        tuple(agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema) for a in assistant.actions),
+        tuple(
+            agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema, output_schema=fixtures.OBJECT_SCHEMA)
+            for a in assistant.actions
+        ),
     )
 
 

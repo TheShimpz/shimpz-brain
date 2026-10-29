@@ -53,12 +53,12 @@ DNS = agent_runtime.AssistantDefinition(
             "List the user's DNS zones.",
             {**_OBJECT, "properties": {}},
             output_schema={
-                "type": "object",
+                **_OBJECT,
                 "properties": {
                     "zones": {
                         "type": "array",
                         "items": {
-                            "type": "object",
+                            **_OBJECT,
                             "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
                         },
                     }
@@ -78,6 +78,7 @@ DNS = agent_runtime.AssistantDefinition(
                 },
                 "required": ["zone", "type", "name", "content"],
             },
+            output_schema=_OBJECT,
         ),
     ),
 )
@@ -96,6 +97,7 @@ MESSAGES = agent_runtime.AssistantDefinition(
                 },
                 "required": ["to", "text"],
             },
+            output_schema=_OBJECT,
         ),
     ),
 )

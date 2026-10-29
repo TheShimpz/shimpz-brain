@@ -11,11 +11,14 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
+# The smallest Action schema Team admits: a closed object with no property.
+CLOSED = {"type": "object", "additionalProperties": False}
 PROVIDER = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "test-key-0123456789")
 ACTION = agent_runtime.ActionDefinition(
     "ping",
     "Ping a host.",
     {"type": "object", "properties": {"host": {"type": "string"}}, "additionalProperties": False},
+    output_schema=CLOSED,
 )
 PINGER = agent_runtime.AssistantDefinition("pinger", "Pinger checks that hosts answer.", (ACTION,))
 

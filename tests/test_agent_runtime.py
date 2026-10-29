@@ -13,7 +13,6 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest import mock
 
-import action_schema
 import agent_runtime
 import clarification
 import context_budget
@@ -25,7 +24,7 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from protocol.team.action.v1 import schema as action_protocol
-from tool_fake import FixedFactory
+from tool_fake import CLOSED, FixedFactory
 
 COLD_IMPORT_TIMEOUT_SECONDS = 10
 
@@ -71,6 +70,7 @@ def action(action_id: str = "hello") -> agent_runtime.ActionDefinition:
             "properties": {"name": {"type": "string", "maxLength": 80}},
             "additionalProperties": False,
         },
+        output_schema=CLOSED,
     )
 
 
@@ -669,6 +669,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 id="hello",
                 summary="Hello",
                 input_schema={"type": "string"},
+                output_schema=CLOSED,
             )
 
     def test_remaining_definition_contracts_fail_closed(self):
@@ -687,16 +688,16 @@ class AgentRuntimeTests(unittest.TestCase):
                 agent_runtime.ProviderConfig(provider=provider, model=model, api_key=api_key)
 
         for summary, schema, message in (
-            (" ", {"type": "object"}, "invalid Action summary"),
-            ("Summary", {"type": "object", "value": {1}}, "not JSON"),
+            (" ", CLOSED, "invalid Action summary"),
+            ("Summary", {**CLOSED, "value": {1}}, "input schema is invalid"),
             (
                 "Summary",
-                {"type": "object", "description": "x" * action_protocol.MAX_BYTES},
+                {**CLOSED, "description": "x" * action_protocol.MAX_BYTES},
                 "too large",
             ),
         ):
             with self.subTest(message=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
-                agent_runtime.ActionDefinition(id="action", summary=summary, input_schema=schema)
+                agent_runtime.ActionDefinition(id="action", summary=summary, input_schema=schema, output_schema=CLOSED)
 
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Assistant id"):
             assistant("Invalid Assistant")
@@ -852,15 +853,19 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_brain_admits_exactly_the_action_bounds_team_admits(self):
         # Team admits 128 Actions per Assistant and a compact input schema of at most 128 KiB.
-        empty = len(json.dumps({"type": "object", "description": ""}, separators=(",", ":")).encode())
+        empty = len(json.dumps({**CLOSED, "description": ""}, separators=(",", ":")).encode())
         for size, admitted in ((128 * 1024, True), (128 * 1024 + 1, False)):
-            schema = {"type": "object", "description": "x" * (size - empty)}
+            schema = {**CLOSED, "description": "x" * (size - empty)}
             with self.subTest(size=size):
                 if admitted:
-                    agent_runtime.ActionDefinition(id="action", summary="Summary", input_schema=schema)
+                    agent_runtime.ActionDefinition(
+                        id="action", summary="Summary", input_schema=schema, output_schema=CLOSED
+                    )
                 else:
                     with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too large"):
-                        agent_runtime.ActionDefinition(id="action", summary="Summary", input_schema=schema)
+                        agent_runtime.ActionDefinition(
+                            id="action", summary="Summary", input_schema=schema, output_schema=CLOSED
+                        )
 
         actions = tuple(action(f"action-{index}") for index in range(129))
         self.assertEqual(len(context(assistant("busy-helper", *actions[:128])).assistants[0].actions), 128)
@@ -880,7 +885,9 @@ class AgentRuntimeTests(unittest.TestCase):
             }
 
         def dense(action_id: str, nodes: int) -> agent_runtime.ActionDefinition:
-            return agent_runtime.ActionDefinition(id=action_id, summary="Summary", input_schema=schema(nodes))
+            return agent_runtime.ActionDefinition(
+                id=action_id, summary="Summary", input_schema=schema(nodes), output_schema=CLOSED
+            )
 
         # Team admits 4,096 values in one Action schema and 32,768 in one whole machine contract.
         limit = 4096
@@ -890,38 +897,64 @@ class AgentRuntimeTests(unittest.TestCase):
             dense("action", limit + 1)
         # The value bound is checked before the schema is encoded or checked against the metaschema.
         with (
-            mock.patch.object(action_schema.json, "dumps") as dumps,
+            mock.patch.object(action_protocol.json, "dumps") as dumps,
             self.assertRaisesRegex(agent_runtime.RuntimeContractError, "too large"),
         ):
             agent_runtime.ActionDefinition(
                 id="action",
                 summary="Summary",
                 input_schema={**schema(limit + 1), "required": "invalid"},
+                output_schema=CLOSED,
             )
         dumps.assert_not_called()
 
         # Team's whole-contract bound caps the input and output schemas one Assistant carries together.
         total = 32_768
-        # Each Action here also carries an empty output schema, one value.
+        # Each Action here also carries the smallest closed output schema.
+        output = action_protocol.json_nodes(CLOSED, limit)
         actions = [dense(f"action-{index}", limit - 1) for index in range(total // limit - 1)]
-        last = total - limit * len(actions) - 1
+        last = total - (limit - 1 + output) * len(actions) - output
         self.assertEqual(len(assistant("dense-helper", *actions, dense("last", last)).actions), len(actions) + 1)
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action schemas are too large"):
             assistant("dense-helper", *actions, dense("last", last + 1))
-        returning = dataclasses.replace(dense("last", last), output_schema={"type": "object"})
+        returning = dataclasses.replace(dense("last", last), output_schema={**CLOSED, "title": "One more value."})
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action schemas are too large"):
             assistant("dense-helper", *actions, returning)
         for output, message in (
-            ([], "invalid Action output schema"),
-            ({"type": 1}, "invalid Action output schema"),
-            ({"const": object()}, "output schema is not JSON"),
-            ({"const": "x" * action_protocol.MAX_BYTES}, "output schema is too large"),
+            ([], "output schema must describe an object"),
+            ({"type": 1}, "output schema must describe an object"),
+            ({**CLOSED, "const": object()}, "output schema is invalid"),
+            ({**CLOSED, "required": "invalid"}, "output schema is invalid"),
+            ({**CLOSED, "const": "x" * action_protocol.MAX_BYTES}, "output schema is too large"),
             (schema(limit + 1), "output schema is too large"),
         ):
             with self.subTest(output=message), self.assertRaisesRegex(agent_runtime.RuntimeContractError, message):
                 agent_runtime.ActionDefinition(
                     id="action", summary="Summary", input_schema=schema(5), output_schema=output
                 )
+
+    def test_brain_applies_teams_whole_admission_predicate_to_both_schemas(self):
+        lookahead = {**CLOSED, "properties": {"v": {"type": "string", "pattern": "(?=a)"}}}
+        for schema, problem in (
+            ({"type": "object"}, "must close every object"),
+            ({**CLOSED, "properties": {"v": {"type": "object"}}}, "must close every object"),
+            ({**CLOSED, "properties": {"v": True}}, "must not use a boolean subschema"),
+            (lookahead, "must use only patterns the linear-time matcher admits"),
+            ({**CLOSED, "$ref": "#"}, "must resolve every reference without a cycle"),
+        ):
+            for kind in ("input", "output"):
+                schemas = {"input_schema": CLOSED, "output_schema": CLOSED} | {f"{kind}_schema": schema}
+                with (
+                    self.subTest(kind=kind, problem=problem),
+                    self.assertRaisesRegex(agent_runtime.RuntimeContractError, f"^Action {kind} schema {problem}$"),
+                ):
+                    agent_runtime.ActionDefinition(id="action", summary="Summary", **schemas)
+
+    def test_the_verdict_cache_holds_every_schema_one_turn_may_carry(self):
+        self.assertGreaterEqual(
+            action_protocol.MAX_CHECKED_SCHEMAS,
+            2 * agent_runtime.MAX_ASSISTANTS * agent_runtime.MAX_ACTIONS_PER_ASSISTANT,
+        )
 
     def test_provider_failures_do_not_expose_the_secret(self):
         def failed_model(config):

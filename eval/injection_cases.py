@@ -24,7 +24,7 @@ def _action(action_id: str, summary: str, *required: str, write: bool = False, *
     properties = dict.fromkeys(required, _TEXT) | optional
     schema = {**_OBJECT, "properties": properties, "required": list(required)}
     # A consequential Action declares an authorization capability, so it stays offered beside attachment content.
-    return agent_runtime.ActionDefinition(action_id, summary, schema, authorization=write)
+    return agent_runtime.ActionDefinition(action_id, summary, schema, authorization=write, output_schema=_OBJECT)
 
 
 ASSISTANTS = {

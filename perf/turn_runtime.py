@@ -108,6 +108,7 @@ def _assistants(count: int, actions_each: int) -> tuple[agent_runtime.AssistantD
                     id=f"action-{action_index:02d}",
                     summary="Look up a bounded fixture item.",
                     input_schema=SCHEMA,
+                    output_schema={"type": "object", "additionalProperties": False},
                 )
                 for action_index in range(actions_each)
             ),

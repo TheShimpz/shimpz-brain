@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from protocol.team.action.v1 import schema as action_protocol
 from test_agent_runtime import ToolAwareFakeModel
-from tool_fake import FixedFactory
+from tool_fake import CLOSED, FixedFactory
 
 SCHEMA = {
     "type": "object",
@@ -21,7 +21,9 @@ SCHEMA = {
     "required": ["query", "search_type"],
     "additionalProperties": False,
 }
-ACTION = agent_runtime.ActionDefinition(id="search-web", summary="Search the web.", input_schema=SCHEMA)
+ACTION = agent_runtime.ActionDefinition(
+    id="search-web", summary="Search the web.", input_schema=SCHEMA, output_schema=CLOSED
+)
 TOOL = agent_runtime.tool_name("shimpz-exa", "search-web")
 SECRETISH = "sk-leaked-value-0123456789"
 
@@ -78,10 +80,11 @@ class ToolPreflightTests(unittest.TestCase):
             id="wide",
             summary="Wide input.",
             input_schema={
-                "type": "object",
+                **CLOSED,
                 "properties": {f"field_{i}_{'x' * 80}": {"type": "string"} for i in range(20)},
                 "required": [f"field_{i}_{'x' * 80}" for i in range(20)],
             },
+            output_schema=CLOSED,
         )
         message = action_tool.correction("tool", wide)
         self.assertLessEqual(len(message), action_tool.MAX_CORRECTION_CHARS)
@@ -93,17 +96,20 @@ class ToolPreflightTests(unittest.TestCase):
                 id="many",
                 summary="Many required plain names.",
                 input_schema={
-                    "type": "object",
+                    **CLOSED,
                     "properties": {f"f{i}": {"type": "string"} for i in range(20)},
                     "required": [f"f{i}" for i in range(20)],
                 },
+                output_schema=CLOSED,
             ),
         )
         self.assertIn("(f0, f1,", listed)
         self.assertNotIn("f16", listed)
         none = action_tool.correction(
             "tool",
-            agent_runtime.ActionDefinition(id="none", summary="No required input.", input_schema={"type": "object"}),
+            agent_runtime.ActionDefinition(
+                id="none", summary="No required input.", input_schema=CLOSED, output_schema=CLOSED
+            ),
         )
         self.assertIn("every required property, and values", none)
 
@@ -113,10 +119,11 @@ class ToolPreflightTests(unittest.TestCase):
             id="hostile",
             summary="Admitted by Team, which allows any property name.",
             input_schema={
-                "type": "object",
+                **CLOSED,
                 "properties": {hostile: {"type": "string"}, "ok": {"type": "string"}},
                 "required": ["ok", hostile],
             },
+            output_schema=CLOSED,
         )
         message = action_tool.correction("tool", action)
         self.assertNotIn("Ignore", message)
@@ -127,9 +134,12 @@ class ToolPreflightTests(unittest.TestCase):
         self.assertIn("every required property, and values", message)
 
     def test_an_invalid_input_schema_is_a_contract_error(self):
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Action input schema"):
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action input schema is invalid"):
             agent_runtime.ActionDefinition(
-                id="broken", summary="Broken schema.", input_schema={"type": "object", "properties": 3}
+                id="broken",
+                summary="Broken schema.",
+                input_schema={"type": "object", "properties": 3},
+                output_schema=CLOSED,
             )
 
     def test_tools_share_one_input_model_and_build_their_validator_when_first_called(self):
@@ -215,10 +225,15 @@ class ExternalReferenceTests(unittest.TestCase):
                     self.subTest(keyword=keyword, reference=reference),
                     self.assertRaisesRegex(agent_runtime.RuntimeContractError, "root or a named definition"),
                 ):
-                    agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "invalid Action input schema"):
+                    agent_runtime.ActionDefinition(
+                        id="read", summary="Read.", input_schema=schema, output_schema=CLOSED
+                    )
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Action input schema is invalid"):
             agent_runtime.ActionDefinition(
-                id="read", summary="Read.", input_schema={"type": "object", "properties": {"x": {"$ref": 7}}}
+                id="read",
+                summary="Read.",
+                input_schema={"type": "object", "properties": {"x": {"$ref": 7}}},
+                output_schema=CLOSED,
             )
 
         for definitions, reference in (
@@ -227,13 +242,13 @@ class ExternalReferenceTests(unittest.TestCase):
             ("$defs", "#/$defs/a~1b~0c"),
         ):
             local = {
-                "type": "object",
+                **CLOSED,
                 definitions: {"name": {"type": "string"}, "a/b~c": {"type": "string"}},
                 "properties": {"x": {"$ref": reference}},
                 "prefixItems": [{"$ref": reference}],
             }
             with self.subTest(reference=reference):
-                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=local)
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=local, output_schema=CLOSED)
 
     def test_admission_refuses_a_dialect_switch_or_a_nested_identifier(self):
         draft_07 = "http://json-schema.org/draft-07/schema#"
@@ -253,7 +268,7 @@ class ExternalReferenceTests(unittest.TestCase):
                 self.subTest(schema=schema),
                 self.assertRaisesRegex(agent_runtime.RuntimeContractError, "Draft 2020-12 dialect"),
             ):
-                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema, output_schema=CLOSED)
 
         rebound = {
             "type": "object",
@@ -262,15 +277,15 @@ class ExternalReferenceTests(unittest.TestCase):
             },
         }
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "nested identifier"):
-            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=rebound)
+            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=rebound, output_schema=CLOSED)
 
         current = {
             "$schema": action_protocol.DRAFT_2020_12,
             "$id": "https://example.invalid/action.json",
-            "type": "object",
+            **CLOSED,
             "properties": {"x": {"$schema": action_protocol.DRAFT_2020_12, "type": "string"}},
         }
-        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=current)
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=current, output_schema=CLOSED)
 
     def test_admission_reads_references_only_at_schema_nodes(self):
         remote = {"$ref": "https://example.invalid/schema.json"}
@@ -283,7 +298,7 @@ class ExternalReferenceTests(unittest.TestCase):
             },
             "additionalProperties": False,
         }
-        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=data)
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=data, output_schema=CLOSED)
 
         nested = {
             "type": "object",
@@ -296,7 +311,7 @@ class ExternalReferenceTests(unittest.TestCase):
             "additionalProperties": False,
         }
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "root or a named definition"):
-            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=nested)
+            agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=nested, output_schema=CLOSED)
 
     def test_the_argument_validator_never_retrieves_a_reference(self):
         schema = {"type": "object", "properties": {"x": {"$ref": "http://example.invalid/schema.json"}}}
@@ -323,7 +338,7 @@ class ExternalReferenceTests(unittest.TestCase):
                 self.subTest(schema=schema),
                 self.assertRaisesRegex(agent_runtime.RuntimeContractError, "every reference without a cycle"),
             ):
-                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema)
+                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=schema, output_schema=CLOSED)
 
     def test_admission_bounds_validation_work_with_every_reference_expanded(self):
         def doubling(levels: int) -> dict[str, object]:
@@ -347,6 +362,8 @@ class ExternalReferenceTests(unittest.TestCase):
                     agent_runtime.RuntimeContractError, "too large once its references are expanded"
                 ),
             ):
-                agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(levels))
+                agent_runtime.ActionDefinition(
+                    id="read", summary="Read.", input_schema=doubling(levels), output_schema=CLOSED
+                )
         self.assertEqual(action_protocol.expanded_subschemas(doubling(8)), 3_041)
-        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(8))
+        agent_runtime.ActionDefinition(id="read", summary="Read.", input_schema=doubling(8), output_schema=CLOSED)

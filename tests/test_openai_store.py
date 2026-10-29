@@ -13,7 +13,7 @@ import provider_client
 import provider_replies
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
-from tool_fake import FixedFactory
+from tool_fake import CLOSED, FixedFactory
 
 SCHEMA = {
     "type": "object",
@@ -22,7 +22,9 @@ SCHEMA = {
     "additionalProperties": False,
 }
 DNS = agent_runtime.AssistantDefinition(
-    "dns", "DNS reads zones.", (agent_runtime.ActionDefinition("read-zone", "Read one zone.", SCHEMA),)
+    "dns",
+    "DNS reads zones.",
+    (agent_runtime.ActionDefinition("read-zone", "Read one zone.", SCHEMA, output_schema=CLOSED),),
 )
 CONFIG = agent_runtime.ProviderConfig("openai", "gpt-6.1-sol", "sk-test-0123456789abcdef")
 REASONING = {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAAA-sealed-reasoning"}

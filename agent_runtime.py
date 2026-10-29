@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import action_purpose
-import action_schema
 import action_tool
 import attachments as turn_attachments
 import browser_step
@@ -63,7 +62,7 @@ PROVIDERS = frozenset(MODELS_BY_PROVIDER)
 # most 128 Actions, so these two bounds are the total: a request carries at most 2,048 Actions, exactly what Team can
 # admit.
 MAX_ASSISTANTS = team_payload.MAX_CHAT_ASSISTANTS
-MAX_ACTIONS_PER_ASSISTANT = action_schema.MAX_ACTIONS_PER_ASSISTANT
+MAX_ACTIONS_PER_ASSISTANT = 128
 # One resume answers the Action requests of one suspension, which carries at most Team's bound of them.
 MAX_ACTION_RESULTS = team_turn.MAX_ACTION_REQUESTS
 # An Assistant's Genesis is bounded in code points by its producers (Developers' manifest schema and Team's
@@ -104,12 +103,11 @@ class ProviderConfig:
             raise RuntimeContractError("invalid model provider credential")
 
 
-def _check_schema(schema: Mapping[str, Any], kind: str) -> None:
-    """One Action schema within its value and byte bounds, and a valid JSON Schema."""
-    problem = action_schema.bound_problem(schema)
+def _check_schema(schema: object, kind: str) -> None:
+    """One Action schema that Team's whole admission predicate admits, re-checked before the Brain relies on it."""
+    problem = action_protocol.admission_problem(schema)
     if problem is not None:
-        message = f"invalid Action {kind} schema" if problem == "invalid" else f"Action {kind} schema is {problem}"
-        raise RuntimeContractError(message)
+        raise RuntimeContractError(f"Action {kind} schema {problem}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,11 +121,13 @@ class ActionDefinition:
     # The input properties that take one attached file's id (ADR-0093).
     input_files: tuple[str, ...] = ()
     # The reviewed output schema: validated with the contract, never offered to a chat tool (ADR-0092, 2026-10-05).
-    output_schema: Mapping[str, Any] = field(default_factory=dict)
+    output_schema: Mapping[str, Any] = field(kw_only=True)
 
     def __post_init__(self) -> None:
         if team_identifiers.canonical_action_id(self.id) is None:
             raise RuntimeContractError("invalid Action id")
+        _check_schema(self.input_schema, "input")
+        _check_schema(self.output_schema, "output")
         properties = self.input_schema.get("properties")
         if (
             type(self.authorization) is not bool
@@ -137,13 +137,6 @@ class ActionDefinition:
             raise RuntimeContractError("invalid Action file or authorization declaration")
         if not self.summary.strip() or len(self.summary) > action_purpose.MAX_ACTION_SUMMARY_CHARS:
             raise RuntimeContractError("invalid Action summary")
-        if self.input_schema.get("type") != "object":
-            raise RuntimeContractError("Action input schema must describe an object")
-        _check_schema(self.input_schema, "input")
-        _check_schema(self.output_schema, "output")
-        problem = action_protocol.schema_problem(self.input_schema)
-        if problem is not None:
-            raise RuntimeContractError(f"Action input schema {problem}")
 
 
 @dataclass(frozen=True, slots=True)

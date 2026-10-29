@@ -21,6 +21,7 @@ ACTION = agent_runtime.ActionDefinition(
     id="lookup",
     summary="Look up a fixture item.",
     input_schema={"type": "object", "additionalProperties": False},
+    output_schema={"type": "object", "additionalProperties": False},
 )
 
 

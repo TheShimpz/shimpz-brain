@@ -29,6 +29,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from test_provider_cancel import NO_PROXY_ENV, GatedServer, run_in_scope
 from test_runtime_api import TOKEN, body
+from tool_fake import CLOSED
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -45,9 +46,14 @@ ASSISTANT = agent_runtime.AssistantDefinition(
     "docs",
     "Docs stores and reads documents.",
     (
-        agent_runtime.ActionDefinition("read-index", "Read the document index.", SCHEMA),
+        agent_runtime.ActionDefinition("read-index", "Read the document index.", SCHEMA, output_schema=CLOSED),
         agent_runtime.ActionDefinition(
-            "store", "Store one document.", FILE_SCHEMA, authorization=True, input_files=("document",)
+            "store",
+            "Store one document.",
+            FILE_SCHEMA,
+            authorization=True,
+            input_files=("document",),
+            output_schema=CLOSED,
         ),
     ),
 )
@@ -637,7 +643,9 @@ class RefusalEdgeTests(unittest.TestCase):
     def test_declarations_and_turn_contexts_outside_the_contract_are_refused(self) -> None:
         for authorization, input_files in ((True, ("missing",)), ("yes", ()), (True, ("document", "document"))):
             with self.subTest(input_files=input_files), self.assertRaises(agent_runtime.RuntimeContractError):
-                agent_runtime.ActionDefinition("store", "Store it.", FILE_SCHEMA, authorization, input_files)
+                agent_runtime.ActionDefinition(
+                    "store", "Store it.", FILE_SCHEMA, authorization, input_files, output_schema=CLOSED
+                )
         context = turn_context("openai", "gpt-6.1-sol", team_attachment("text"))
         for change in ({"attachments": ("text",)}, {"attachment_charge": -1}, {"attachment_charge": True}):
             with self.subTest(change=change), self.assertRaises(agent_runtime.RuntimeContractError):

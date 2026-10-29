@@ -16,7 +16,7 @@ import memory
 import provider_client
 import provider_replies
 from langgraph.checkpoint.memory import InMemorySaver
-from tool_fake import FixedFactory
+from tool_fake import CLOSED, FixedFactory
 
 import routine
 
@@ -40,8 +40,8 @@ DNS = agent_runtime.AssistantDefinition(
     "dns",
     "DNS reads zones.",
     (
-        agent_runtime.ActionDefinition("list-records", "List a zone's records.", LOOKUP),
-        agent_runtime.ActionDefinition("search-zones", "Search zones.", SEARCH),
+        agent_runtime.ActionDefinition("list-records", "List a zone's records.", LOOKUP, output_schema=CLOSED),
+        agent_runtime.ActionDefinition("search-zones", "Search zones.", SEARCH, output_schema=CLOSED),
     ),
 )
 DECLARED = {

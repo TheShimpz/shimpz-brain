@@ -12,7 +12,7 @@ import provider_client
 from anthropic.types import Message, TextBlock, Usage
 from langchain_anthropic import ChatAnthropic
 from langgraph.checkpoint.memory import InMemorySaver
-from tool_fake import FixedFactory
+from tool_fake import CLOSED, FixedFactory
 
 CACHE = {"type": "ephemeral", "ttl": "5m"}
 CLOCK = agent_runtime.AssistantDefinition(
@@ -20,7 +20,10 @@ CLOCK = agent_runtime.AssistantDefinition(
     "Clock reads the current time.",
     (
         agent_runtime.ActionDefinition(
-            "read-time", "Read the current time.", {"type": "object", "properties": {}, "additionalProperties": False}
+            "read-time",
+            "Read the current time.",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            output_schema=CLOSED,
         ),
     ),
 )

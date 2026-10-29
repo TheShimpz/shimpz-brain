@@ -6,7 +6,9 @@ from unittest import mock
 
 import action_tool
 import agent_runtime
+from protocol.team.action.v1 import pattern as action_pattern
 from protocol.team.action.v1 import schema as action_protocol
+from tool_fake import CLOSED
 
 TOOL = agent_runtime.tool_name("shimpz-exa", "search-web")
 # Python's backtracking `re` needs seconds for 30 characters of this pattern and doubles with each one more.
@@ -31,7 +33,9 @@ SEMANTICS = (
 
 
 def _action(schema: dict[str, object]) -> agent_runtime.ActionDefinition:
-    return agent_runtime.ActionDefinition(id="search-web", summary="Search the web.", input_schema=schema)
+    return agent_runtime.ActionDefinition(
+        id="search-web", summary="Search the web.", input_schema=schema, output_schema=CLOSED
+    )
 
 
 def _accepts(action: agent_runtime.ActionDefinition, **arguments: object) -> bool:
@@ -48,7 +52,7 @@ class ActionPatternTests(unittest.TestCase):
         for pattern, subject, matches in SEMANTICS:
             with self.subTest(pattern=pattern, subject=subject):
                 self.assertIs(action_protocol.pattern_matches(pattern, subject), matches)
-                action = _action({"type": "object", "properties": {"q": {"type": "string", "pattern": pattern}}})
+                action = _action({**CLOSED, "properties": {"q": {"type": "string", "pattern": pattern}}})
                 self.assertIs(_accepts(action, q=subject), matches)
 
     def test_nested_quantifiers_are_refused_in_linear_time(self) -> None:
@@ -70,8 +74,8 @@ class ActionPatternTests(unittest.TestCase):
     def test_admission_refuses_patterns_outside_the_bounded_matcher(self) -> None:
         for pattern in ("\\u0041", "(?x)a b", "a{1001}", "(?:a{100}){11}", "a" * 20_000, "\ud800"):
             for schema in (
-                {"type": "object", "properties": {"q": {"pattern": pattern}}},
-                {"type": "object", "patternProperties": {pattern: {}}},
+                {**CLOSED, "properties": {"q": {"pattern": pattern}}},
+                {**CLOSED, "patternProperties": {pattern: {}}},
             ):
                 with (
                     self.subTest(pattern=pattern[:16], schema=sorted(schema)),
@@ -79,21 +83,21 @@ class ActionPatternTests(unittest.TestCase):
                 ):
                     _action(schema)
         # The longest literal run whose program bound fits 16,384 instructions, and one more character.
-        _action({"type": "object", "properties": {"q": {"pattern": "a" * 2046}}})
+        _action({**CLOSED, "properties": {"q": {"pattern": "a" * 2046}}})
         with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "linear-time matcher admits"):
-            _action({"type": "object", "properties": {"q": {"pattern": "a" * 2047}}})
+            _action({**CLOSED, "properties": {"q": {"pattern": "a" * 2047}}})
 
     def test_unevaluated_properties_and_unreadable_subjects_fail_closed(self) -> None:
         for schema in (
-            {"type": "object", "unevaluatedProperties": False},
-            {"type": "object", "properties": {"q": {"allOf": [{"unevaluatedProperties": False}]}}},
+            {**CLOSED, "unevaluatedProperties": False},
+            {**CLOSED, "properties": {"q": {"allOf": [{"unevaluatedProperties": False}]}}},
         ):
             with self.subTest(schema=schema), self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unevaluated"):
                 _action(schema)
         with self.assertRaises(action_protocol.PatternError):
             list(action_tool.action_schema_validator({"unevaluatedProperties": False}).iter_errors({}))
 
-        negated = _action({"type": "object", "properties": {"q": {"not": {"pattern": "secret"}}}})
+        negated = _action({**CLOSED, "properties": {"q": {"not": {"pattern": "secret"}}}})
         self.assertTrue(_accepts(negated, q="public"))
         self.assertFalse(_accepts(negated, q="secret\ud800"))
 
@@ -102,7 +106,7 @@ class ActionPatternTests(unittest.TestCase):
         action = _action(
             {
                 "$schema": draft,
-                "type": "object",
+                **CLOSED,
                 "$defs": {"a": {"$schema": draft, "type": "string", "pattern": "^a$"}},
                 "properties": {
                     "q": {"anyOf": [{"$schema": draft, "type": "string", "pattern": "^a$"}]},
@@ -117,9 +121,13 @@ class ActionPatternTests(unittest.TestCase):
         self.assertTrue(_accepts(action, r="a"))
 
     def test_one_validation_charges_every_search_against_one_budget(self) -> None:
-        # `a.{900}c` is bounded by 15,333 instructions, which each search charges per subject byte.
+        # `a.{900}c` is bounded by 15,333 instructions, which each search charges per subject byte after its
+        # preparation charged 256 times as many once.
         heavy = "a.{900}c"
-        fits = action_protocol.MAX_PATTERN_WORK // action_protocol.compiled_pattern(heavy)[1]
+        fits = (
+            action_protocol.MAX_PATTERN_WORK // action_pattern.pattern_program(heavy)
+            - action_protocol.PREPARATION_WEIGHT
+        )
         self.assertFalse(action_protocol.pattern_matches(heavy, "b" * fits))
         with self.assertRaisesRegex(action_protocol.PatternError, "work budget"):
             action_protocol.pattern_matches(heavy, "\u00e9" * (fits // 2 + 1))
@@ -131,7 +139,7 @@ class ActionPatternTests(unittest.TestCase):
         # One argument checked by the heavy pattern from 64 expanded positions: each search alone fits.
         action = _action(
             {
-                "type": "object",
+                **CLOSED,
                 "$defs": {"heavy": {"type": "string", "not": {"pattern": heavy}}},
                 "properties": {"q": {"allOf": [{"$ref": "#/$defs/heavy"}] * 64}},
             }

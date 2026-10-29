@@ -31,7 +31,7 @@ def _greeter(assistant_id: str, genesis: str, summary: str) -> dict:
         "id": "hello",
         "summary": summary,
         "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "additionalProperties": False},
-        "output_schema": {},
+        "output_schema": {"type": "object", "additionalProperties": False},
         "authorization": False,
         "input_files": [],
     }

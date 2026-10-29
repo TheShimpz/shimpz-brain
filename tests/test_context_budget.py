@@ -19,7 +19,7 @@ import runtime_api
 import tool_fake
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from protocol.team.action.v1 import schema as action_protocol
-from tool_fake import ACTION, PINGER, FixedFactory
+from tool_fake import ACTION, CLOSED, PINGER, FixedFactory
 
 
 class RecordingModel(tool_fake.RecordingModel):
@@ -488,6 +488,7 @@ class RuntimeBudgetTests(unittest.TestCase):
                 f"action-{index}",
                 "Wide.",
                 {"type": "object", "properties": {"v": filler}, "additionalProperties": False},
+                output_schema=CLOSED,
             )
             for index in range(agent_runtime.MAX_ACTIONS_PER_ASSISTANT)
         )
