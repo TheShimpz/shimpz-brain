@@ -73,7 +73,8 @@ class StaticBrainImageContractTests(unittest.TestCase):
         self.assertEqual(copied[-1], "model_catalog.json")
         self.assertEqual(sorted(copied[:-1]), sorted(path.name for path in ROOT.glob("*.py")))
         self.assertIn(
-            "COPY --chown=brainruntime:brainruntime protocol/team/action/v1/pattern.py protocol/team/action/v1/schema.py \\\n"
+            "COPY --chown=brainruntime:brainruntime "
+            "protocol/team/action/v1/pattern.py protocol/team/action/v1/schema.py \\\n"
             "    /app/protocol/team/action/v1/\n",
             dockerfile,
         )
