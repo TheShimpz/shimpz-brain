@@ -78,7 +78,10 @@ class ActionPatternTests(unittest.TestCase):
                     self.assertRaisesRegex(agent_runtime.RuntimeContractError, "linear-time matcher admits"),
                 ):
                     _action(schema)
-        _action({"type": "object", "properties": {"q": {"pattern": "a" * 16_000}}})
+        # The longest literal run whose program bound fits 16,384 instructions, and one more character.
+        _action({"type": "object", "properties": {"q": {"pattern": "a" * 2046}}})
+        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "linear-time matcher admits"):
+            _action({"type": "object", "properties": {"q": {"pattern": "a" * 2047}}})
 
     def test_unevaluated_properties_and_unreadable_subjects_fail_closed(self) -> None:
         for schema in (
@@ -114,9 +117,9 @@ class ActionPatternTests(unittest.TestCase):
         self.assertTrue(_accepts(action, r="a"))
 
     def test_one_validation_charges_every_search_against_one_budget(self) -> None:
-        # `a.{900}c` compiles to 7,206 instructions; RE2 runs it without its DFA at several nanoseconds per byte.
+        # `a.{900}c` is bounded by 15,333 instructions, which each search charges per subject byte.
         heavy = "a.{900}c"
-        fits = action_protocol.MAX_PATTERN_WORK // action_protocol.compiled_pattern(heavy).programsize
+        fits = action_protocol.MAX_PATTERN_WORK // action_protocol.compiled_pattern(heavy)[1]
         self.assertFalse(action_protocol.pattern_matches(heavy, "b" * fits))
         with self.assertRaisesRegex(action_protocol.PatternError, "work budget"):
             action_protocol.pattern_matches(heavy, "\u00e9" * (fits // 2 + 1))

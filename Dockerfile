@@ -42,7 +42,8 @@ COPY --chown=brainruntime:brainruntime action_purpose.py action_schema.py agent_
     model_catalog.json /app/
 # The generated, pinned Team protocol mirror keeps its package path; namespace packages need no __init__.py. Its HTTP
 # directory holds exactly the modules the sync script mirrors, so the image copies whatever that set is.
-COPY --chown=brainruntime:brainruntime protocol/team/action/v1/schema.py /app/protocol/team/action/v1/
+COPY --chown=brainruntime:brainruntime protocol/team/action/v1/pattern.py protocol/team/action/v1/schema.py \
+    /app/protocol/team/action/v1/
 COPY --chown=brainruntime:brainruntime protocol/team/http/v1/ /app/protocol/team/http/v1/
 # The application is compiled like its environment, after its last copy.
 RUN PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /app

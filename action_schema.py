@@ -56,7 +56,9 @@ def _valid_draft(encoded: bytes) -> bool:
             return known
     try:
         Draft202012Validator.check_schema(json.loads(encoded))
-    except SchemaError:
+    except SchemaError, RecursionError, OverflowError:
+        # The meta-schema's `regex` format compiles each pattern with Python `re`, which raises OverflowError for a
+        # repetition count beyond its range and RecursionError for deeply nested groups.
         valid = False
     else:
         valid = True
