@@ -144,3 +144,45 @@ fn a_resume_repeated_after_a_crash_at_its_commit_receives_the_committed_turn() {
         assert_eq!(origin.received().len(), 2, "{point}");
     }
 }
+
+#[test]
+fn only_the_resume_that_finished_the_run_commits_it_after_a_crash_before_its_commit() {
+    let directory = tempfile::tempdir().unwrap();
+    let origin = Origin::start(vec![
+        origin::call(&team::list_zones(), "{}"),
+        origin::call(&team::list_zones(), "{}"),
+        origin::reply("Two lists"),
+    ]);
+    let first = Brain::start(directory.path(), origin.address, &[]);
+    let started = first.post("/v1/turns", &team::start("crash-5", "List my zones twice"));
+    let a = team::interrupt_id(&started.body);
+    let resume_a = team::resume("crash-5", &a, r#"{"zones":["a"]}"#);
+    let resumed = first.post("/v1/turns/resume", &resume_a);
+    assert_eq!(
+        team::status(&resumed.body),
+        "action-required",
+        "{}",
+        resumed.body
+    );
+    let b = team::interrupt_id(&resumed.body);
+    drop(first);
+    // Resume B ends the run, and the Brain dies before the exchange is committed.
+    let resume_b = team::resume("crash-5", &b, r#"{"zones":["b"]}"#);
+    let brain = crash_at(
+        directory.path(),
+        &origin,
+        "commit.before",
+        "/v1/turns/resume",
+        &resume_b,
+    );
+    // A stale retry of A neither commits the run nor binds its delivery.
+    let stale = brain.post("/v1/turns/resume", &resume_a);
+    assert_eq!(stale.status, 400, "{}", stale.body);
+    // The retry of B commits it and receives the answer, asking the provider nothing again.
+    let again = brain.post("/v1/turns/resume", &resume_b);
+    assert_eq!(again.status, 200, "{}", again.body);
+    assert_eq!(team::status(&again.body), "completed");
+    assert!(again.body.contains("Two lists"));
+    assert_eq!(brain.post("/v1/turns/resume", &resume_b).status, 200);
+    assert_eq!(origin.received().len(), 3);
+}

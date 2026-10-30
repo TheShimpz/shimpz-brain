@@ -252,6 +252,7 @@ impl TurnService {
             answered,
             turn: turn.clone(),
         };
+        crate::failpoint::hit("commit.before");
         self.threads.commit(thread_id, thread, &delivery)?;
         crate::failpoint::hit("commit.exchange");
         self.reconcile(thread_id, thread)?;
@@ -328,6 +329,7 @@ impl TurnService {
             thread_id: &thread_id,
             run_id: &run_id,
             asked: asked(&history),
+            last_round: last_round(&history),
             pending: self.pending(&run_id)?,
             answered,
         };
@@ -347,6 +349,7 @@ impl TurnService {
             thread_id,
             run_id,
             asked,
+            last_round,
             pending,
             answered,
         } = open;
@@ -354,8 +357,9 @@ impl TurnService {
         if let Some(outcome) = self.worker.result(run_id).map_err(state)? {
             // A run that ended before its exchange was committed commits it now; one committed is delivered again.
             if thread.committed_run.as_deref() != Some(run_id) {
-                // Only a resume naming results the run recorded commits it, so its delivery binds the right answer.
-                if !applied {
+                // Only the resume that finished the run, naming exactly its last round of results, commits it: its
+                // delivery binds that resume's answer, never an earlier round's stale retry.
+                if !applied || answered != last_round {
                     return Err(BrainError::contract("invalid Action resume results"));
                 }
                 return self.ended(thread_id, thread, (run_id, answered), &outcome);
@@ -472,6 +476,37 @@ fn sleep_until(at: i64) {
     std::thread::sleep(Duration::from_millis(wait));
 }
 
+/// The interrupts of the run's last round of requests (the last consecutive deferred steps), sorted: the results the
+/// resume that finished the run answered.
+fn last_round(history: &[Event]) -> Vec<String> {
+    let mut round: Vec<String> = Vec::new();
+    let mut in_round = false;
+    for event in history {
+        let Event::StepScheduled {
+            kind, name, input, ..
+        } = event
+        else {
+            continue;
+        };
+        let request = match (kind, input) {
+            (StepKind::Deferred, Some(input)) => TeamRequest::from_json(name, input),
+            _ => None,
+        };
+        match request {
+            Some(request) => {
+                if !in_round {
+                    round.clear();
+                }
+                in_round = true;
+                round.push(request.interrupt_id().to_owned());
+            }
+            None => in_round = false,
+        }
+    }
+    round.sort_unstable();
+    round
+}
+
 /// The interrupts a run asked Team for, answered or not.
 fn asked(history: &[Event]) -> Vec<String> {
     history
@@ -506,6 +541,7 @@ struct Open<'a> {
     thread_id: &'a str,
     run_id: &'a str,
     asked: Vec<String>,
+    last_round: Vec<String>,
     pending: Vec<TeamRequest>,
     answered: Vec<String>,
 }
