@@ -354,6 +354,10 @@ impl TurnService {
         if let Some(outcome) = self.worker.result(run_id).map_err(state)? {
             // A run that ended before its exchange was committed commits it now; one committed is delivered again.
             if thread.committed_run.as_deref() != Some(run_id) {
+                // Only a resume naming results the run recorded commits it, so its delivery binds the right answer.
+                if !applied {
+                    return Err(BrainError::contract("invalid Action resume results"));
+                }
                 return self.ended(thread_id, thread, (run_id, answered), &outcome);
             }
             self.reconcile(thread_id, thread)?;
