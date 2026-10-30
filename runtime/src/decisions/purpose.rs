@@ -8,8 +8,10 @@ use crate::server::input::RouteError;
 /// The pending Action a purpose is written for, and its turn's own start message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pending {
-    /// The `message` of the turn's start envelope.
+    /// The text of the turn's start message: Team's `{"files", "message"}` envelope.
     pub message: String,
+    /// The interface language the turn's start pinned.
+    pub locale: Option<String>,
     /// The Action's Assistant.
     pub assistant_id: String,
     /// The Action.

@@ -1,4 +1,4 @@
 too-many-lines-threshold = 50
 cognitive-complexity-threshold = 10
 too-many-arguments-threshold = 7
-doc-valid-idents = ["OpenAI", "SQLite", "TypeSafe", ".."]
+doc-valid-idents = ["OpenAI", "SQLite", "TypeSafe", "LangGraph", "LangChain", ".."]

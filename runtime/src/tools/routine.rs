@@ -33,18 +33,23 @@ pub fn spec(_refinable: bool) -> ToolSpec {
     unimplemented!("ported by the tools microtask")
 }
 
-/// The Routine guard (`_review`).
+/// The Routine guard's verdict on the latest response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    /// The response makes no Routine call.
+    Pass,
+    /// Refuse the whole response with this correction.
+    Refuse(String),
+    /// End the turn: the lone call's tool message holds this record.
+    Record(String),
+}
+
+/// The Routine guard (`_review` and `RoutineGuard.after_model`).
 ///
 /// # Errors
 ///
 /// An unanswerable call.
-pub fn review(_messages: &[Message], _context: &TurnContext) -> Review {
-    unimplemented!("ported by the tools microtask")
-}
-
-/// What the tool returns when it runs on `arguments`.
-#[must_use]
-pub fn run(_arguments: &Value, _context: &TurnContext, _handles: &BTreeSet<String>) -> String {
+pub fn review(_messages: &[Message], _context: &TurnContext) -> Result<Verdict, BrainError> {
     unimplemented!("ported by the tools microtask")
 }
 
