@@ -11,6 +11,7 @@ pub mod decisions;
 pub mod errors;
 pub mod failpoint;
 pub mod json;
+pub mod process;
 pub mod prompt;
 pub mod provider;
 pub mod server;
