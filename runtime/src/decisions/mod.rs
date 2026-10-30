@@ -15,7 +15,9 @@ mod testing;
 use crate::errors::BrainError;
 use crate::json::{self, Value};
 use crate::provider::structured::{self, Ask};
-use crate::provider::{CallError, Profile, ProviderConfig, Providers, Scope};
+use crate::provider::{
+    CallError, ChatRequest, Profile, Projection, ProviderConfig, Providers, Scope,
+};
 use crate::server::input::RouteError;
 
 /// One stateless operation's provider calls: the process's providers, the request's scope, the model the calls run
@@ -63,6 +65,30 @@ impl Call<'_> {
         let value = structured::value(self.providers, self.scope, self.config, self.profile, ask)
             .map_err(|error| self.failed(error))?;
         conforming(ask.schema, value)
+    }
+
+    /// One schema-valid structured answer to a whole conversation.
+    fn converse(
+        &self,
+        mut request: ChatRequest,
+        projection: Option<&Projection>,
+        answer: &Answer<'_>,
+    ) -> Result<Value, RouteError> {
+        request.output = Some(crate::provider::OutputSchema {
+            name: answer.name.to_owned(),
+            schema: answer.schema.clone(),
+        });
+        let value = structured::conversation(
+            self.providers,
+            self.scope,
+            self.config,
+            self.profile,
+            &request,
+            projection,
+            answer.max_chars,
+        )
+        .map_err(|error| self.failed(error))?;
+        conforming(answer.schema, value)
     }
 }
 
