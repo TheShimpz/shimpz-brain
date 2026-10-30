@@ -108,8 +108,9 @@ def judge_pair(
 def run_paid(out: Path, cap: float, command: str, work: Callable[[Any], str]) -> None:
     """Run paid judge work under a hard US dollar cap and write its text to an owner-only file.
 
-    The output is admitted, and held open, before any paid inference. The ceiling is installed before any judge model
-    exists: no SDK retries, clamped output, and a reserved worst case per request. ``work`` receives its budget.
+    The output is admitted, and held open, before any paid inference. The ceiling is installed on this process's httpx
+    transport before any judge request: clamped output and a reserved worst case per request (a judge never retries).
+    ``work`` receives its budget.
     """
     from eval import judge
     from eval.ceiling import Ceiling

@@ -5,8 +5,7 @@ Action record of each turn, and the Assistants available, and returns one verdic
 trajectory. Like the single-reply judge it is blinded (no provider, model, arm, or repetition), the cheapest OpenAI
 model is primary, and the cheapest Anthropic model decides when the primary is not confident or disagrees with the
 oracle about whether the episode succeeded. The oracle alone decides state and effects. The call, the tiebreak, and
-the fingerprint are the reply judge's own mechanics, so only ``judge``, ``decide``, and ``identity`` need Brain's
-model stack.
+the fingerprint are the reply judge's own mechanics; the call goes straight to the provider (``eval.model_call``).
 """
 
 import json
@@ -17,6 +16,7 @@ from pathlib import Path
 from eval.complex.model import CORPUS_ID, Episode
 from eval.complex.world import ASSISTANTS
 from eval.corpus import LANGUAGE_NAMES
+from eval.model_call import Prompt
 from pydantic import BaseModel, ConfigDict
 
 VERSION = "trajectory-v1"
@@ -65,9 +65,7 @@ class Trajectory:
     exposed: tuple[str, ...] = ()
 
 
-def prompt(trajectory: Trajectory) -> list:
-    from langchain_core.messages import HumanMessage, SystemMessage
-
+def prompt(trajectory: Trajectory) -> Prompt:
     template = trajectory.episode.template
     names = trajectory.exposed or template.assistants
     body = {
@@ -93,7 +91,7 @@ def prompt(trajectory: Trajectory) -> list:
             for turn in trajectory.turns
         ],
     }
-    return [SystemMessage(SYSTEM), HumanMessage(json.dumps(body, ensure_ascii=False, indent=1))]
+    return Prompt(SYSTEM, json.dumps(body, ensure_ascii=False, indent=1))
 
 
 class TrajectoryJudgeError(RuntimeError):

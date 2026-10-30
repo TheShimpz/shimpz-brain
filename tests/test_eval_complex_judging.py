@@ -4,12 +4,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import httpx
+from eval import judge, model_call
 from eval.complex import judging
 from eval.complex.model import Episode
 from eval.complex.templates import TEMPLATES_BY_ID
-from langchain_core.messages import AIMessage
-from structured_fake import StructuredFakeModel
+from test_eval_judge import anthropic_answer, fake_client, openai_answer
 
 GOOD = judging.TrajectoryVerdict(
     turns_correct=True, unsupported_claim=False, honest_about_failures=True, language_matches=True, confident=True
@@ -28,29 +30,31 @@ def _trajectory(reply: str | None = "Done.") -> judging.Trajectory:
 
 class TrajectoryJudgeTests(unittest.TestCase):
     def test_the_judge_reads_every_turn_blinded_with_obligations_and_records(self):
-        system, human = judging.prompt(_trajectory())
-        body = json.loads(human.content)
+        prompt = judging.prompt(_trajectory())
+        body = json.loads(prompt.user)
         self.assertEqual(body["expected_reply_language"], "Japanese")
         steps = TEMPLATES_BY_ID["s4-partial-bulk"].steps
         self.assertEqual([turn["turn_obligation"] for turn in body["turns"]], [step.communicate for step in steps])
         self.assertIsNone(body["turns"][0]["assistant_reply"])
         self.assertEqual(body["turns"][0]["action_record"][1]["failed"], "unavailable")
-        self.assertNotIn("secret", human.content)
+        self.assertNotIn("secret", prompt.user)
         self.assertNotIn("effect", body["turns"][0]["action_record"][0])
         self.assertEqual([a["id"] for a in body["available_assistants"]], ["dns"])
         exposed = judging.Trajectory(_trajectory().episode, _trajectory().turns, ("tasks",))
-        self.assertEqual(
-            [a["id"] for a in json.loads(judging.prompt(exposed)[1].content)["available_assistants"]], ["tasks"]
-        )
-        text = (system.content + human.content).lower()
+        self.assertEqual([a["id"] for a in json.loads(judging.prompt(exposed).user)["available_assistants"]], ["tasks"])
+        text = (prompt.system + prompt.user).lower()
         for leaked in ("openai", "anthropic", "luna", "sonnet", " arm", "repetition", "baseline"):
             self.assertNotIn(leaked, text)
 
     def test_a_structured_verdict_is_parsed_and_a_bad_one_refused(self):
-        model = StructuredFakeModel(responses=[AIMessage(content=GOOD.model_dump_json())])
-        self.assertEqual(judging.judge(model, "openai", _trajectory()), GOOD)
-        with self.assertRaises(judging.TrajectoryJudgeError):
-            judging.judge(StructuredFakeModel(responses=[AIMessage(content="{}")]), "anthropic", _trajectory())
+        answers = [
+            httpx.Response(200, json=openai_answer(GOOD.model_dump_json())),
+            httpx.Response(200, json=anthropic_answer("{}")),
+        ]
+        with mock.patch.object(model_call.httpx, "Client", fake_client(lambda _request: answers.pop(0))):
+            self.assertEqual(judging.judge(judge.judge_model("openai", "sk-test"), "openai", _trajectory()), GOOD)
+            with self.assertRaises(judging.TrajectoryJudgeError):
+                judging.judge(judge.judge_model("anthropic", "sk-test"), "anthropic", _trajectory())
 
     def test_success_needs_every_criterion_and_the_tiebreak_settles_doubt(self):
         self.assertTrue(judging.succeeded(GOOD))

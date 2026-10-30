@@ -16,11 +16,9 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from eval import corpus
+from eval import corpus, model_call
 from eval import stats as eval_stats
 from eval.fixtures import Assistant
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
 CALIBRATION = Path(__file__).with_name("judge_calibration.json")
@@ -78,7 +76,7 @@ class Item:
     assistants: tuple[Assistant, ...] = ()
 
 
-def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
+def prompt(item: Item) -> model_call.Prompt:
     """The blinded judge input: no provider, model, arm, repetition, or other attempt."""
     body = {
         "user_message": item.scenario.message,
@@ -99,7 +97,7 @@ def prompt(item: Item) -> list[SystemMessage | HumanMessage]:
         ],
         "final_reply": item.reply,
     }
-    return [SystemMessage(SYSTEM), HumanMessage(json.dumps(body, ensure_ascii=False, indent=1))]
+    return model_call.Prompt(SYSTEM, json.dumps(body, ensure_ascii=False, indent=1))
 
 
 def fingerprint(version: str, system: str, schema: type[BaseModel], calibration: Path) -> str:
@@ -120,24 +118,9 @@ def identity(calibration: Path = CALIBRATION) -> str:
     return fingerprint(JUDGE_VERSION, SYSTEM, Verdict, calibration)
 
 
-def judge_model(provider: str, api_key: str) -> BaseChatModel:
-    """One bounded judge model: its catalog model, low effort, the output limit, and no SDK retries."""
-    from pydantic import SecretStr
-
-    common = {
-        "model": JUDGE_MODELS[provider],
-        "api_key": SecretStr(api_key),
-        "max_tokens": MAX_OUTPUT_TOKENS,
-        "max_retries": 0,
-        "timeout": TIMEOUT_SECONDS,
-    }
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-
-        return ChatOpenAI(**common, use_responses_api=True, reasoning_effort="low")
-    from langchain_anthropic import ChatAnthropic
-
-    return ChatAnthropic(**common, effort="low")
+def judge_model(provider: str, api_key: str) -> model_call.Model:
+    """One bounded judge model: its catalog model, low effort, the output limit, and no retries."""
+    return model_call.Model(provider, JUDGE_MODELS[provider], api_key, MAX_OUTPUT_TOKENS, TIMEOUT_SECONDS)
 
 
 class JudgeError(RuntimeError):
@@ -145,24 +128,23 @@ class JudgeError(RuntimeError):
 
 
 def structured_verdict[V: BaseModel](
-    model: BaseChatModel,
+    model: model_call.Model,
     provider: str,
     schema: type[V],
-    messages: Callable[[], list],
+    prompt_of: Callable[[], model_call.Prompt],
     label: str,
     error: type[Exception],
 ) -> V:
     """One judge call and its closed re-validation; any failure, building the prompt included, raises ``error``."""
-    from structured import structured_output, structured_value
-
     try:
-        result = structured_output(model, provider, schema).invoke(messages())
-        return structured_value(result, schema, label, MAX_RESPONSE_CHARS)
+        if provider != model.provider:
+            raise model_call.CallError("judge provider mismatch")
+        return model_call.structured(model, prompt_of(), schema, MAX_RESPONSE_CHARS)
     except Exception as exc:
         raise error(f"{label} request failed") from exc
 
 
-def judge(model: BaseChatModel, provider: str, item: Item) -> Verdict:
+def judge(model: model_call.Model, provider: str, item: Item) -> Verdict:
     return structured_verdict(model, provider, Verdict, lambda: prompt(item), "judge", JudgeError)
 
 

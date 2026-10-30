@@ -4,10 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from eval import corpus, judge
-from langchain_core.messages import AIMessage
-from structured_fake import StructuredFakeModel
+import httpx
+from eval import corpus, judge, model_call
 
 GOOD = judge.Verdict(
     reply_correct=True,
@@ -32,8 +32,8 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual(judge.identity(), "sha256:99da930b6e5992c3368e6d2c714c2328a392ae518412a58fcc2580c2e5f447a7")
 
     def test_the_judge_input_is_blinded_and_reference_grounded(self):
-        system, human = judge.prompt(_item("dns-create.ja", "作成しました。"))
-        body = json.loads(human.content)
+        prompt = judge.prompt(_item("dns-create.ja", "作成しました。"))
+        body = json.loads(prompt.user)
         self.assertEqual(body["expected_reply_language"], "Japanese")
         self.assertEqual(body["reference_outcome"], corpus.SCENARIOS_BY_ID["dns-create.ja"].template.reference)
         self.assertEqual(
@@ -43,17 +43,27 @@ class JudgeTests(unittest.TestCase):
         scenario = corpus.SCENARIOS_BY_ID["dns-create.ja"]
         self.assertEqual([item["id"] for item in body["available_assistants"]], list(scenario.assistants))
         self.assertIn("create-record: Create one record", " ".join(body["available_assistants"][0]["actions"]))
-        text = (system.content + human.content).lower()
+        text = (prompt.system + prompt.user).lower()
         for leaked in ("openai", "anthropic", "luna", "sonnet", "arm", "repetition", "baseline"):
             self.assertNotIn(leaked, text.replace("alarm", ""))
 
     def test_a_structured_verdict_is_parsed_and_validated(self):
-        StructuredFakeModel.structured.clear()
-        model = StructuredFakeModel(responses=[AIMessage(content=GOOD.model_dump_json())])
-        self.assertEqual(judge.judge(model, "openai", _item()), GOOD)
-        self.assertEqual(StructuredFakeModel.structured[-1][0], judge.Verdict)
-        with self.assertRaises(judge.JudgeError):
-            judge.judge(StructuredFakeModel(responses=[AIMessage(content="{}")]), "anthropic", _item())
+        sent = []
+        answers = [
+            httpx.Response(200, json=openai_answer(GOOD.model_dump_json())),
+            httpx.Response(200, json=anthropic_answer("{}")),
+        ]
+
+        def provider(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            return answers.pop(0)
+
+        with mock.patch.object(model_call.httpx, "Client", fake_client(provider)):
+            self.assertEqual(judge.judge(judge.judge_model("openai", "sk-test-key"), "openai", _item()), GOOD)
+            with self.assertRaises(judge.JudgeError):
+                judge.judge(judge.judge_model("anthropic", "sk-ant-test-key"), "anthropic", _item())
+        body = json.loads(sent[0].content)
+        self.assertEqual(body["text"]["format"]["schema"], judge.Verdict.model_json_schema())
 
     def test_reply_success_requires_every_criterion_and_the_expected_clarification(self):
         self.assertTrue(judge.succeeded(GOOD, _item()))
@@ -89,12 +99,93 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+def fake_client(handler):
+    """``httpx.Client`` bound to a mock transport answering through ``handler``."""
+    real = httpx.Client
+    return lambda **options: real(transport=httpx.MockTransport(handler), **options)
+
+
+def openai_answer(*texts: str, status: str = "completed", output: list | None = None) -> dict:
+    content = [{"type": "output_text", "text": text, "annotations": []} for text in texts]
+    message = {"type": "message", "role": "assistant", "content": content}
+    return {"id": "resp_1", "status": status, "output": [{"type": "reasoning"}, message, *(output or [])]}
+
+
+def anthropic_answer(*texts: str, stop_reason: str = "end_turn", content: list | None = None) -> dict:
+    blocks = [{"type": "text", "text": text} for text in texts]
+    return {"id": "msg_1", "content": [*blocks, *(content or [])], "stop_reason": stop_reason}
+
+
 class JudgeModelTests(unittest.TestCase):
-    def test_judge_models_are_bounded_without_sdk_retries(self):
-        for provider in ("openai", "anthropic"):
-            model = judge.judge_model(provider, "sk-test-0123456789abcdef")
-            self.assertEqual((model.max_tokens, model.max_retries), (judge.MAX_OUTPUT_TOKENS, 0))
-            self.assertEqual(getattr(model, "model", None) or model.model_name, judge.JUDGE_MODELS[provider])
+    def _call(self, provider: str, answer: object, status: int = 200) -> judge.Verdict:
+        sent = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            return httpx.Response(status, json=answer)
+
+        model = judge.judge_model(provider, "sk-test-0123456789abcdef")
+        with mock.patch.object(model_call.httpx, "Client", fake_client(handler)):
+            try:
+                return judge.judge(model, provider, _item())
+            finally:
+                self.requests = sent
+
+    def test_each_judge_request_is_bounded_low_effort_and_structured(self):
+        self._call("openai", openai_answer(GOOD.model_dump_json()))
+        (request,) = self.requests
+        body = json.loads(request.content)
+        self.assertEqual(str(request.url), "https://api.openai.com/v1/responses")
+        self.assertEqual(request.headers["authorization"], "Bearer sk-test-0123456789abcdef")
+        self.assertEqual((body["model"], body["max_output_tokens"]), (judge.JUDGE_MODELS["openai"], 4_000))
+        self.assertEqual((body["reasoning"], body["store"]), ({"effort": "low"}, False))
+        self.assertEqual(body["text"]["format"]["strict"], True)
+        self.assertEqual([item["role"] for item in body["input"]], ["system", "user"])
+        self.assertNotIn("sk-test", request.content.decode())
+        self._call("anthropic", anthropic_answer(GOOD.model_dump_json()))
+        (request,) = self.requests
+        body = json.loads(request.content)
+        self.assertEqual(str(request.url), "https://api.anthropic.com/v1/messages")
+        self.assertEqual(request.headers["x-api-key"], "sk-test-0123456789abcdef")
+        self.assertEqual(request.headers["anthropic-version"], model_call.ANTHROPIC_VERSION)
+        self.assertEqual((body["model"], body["max_tokens"]), (judge.JUDGE_MODELS["anthropic"], 4_000))
+        self.assertEqual(body["output_config"]["effort"], "low")
+        self.assertEqual(body["output_config"]["format"]["type"], "json_schema")
+        self.assertEqual(body["system"], judge.SYSTEM)
+
+    def test_a_failed_request_is_one_request_and_never_a_verdict(self):
+        with self.assertRaises(judge.JudgeError):
+            self._call("openai", {"error": {}}, status=429)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_only_one_closed_schema_valid_value_is_a_verdict(self):
+        good = GOOD.model_dump_json()
+        duplicated = good[:-1] + ', "confident": false}'
+        refused = {"type": "message", "content": [{"type": "refusal", "refusal": "no"}]}
+        tool = {"type": "function_call", "name": "x", "arguments": "{}"}
+        bad_openai = (
+            openai_answer(duplicated),
+            openai_answer(good, output=[refused]),
+            openai_answer(good, output=[tool]),
+            openai_answer(good, status="incomplete"),
+            openai_answer(good[:-1] + ', "extra": true}'),
+            openai_answer("x" * (judge.MAX_RESPONSE_CHARS + 1)),
+            openai_answer(good, GOOD.model_copy(update={"confident": False}).model_dump_json()),
+            openai_answer(),
+        )
+        for answer in bad_openai:
+            with self.subTest(answer=str(answer)[:80]), self.assertRaises(judge.JudgeError):
+                self._call("openai", answer)
+        bad_anthropic = (
+            anthropic_answer(good, stop_reason="refusal"),
+            anthropic_answer(good, content=[{"type": "tool_use", "id": "t", "name": "x", "input": {}}]),
+            anthropic_answer('{"reply_correct": true}'),
+        )
+        for answer in bad_anthropic:
+            with self.subTest(answer=str(answer)[:80]), self.assertRaises(judge.JudgeError):
+                self._call("anthropic", answer)
+        # The same value written twice, as separate text blocks, is still that one value.
+        self.assertEqual(self._call("anthropic", anthropic_answer(good, good)), GOOD)
 
 
 class CalibrationTests(unittest.TestCase):
