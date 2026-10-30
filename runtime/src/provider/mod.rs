@@ -12,6 +12,7 @@ pub mod structured;
 #[cfg(test)]
 pub mod testing;
 pub mod transport;
+mod wire;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
