@@ -1,0 +1,48 @@
+[package]
+name = "brain-runtime-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "cargo-fuzz targets for every Brain parser of untrusted bytes"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+brain-runtime = { path = ".." }
+libfuzzer-sys = "=0.4.13"
+strict-json = { path = "../../vendor/strict-json" }
+
+[[bin]]
+name = "turn_request"
+path = "fuzz_targets/turn_request.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_answer"
+path = "fuzz_targets/provider_answer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stored_conversation"
+path = "fuzz_targets/stored_conversation.rs"
+test = false
+doc = false
+bench = false
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+
+# The fuzz crate is its own workspace, so the parent package never builds it.
+[workspace]
+members = ["."]
