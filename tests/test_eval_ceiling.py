@@ -1,44 +1,28 @@
 """Provider-free checks that the evaluation ceiling bounds and reserves every request on the wire (ADR-0094)."""
 
 import asyncio
+import gzip
 import json
 import tempfile
 import threading
 import unittest
+import zlib
 from pathlib import Path
 
 import httpx
-import openai
-import provider_client
-import provider_replies
 from eval import ceiling
 from eval import cost as eval_cost
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
 
-OPENAI_RESPONSE = provider_replies.openai_reply(
-    "ok",
-    model="gpt-6-luna",
-    usage={
-        "input_tokens": 10,
-        "output_tokens": 5,
-        "total_tokens": 15,
-        "input_tokens_details": {"cached_tokens": 4},
-        "output_tokens_details": {"reasoning_tokens": 0},
-    },
-)
-CHAT_RESPONSE = {
-    "id": "chat_1",
-    "object": "chat.completion",
-    "created": 0,
-    "model": "gpt-6-luna",
-    "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}],
-    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+OPENAI_USAGE = {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": {"cached_tokens": 4}}
+OPENAI_RESPONSE = {"id": "resp_1", "status": "completed", "output": [], "usage": OPENAI_USAGE}
+CHAT_RESPONSE = {"id": "chat_1", "choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+ANTHROPIC_RESPONSE = {
+    "id": "msg_1",
+    "content": [],
+    "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 20, "cache_creation_input_tokens": 30},
 }
-ANTHROPIC_RESPONSE = provider_replies.anthropic_reply(
-    "ok",
-    usage={"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 20, "cache_creation_input_tokens": 30},
-)
+RESPONSES = "https://api.openai.com/v1/responses"
+MESSAGES = "https://api.anthropic.com/v1/messages"
 
 
 class Recorder:
@@ -50,8 +34,8 @@ class Recorder:
         return httpx.Response(self.status, json=self.body if self.body is not None else {})
 
 
-class Huge(BaseModel):
-    answer: str = Field(description="x" * 100_000)
+def client(recorder) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(recorder))
 
 
 class CeilingTests(unittest.TestCase):
@@ -65,134 +49,120 @@ class CeilingTests(unittest.TestCase):
         self.ceiling.uninstall()
         self.directory.cleanup()
 
-    def _openai(self, recorder: Recorder, **options) -> ChatOpenAI:
-        client = httpx.Client(transport=httpx.MockTransport(recorder))
-        return ChatOpenAI(model="gpt-6-luna", api_key="test-key", http_client=client, **options)
-
-    def _anthropic(self, recorder: Recorder):
-        model = provider_client._pooled_chat_anthropic()(model="claude-sonnet-5-5", api_key="sk-ant-test-0123456789")
-        model._http_client = httpx.Client(transport=httpx.MockTransport(recorder))
-        return model
-
-    def test_no_override_can_raise_the_output_limit(self):
+    def test_no_field_can_raise_the_output_limit(self):
         recorder = Recorder(OPENAI_RESPONSE)
-        model = self._openai(recorder, use_responses_api=True)
-        self.assertEqual((model.max_retries, model.max_tokens), (0, 32_000))
-        model.invoke("hi", max_output_tokens=64_000, extra_body={"max_output_tokens": 64_000, "max_tokens": 64_000})
+        client(recorder).post(
+            RESPONSES, json={"model": "gpt-6-luna", "max_output_tokens": 64_000, "max_tokens": 64_000}
+        )
         path, body = recorder.requests[0]
         self.assertEqual((path, body["max_output_tokens"], body["max_tokens"]), ("/v1/responses", 32_000, 32_000))
         chat = Recorder(CHAT_RESPONSE)
-        self._openai(chat).invoke("hi", extra_body={"max_completion_tokens": 64_000})
+        client(chat).post("https://api.openai.com/v1/chat/completions", json={"model": "gpt-6-luna"})
         self.assertEqual(chat.requests[0][1]["max_completion_tokens"], 32_000)
         anthropic = Recorder(ANTHROPIC_RESPONSE)
-        self._anthropic(anthropic).invoke("hi", max_tokens=64_000, extra_body={"max_tokens": 64_000})
+        client(anthropic).post(MESSAGES, json={"model": "claude-sonnet-5-5", "max_tokens": 64_000})
         self.assertEqual(anthropic.requests[0][1]["max_tokens"], 32_000)
 
-    def test_the_reservation_covers_the_expanded_body_and_prices_the_sent_model(self):
-        structured = json.loads(json.dumps(OPENAI_RESPONSE))
-        structured["output"][0]["content"][0]["text"] = '{"answer": "ok"}'
-        model = self._openai(Recorder(structured), use_responses_api=True)
-        model.with_structured_output(Huge, method="json_schema").invoke("hi")
+    def test_a_body_within_the_limit_is_sent_byte_for_byte(self):
+        sent = []
+        transport = httpx.MockTransport(lambda request: sent.append(request.content) or httpx.Response(200, json={}))
+        body = b'{"model": "gpt-6-luna", "max_output_tokens": 100, "input": "\\u00e9"}'
+        httpx.Client(transport=transport).post(RESPONSES, content=body)
+        self.assertEqual(sent, [body])
+
+    def test_the_reservation_covers_the_sent_body_and_prices_the_model_it_names(self):
+        recorder = Recorder(OPENAI_RESPONSE)
+        client(recorder).post(RESPONSES, json={"model": "gpt-6-luna", "input": "x" * 100_000})
         self.assertGreaterEqual(self.ceiling.max_reservation, eval_cost.call_bound("gpt-6-luna", 100_000, 32_000))
         spent = self.ceiling.budget.spent
-        model.invoke("hi", model="gpt-6.1-sol")
+        client(recorder).post(RESPONSES, json={"model": "gpt-6.1-sol"})
         expected = eval_cost.cost(
             eval_cost.Usage(model_calls=1, input_tokens=10, output_tokens=5, cache_read_tokens=4), "gpt-6.1-sol"
         )
         self.assertAlmostEqual(self.ceiling.budget.spent - spent, expected.usd)
         before = self.ceiling.budget.spent
-        self._anthropic(Recorder(ANTHROPIC_RESPONSE)).invoke("hi")
+        client(Recorder(ANTHROPIC_RESPONSE)).post(MESSAGES, json={"model": "claude-sonnet-5-5"})
         anthropic = eval_cost.Usage(
             model_calls=1, input_tokens=60, output_tokens=5, cache_read_tokens=20, cache_write_tokens=30
         )
         self.assertAlmostEqual(self.ceiling.budget.spent - before, eval_cost.cost(anthropic, "claude-sonnet-5-5").usd)
 
-    def test_unsupported_requests_and_requests_over_the_cap_are_never_sent(self):
+    def test_unsupported_requests_are_never_sent(self):
         recorder = Recorder(OPENAI_RESPONSE)
-        client = httpx.Client(transport=httpx.MockTransport(recorder))
+        sender = client(recorder)
         for request in (
             httpx.Request("GET", "https://api.openai.com/v1/models"),
-            httpx.Request("POST", "https://api.openai.com/v1/responses", json={"model": "gpt-6-luna", "stream": True}),
-            httpx.Request("POST", "https://api.anthropic.com/v1/messages", content=b"not json"),
+            httpx.Request("POST", RESPONSES, json={"model": "gpt-6-luna", "stream": True}),
+            httpx.Request("POST", MESSAGES, content=b"not json"),
+            httpx.Request("POST", RESPONSES, json={"model": "gpt-unknown"}),
+            httpx.Request("POST", MESSAGES, json={"model": "claude-sonnet-5-5", "max_tokens": "many"}),
         ):
             with self.assertRaises(ceiling.UnsupportedRequestError):
-                client.send(request)
+                sender.send(request)
         asynchronous = httpx.AsyncClient(transport=httpx.MockTransport(recorder))
         with self.assertRaises(ceiling.UnsupportedRequestError):
-            asyncio.run(asynchronous.post("https://api.openai.com/v1/responses", json={"model": "gpt-6-luna"}))
+            asyncio.run(asynchronous.post(RESPONSES, json={"model": "gpt-6-luna"}))
         self.assertEqual(asyncio.run(asynchronous.get("https://example.net/x")).status_code, 200)
-        self.assertEqual((recorder.requests[:-1], self.ceiling.counts["unsupported"]), ([], 4))
-        self.assertEqual(client.get("https://example.net/x").status_code, 200)
-        # An evaluation-only price holds only up to its input bound: a longer request is refused, a shorter one runs.
+        self.assertEqual((recorder.requests[:-1], self.ceiling.counts["unsupported"]), ([], 6))
+        self.assertEqual(sender.get("https://example.net/x").status_code, 200)
+
+    def test_an_evaluation_only_price_holds_only_up_to_its_input_bound(self):
+        sender = client(Recorder(OPENAI_RESPONSE))
         limit = eval_cost.PRICED_INPUT_TOKENS["gpt-5.6-sol"] - ceiling.REQUEST_ALLOWANCE_TOKENS
-        long = {"model": "gpt-5.6-sol", "input": "x" * limit}
         with self.assertRaises(ceiling.UnsupportedRequestError):
-            client.post("https://api.openai.com/v1/responses", json=long)
-        self.assertEqual(self.ceiling.counts["unsupported"], 5)
+            sender.post(RESPONSES, json={"model": "gpt-5.6-sol", "input": "x" * limit})
         spent = self.ceiling.budget.spent
-        short = client.post("https://api.openai.com/v1/responses", json={"model": "gpt-5.6-sol"})
-        self.assertEqual(short.status_code, 200)
+        self.assertEqual(sender.post(RESPONSES, json={"model": "gpt-5.6-sol"}).status_code, 200)
         priced = eval_cost.Usage(model_calls=1, input_tokens=10, output_tokens=5, cache_read_tokens=4)
         self.assertAlmostEqual(self.ceiling.budget.spent - spent, eval_cost.cost(priced, "gpt-5.6-sol").usd)
+
+    def test_a_request_over_the_cap_is_refused_before_it_is_sent(self):
         self.ceiling.uninstall()
         self.ceiling = ceiling.Ceiling(0.0001, 32_000, self.state)
         self.ceiling.install()
-        with self.assertRaises(openai.APIConnectionError) as refused:
-            self._openai(recorder, use_responses_api=True).invoke("hi")
-        self.assertIsInstance(refused.exception.__cause__, eval_cost.BudgetExhaustedError)
-        self.assertEqual((len(recorder.requests), self.ceiling.counts["refused"]), (3, 1))
+        recorder = Recorder(OPENAI_RESPONSE)
+        with self.assertRaises(eval_cost.BudgetExhaustedError):
+            client(recorder).post(RESPONSES, json={"model": "gpt-6-luna"})
+        self.assertEqual((recorder.requests, self.ceiling.counts["refused"]), ([], 1))
 
-    def test_a_shared_ledger_reserves_each_kept_sdk_retry_and_a_throttle_bills_nothing(self):
+    def test_a_shared_ledger_reserves_each_try_and_a_refusal_bills_nothing(self):
         self.ceiling.uninstall()
         ledger = eval_cost.SharedBudget.create(Path(self.directory.name, "ledger.json"), 1.0)
-        self.ceiling = ceiling.Ceiling(0.0, 32_000, budget=ledger, sdk_retries=True)
+        self.ceiling = ceiling.Ceiling(0.0, 32_000, budget=ledger)
         self.ceiling.install()
-        answers = iter(
-            (
-                httpx.Response(429, json={"error": {"type": "rate_limit"}}, headers={"retry-after-ms": "1"}),
-                httpx.Response(200, json=OPENAI_RESPONSE),
-            )
-        )
-        client = httpx.Client(transport=httpx.MockTransport(lambda _request: next(answers)))
-        model = ChatOpenAI(
-            model="gpt-6-luna", api_key="test-key", http_client=client, max_retries=2, use_responses_api=True
-        )
-        self.assertEqual((model.max_retries, model.max_tokens), (2, 32_000))
-        model.invoke("hi")
+        answers = iter((httpx.Response(429, json={"error": {}}), httpx.Response(200, json=OPENAI_RESPONSE)))
+        sender = httpx.Client(transport=httpx.MockTransport(lambda _request: next(answers)))
+        self.assertEqual(sender.post(RESPONSES, json={"model": "gpt-6-luna"}).status_code, 429)
+        self.assertEqual(sender.post(RESPONSES, json={"model": "gpt-6-luna"}).status_code, 200)
         self.assertEqual((self.ceiling.counts["requests"], self.ceiling.counts["throttled"]), (2, 1))
         usage = eval_cost.Usage(model_calls=1, input_tokens=10, output_tokens=5, cache_read_tokens=4)
         summary = ledger.summary()
         self.assertAlmostEqual(summary["spent_usd"], eval_cost.cost(usage, "gpt-6-luna").usd, places=6)
         self.assertEqual((summary["unknown_settlements"], summary["unsettled_usd"]), (0, 0))
         # A provider's rejection of the request, such as an account without credit, bills nothing either.
-        rejected = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(400, json={})))
-        rejected.post("https://api.anthropic.com/v1/messages", json={"model": "claude-sonnet-5-5"})
-        self.assertEqual(self.ceiling.counts["rejected"], 1)
+        broke = {"error": {"message": "Your credit balance is too low"}}
+        rejected = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(400, json=broke)))
+        rejected.post(MESSAGES, json={"model": "claude-sonnet-5-5"})
+        self.assertEqual((self.ceiling.counts["rejected"], self.ceiling.counts["terminal"]), (1, 1))
         self.assertEqual(ledger.summary()["spent_usd"], summary["spent_usd"])
 
     def test_failed_and_unreported_requests_keep_their_reservation(self):
-        with self.assertRaises(openai.InternalServerError):
-            self._openai(Recorder(None, 500), use_responses_api=True).invoke("hi")
-        self._openai(Recorder({**OPENAI_RESPONSE, "usage": None}), use_responses_api=True).invoke("hi")
+        client(Recorder(None, 500)).post(RESPONSES, json={"model": "gpt-6-luna"})
+        client(Recorder({**OPENAI_RESPONSE, "usage": None})).post(RESPONSES, json={"model": "gpt-6-luna"})
 
         def broken(_request):
             raise httpx.ConnectError("down")
 
-        model = ChatOpenAI(
-            model="gpt-6-luna",
-            api_key="test-key",
-            http_client=httpx.Client(transport=httpx.MockTransport(broken)),
-        )
-        with self.assertRaises(openai.APIConnectionError):
-            model.invoke("hi")
-        garbled = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200, text="garbled")))
-        garbled.post("https://api.anthropic.com/v1/messages", json={"model": "claude-sonnet-5-5"})
+        with self.assertRaises(httpx.ConnectError):
+            client(broken).post(RESPONSES, json={"model": "gpt-6-luna"})
+        garbled = client(lambda _request: httpx.Response(200, text="garbled"))
+        garbled.post(MESSAGES, json={"model": "claude-sonnet-5-5"})
         self.assertEqual((self.ceiling.counts["failed"], self.ceiling.counts["unreported"]), (2, 2))
         self.assertEqual(self.ceiling.budget.summary()["unknown_settlements"], 4)
         self.assertIsNone(ceiling.usage_of("api.openai.com", ["no usage"]))
         ceiling.Ceiling(1.0, 10).write_state()
 
-    def test_malformed_usage_keeps_the_whole_reservation_and_always_settles(self):
+    def test_malformed_usage_is_unreported(self):
         malformed = (
             {},
             {"input_tokens": 10},
@@ -216,10 +186,11 @@ class CeilingTests(unittest.TestCase):
         self.assertEqual(ceiling.usage_of("api.openai.com", {"usage": chat}).input_tokens, 3)
         anthropic = {"input_tokens": 3, "output_tokens": 1, "cache_read_input_tokens": None}
         self.assertEqual(ceiling.usage_of("api.anthropic.com", {"usage": anthropic}).input_tokens, 3)
+
+    def test_malformed_usage_keeps_the_whole_reservation_and_always_settles(self):
         for usage in ({}, {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": 7}):
             spent = self.ceiling.budget.spent
-            client = httpx.Client(transport=httpx.MockTransport(Recorder({**OPENAI_RESPONSE, "usage": usage})))
-            client.post("https://api.openai.com/v1/responses", json={"model": "gpt-6-luna"})
+            client(Recorder({**OPENAI_RESPONSE, "usage": usage})).post(RESPONSES, json={"model": "gpt-6-luna"})
             # The whole worst case stays spent: an empty usage is not a known zero.
             self.assertGreaterEqual(self.ceiling.budget.spent - spent, eval_cost.call_bound("gpt-6-luna", 0, 32_000))
         self.assertEqual(self.ceiling.counts["unreported"], 2)
@@ -228,7 +199,7 @@ class CeilingTests(unittest.TestCase):
             def __iter__(self):
                 raise httpx.ReadError("reset")
 
-        request = httpx.Request("POST", "https://api.openai.com/v1/responses", json={"model": "gpt-6-luna"})
+        request = httpx.Request("POST", RESPONSES, json={"model": "gpt-6-luna"})
         admitted, reservation, sent = self.ceiling.admit(request)
         with self.assertRaises(httpx.ReadError):
             self.ceiling.settle(reservation, sent, "api.openai.com", httpx.Response(200, stream=Broken()))
@@ -255,9 +226,8 @@ class CeilingTests(unittest.TestCase):
     def test_embeddings_reserve_input_only_and_settle_on_prompt_tokens(self):
         body = {"object": "list", "data": [], "model": "text-embedding-3-small", "usage": {"prompt_tokens": 1000}}
         recorder = Recorder(body)
-        client = httpx.Client(transport=httpx.MockTransport(recorder))
         request = {"model": "text-embedding-3-small", "input": ["taza azul", "tetera"], "max_output_tokens": 9}
-        client.post("https://api.openai.com/v1/embeddings", json=request)
+        client(recorder).post("https://api.openai.com/v1/embeddings", json=request)
         # The body is sent unchanged: an embeddings request has no output limit to clamp.
         self.assertEqual(recorder.requests, [("/v1/embeddings", request)])
         self.assertAlmostEqual(self.ceiling.budget.spent, 1000 * 0.02 / 1e6)
@@ -270,7 +240,7 @@ class CeilingTests(unittest.TestCase):
         )
         for usage in ({}, {"prompt_tokens": -1}, {"prompt_tokens": 1.5}, {"prompt_tokens": True}):
             self.assertIsNone(ceiling.usage_of("api.openai.com", {"usage": usage}, "/v1/embeddings"))
-        unreported = httpx.Client(transport=httpx.MockTransport(Recorder({"object": "list", "usage": {}})))
+        unreported = client(Recorder({"object": "list", "usage": {}}))
         spent = self.ceiling.budget.spent
         unreported.post("https://api.openai.com/v1/embeddings", json={"model": "text-embedding-3-large", "input": "x"})
         self.assertGreater(self.ceiling.budget.spent - spent, 0.0)
@@ -278,12 +248,12 @@ class CeilingTests(unittest.TestCase):
 
     def test_an_unpriced_or_streamed_embeddings_request_is_refused(self):
         recorder = Recorder({"usage": {"prompt_tokens": 1}})
-        client = httpx.Client(transport=httpx.MockTransport(recorder))
+        sender = client(recorder)
         for request in ({"model": "gpt-6-luna", "input": "x"}, {"model": "text-embedding-3-small", "stream": True}):
             with self.subTest(request=request), self.assertRaises(ceiling.UnsupportedRequestError):
-                client.post("https://api.openai.com/v1/embeddings", json=request)
+                sender.post("https://api.openai.com/v1/embeddings", json=request)
         with self.assertRaises(ceiling.UnsupportedRequestError):
-            client.post("https://api.openai.com/v1/embeddings", content=b"not json")
+            sender.post("https://api.openai.com/v1/embeddings", content=b"not json")
         self.assertEqual((recorder.requests, self.ceiling.counts["unsupported"]), ([], 3))
 
     def test_concurrent_state_writes_never_collide(self):
@@ -294,6 +264,44 @@ class CeilingTests(unittest.TestCase):
             worker.join()
         self.assertEqual(json.loads(self.state.read_text(encoding="utf-8"))["max_output_tokens"], 32_000)
         self.assertEqual([path.name for path in self.state.parent.iterdir()], ["budget.json"])
+
+
+class EvidenceTests(unittest.TestCase):
+    def test_only_an_answer_that_stopped_at_the_output_limit_is_clamped(self):
+        stopped = (
+            {"stop_reason": "max_tokens"},
+            {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}},
+            {"choices": [{"finish_reason": "stop"}, {"finish_reason": "length"}]},
+        )
+        for body in stopped:
+            with self.subTest(body=body):
+                self.assertTrue(ceiling.clamped(body))
+        complete = (
+            [],
+            {"stop_reason": "end_turn"},
+            {"status": "incomplete", "incomplete_details": {"reason": "content_filter"}},
+            {"incomplete_details": None},
+            {"choices": ["length"]},
+            {"choices": "length"},
+        )
+        for body in complete:
+            with self.subTest(body=body):
+                self.assertFalse(ceiling.clamped(body))
+
+    def test_a_terminal_refusal_is_a_refused_key_or_an_account_without_credit_or_quota(self):
+        for status in (401, 402, 403):
+            self.assertTrue(ceiling.terminal(status, b"{}"))
+        self.assertTrue(ceiling.terminal(400, b'{"error": "Your credit balance is too low"}'))
+        self.assertTrue(ceiling.terminal(429, b'{"error": {"code": "insufficient_quota"}}'))
+        for status, body in ((429, b"{}"), (500, b"billing"), (400, b"{}")):
+            self.assertFalse(ceiling.terminal(status, body))
+
+    def test_a_coded_answer_is_read_after_its_coding_and_an_unknown_coding_is_unreadable(self):
+        self.assertEqual(ceiling.decoded(gzip.compress(b"{}"), "gzip"), b"{}")
+        self.assertEqual(ceiling.decoded(zlib.compress(b"{}"), "deflate"), b"{}")
+        self.assertEqual(ceiling.decoded(b"{}", ""), b"{}")
+        self.assertIsNone(ceiling.decoded(b"{}", "br"))
+        self.assertIsNone(ceiling.decoded(b"not gzip", "gzip"))
 
 
 if __name__ == "__main__":
