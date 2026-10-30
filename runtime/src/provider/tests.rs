@@ -32,7 +32,7 @@ fn chat(
 }
 
 fn soon(status: u16) -> Answer {
-    Answer::raw(status, "{}").header("retry-after", "0")
+    Answer::raw(status, "{}").header("retry-after-ms", "1")
 }
 
 #[test]

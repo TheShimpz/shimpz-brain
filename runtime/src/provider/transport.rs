@@ -44,7 +44,7 @@ const ESTABLISHED: &[u8] = b"HTTP/1.1 200 Connection established\r\n\r\n";
 const MAX_PROXY_RESPONSE_BYTES: usize = 1024;
 const RETRY_INITIAL: Duration = Duration::from_millis(500);
 const RETRY_MAX: Duration = Duration::from_secs(8);
-const MAX_RETRY_AFTER_SECONDS: u64 = 60;
+const MAX_RETRY_AFTER_SECONDS: f64 = 60.0;
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 /// Where provider requests go.
@@ -324,7 +324,7 @@ impl Transport {
                 Ok(response) if (200..300).contains(&response.status) => {
                     return Ok((attempt, response));
                 }
-                Ok(response) if retryable_status(response.status) => {
+                Ok(response) if should_retry(response.status, &response.headers) => {
                     retry_delay(attempt, Some(&response.headers))
                 }
                 Ok(_) => return Err(CallError::Request),
@@ -372,23 +372,48 @@ pub fn retryable_status(status: u16) -> bool {
     matches!(status, 408 | 409 | 429) || status >= 500
 }
 
-/// The wait before attempt `attempt + 1`: the provider's `retry-after` seconds when it names at most a minute,
-/// otherwise half a second doubled per attempt, at most eight seconds.
+/// Whether the SDKs retried an unsuccessful answer: as the provider's `x-should-retry` says, else by its status.
+#[must_use]
+pub fn should_retry(status: u16, headers: &HeaderMap) -> bool {
+    match headers
+        .get("x-should-retry")
+        .and_then(|value| value.to_str().ok())
+    {
+        Some("true") => true,
+        Some("false") => false,
+        _ => retryable_status(status),
+    }
+}
+
+/// The wait before attempt `attempt + 1`: the provider's `retry-after-ms` or `retry-after` when it names more than
+/// nothing and at most a minute, otherwise half a second doubled per attempt, at most eight seconds (the SDKs'
+/// schedule without their jitter).
 #[must_use]
 pub fn retry_delay(attempt: u32, headers: Option<&HeaderMap>) -> Duration {
-    let named = headers
-        .and_then(|headers| headers.get("retry-after"))
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .filter(|seconds| *seconds <= MAX_RETRY_AFTER_SECONDS);
-    named.map_or_else(
-        || {
-            RETRY_INITIAL
-                .saturating_mul(1 << attempt.saturating_sub(1).min(5))
-                .min(RETRY_MAX)
-        },
-        Duration::from_secs,
-    )
+    headers
+        .and_then(retry_after)
+        .filter(|seconds| *seconds > 0.0 && *seconds <= MAX_RETRY_AFTER_SECONDS)
+        .map_or_else(
+            || {
+                RETRY_INITIAL
+                    .saturating_mul(1 << attempt.saturating_sub(1).min(5))
+                    .min(RETRY_MAX)
+            },
+            Duration::from_secs_f64,
+        )
+}
+
+/// The wait an answer names, in seconds: `retry-after-ms` when it is a number, else `retry-after`'s seconds.
+fn retry_after(headers: &HeaderMap) -> Option<f64> {
+    let number = |name| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<f64>().ok())
+    };
+    number("retry-after-ms")
+        .map(|milliseconds| milliseconds / 1000.0)
+        .or_else(|| number("retry-after"))
 }
 
 /// Opens pooled connections: a CONNECT tunnel and TLS, or plain TCP to the loopback origin, each holding one of its

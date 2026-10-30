@@ -372,7 +372,7 @@ fn the_key_travels_only_in_its_header_and_is_marked_sensitive() {
 
 #[test]
 fn retryable_statuses_are_retried_and_counted_and_a_client_error_is_not() {
-    let soon = |status| Answer::raw(status, "{}").header("retry-after", "0");
+    let soon = |status| Answer::raw(status, "{}").header("retry-after-ms", "1");
     let origin = Origin::scripted([
         soon(429),
         soon(500),
@@ -417,16 +417,52 @@ fn retry_after_is_honoured_within_its_bound() {
     let started = Instant::now();
     assert_eq!(call(&harness, &Scope::default(), 2).unwrap().0, 2);
     assert!(started.elapsed() >= Duration::from_secs(1));
-    let named = |value: &str| {
+}
+
+#[test]
+fn a_named_wait_counts_only_within_its_bound() {
+    let named = |pairs: &[(&'static str, &str)]| {
         let mut headers = HeaderMap::new();
-        headers.insert("retry-after", HeaderValue::from_str(value).unwrap());
+        for (name, value) in pairs {
+            headers.insert(*name, HeaderValue::from_str(value).unwrap());
+        }
         retry_delay(1, Some(&headers))
     };
-    assert_eq!(named("7"), Duration::from_secs(7));
-    assert_eq!(named("61"), RETRY_INITIAL);
-    assert_eq!(named("soon"), RETRY_INITIAL);
+    assert_eq!(named(&[("retry-after", "7")]), Duration::from_secs(7));
+    assert_eq!(
+        named(&[("retry-after", "1.5")]),
+        Duration::from_millis(1500)
+    );
+    assert_eq!(
+        named(&[("retry-after-ms", "250"), ("retry-after", "7")]),
+        Duration::from_millis(250)
+    );
+    assert_eq!(
+        named(&[("retry-after-ms", "x"), ("retry-after", "7")]),
+        Duration::from_secs(7)
+    );
+    for unbounded in ["0", "61", "soon", "-1"] {
+        assert_eq!(named(&[("retry-after", unbounded)]), RETRY_INITIAL);
+    }
     assert_eq!(retry_delay(2, None), RETRY_INITIAL * 2);
     assert_eq!(retry_delay(9, None), RETRY_MAX);
+}
+
+#[test]
+fn the_provider_decides_with_x_should_retry() {
+    let origin = Origin::scripted([
+        Answer::raw(500, "{}").header("x-should-retry", "false"),
+        Answer::raw(400, "{}")
+            .header("x-should-retry", "true")
+            .header("retry-after-ms", "1"),
+        Answer::raw(200, "{}"),
+    ]);
+    let harness = Harness::new(&origin.route());
+    let scope = Scope::default();
+    assert_eq!(call(&harness, &scope, 3).unwrap_err(), CallError::Request);
+    assert_eq!(origin.requests().len(), 1);
+    assert_eq!(call(&harness, &scope, 3).unwrap().0, 2);
+    assert_eq!(requests_sent(&scope.usage), 3);
 }
 
 /// Cancels `scope` once `ready` holds, then expects the call to end cancelled within a second.
