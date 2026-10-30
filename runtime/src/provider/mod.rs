@@ -491,3 +491,6 @@ impl CallError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
