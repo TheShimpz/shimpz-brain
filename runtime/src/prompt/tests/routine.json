@@ -1,0 +1,118 @@
+{
+ "thread_id": "t",
+ "team_name": "Équipe \"Pulse\" 東京",
+ "assistants": [
+  {
+   "id": "hello-pulse",
+   "genesis": "Greets — politely.",
+   "actions": [
+    {
+     "id": "hello",
+     "summary": "Do hello — é “quoted”.",
+     "input_schema": {
+      "type": "object",
+      "additionalProperties": false
+     },
+     "output_schema": {
+      "type": "object",
+      "additionalProperties": false
+     },
+     "authorization": false,
+     "input_files": [
+      "file"
+     ]
+    },
+    {
+     "id": "list",
+     "summary": "Do list — é “quoted”.",
+     "input_schema": {
+      "type": "object",
+      "additionalProperties": false
+     },
+     "output_schema": {
+      "type": "object",
+      "additionalProperties": false
+     },
+     "authorization": false,
+     "input_files": []
+    }
+   ]
+  }
+ ],
+ "provider": "openai",
+ "model": "gpt-6-luna",
+ "turn_date": "2026-10-30",
+ "timezone": "America/Sao_Paulo",
+ "memories": [],
+ "routines": [
+  {
+   "routine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "name": "Resumo diário",
+   "schedule": {
+    "kind": "daily",
+    "time": "08:00"
+   },
+   "timezone": "America/Sao_Paulo",
+   "timezone_source": "browser",
+   "revision": 2,
+   "daily_steps": 1,
+   "output": {
+    "mode": "show"
+   },
+   "steps": [
+    {
+     "id": "s1",
+     "assistant": "hello-pulse",
+     "action": "hello",
+     "inputs": [
+      "name"
+     ]
+    },
+    {
+     "id": "s2",
+     "assistant": "hello-pulse",
+     "action": "hello",
+     "inputs": []
+    },
+    {
+     "id": "s3",
+     "assistant": "hello-pulse",
+     "action": "list",
+     "inputs": []
+    }
+   ]
+  }
+ ],
+ "routine_question": {
+  "code": "routine-work-rerun",
+  "options": [],
+  "value": null
+ },
+ "routine_mode": true,
+ "routine_rerun": [
+  {
+   "assistant": "hello-pulse",
+   "action": "hello",
+   "count": 1,
+   "inputs": [
+    {
+     "member": "name",
+     "kind": "fresh",
+     "value": null,
+     "chosen": false,
+     "source": null
+    }
+   ]
+  }
+ ],
+ "routine_schedule": null,
+ "routine_output": null,
+ "routine_settings_answer": false,
+ "routine_selected": null,
+ "locale": "ar",
+ "turn_message_id": null,
+ "attachment_kinds": [],
+ "attachment_commitment": "",
+ "attachment_charge": 0,
+ "browser": true
+}
