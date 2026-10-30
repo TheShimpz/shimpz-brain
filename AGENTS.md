@@ -27,4 +27,4 @@
   `ruff check --config ruff.toml brain` from the umbrella root.
 - Run focused tests with `uv run --frozen --python 3.14 python -m unittest discover -s tests`.
 - `egress/` is a Rust package built with the umbrella `.egress/transport` crate; from the umbrella root run
-  `.scripts/gate/rust crate brain/egress` (100% line, branch, and function coverage).
+  `.scripts/gate/rust crate brain/egress`.
