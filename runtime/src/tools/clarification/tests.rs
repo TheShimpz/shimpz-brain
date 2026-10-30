@@ -1,6 +1,6 @@
 use super::*;
 use crate::errors::BrainError;
-use crate::tools::refusal::testing::{reply, result, turn, turn_with, user, value};
+use crate::tools::testing::{reply, result, turn, turn_with, user, value};
 
 const VALID: &str = r#"{"question":"Qual período você quer cobrir?","options":[{"label":"Hoje",
 "description":"Só lançamentos de hoje."},{"label":"Esta semana","description":""}],"default_index":0}"#;

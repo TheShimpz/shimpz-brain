@@ -1,5 +1,5 @@
 use super::*;
-use crate::tools::refusal::testing::{envelope, reply, result, turn, user, value};
+use crate::tools::testing::{envelope, reply, result, turn, user, value};
 
 const PREFERENCE: &str = "responda sempre em português do Brasil";
 const MESSAGE: &str = "A partir de agora, responda sempre em português do Brasil.";

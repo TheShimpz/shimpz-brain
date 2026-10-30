@@ -7,6 +7,8 @@ pub mod clarification;
 pub mod memory;
 pub mod refusal;
 pub mod routine;
+#[cfg(test)]
+pub(crate) mod testing;
 
 use crate::errors::BrainError;
 
