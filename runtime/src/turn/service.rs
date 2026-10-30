@@ -314,63 +314,70 @@ impl TurnService {
         let Some(run_id) = thread.open_run.clone() else {
             return self.delivered(&thread_id, &answered);
         };
-        let pending = self.pending(&run_id)?;
-        let applied = self.applied(&run_id, &answered, &pending)?;
-        let ended = self.worker.result(&run_id).map_err(state)?.is_some();
-        if (pending.is_empty() && !applied) || ended {
-            self.reconcile(&thread_id, &mut thread)?;
-            return self.delivered(&thread_id, &answered);
+        let history = match self.worker.history(&run_id) {
+            Ok(history) => history,
+            // The run is gone already (a crash after its commit deleted it): the thread lets go of it.
+            Err(Error::State(_)) => {
+                thread.open_run = None;
+                self.threads.save(&thread_id, &thread)?;
+                return self.delivered(&thread_id, &answered);
+            }
+            Err(_) => return Err(BrainError::State),
+        };
+        let open = Open {
+            thread_id: &thread_id,
+            run_id: &run_id,
+            asked: asked(&history),
+            pending: self.pending(&run_id)?,
+            answered,
+        };
+        self.resume_open(&mut thread, open, request, scope)
+    }
+
+    /// Resumes the thread's open run: an ended one is committed or delivered again, results already recorded are not
+    /// recorded again, and the run is driven to its next requests or its end.
+    fn resume_open(
+        &self,
+        thread: &mut Thread,
+        open: Open<'_>,
+        request: &crate::server::turn_input::ResumeRequest,
+        scope: &Scope,
+    ) -> Result<Value, BrainError> {
+        let Open {
+            thread_id,
+            run_id,
+            asked,
+            pending,
+            answered,
+        } = open;
+        let applied = applied(&answered, &pending, &asked);
+        if let Some(outcome) = self.worker.result(run_id).map_err(state)? {
+            // A run that ended before its exchange was committed commits it now; one committed is delivered again.
+            if thread.committed_run.as_deref() != Some(run_id) {
+                return self.ended(thread_id, thread, (run_id, answered), &outcome);
+            }
+            self.reconcile(thread_id, thread)?;
+            return self.delivered(thread_id, &answered);
         }
-        let input = self.input(&run_id)?;
+        if pending.is_empty() && !applied {
+            self.reconcile(thread_id, thread)?;
+            return self.delivered(thread_id, &answered);
+        }
+        let input = self.input(run_id)?;
         if Self::scope_digest(&request.turn.context) != thread.scope {
-            self.delete_thread_locked(&thread_id)?;
+            self.delete_thread_locked(thread_id)?;
             return Err(BrainError::contract(
                 "Assistant scope changed during the pending turn",
             ));
         }
         let session = prepare::resumed(request, &input, scope)?;
-        // A resume Team repeats after losing the answer to it finds its results recorded already: the run is driven to
-        // the answer Team lost, its next requests or its end, asking nothing again.
-        if !applied {
-            for (step, result) in prepare::resolutions(self, &run_id, &request.results)? {
-                self.worker
-                    .resolve(&run_id, step, &run::result_json(&result))
-                    .map_err(state)?;
-            }
+        let fresh = fresh_results(&request.results, &pending, &asked)?;
+        for (step, result) in prepare::resolutions(self, run_id, &fresh)? {
+            self.worker
+                .resolve(run_id, step, &run::result_json(&result))
+                .map_err(state)?;
         }
-        self.run(&thread_id, &mut thread, (&run_id, answered), session)
-    }
-
-    /// Whether every `answered` interrupt is one this run asked Team for and none of them is still pending: their
-    /// results were recorded by an earlier resume.
-    fn applied(
-        &self,
-        run_id: &str,
-        answered: &[String],
-        pending: &[TeamRequest],
-    ) -> Result<bool, BrainError> {
-        if answered.is_empty()
-            || pending
-                .iter()
-                .any(|request| answered.iter().any(|id| id == request.interrupt_id()))
-        {
-            return Ok(false);
-        }
-        let history = self.worker.history(run_id).map_err(state)?;
-        let asked: Vec<String> = history
-            .iter()
-            .filter_map(|event| match event {
-                Event::StepScheduled {
-                    kind: StepKind::Deferred,
-                    name,
-                    input: Some(input),
-                    ..
-                } => TeamRequest::from_json(name, input)
-                    .map(|request| request.interrupt_id().to_owned()),
-                _ => None,
-            })
-            .collect();
-        Ok(answered.iter().all(|id| asked.contains(id)))
+        self.run(thread_id, thread, (run_id, answered), session)
     }
 
     /// The committed turn a repeated resume with exactly these `answered` interrupts receives again; any other resume
@@ -459,4 +466,63 @@ fn sleep_until(at: i64) {
         .unwrap_or(0)
         .clamp(1, 60_000);
     std::thread::sleep(Duration::from_millis(wait));
+}
+
+/// The interrupts a run asked Team for, answered or not.
+fn asked(history: &[Event]) -> Vec<String> {
+    history
+        .iter()
+        .filter_map(|event| match event {
+            Event::StepScheduled {
+                kind: StepKind::Deferred,
+                name,
+                input: Some(input),
+                ..
+            } => {
+                TeamRequest::from_json(name, input).map(|request| request.interrupt_id().to_owned())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether every `answered` interrupt is one the run asked for and none of them is still pending: an earlier resume
+/// recorded their results.
+fn applied(answered: &[String], pending: &[TeamRequest], asked: &[String]) -> bool {
+    !answered.is_empty()
+        && answered.iter().all(|id| asked.contains(id))
+        && !pending
+            .iter()
+            .any(|request| answered.iter().any(|id| id == request.interrupt_id()))
+}
+
+/// The open run a resume finds: its thread, the interrupts it asked for and still waits on, and what the resume
+/// answers.
+struct Open<'a> {
+    thread_id: &'a str,
+    run_id: &'a str,
+    asked: Vec<String>,
+    pending: Vec<TeamRequest>,
+    answered: Vec<String>,
+}
+
+/// The results a resume still has to record: an earlier resume recorded the others (all of them when Team repeats a
+/// resume whose answer it lost). A result naming an interrupt the run never asked for is refused.
+fn fresh_results(
+    results: &[(String, Value)],
+    pending: &[TeamRequest],
+    asked: &[String],
+) -> Result<Vec<(String, Value)>, BrainError> {
+    let waiting = |id: &str| pending.iter().any(|request| request.interrupt_id() == id);
+    if results
+        .iter()
+        .any(|(id, _)| !waiting(id) && !asked.contains(id))
+    {
+        return Err(BrainError::contract("invalid Action resume results"));
+    }
+    Ok(results
+        .iter()
+        .filter(|(id, _)| waiting(id))
+        .cloned()
+        .collect())
 }
