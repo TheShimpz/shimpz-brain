@@ -1,68 +1,59 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-# check=skip=SecretsUsedInArgOrEnv ; SHIMPZ_BRAIN_RUNTIME_TOKEN_GID is a numeric group id, never a credential
+# The Shimpz Brain (ADR-0124): one Rust binary, durable chat turns on the vendored Holdpoint, distroless runtime.
 
-FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded AS uv
+# The packages as the dependency build sees them: every manifest and lockfile, and a stub in place of each library and
+# binary root, so a source edit leaves the dependency layer unchanged.
+FROM docker.io/library/rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS rust-skeleton
+WORKDIR /workspace
+COPY runtime/Cargo.toml runtime/Cargo.lock ./runtime/
+COPY runtime/src ./runtime/src
+COPY vendor/holdpoint ./vendor/holdpoint
+COPY vendor/strict-json ./vendor/strict-json
+COPY protocol/action-schema ./protocol/action-schema
+COPY protocol/team/http ./protocol/team/http
+RUN find . -type f -regextype posix-extended \
+        ! -regex '.*/(Cargo\.toml|Cargo\.lock)' ! -regex '.*/src/(lib|main)\.rs' -delete \
+    && find . -depth -type d -empty -delete \
+    && for root in $(find . -path '*/src/lib.rs' -o -path '*/src/main.rs'); do \
+        printf '//! Dependency stub.\n' > "${root}"; \
+        if test "${root##*/}" = main.rs; then printf 'fn main() {}\n' >> "${root}"; fi; \
+    done
 
-# The dependency layer is the runtime's base and a pure function of the pinned base, uv, and the lock (Shimpz
-# ADR-0098): no ARG SOURCE_DATE_EPOCH, WORKDIR, COPY, or ADD here, uv and the lock arrive as read-only mounts on a
-# discarded tmpfs, the uv cache is removed, bytecode is hash-checked, and every /opt timestamp is fixed. An unchanged
-# lock therefore yields the same layer bytes at every commit, with or without a build cache. The base ships no bytecode
-# and the read-only runtime cannot write any, so the standard library is compiled here too, with fixed timestamps.
-FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS dependencies
-RUN --mount=type=tmpfs,target=/tmp \
-    --mount=type=bind,from=uv,source=/uv,target=/tmp/uv \
-    --mount=type=bind,source=pyproject.toml,target=/tmp/project/pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=/tmp/project/uv.lock \
-    cd /tmp/project && \
-    UV_PROJECT_ENVIRONMENT=/opt/venv UV_CACHE_DIR=/opt/uv-cache UV_LINK_MODE=copy \
-        /tmp/uv sync --frozen --no-install-project --no-dev --python 3.14 && \
-    rm -rf /opt/uv-cache && \
-    find /opt/venv -type f -name '*.pyc' -delete && \
-    PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /usr/local/lib/python3.14 /opt/venv && \
-    find /usr/local/lib/python3.14 \( -type d -o -name '*.pyc' \) -exec touch -h -d @0 {} + && \
-    find /opt -depth -exec touch -h -d @0 {} +
+# The builder's Debian 13 (trixie) glibc matches the distroless cc-debian13 runtime the binary runs on. Every
+# dependency is compiled here with the release profile, pinned by runtime/Cargo.lock; the stub packages' artifacts are
+# then removed, so the real sources always compile.
+FROM docker.io/library/rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS rust-dependencies
+WORKDIR /workspace
+COPY --from=rust-skeleton /workspace ./
+RUN cd runtime \
+    && cargo build --release --locked --bin shimpz-brain \
+    && cargo clean --release --locked --package brain-runtime --package holdpoint --package strict-json \
+        --package action-schema --package team-protocol
 
-FROM dependencies AS runtime
+FROM rust-dependencies AS rust-build
+COPY runtime/Cargo.toml runtime/Cargo.lock ./runtime/
+COPY runtime/src ./runtime/src
+COPY model_catalog.json ./model_catalog.json
+COPY vendor/holdpoint ./vendor/holdpoint
+COPY vendor/strict-json ./vendor/strict-json
+COPY protocol/action-schema ./protocol/action-schema
+COPY protocol/team/http ./protocol/team/http
 ARG SOURCE_DATE_EPOCH=0
-ARG SHIMPZ_BRAIN_RUNTIME_TOKEN_GID=10016
+RUN cd runtime && cargo build --release --locked --bin shimpz-brain \
+    && mkdir -p /mounts/run/shimpz-brain-runtime /mounts/var/lib/shimpz-brain-runtime
 
+# One root-owned binary. The two mountpoints keep the ownership and modes fresh volumes copy: Team's token directory
+# (uid 10001, the token group 10016, 0750) and the private state directory (uid 10001, 0700). The runtime identity
+# can modify neither the binary nor the read-only root filesystem; the healthcheck subcommand needs no shell.
+FROM gcr.io/distroless/cc-debian13@sha256:ed7c407fd64eb0af9dddb9456b94cee188a40a7f53cf38c9836e1e9ae14fca02 AS runtime
 LABEL org.opencontainers.image.title="shimpz-brain" \
-      org.opencontainers.image.description="Provider-neutral Shimpz Brain runtime powered by LangGraph"
-
-RUN groupadd -g 10001 brainruntime \
-    && groupadd -g "${SHIMPZ_BRAIN_RUNTIME_TOKEN_GID}" shimpzbrain-runtime-token \
-    && useradd -u 10001 -g brainruntime -G shimpzbrain-runtime-token -M -s /usr/sbin/nologin brainruntime \
-    && mkdir -p /run/shimpz-brain-runtime /var/lib/shimpz-brain-runtime \
-    && chown brainruntime:shimpzbrain-runtime-token /run/shimpz-brain-runtime \
-    && chmod 0750 /run/shimpz-brain-runtime \
-    && chown brainruntime:brainruntime /var/lib/shimpz-brain-runtime \
-    && chmod 0700 /var/lib/shimpz-brain-runtime
-
-COPY --chown=brainruntime:brainruntime action_purpose.py agent_runtime.py api_input.py attachments.py browser_api.py browser_step.py browser_thread.py browser_tool.py capability_plan.py clarification.py context_budget.py action_tool.py intent_fast_path.py intent_route.py interface_language.py memory.py model_usage.py provider_cancel.py provider_client.py routine.py runtime_api.py runtime_errors.py structured.py tool_refusal.py turn_pins.py turn_prompt.py \
-    model_catalog.json /app/
-# The generated, pinned Team protocol mirror keeps its package path; namespace packages need no __init__.py. Its HTTP
-# directory holds exactly the modules the sync script mirrors, so the image copies whatever that set is.
-COPY --chown=brainruntime:brainruntime protocol/team/action/v1/pattern.py protocol/team/action/v1/schema.py \
-    /app/protocol/team/action/v1/
-COPY --chown=brainruntime:brainruntime protocol/team/http/v1/ /app/protocol/team/http/v1/
-# The application is compiled like its environment, after its last copy.
-RUN PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /app
-
-# Two allocator arenas and a fixed mmap threshold hand freed request memory back instead of keeping it in per-thread
-# arenas, so resident memory follows what runtime_api admits rather than ratcheting toward the container limit.
-# LangGraph reads LANGGRAPH_STRICT_MSGPACK once at import: checkpoint reads then construct only its allowlisted types, so
-# a tampered checkpoint cannot name an arbitrary callable (tests/test_strict_checkpoint_serde.py proves the state fits).
-ENV LANGCHAIN_TRACING_V2=false \
-    LANGGRAPH_STRICT_MSGPACK=true \
-    LANGSMITH_TRACING=false \
-    MALLOC_ARENA_MAX=2 \
-    MALLOC_MMAP_THRESHOLD_=131072 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-WORKDIR /app
-USER brainruntime
+      org.opencontainers.image.description="Provider-neutral Shimpz Brain runtime on Holdpoint"
+COPY --link --from=rust-build --chmod=0555 /workspace/runtime/target/release/shimpz-brain /usr/local/bin/shimpz-brain
+COPY --link --from=rust-build --chown=10001:10016 --chmod=0750 /mounts/run/shimpz-brain-runtime /run/shimpz-brain-runtime
+COPY --link --from=rust-build --chown=10001:10001 --chmod=0700 /mounts/var/lib/shimpz-brain-runtime /var/lib/shimpz-brain-runtime
+USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=4s --start-period=5s --start-interval=250ms --retries=5 \
-    CMD ["/opt/venv/bin/python", "-c", "import socket; connection=socket.create_connection(('127.0.0.1',8080),2); connection.sendall(b'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n'); status=connection.recv(128).split(b'\\r\\n',1)[0]; connection.close(); raise SystemExit(0 if status in {b'HTTP/1.0 200 OK',b'HTTP/1.1 200 OK'} else 1)"]
-ENTRYPOINT ["/opt/venv/bin/uvicorn", "runtime_api:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--no-access-log", "--no-server-header", "--no-proxy-headers"]
+    CMD ["/usr/local/bin/shimpz-brain", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/shimpz-brain"]
+CMD ["serve", "--egress", "shimpz-brain-egress:8888"]

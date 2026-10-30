@@ -1,11 +1,18 @@
 .git
 LICENSE
 README.md
+AGENTS.md
+eval
+perf
 tests
-.ruff_cache
+egress
+pyproject.toml
+uv.lock
 .venv
 **/__pycache__
 **/*.pyc
+**/target
+**/fuzz
 
 # Never send local credentials or runtime configuration to the build context.
 .env

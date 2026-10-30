@@ -1,29 +1,16 @@
 [project]
-name = "shimpz-brain-runtime"
+name = "shimpz-brain-tooling"
 version = "0.0.0"
 requires-python = "==3.14.*"
 dependencies = [
-    # Provider-neutral Team Brain.  Every agent/tool/runtime dependency is exact so a rebuilt
-    # image cannot silently alter the Action boundary or checkpoint format.
-    # Brain imports the provider SDKs, httpcore and referencing directly; each is pinned to the version langchain,
-    # httpx and jsonschema resolve.
-    "anthropic==0.117.0",
-    "fastapi==0.143.0",
-    # RE2 matches an Action schema `pattern` in time linear in the subject and releases the GIL while it runs.
+    # The evaluation and performance tooling only: it drives the Rust Brain over HTTP (ADR-0124). Its judges send
+    # their own provider requests, and the precision runners load Team's Action protocol, which validates with the
+    # same jsonschema and RE2 pins Team uses.
     "google-re2==1.1.20251105",
-    "httpcore==1.0.9",
     "httpx==0.28.1",
     "jsonschema==4.25.1",
-    "langchain==1.3.14",
-    "langchain-anthropic==1.4.8",
-    "langchain-core==1.4.9",
-    "langchain-openai==1.3.5",
-    "langgraph==1.2.14",
-    "langgraph-checkpoint-sqlite==3.1.2",
-    "openai==2.46.0",
     "pydantic==2.14.0",
     "referencing==0.37.0",
-    "uvicorn==0.54.0",
 ]
 
 [tool.uv]

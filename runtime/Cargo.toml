@@ -42,7 +42,7 @@ zeroize = "=1.9.1"
 action-schema = { path = "../protocol/action-schema" }
 holdpoint = { path = "../vendor/holdpoint" }
 strict-json = { path = "../vendor/strict-json" }
-team-protocol = { path = "vendor/team-http" }
+team-protocol = { path = "../protocol/team/http" }
 
 [dev-dependencies]
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
