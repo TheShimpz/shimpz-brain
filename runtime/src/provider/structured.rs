@@ -65,8 +65,35 @@ pub fn value(
         message_id: ASK_ID.to_owned(),
         blocks: rest,
     });
-    let answer = providers.chat(scope, config, &request, projection.as_ref(), profile, None)?;
-    answered(&answer, config.provider, ask.max_chars).ok_or(CallError::Response)
+    conversation(
+        providers,
+        scope,
+        config,
+        profile,
+        &request,
+        projection.as_ref(),
+        ask.max_chars,
+    )
+}
+
+/// One stateless structured call of a whole conversation: `request` names its schema in `output`, and `projection`
+/// adds request-local blocks to one of its user messages. The answer is read as [`value`] reads it, within
+/// `max_chars`.
+///
+/// # Errors
+///
+/// As [`value`].
+pub fn conversation(
+    providers: &Providers,
+    scope: &Scope,
+    config: &ProviderConfig,
+    profile: Profile,
+    request: &ChatRequest,
+    projection: Option<&Projection>,
+    max_chars: usize,
+) -> Result<Value, CallError> {
+    let answer = providers.chat(scope, config, request, projection, profile, None)?;
+    answered(&answer, config.provider, max_chars).ok_or(CallError::Response)
 }
 
 /// The one value an answer wrote, or `None` when it refused, called a tool, or wrote anything but that value.
