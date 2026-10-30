@@ -1,0 +1,63 @@
+[package]
+name = "brain-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+publish = false
+license = "Apache-2.0"
+description = "The Shimpz Brain: provider-neutral reasoning for Team chat turns, durable on Holdpoint (ADR-0124)"
+
+[lib]
+name = "brain_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "shimpz-brain"
+path = "src/main.rs"
+
+[features]
+# Named crash points selected by SHIMPZ_BRAIN_FAILPOINT, for the kill tests only; never built into the image.
+failpoints = []
+
+[dependencies]
+base64 = { version = "=0.22.1", default-features = false, features = ["std"] }
+bytes = "=1.12.1"
+getrandom = "=0.4.3"
+http = "=1.5.0"
+http-body-util = "=0.1.5"
+hyper = { version = "=1.12.0", default-features = false, features = ["client", "http1", "server"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["client-legacy", "http1", "server", "tokio"] }
+rusqlite = { version = "=0.41.1", features = ["bundled"] }
+rustix = { version = "=1.1.5", default-features = false, features = ["std", "fs"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "=0.8.4"
+serde_json = "=1.0.152"
+sha2 = "=0.11.0"
+subtle = "=2.6.1"
+tokio = { version = "=1.53.3", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+tower-service = "=0.3.3"
+zeroize = "=1.9.1"
+
+action-schema = { path = "../protocol/action-schema" }
+holdpoint = { path = "../vendor/holdpoint" }
+strict-json = { path = "../vendor/strict-json" }
+team-protocol = { path = "vendor/team-http" }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cognitive_complexity = "deny"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+panic = "unwind"
