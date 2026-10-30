@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
-use holdpoint::{Driven, Error, Event, Outcome, RunOptions, Wait, Worker};
+use holdpoint::{Driven, Error, Event, Outcome, RunOptions, StepKind, Wait, Worker};
 
 use crate::conversation::Message;
 use crate::decisions::purpose::Pending;
@@ -315,7 +315,9 @@ impl TurnService {
             return self.delivered(&thread_id, &answered);
         };
         let pending = self.pending(&run_id)?;
-        if pending.is_empty() {
+        let applied = self.applied(&run_id, &answered, &pending)?;
+        let ended = self.worker.result(&run_id).map_err(state)?.is_some();
+        if (pending.is_empty() && !applied) || ended {
             self.reconcile(&thread_id, &mut thread)?;
             return self.delivered(&thread_id, &answered);
         }
@@ -327,12 +329,48 @@ impl TurnService {
             ));
         }
         let session = prepare::resumed(request, &input, scope)?;
-        for (step, result) in prepare::resolutions(self, &run_id, &request.results)? {
-            self.worker
-                .resolve(&run_id, step, &run::result_json(&result))
-                .map_err(state)?;
+        // A resume Team repeats after losing the answer to it finds its results recorded already: the run is driven to
+        // the answer Team lost, its next requests or its end, asking nothing again.
+        if !applied {
+            for (step, result) in prepare::resolutions(self, &run_id, &request.results)? {
+                self.worker
+                    .resolve(&run_id, step, &run::result_json(&result))
+                    .map_err(state)?;
+            }
         }
         self.run(&thread_id, &mut thread, (&run_id, answered), session)
+    }
+
+    /// Whether every `answered` interrupt is one this run asked Team for and none of them is still pending: their
+    /// results were recorded by an earlier resume.
+    fn applied(
+        &self,
+        run_id: &str,
+        answered: &[String],
+        pending: &[TeamRequest],
+    ) -> Result<bool, BrainError> {
+        if answered.is_empty()
+            || pending
+                .iter()
+                .any(|request| answered.iter().any(|id| id == request.interrupt_id()))
+        {
+            return Ok(false);
+        }
+        let history = self.worker.history(run_id).map_err(state)?;
+        let asked: Vec<String> = history
+            .iter()
+            .filter_map(|event| match event {
+                Event::StepScheduled {
+                    kind: StepKind::Deferred,
+                    name,
+                    input: Some(input),
+                    ..
+                } => TeamRequest::from_json(name, input)
+                    .map(|request| request.interrupt_id().to_owned()),
+                _ => None,
+            })
+            .collect();
+        Ok(answered.iter().all(|id| asked.contains(id)))
     }
 
     /// The committed turn a repeated resume with exactly these `answered` interrupts receives again; any other resume

@@ -270,3 +270,37 @@ fn an_unreadable_pending_request_is_a_state_error_that_deletes_nothing() {
         .unwrap();
     assert_eq!(runs, 1, "the run it could not read was kept");
 }
+
+#[test]
+fn a_resume_repeated_after_its_next_requests_were_lost_receives_them_again() {
+    let directory = tempfile::tempdir().unwrap();
+    let origin = Origin::start(vec![
+        origin::call(&team::list_zones(), "{}"),
+        origin::call(&team::list_zones(), "{}"),
+        origin::reply("Two lists"),
+    ]);
+    let brain = Brain::start(directory.path(), origin.address, &[]);
+    let started = brain.post("/v1/turns", &team::start("thread-r", "List my zones twice"));
+    let first = team::interrupt_id(&started.body);
+    let resume = team::resume("thread-r", &first, r#"{"zones":["a"]}"#);
+    let resumed = brain.post("/v1/turns/resume", &resume);
+    assert_eq!(
+        team::status(&resumed.body),
+        "action-required",
+        "{}",
+        resumed.body
+    );
+    let second = team::interrupt_id(&resumed.body);
+    assert_ne!(first, second);
+    // Team lost that answer and resumes with the same results: it receives the same requests, nothing asked again.
+    let again = brain.post("/v1/turns/resume", &resume);
+    assert_eq!(again.status, 200, "{}", again.body);
+    assert_eq!(team::interrupt_id(&again.body), second);
+    assert_eq!(origin.received().len(), 2);
+    let done = brain.post(
+        "/v1/turns/resume",
+        &team::resume("thread-r", &second, r#"{"zones":["a"]}"#),
+    );
+    assert_eq!(team::status(&done.body), "completed", "{}", done.body);
+    assert_eq!(origin.received().len(), 3);
+}
