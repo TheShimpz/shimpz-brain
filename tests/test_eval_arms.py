@@ -2,10 +2,8 @@
 
 import unittest
 
-import agent_runtime
 from eval import arms, contracts, corpus, split
 from eval import world as simulated
-from tool_fake import CLOSED
 
 Z = {"zone_id": "zn-7f3a"}
 
@@ -15,21 +13,7 @@ def _action(assistant_id: str, action_id: str):
 
 
 class ContractTests(unittest.TestCase):
-    def test_arm_b_contracts_are_admitted_and_searchable_in_every_locale(self):
-        provider = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "offline-validation-key-0123")
-        definitions = tuple(
-            agent_runtime.AssistantDefinition(
-                a.id,
-                a.genesis,
-                tuple(
-                    agent_runtime.ActionDefinition(x.id, x.summary, x.input_schema, output_schema=CLOSED)
-                    for x in a.actions
-                ),
-            )
-            for a in contracts.ASSISTANTS_B.values()
-            if a.relevant
-        )
-        agent_runtime.TurnContext("t", "T", definitions, provider, memories=(), routines=())
+    def test_arm_b_contracts_are_searchable_in_every_locale(self):
         self.assertEqual(set(contracts.SEARCH_TERMS), set(contracts.ASSISTANTS_B))
         self.assertTrue(all(set(terms) == set(corpus.LOCALES) for terms in contracts.SEARCH_TERMS.values()))
         self.assertEqual(_action("dns", "list-records").filters, ("name", "content"))

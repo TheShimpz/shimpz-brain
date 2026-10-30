@@ -2,11 +2,9 @@
 
 import unittest
 
-import agent_runtime
 from eval import arms, corpus, large_api, split
 from eval import large_api_arms as large
 from eval import world as simulated
-from tool_fake import CLOSED
 
 COM = {"domain": "example.com"}
 ORG = {"domain": "example.org"}
@@ -39,15 +37,7 @@ class GroupTests(unittest.TestCase):
 
 
 class TaskContractTests(unittest.TestCase):
-    def test_task_shaped_contracts_are_admitted_and_reach_the_same_state(self):
-        provider = agent_runtime.ProviderConfig("openai", "gpt-6-luna", "offline-validation-key-0123")
-        actions = tuple(
-            agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema, output_schema=CLOSED)
-            for a in large.TASK_EDGE.actions
-        )
-        agent_runtime.TurnContext(
-            "t", "T", (agent_runtime.AssistantDefinition("edge", large.TASK_EDGE.genesis, actions),), provider
-        )
+    def test_task_shaped_contracts_reach_the_same_state(self):
         self.assertEqual(len(large.TASK_EDGE.actions), 21)
         url = "https://www.example.com/index.html"
         self.assertTrue(_passes("cf-purge-url.en", ("purge-cache", {**COM, "urls": [url]})))

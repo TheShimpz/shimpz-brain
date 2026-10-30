@@ -7,17 +7,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import agent_runtime
-import model_usage
 from eval import cost
 
 LUNA = cost.Usage(model_calls=2, input_tokens=1_000, output_tokens=100, cache_read_tokens=600)
 
 
 class PriceTests(unittest.TestCase):
-    def test_usage_fields_are_the_brain_usage_fields(self):
-        self.assertEqual(cost.FIELDS, model_usage.FIELDS)
-
     def test_catalog_prices_per_token_with_frozen_cache_multipliers(self):
         luna = cost.price("gpt-6-luna")
         self.assertEqual(luna.provider, "openai")
@@ -59,28 +54,13 @@ class PriceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid usage"):
                 cost.Usage.of(invalid)
 
-    def test_an_evaluation_only_model_is_priced_and_admitted_only_where_asked(self):
+    def test_an_evaluation_only_model_and_a_non_chat_catalog_model_are_priced(self):
         sol = cost.price("gpt-5.6-sol")
         self.assertEqual(sol.provider, "openai")
         self.assertAlmostEqual(sol.input, 4e-6)
         self.assertAlmostEqual(sol.output, 20e-6)
         self.assertAlmostEqual(sol.cache_read, 0.4e-6)
         self.assertAlmostEqual(sol.cache_write, 5e-6)
-        self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
-        with self.assertRaisesRegex(agent_runtime.RuntimeContractError, "unsupported model"):
-            agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key")
-        with (
-            mock.patch.dict(agent_runtime.MODELS_BY_PROVIDER),
-            mock.patch.dict(agent_runtime.CHAT_MODELS_BY_PROVIDER),
-        ):
-            cost.admit_evaluation_models(agent_runtime.MODELS_BY_PROVIDER, agent_runtime.CHAT_MODELS_BY_PROVIDER)
-            self.assertEqual(agent_runtime.ProviderConfig("openai", "gpt-5.6-sol", "offline-key").model, "gpt-5.6-sol")
-            self.assertIn("gpt-6.1-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
-            # An evaluation-only model runs a chat turn there; the catalog's non-chat models still never do.
-            self.assertIn("gpt-5.6-sol", agent_runtime.CHAT_MODELS_BY_PROVIDER["openai"])
-            self.assertNotIn("claude-haiku-5-5", agent_runtime.CHAT_MODELS_BY_PROVIDER["anthropic"])
-        self.assertNotIn("gpt-5.6-sol", agent_runtime.CHAT_MODELS_BY_PROVIDER["openai"])
-        self.assertNotIn("gpt-5.6-sol", agent_runtime.MODELS_BY_PROVIDER["openai"])
         # A catalog model no person chooses for chat is priced from the catalog like any other.
         haiku = cost.price("claude-haiku-5-5")
         self.assertEqual(haiku.provider, "anthropic")

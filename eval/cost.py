@@ -25,7 +25,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 
 CATALOG = Path(__file__).resolve().parents[1] / "model_catalog.json"
-# The provider-reported usage fields, in Brain's `model_usage.FIELDS` order (a test pins the equality).
+# The provider-reported usage fields, in the order the Brain reports an operation's `usage`.
 FIELDS = (
     "model_calls",
     "failed_calls",
@@ -44,7 +44,7 @@ CACHE_READ_MULTIPLIER_BY_MODEL = {"claude-opus-5-5": 0.05, "gpt-6.1-sol": 0.05}
 CACHE_WRITE_MULTIPLIER = {"openai": 1.25, "anthropic": 1.25}
 # Models priced for evaluation only, which the product catalog does not offer, in US cents per million input and output
 # tokens: gpt-5.6-sol's promotional list price (listed through at least 2026-11-21, prompts up to 272k input tokens),
-# frozen on 2026-10-02. Only a disposable evaluation Brain admits them (``admit_evaluation_models``).
+# frozen on 2026-10-02. They price the reports of runs that used them; the Rust Brain runs only catalog chat models.
 EVALUATION_MODELS = {"openai": {"gpt-5.6-sol": (400, 2000)}}
 # Embedding models priced for the language-retrieval component benchmark only, in US cents per million input tokens
 # (they bill no output), frozen on 2026-10-03 from the provider's pricing page; only the evaluation ceiling's embeddings
@@ -98,18 +98,6 @@ def price(model: str, catalog: Path = CATALOG) -> Price:
                 per_token * CACHE_WRITE_MULTIPLIER[provider],
             )
     raise ValueError("unknown model")
-
-
-def admit_evaluation_models(
-    models_by_provider: dict[str, frozenset[str]], chat_models_by_provider: dict[str, frozenset[str]]
-) -> None:
-    """Let one disposable evaluation Brain run the evaluation-only models as chat models; no product process calls this.
-
-    The catalog's own non-chat models stay out of the chat registry.
-    """
-    for provider, models in EVALUATION_MODELS.items():
-        models_by_provider[provider] = models_by_provider[provider] | frozenset(models)
-        chat_models_by_provider[provider] = chat_models_by_provider[provider] | frozenset(models)
 
 
 @dataclass(frozen=True, slots=True)
