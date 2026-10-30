@@ -125,7 +125,13 @@ fn offered_tools(
     own.extend(memory_tool.then(memory::spec));
     own.extend(routine_tool.then(|| routine::spec(context.routine_selected.is_some())));
     for tool in own {
-        summaries.push(summary(&tool.name, &tool.description, &tool.schema));
+        // The Browser counts by its declared schema, as the Python budget's `browser_tool.SUMMARY` did.
+        let schema = if tool.name == tools::browser::TOOL_NAME {
+            tools::browser::summary_schema()
+        } else {
+            tool.schema.clone()
+        };
+        summaries.push(summary(&tool.name, &tool.description, &schema));
         tools.push(tool);
     }
     let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
