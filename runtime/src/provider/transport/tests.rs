@@ -518,6 +518,7 @@ fn a_scope_cancelled_before_its_call_never_connects() {
     scope.cancel.cancel();
     assert_eq!(call(&harness, &scope, 3).unwrap_err(), CallError::Cancelled);
     assert_eq!(origin.accepted(), 0);
+    assert_eq!(requests_sent(&scope.usage), 0);
 }
 
 #[test]

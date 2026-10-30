@@ -316,6 +316,9 @@ impl Transport {
             if let Some(admit) = admit {
                 admit(attempt).map_err(CallError::Contract)?;
             }
+            if scope.stopped() {
+                return Err(CallError::Cancelled);
+            }
             scope.usage.request_sent();
             let delay = match self.block_on(self.send(scope, host, &request, profile.timeout)) {
                 Ok(response) if (200..300).contains(&response.status) => {
