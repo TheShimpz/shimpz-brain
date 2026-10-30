@@ -310,6 +310,18 @@ impl Scope {
         self
     }
 
+    /// A nested scope sharing this one's usage, with a cancellation of its own that this scope's stop also trips:
+    /// work that must end at its own deadline without ending the operation (attachment counting).
+    #[must_use]
+    pub fn child(&self) -> Self {
+        let parent = self.clone();
+        Self {
+            cancel: CancelToken::new(),
+            usage: Arc::clone(&self.usage),
+            stop: Some(Arc::new(move || parent.stopped())),
+        }
+    }
+
     /// Whether the work must stop now.
     #[must_use]
     pub fn stopped(&self) -> bool {
