@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from eval import arms, corpus, judge, large_api, precision, private, split
+from eval import arms, ceiling, corpus, judge, large_api, precision, private, split
 from eval import cost as eval_cost
 from eval import signals as eval_signals
 
@@ -670,6 +670,13 @@ class MetaTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
+    def test_a_campaign_budget_holds_every_count_of_the_provider_origin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory, "spend.json")
+            ceiling.Ceiling(1.0, 100, state).write_state()
+            budget = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(precision.checked_meta({"budget": budget})["budget"], budget)
+
     def test_validate_builds_every_scenario_in_teams_wire_shape(self):
         precision._brain_assistant.cache_clear()
         result = precision.validate()
