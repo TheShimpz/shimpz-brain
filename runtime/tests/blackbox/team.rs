@@ -59,3 +59,53 @@ pub fn status(body: &str) -> String {
         .expect("status")
         .to_owned()
 }
+
+/// A start of `message` with extra context members replacing the defaults (`"key":value` pairs, comma-separated).
+#[must_use]
+pub fn start_with(thread: &str, message: &str, overrides: &str) -> String {
+    let base = start(thread, message);
+    let mut value = brain_runtime::json::parse(base.as_bytes()).expect("start body");
+    let extra =
+        brain_runtime::json::parse(format!("{{{overrides}}}").as_bytes()).expect("overrides");
+    if let (
+        brain_runtime::json::Value::Object(members),
+        brain_runtime::json::Value::Object(extra),
+    ) = (&mut value, extra)
+    {
+        for (name, item) in extra {
+            match members.iter_mut().find(|(member, _)| *member == name) {
+                Some(slot) => slot.1 = item,
+                None => members.push((name, item)),
+            }
+        }
+    }
+    brain_runtime::json::compact(&value)
+}
+
+/// The same resume with extra context members replacing the defaults.
+#[must_use]
+pub fn resume_with(thread: &str, interrupt_id: &str, result: &str, overrides: &str) -> String {
+    let base = resume(thread, interrupt_id, result);
+    let mut value = brain_runtime::json::parse(base.as_bytes()).expect("resume body");
+    let extra =
+        brain_runtime::json::parse(format!("{{{overrides}}}").as_bytes()).expect("overrides");
+    if let (
+        brain_runtime::json::Value::Object(members),
+        brain_runtime::json::Value::Object(extra),
+    ) = (&mut value, extra)
+    {
+        for (name, item) in extra {
+            if let Some(slot) = members.iter_mut().find(|(member, _)| *member == name) {
+                slot.1 = item;
+            }
+        }
+    }
+    brain_runtime::json::compact(&value)
+}
+
+/// A response body's member.
+#[must_use]
+pub fn member(body: &str, key: &str) -> brain_runtime::json::Value {
+    let value = brain_runtime::json::parse(body.as_bytes()).expect("JSON response");
+    value.get(key).cloned().expect("member")
+}
