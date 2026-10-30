@@ -9,6 +9,8 @@
 pub mod anthropic;
 pub mod openai;
 pub mod structured;
+#[cfg(test)]
+pub mod testing;
 pub mod transport;
 
 use std::sync::Arc;

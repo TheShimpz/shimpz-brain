@@ -221,6 +221,31 @@ impl Transport {
         }
     }
 
+    /// The HTTP request for `request` to `host`: every extra header is marked sensitive, so a credential in one is
+    /// never printed or compressed into a shared table.
+    fn outgoing(
+        &self,
+        host: Host,
+        request: &HttpRequest,
+    ) -> Result<Request<Full<Bytes>>, TransportError> {
+        let uri = self
+            .uri(host, request.path)
+            .ok_or(TransportError::Invalid)?;
+        let mut builder = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header(http::header::HOST, host.name())
+            .header(http::header::CONTENT_TYPE, "application/json");
+        for (name, value) in &request.headers {
+            let mut value = HeaderValue::from_str(value).map_err(|_| TransportError::Invalid)?;
+            value.set_sensitive(true);
+            builder = builder.header(*name, value);
+        }
+        builder
+            .body(Full::new(Bytes::from(request.body.clone())))
+            .map_err(|_| TransportError::Invalid)
+    }
+
     /// Sends one request and reads its whole answer, within `timeout`, unless `scope` stops first.
     ///
     /// # Errors
@@ -236,22 +261,7 @@ impl Transport {
         if scope.stopped() {
             return Err(TransportError::Cancelled);
         }
-        let uri = self
-            .uri(host, request.path)
-            .ok_or(TransportError::Invalid)?;
-        let mut builder = Request::builder()
-            .method(Method::POST)
-            .uri(uri)
-            .header(http::header::HOST, host.name())
-            .header(http::header::CONTENT_TYPE, "application/json");
-        for (name, value) in &request.headers {
-            let mut value = HeaderValue::from_str(value).map_err(|_| TransportError::Invalid)?;
-            value.set_sensitive(true);
-            builder = builder.header(*name, value);
-        }
-        let outgoing = builder
-            .body(Full::new(Bytes::from(request.body.clone())))
-            .map_err(|_| TransportError::Invalid)?;
+        let outgoing = self.outgoing(host, request)?;
         let pool = if host == Host::Jev {
             &self.jev
         } else {

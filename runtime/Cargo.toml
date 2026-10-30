@@ -45,6 +45,7 @@ strict-json = { path = "../vendor/strict-json" }
 team-protocol = { path = "vendor/team-http" }
 
 [dev-dependencies]
+rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
 tempfile = "=3.27.0"
 
 [lints.rust]
