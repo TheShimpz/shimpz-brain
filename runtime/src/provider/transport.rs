@@ -196,9 +196,12 @@ impl Transport {
                 tls: tls.clone(),
                 slots: Arc::new(Semaphore::new(slots)),
             };
+            // The timer lets idle connections expire; idle ones of one host keep at most half of the pool's slots,
+            // so another host's calls always find a slot instead of waiting behind them.
             Client::builder(TokioExecutor::new())
+                .pool_timer(hyper_util::rt::TokioTimer::new())
                 .pool_idle_timeout(KEEPALIVE)
-                .pool_max_idle_per_host(slots)
+                .pool_max_idle_per_host(idle_per_host(slots))
                 .build(connector)
         };
         Self {
@@ -364,6 +367,12 @@ fn auth_headers(host: Host, config: &ProviderConfig, wire: &Wire) -> Vec<(&'stat
     };
     headers.extend(wire.headers.iter().cloned());
     headers
+}
+
+/// The idle connections one host may keep in a pool of `slots`: at most half, at least one.
+#[must_use]
+pub fn idle_per_host(slots: usize) -> usize {
+    (slots / 2).max(1)
 }
 
 /// The statuses the provider SDKs retry.

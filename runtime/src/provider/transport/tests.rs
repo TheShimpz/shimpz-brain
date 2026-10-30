@@ -558,7 +558,7 @@ fn a_scope_cancelled_before_its_call_never_connects() {
 }
 
 #[test]
-fn concurrent_calls_wait_for_a_pooled_connection_and_idle_ones_are_reused() {
+fn concurrent_calls_wait_for_a_pooled_connection_and_idle_ones_are_bounded() {
     let origin = Origin::start(|_| Answer::raw(200, "{}").delayed(Duration::from_millis(200)));
     let harness = Harness::new(&origin.route());
     let scope = Scope::default();
@@ -569,9 +569,22 @@ fn concurrent_calls_wait_for_a_pooled_connection_and_idle_ones_are_reused() {
         assert_eq!(pending.join().unwrap().0.unwrap().1.status, 200);
     }
     assert_eq!(
-        (origin.accepted(), origin.peak()),
-        (PROVIDER_CONNECTIONS, PROVIDER_CONNECTIONS)
+        origin.peak(),
+        PROVIDER_CONNECTIONS,
+        "never more connections than the pool's slots"
     );
     assert_eq!(call(&harness, &scope, 1).unwrap().1.status, 200);
-    assert_eq!(origin.accepted(), PROVIDER_CONNECTIONS);
+    // Only half the pool stays idle per host: every other connection is closed, so its slot is free for another host.
+    let idle = idle_per_host(PROVIDER_CONNECTIONS);
+    let open = || origin.accepted().saturating_sub(origin.closed());
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while open() > idle && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let settled = open() <= idle;
+    assert!(settled, "idle connections settle within the per-host bound");
+    assert_eq!(
+        (idle_per_host(5), idle_per_host(2), idle_per_host(1)),
+        (2, 1, 1)
+    );
 }
