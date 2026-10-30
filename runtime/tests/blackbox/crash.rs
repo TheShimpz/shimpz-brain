@@ -114,3 +114,31 @@ fn a_crash_between_the_deletion_steps_is_finished_by_the_next_deletion() {
             .contains("Pending message")
     );
 }
+
+#[test]
+fn a_resume_repeated_after_a_crash_at_its_commit_receives_the_committed_turn() {
+    let directory = tempfile::tempdir().unwrap();
+    let origin = Origin::start(vec![
+        origin::call(&team::list_zones(), "{}"),
+        origin::reply("One zone"),
+    ]);
+    let first = Brain::start(directory.path(), origin.address, &[]);
+    let started = first.post("/v1/turns", &team::start("crash-4", "List my zones"));
+    assert_eq!(team::status(&started.body), "action-required");
+    drop(first);
+    let interrupt = team::interrupt_id(&started.body);
+    let resume = team::resume("crash-4", &interrupt, r#"{"zones":["a"]}"#);
+    let brain = crash_at(
+        directory.path(),
+        &origin,
+        "commit.exchange",
+        "/v1/turns/resume",
+        &resume,
+    );
+    // Team never received the answer and resumes again: it receives the committed turn, asking the provider nothing.
+    let again = brain.post("/v1/turns/resume", &resume);
+    assert_eq!(again.status, 200, "{}", again.body);
+    assert_eq!(team::status(&again.body), "completed");
+    assert!(again.body.contains("One zone"));
+    assert_eq!(origin.received().len(), 2);
+}

@@ -57,11 +57,23 @@ fn an_action_suspends_and_a_resume_completes_without_repeating_a_call() {
     );
     assert_eq!(team::status(&resumed.body), "completed", "{}", resumed.body);
     assert_eq!(origin.received().len(), 2);
+    // Team lost the answer: the same resume receives the committed turn again, and the provider is not asked again.
     let again = brain.post(
         "/v1/turns/resume",
-        &team::resume("thread-b", &interrupt, "{}"),
+        &team::resume("thread-b", &interrupt, r#"{"zones":["a"]}"#),
     );
-    assert_eq!(again.status, 400, "a turn answers each request once");
+    assert_eq!(again.status, 200, "{}", again.body);
+    assert_eq!(team::status(&again.body), "completed");
+    assert!(again.body.contains("You have one zone"));
+    // Its usage is this request's: nothing was asked of the provider.
+    assert!(again.body.contains(r#""model_calls":0"#));
+    assert_eq!(origin.received().len(), 2);
+    // A resume answering anything else finds no pending request.
+    let other = brain.post(
+        "/v1/turns/resume",
+        &team::resume("thread-b", "other-interrupt", "{}"),
+    );
+    assert_eq!(other.status, 400, "a turn answers each request once");
 }
 
 #[test]

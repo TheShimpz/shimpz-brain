@@ -23,7 +23,22 @@ const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS threads (
     history TEXT NOT NULL,
     open_run TEXT,
     committed_run TEXT
+) STRICT;
+CREATE TABLE IF NOT EXISTS deliveries (
+    thread_id TEXT PRIMARY KEY,
+    answered TEXT NOT NULL,
+    turn TEXT NOT NULL
 ) STRICT";
+
+/// A thread's last committed turn as Team received it, kept until its next turn commits (ADR-0125): a resume Team
+/// repeats with the same results after its answer was lost receives it again instead of a missing turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Delivery {
+    /// The interrupt ids the committing resume answered, sorted.
+    pub answered: Vec<String>,
+    /// The committed turn's answer.
+    pub turn: crate::json::Value,
+}
 
 /// One stored thread.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -132,15 +147,94 @@ impl Threads {
         Ok(())
     }
 
+    /// Stores `thread` with its turn just committed, in one transaction, so a crash keeps both or neither.
+    ///
+    /// # Errors
+    ///
+    /// [`BrainError::State`].
+    pub fn commit(
+        &self,
+        thread_id: &str,
+        thread: &Thread,
+        delivery: &Delivery,
+    ) -> Result<(), BrainError> {
+        let history = json::compact(&conversation::to_value(&thread.history));
+        let answered = json::compact(&crate::json::Value::Array(
+            delivery
+                .answered
+                .iter()
+                .map(|id| crate::json::Value::String(id.clone()))
+                .collect(),
+        ));
+        let turn = json::compact(&delivery.turn);
+        let mut connection = self.lock()?;
+        let transaction = connection.transaction().map_err(state)?;
+        transaction
+            .execute(
+                "INSERT INTO threads (thread_id, scope, history, open_run, committed_run) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (thread_id) DO UPDATE SET scope = excluded.scope, history = excluded.history,
+                 open_run = excluded.open_run, committed_run = excluded.committed_run",
+                params![thread_id, thread.scope, history, thread.open_run, thread.committed_run],
+            )
+            .map_err(state)?;
+        transaction
+            .execute(
+                "INSERT INTO deliveries (thread_id, answered, turn) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (thread_id) DO UPDATE SET answered = excluded.answered, turn = excluded.turn",
+                params![thread_id, answered, turn],
+            )
+            .map_err(state)?;
+        transaction.commit().map_err(state)
+    }
+
+    /// The thread's last committed turn, or `None`.
+    ///
+    /// # Errors
+    ///
+    /// [`BrainError::State`] when the store fails or the row does not decode.
+    pub fn delivery(&self, thread_id: &str) -> Result<Option<Delivery>, BrainError> {
+        let row: Option<(String, String)> = self
+            .lock()?
+            .query_row(
+                "SELECT answered, turn FROM deliveries WHERE thread_id = ?1",
+                [thread_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(state)?;
+        let Some((answered, turn)) = row else {
+            return Ok(None);
+        };
+        let answered = json::parse(answered.as_bytes()).map_err(state)?;
+        let crate::json::Value::Array(ids) = answered else {
+            return Err(BrainError::State);
+        };
+        let answered = ids
+            .iter()
+            .map(|id| match id {
+                crate::json::Value::String(id) => Ok(id.clone()),
+                _ => Err(BrainError::State),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let turn = json::parse(turn.as_bytes()).map_err(state)?;
+        Ok(Some(Delivery { answered, turn }))
+    }
+
     /// Deletes the thread (whether or not it exists) and empties the log.
     ///
     /// # Errors
     ///
     /// [`BrainError::State`] when the store fails or the log cannot be emptied.
     pub fn delete(&self, thread_id: &str) -> Result<(), BrainError> {
-        self.lock()?
-            .execute("DELETE FROM threads WHERE thread_id = ?1", [thread_id])
-            .map_err(state)?;
+        {
+            let connection = self.lock()?;
+            for table in [
+                "DELETE FROM threads WHERE thread_id = ?1",
+                "DELETE FROM deliveries WHERE thread_id = ?1",
+            ] {
+                connection.execute(table, [thread_id]).map_err(state)?;
+            }
+        }
         self.truncate_log()
     }
 
@@ -187,8 +281,16 @@ mod tests {
         };
         assert_eq!(threads.load("t1").unwrap(), None);
         threads.save("t1", &thread).unwrap();
-        assert_eq!(threads.load("t1").unwrap(), Some(thread));
+        assert_eq!(threads.load("t1").unwrap(), Some(thread.clone()));
+        // The committed turn kept for a repeated resume goes with its thread too.
+        let delivery = Delivery {
+            answered: vec!["i-1".into()],
+            turn: crate::json::Value::String(marker.into()),
+        };
+        threads.commit("t1", &thread, &delivery).unwrap();
+        assert_eq!(threads.delivery("t1").unwrap(), Some(delivery));
         threads.delete("t1").unwrap();
+        assert_eq!(threads.delivery("t1").unwrap(), None);
         threads.delete("t1").unwrap();
         assert_eq!(threads.load("t1").unwrap(), None);
         let path = directory.path().join("threads.sqlite3");

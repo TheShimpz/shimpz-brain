@@ -18,7 +18,7 @@ use crate::turn::context::TurnContext;
 use crate::turn::definition::Failed;
 use crate::turn::host::{BrainHost, TurnSession};
 use crate::turn::run::{self, TeamRequest, TurnInput};
-use crate::turn::threads::{Thread, Threads};
+use crate::turn::threads::{Delivery, Thread, Threads};
 
 mod prepare;
 
@@ -187,11 +187,12 @@ impl TurnService {
     }
 
     /// Runs `run_id` for one request: installs its session, drives, and settles the outcome into the thread.
+    /// `answered` names the interrupts the request answered (none for a start).
     fn run(
         &self,
         thread_id: &str,
         thread: &mut Thread,
-        run_id: &str,
+        (run_id, answered): (&str, Vec<String>),
         session: TurnSession,
     ) -> Result<Value, BrainError> {
         let scope = session.scope.clone();
@@ -200,7 +201,7 @@ impl TurnService {
         self.host.remove(run_id);
         match driven? {
             Settled::Pending => self.suspended(run_id),
-            Settled::Ended(outcome) => self.ended(thread_id, thread, run_id, &outcome),
+            Settled::Ended(outcome) => self.ended(thread_id, thread, (run_id, answered), &outcome),
         }
     }
 
@@ -216,7 +217,7 @@ impl TurnService {
         &self,
         thread_id: &str,
         thread: &mut Thread,
-        run_id: &str,
+        (run_id, answered): (&str, Vec<String>),
         outcome: &Outcome,
     ) -> Result<Value, BrainError> {
         let completed = match outcome {
@@ -245,7 +246,13 @@ impl TurnService {
         let turn = completed.get("turn").cloned().ok_or(BrainError::State)?;
         thread.history = messages;
         thread.committed_run = Some(run_id.to_owned());
-        self.threads.save(thread_id, thread)?;
+        // The turn as Team receives it is kept with its exchange: a resume Team repeats after losing it receives it
+        // again (ADR-0125).
+        let delivery = Delivery {
+            answered,
+            turn: turn.clone(),
+        };
+        self.threads.commit(thread_id, thread, &delivery)?;
         crate::failpoint::hit("commit.exchange");
         self.reconcile(thread_id, thread)?;
         Ok(turn)
@@ -283,7 +290,7 @@ impl TurnService {
             )
             .map_err(state)?;
         crate::failpoint::hit("start.submitted");
-        self.run(&thread_id, &mut thread, &run_id, session)
+        self.run(&thread_id, &mut thread, (&run_id, Vec::new()), session)
     }
 
     /// `AgentRuntime.resume`: Team's results for the pending requests of the thread's open run.
@@ -302,13 +309,15 @@ impl TurnService {
         let Some(mut thread) = self.threads.load(&thread_id)? else {
             return Err(BrainError::contract(NO_PENDING));
         };
+        let mut answered: Vec<String> = request.results.iter().map(|(id, _)| id.clone()).collect();
+        answered.sort_unstable();
         let Some(run_id) = thread.open_run.clone() else {
-            return Err(BrainError::contract(NO_PENDING));
+            return self.delivered(&thread_id, &answered);
         };
         let pending = self.pending(&run_id)?;
         if pending.is_empty() {
             self.reconcile(&thread_id, &mut thread)?;
-            return Err(BrainError::contract(NO_PENDING));
+            return self.delivered(&thread_id, &answered);
         }
         let input = self.input(&run_id)?;
         if Self::scope_digest(&request.turn.context) != thread.scope {
@@ -323,7 +332,18 @@ impl TurnService {
                 .resolve(&run_id, step, &run::result_json(&result))
                 .map_err(state)?;
         }
-        self.run(&thread_id, &mut thread, &run_id, session)
+        self.run(&thread_id, &mut thread, (&run_id, answered), session)
+    }
+
+    /// The committed turn a repeated resume with exactly these `answered` interrupts receives again; any other resume
+    /// finds no pending request.
+    fn delivered(&self, thread_id: &str, answered: &[String]) -> Result<Value, BrainError> {
+        match self.threads.delivery(thread_id)? {
+            Some(delivery) if !answered.is_empty() && delivery.answered == answered => {
+                Ok(delivery.turn)
+            }
+            _ => Err(BrainError::contract(NO_PENDING)),
+        }
     }
 
     /// `AgentRuntime.delete_thread`: removes one conversation and its open run, revealing nothing.
