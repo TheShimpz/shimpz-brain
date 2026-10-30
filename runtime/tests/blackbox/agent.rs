@@ -206,12 +206,18 @@ fn a_resume_must_keep_the_provider_and_attachments_its_start_pinned() {
             r#"{"detail":"model provider changed during the pending turn"}"#
         )
     );
-    let file = r#""attachments":[{"id":"file-0123456789abcdef0123456789abcdef","name":"a.txt","media_type":"text/plain","size":2,"sha256":"0000000000000000000000000000000000000000000000000000000000000000","content":{"type":"opaque","reason":"unsupported"}}]"#;
+    let file = format!(r#""attachments":[{}]"#, opaque_file());
     let attached = brain.post(
         "/v1/turns/resume",
-        &team::resume_with("agent-8", &interrupt, "{}", file),
+        &team::resume_with("agent-8", &interrupt, "{}", &file),
     );
-    assert_eq!(attached.status, 400, "{}", attached.body);
+    assert_eq!(
+        (attached.status, attached.body.as_str()),
+        (
+            400,
+            r#"{"detail":"attachments changed during the pending turn"}"#
+        )
+    );
 }
 
 #[test]
@@ -231,4 +237,56 @@ fn a_scope_change_forgets_the_thread() {
         !origin.received()[1].body.contains("First answer"),
         "another Assistant scope starts a fresh thread"
     );
+}
+
+fn opaque_file() -> &'static str {
+    r#"{"id":"0123456789abcdef0123456789abcdef","name":"a.bin","media_type":"application/octet-stream","size":2,"sha256":"0000000000000000000000000000000000000000000000000000000000000000","content":{"type":"opaque","reason":"unsupported"}}"#
+}
+
+#[test]
+fn an_attachment_is_counted_projected_into_its_turn_and_forgotten_by_the_next() {
+    let directory = tempfile::tempdir().unwrap();
+    let counted = Behaviour::Answer(
+        200,
+        r#"{"object":"response.input_tokens","input_tokens":42}"#.into(),
+    );
+    let origin = Origin::start(vec![
+        counted,
+        origin::reply("Read it"),
+        origin::reply("Later"),
+    ]);
+    let brain = Brain::start(directory.path(), origin.address, &[]);
+    let file = r#""attachments":[{"id":"0123456789abcdef0123456789abcdef","name":"note.txt","media_type":"text/plain","size":17,"sha256":"0000000000000000000000000000000000000000000000000000000000000000","content":{"type":"text","text":"attached secret note","pdf":false}}]"#;
+    let turn = brain.post(
+        "/v1/turns",
+        &team::start_with("agent-10", "Summarize the file", file),
+    );
+    assert_eq!(turn.status, 200, "{}", turn.body);
+    let received = origin.received();
+    assert_eq!(received[0].path, "/v1/responses/input_tokens");
+    assert!(
+        received[1].body.contains("attached secret note"),
+        "the call carries the request-local content"
+    );
+    assert_eq!(
+        brain
+            .post("/v1/turns", &team::start("agent-10", "Anything new?"))
+            .status,
+        200
+    );
+    let next = &origin.received()[2].body;
+    assert!(
+        !next.contains("attached secret note") && !next.contains("Read it"),
+        "the attachment exchange is forgotten whole"
+    );
+    let ledger = std::fs::read(brain.state.join("ledger.sqlite3")).unwrap();
+    let threads = std::fs::read(brain.state.join("threads.sqlite3")).unwrap();
+    for bytes in [ledger, threads] {
+        assert!(
+            !bytes
+                .windows(20)
+                .any(|window| window == b"attached secret note"),
+            "content is never stored"
+        );
+    }
 }
