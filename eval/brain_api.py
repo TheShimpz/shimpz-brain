@@ -23,8 +23,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO
 
+from eval import ceiling as eval_ceiling
+from eval import cost as eval_cost
+from eval import provider_origin
+
 BINARY_ENVIRONMENT = "SHIMPZ_BRAIN_BINARY"
 HEALTH_SECONDS = 60.0
+# The Brain's fixed chat-turn reasoning effort (ADR-0113; runtime/src/provider/mod.rs, the chat call profile).
+CHAT_EFFORT = "low"
+# The statuses a provider-dependent outcome can end in: the Brain refused the model's answer or its own input (400),
+# or the provider request failed (502). Any other status is a harness or Brain failure, never a model's miss.
+MISS_STATUSES = frozenset({400, 502})
 # One whole Brain operation, as Team bounds a turn; a stalled request fails instead of hanging the harness.
 RESPONSE_SECONDS = 600.0
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -427,13 +436,48 @@ class Brain:
         self.close()
 
 
+@dataclass(frozen=True, slots=True)
+class Metered:
+    """A disposable Brain's client, the provider origin it sends through, and the campaign ledger both draw on."""
+
+    client: Client
+    origin: provider_origin.ProviderOrigin
+    ledger: eval_cost.SharedBudget
+
+    def budget(self) -> dict[str, object]:
+        """The ledger summary and the origin's outcome counts, for a report."""
+        return {**self.ledger.summary(), **self.origin.ceiling.counts}
+
+    def refused(self) -> int:
+        """Provider requests the ledger refused so far: a refusal stops the attempt that met it."""
+        return self.origin.ceiling.counts["refused"]
+
+
 @contextlib.contextmanager
-def running(provider_origin: str) -> Iterator[Client]:
-    """A client of one healthy disposable Brain, stopped and removed afterwards."""
-    with Brain(provider_origin) as brain:
-        yield brain.client()
+def metered(cap: float, max_output_tokens: int) -> Iterator[Metered]:
+    """One disposable Brain behind a fresh provider origin, under a new campaign ledger holding ``cap`` US dollars.
+
+    The ledger, the origin's state, and the Brain's token, state, and log live in one private temporary directory
+    that is removed afterwards.
+    """
+    with tempfile.TemporaryDirectory(prefix="brain-eval-") as directory:
+        root = Path(directory)
+        ledger = eval_cost.SharedBudget.create(root / "budget.json", cap)
+        ceiling = eval_ceiling.Ceiling(0.0, max_output_tokens, root / "spend.json", budget=ledger)
+        brain_root = root / "brain"
+        brain_root.mkdir(mode=0o700)
+        with provider_origin.ProviderOrigin(ceiling) as origin, Brain(origin.origin, root=brain_root) as brain:
+            yield Metered(brain.client(), origin, ledger)
 
 
-def usage_sum(answers: Sequence[Mapping[str, int]], fields: Sequence[str]) -> dict[str, int]:
-    """The sum of several operations' usage counts over ``fields``."""
-    return {name: sum(int(item[name]) for item in answers) for name in fields}
+class UsageMeter:
+    """The usage one attempt's Brain operations reported; a failed operation reports none, so its cost is unknown."""
+
+    def __init__(self) -> None:
+        self.total = eval_cost.Usage()
+
+    def add(self, counts: Mapping[str, int]) -> None:
+        self.total += eval_cost.Usage.of(dict(counts))
+
+    def failed(self) -> None:
+        self.total += eval_cost.Usage(unreported_calls=1)
