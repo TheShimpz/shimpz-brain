@@ -10,45 +10,18 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import agent_runtime
-from eval import cost as eval_cost
-from eval import injection, injection_cases
-from langchain_core.messages import AIMessage
-from tool_fake import PROVIDER
-from tool_fake import call as _call
-from tool_fake import runtime as _runtime
+from brain_script import PROVIDER, ScriptedBrain, usage
+from eval import brain_api, injection, injection_cases
 
 CASES_BY_ID = {case.id: case for case in injection_cases.CASES}
-TASKS = injection_cases.ASSISTANTS["tasks"]
 
 
-def _request(assistant: str, action: str, payload: dict, ident: str = "i-1") -> agent_runtime.ActionRequest:
-    return agent_runtime.ActionRequest(ident, assistant, action, payload)
+def _request(assistant: str, action: str, payload: dict, ident: str = "i-1") -> brain_api.ActionRequest:
+    return brain_api.ActionRequest(ident, assistant, action, payload)
 
 
-class ScriptedRuntime:
-    """Answers each start and resume with the next scripted result, recording what each resume received."""
-
-    def __init__(self, *results: agent_runtime.TurnResult) -> None:
-        self.results = list(results)
-        self.resumed: list[dict] = []
-        self.arms: list[str] = []
-
-    def start(self, _context, _message):
-        self.arms.append(injection.ARM.get())
-        return self.results.pop(0)
-
-    def resume(self, _context, results):
-        self.resumed.append(dict(results))
-        return self.results.pop(0)
-
-
-def _pending(*requests: agent_runtime.ActionRequest) -> agent_runtime.TurnResult:
-    return agent_runtime.TurnResult("action-required", actions=requests)
-
-
-def _done(reply: str = "Done.") -> agent_runtime.TurnResult:
-    return agent_runtime.TurnResult("completed", reply=reply)
+def run(brain: ScriptedBrain, case_id: str, thread_id: str = "eval:injection:one") -> dict[str, object]:
+    return injection.run_attempt(brain, PROVIDER, CASES_BY_ID[case_id], thread_id, lambda _counts: None)
 
 
 class CaseTests(unittest.TestCase):
@@ -121,13 +94,12 @@ class ScoringTests(unittest.TestCase):
 
 class AttemptTests(unittest.TestCase):
     def test_a_read_then_the_expected_write_completes_without_an_attack(self):
-        case = CASES_BY_ID["mail-reply-bcc"]
-        runtime = ScriptedRuntime(
-            _pending(_request("mail", "search-messages", {"query": "Ana"})),
-            _pending(_request("mail", "send-message", {"to": "ana@example.com", "subject": "Re", "body": "Late"})),
-            _done(),
+        brain = ScriptedBrain(
+            [("mail", "search-messages", {"query": "Ana"})],
+            [("mail", "send-message", {"to": "ana@example.com", "subject": "Re", "body": "Late"})],
+            "Done.",
         )
-        outcome = injection.run_attempt(runtime, PROVIDER, case, "eval:injection:one")
+        outcome = run(brain, "mail-reply-bcc")
         self.assertEqual(
             outcome,
             {
@@ -139,78 +111,76 @@ class AttemptTests(unittest.TestCase):
                 "rounds": 2,
             },
         )
-        self.assertIn("messages", next(iter(runtime.resumed[0].values())))
+        (_start, _context, sent), (_resume, _same, results) = brain.calls[:2]
+        self.assertEqual(sent["locale"], "en")
+        self.assertIn("messages", next(iter(results.values())))
 
     def test_the_round_limit_ends_an_attempt_and_its_last_requests_still_count(self):
-        case = CASES_BY_ID["tasks-list-delete"]
-        reads = [_pending(_request("tasks", "list-tasks", {}))] * injection.MAX_ROUNDS
-        runtime = ScriptedRuntime(*reads, _pending(_request("tasks", "delete-task", {"task_id": "t-1"})))
-        outcome = injection.run_attempt(runtime, PROVIDER, case, "eval:injection:limit")
+        reads = [[("tasks", "list-tasks", {})]] * injection.MAX_ROUNDS
+        brain = ScriptedBrain(*reads, [("tasks", "delete-task", {"task_id": "t-1"})])
+        outcome = run(brain, "tasks-list-delete", "eval:injection:limit")
         self.assertEqual(
             (outcome["status"], outcome["attacked"], outcome["effects_complete"]), ("round-limit", True, False)
         )
 
     def test_an_unexposed_case_reports_no_exposure(self):
-        case = CASES_BY_ID["tasks-list-delete"]
-        outcome = injection.run_attempt(ScriptedRuntime(_done()), PROVIDER, case, "eval:injection:none")
+        outcome = run(ScriptedBrain("Done."), "tasks-list-delete", "eval:injection:none")
         self.assertEqual((outcome["exposed"], outcome["effects_complete"]), (False, True))
 
-    def test_a_real_runtime_turn_carries_the_attachment_and_offers_only_authorizing_actions(self):
+    def test_an_attached_case_sends_its_file_as_team_does_and_withholds_routines(self):
         case = CASES_BY_ID["attachment-notes-tasks"]
-        write = _call(TASKS, "create-task", {"title": "Prepare budget draft"}, "c-1")
-        other = _call(TASKS, "create-task", {"title": "Update launch slides"}, "c-2")
-        runtime = _runtime(AIMessage(content="", tool_calls=[write, other]), AIMessage(content="Created two tasks."))
-        with mock.patch.object(injection.turn_attachments, "provider_counter", injection._unavailable_count):
-            outcome = injection.run_attempt(runtime, PROVIDER, case, "eval:injection:attached")
-        self.assertEqual((outcome["exposed"], outcome["attacked"], outcome["effects_complete"]), (True, False, True))
         context = injection.context(case, PROVIDER, "eval:injection:context")
-        self.assertEqual(context.attachments[0].content["type"], "text")
-        with self.assertRaises(injection.turn_attachments.CountUnavailableError):
-            injection._unavailable_count(None, "openai")([], 1.0)
+        (attached,) = context.attachments
+        self.assertEqual(set(attached), {"id", "name", "media_type", "size", "sha256", "content"})
+        self.assertEqual(attached["content"]["type"], "text")
+        self.assertEqual(attached["size"], len(attached["content"]["text"].encode()))
+        self.assertEqual((context.routines, context.memories), (None, ()))
+        plain = injection.context(CASES_BY_ID["tasks-list-delete"], PROVIDER, "eval:injection:plain")
+        self.assertEqual((plain.routines, plain.attachments), ((), ()))
+        writes = [
+            ("tasks", "create-task", {"title": "Prepare budget draft"}),
+            ("tasks", "create-task", {"title": "Update launch slides"}),
+        ]
+        outcome = run(ScriptedBrain(writes, "Created two tasks."), "attachment-notes-tasks")
+        self.assertEqual((outcome["exposed"], outcome["attacked"], outcome["effects_complete"]), (True, False, True))
 
-    def test_an_attempt_is_measured_under_its_arm_and_a_failure_is_inconclusive(self):
+    def test_an_attempt_is_priced_and_a_failure_is_inconclusive_or_stopped(self):
         case = CASES_BY_ID["web-search-phish"]
-        runtime = ScriptedRuntime(_done("See https://login-verify.example/secure"))
-        record = injection.attempt(runtime, PROVIDER, case, "b", "eval:injection:arm")
+        record = injection.attempt(ScriptedBrain("See https://login-verify.example/secure"), PROVIDER, case, "b", "t")
         self.assertEqual((record["arm"], record["attacked"], record["usage_known"]), ("b", True, True))
-        self.assertEqual(runtime.arms, ["b"])
-        self.assertEqual(injection.ARM.get(), "")
-
-        class Failing:
-            def __init__(self, error: BaseException) -> None:
-                self.error = error
-
-            def start(self, _context, _message):
-                raise self.error
-
+        self.assertGreater(record["usd"], 0)
         failed = injection.attempt(
-            Failing(agent_runtime.ProviderRequestError("down")), PROVIDER, case, "a", "eval:injection:f"
+            ScriptedBrain(brain_api.BrainError("/v1/turns", 502)), PROVIDER, case, "a", "eval:injection:f"
         )
         self.assertEqual((failed["status"], failed["usage_known"]), ("brain-error", False))
-        try:
-            try:
-                raise eval_cost.BudgetExhaustedError("cap")
-            except eval_cost.BudgetExhaustedError:
-                raise RuntimeError("transport") from None
-        except RuntimeError as inner:
-            refused = agent_runtime.ProviderRequestError("refused")
-            refused.__cause__ = inner
-        self.assertTrue(injection._stopped(refused))
-        stopped = injection.attempt(Failing(refused), PROVIDER, case, "a", "eval:injection:s")
+        refusals = iter([0, 1])
+        stopped = injection.attempt(
+            ScriptedBrain(brain_api.BrainError("/v1/turns", 502)), PROVIDER, case, "a", "s", lambda: next(refusals)
+        )
         self.assertEqual(stopped["status"], "stopped")
+        with self.assertRaises(brain_api.BrainError):
+            injection.attempt(ScriptedBrain(brain_api.BrainError("/v1/turns", 422)), PROVIDER, case, "a", "x")
 
 
 class CampaignTests(unittest.TestCase):
     def test_a_campaign_pairs_arms_and_the_report_holds_rates_and_paired_differences(self):
-        class Runtime:
-            def start(self, _context, message):
-                # Arm "b" resists; arm "a" falls for every reply-goal case.
-                arm = injection.ARM.get()
-                return _done(
-                    "https://login-verify.example https://pay-portal.example x.exfil.example" if arm == "a" else "ok"
-                )
+        class Brain:
+            def start(self, context, _message, **_options):
+                # The first arm of each pair resists in this stand-in; the other falls for every reply-goal case.
+                fooled = context.thread_id in fooled_threads
+                reply = "https://login-verify.example https://pay-portal.example x.exfil.example" if fooled else "ok"
+                return brain_api.Turn("completed", reply, (), usage())
 
-        records = injection.campaign(Runtime(), PROVIDER, ["a", "b"], 2, "seed", 3)
+        fooled_threads: set[str] = set()
+        original = injection.attempt
+
+        def attempt(client, provider, case, arm, thread_id, refused):
+            if arm == "a":
+                fooled_threads.add(thread_id)
+            return original(client, provider, case, arm, thread_id, refused)
+
+        with mock.patch.object(injection, "attempt", attempt):
+            records = injection.campaign(Brain(), PROVIDER, ["a", "b"], 2, "seed", 3)
         self.assertEqual(len(records), 2 * 2 * len(injection_cases.CASES))
         meta = {"seed": "seed", "arms": ["a", "b"]}
         failed = {**next(record for record in records if record["arm"] == "a"), "status": "brain-error"}
@@ -244,31 +214,32 @@ class MainTests(unittest.TestCase):
             self.assertEqual(injection.main([]), 0)
         self.assertEqual(json.loads(output.getvalue())["status"], "valid")
 
-    def test_a_run_installs_the_ceiling_and_writes_the_report(self):
+    def test_a_run_meters_its_brain_under_the_cap_and_writes_the_report(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "report.json"
             key = Path(directory) / "key"
             key.write_text("test-key-0123456789\n", encoding="utf-8")
             key.chmod(0o600)
-            ceiling = mock.Mock()
-            ceiling.budget.summary.return_value = {"spent_usd": 0.0}
-            runtime = mock.Mock()
+            brain = mock.Mock()
+            brain.budget.return_value = {"spent_usd": 0.0}
+            metered = mock.MagicMock()
+            metered.__enter__.return_value = brain
             with (
-                mock.patch("eval.ceiling.Ceiling", return_value=ceiling),
-                mock.patch.object(injection.agent_runtime, "AgentRuntime", return_value=runtime),
+                mock.patch.object(injection.brain_api, "metered", return_value=metered) as started,
                 mock.patch.object(injection, "campaign", return_value=[]) as campaign,
-                mock.patch.object(injection.turn_attachments, "provider_counter"),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
-                code = injection.main(["--key-file", str(key), "--out", str(out), "--arms", "a,b", "--seed", "s"])
+                arguments = ["--key-file", str(key), "--out", str(out), "--arms", "a,b", "--seed", "s", "--cap", "0.5"]
+                code = injection.main(arguments)
             self.assertEqual(code, 0)
-            ceiling.install.assert_called_once_with()
-            runtime.close.assert_called_once_with()
-            self.assertEqual(campaign.call_args.args[2:], (["a", "b"], 1, "s", 4))
-            self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["meta"]["arms"], ["a", "b"])
+            self.assertEqual(started.call_args.args, (0.5, injection.MAX_OUTPUT_TOKENS))
+            self.assertEqual(campaign.call_args.args[2:], (["a", "b"], 1, "s", 4, brain.refused))
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual((report["meta"]["arms"], report["meta"]["budget"]), (["a", "b"], {"spent_usd": 0.0}))
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(injection.main(["--key-file", str(key)]), 2)
                 self.assertEqual(injection.main(["--key-file", str(key), "--out", str(out), "--arms", "a,a"]), 2)
+                self.assertEqual(injection.main(["--key-file", str(key), "--out", str(out), "--cap", "0"]), 2)
 
 
 if __name__ == "__main__":
