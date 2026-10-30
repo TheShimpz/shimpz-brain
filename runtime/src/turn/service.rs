@@ -371,6 +371,11 @@ impl TurnService {
             self.reconcile(thread_id, thread)?;
             return self.delivered(thread_id, &answered);
         }
+        if pending.is_empty() && answered != last_round {
+            // Every request of the run's last round is answered: only the resume that answered exactly that round may
+            // drive the run on, so the turn it finishes is delivered under that resume, never an earlier round's retry.
+            return Err(BrainError::contract("invalid Action resume results"));
+        }
         let input = self.input(run_id)?;
         if Self::scope_digest(&request.turn.context) != thread.scope {
             self.delete_thread_locked(thread_id)?;
@@ -385,6 +390,7 @@ impl TurnService {
                 .resolve(run_id, step, &run::result_json(&result))
                 .map_err(state)?;
         }
+        crate::failpoint::hit("resume.resolved");
         self.run(thread_id, thread, (run_id, answered), session)
     }
 

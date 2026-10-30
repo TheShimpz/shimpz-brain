@@ -147,6 +147,14 @@ fn a_resume_repeated_after_a_crash_at_its_commit_receives_the_committed_turn() {
 
 #[test]
 fn only_the_resume_that_finished_the_run_commits_it_after_a_crash_before_its_commit() {
+    for point in ["commit.before", "resume.resolved"] {
+        stale_retry_after_a_crash(point);
+    }
+}
+
+/// A then B: resume B records its results, then the Brain dies at `point` (before the run's last provider call
+/// answered, or after it but before the commit). A stale retry of A gets 400; the retry of B finishes and commits.
+fn stale_retry_after_a_crash(point: &str) {
     let directory = tempfile::tempdir().unwrap();
     let origin = Origin::start(vec![
         origin::call(&team::list_zones(), "{}"),
@@ -171,18 +179,23 @@ fn only_the_resume_that_finished_the_run_commits_it_after_a_crash_before_its_com
     let brain = crash_at(
         directory.path(),
         &origin,
-        "commit.before",
+        point,
         "/v1/turns/resume",
         &resume_b,
     );
     // A stale retry of A neither commits the run nor binds its delivery.
     let stale = brain.post("/v1/turns/resume", &resume_a);
-    assert_eq!(stale.status, 400, "{}", stale.body);
+    assert_eq!(stale.status, 400, "{point}: {}", stale.body);
     // The retry of B commits it and receives the answer, asking the provider nothing again.
     let again = brain.post("/v1/turns/resume", &resume_b);
-    assert_eq!(again.status, 200, "{}", again.body);
-    assert_eq!(team::status(&again.body), "completed");
-    assert!(again.body.contains("Two lists"));
-    assert_eq!(brain.post("/v1/turns/resume", &resume_b).status, 200);
-    assert_eq!(origin.received().len(), 3);
+    assert_eq!(again.status, 200, "{point}: {}", again.body);
+    assert_eq!(team::status(&again.body), "completed", "{point}");
+    assert!(again.body.contains("Two lists"), "{point}");
+    assert_eq!(
+        brain.post("/v1/turns/resume", &resume_b).status,
+        200,
+        "{point}"
+    );
+    // The run's last provider call is made once, before the crash or after it.
+    assert_eq!(origin.received().len(), 3, "{point}");
 }
