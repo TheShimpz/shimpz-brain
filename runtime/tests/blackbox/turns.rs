@@ -223,3 +223,38 @@ fn a_tampered_thread_is_a_state_error() {
         (503, r#"{"detail":"Brain runtime state operation failed"}"#)
     );
 }
+
+#[test]
+fn an_unreadable_pending_request_is_a_state_error_that_deletes_nothing() {
+    let directory = tempfile::tempdir().unwrap();
+    let origin = Origin::start(vec![origin::call(&team::list_zones(), "{}")]);
+    let brain = Brain::start(directory.path(), origin.address, &[]);
+    let started = brain.post("/v1/turns", &team::start("thread-i", "List my zones"));
+    let interrupt = team::interrupt_id(&started.body);
+    let state = brain.state.clone();
+    brain.kill();
+    let ledger = rusqlite::Connection::open(state.join("ledger.sqlite3")).unwrap();
+    ledger
+        .execute(r#"UPDATE deferred SET request = '{"request":"[]"}'"#, [])
+        .unwrap();
+    drop(ledger);
+    let brain = Brain::start(directory.path(), origin.address, &[]);
+    for _ in 0..2 {
+        let refused = brain.post(
+            "/v1/turns/resume",
+            &team::resume("thread-i", &interrupt, "{}"),
+        );
+        assert_eq!(refused.status, 503, "{}", refused.body);
+    }
+    assert_eq!(
+        brain
+            .post("/v1/turns", &team::start("thread-i", "Another"))
+            .status,
+        503
+    );
+    let ledger = rusqlite::Connection::open(state.join("ledger.sqlite3")).unwrap();
+    let runs: i64 = ledger
+        .query_row("SELECT count(*) FROM runs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(runs, 1, "the run it could not read was kept");
+}

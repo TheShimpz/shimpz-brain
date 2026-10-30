@@ -255,10 +255,10 @@ fn thread_for_start(service: &TurnService, context: &TurnContext) -> Result<Thre
             ..Thread::default()
         });
     };
-    let pending = thread
-        .open_run
-        .as_deref()
-        .is_some_and(|run_id| !service.pending(run_id).is_empty());
+    let pending = match thread.open_run.as_deref() {
+        Some(run_id) => !service.pending(run_id)?.is_empty(),
+        None => false,
+    };
     if pending || thread.scope != expected {
         service.delete_thread_locked(thread_id)?;
         return Ok(Thread {

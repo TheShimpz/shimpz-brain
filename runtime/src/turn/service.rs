@@ -128,12 +128,16 @@ impl TurnService {
         Ok(())
     }
 
-    /// Whether `run_id` waits on Team requests.
-    fn pending(&self, run_id: &str) -> Vec<TeamRequest> {
-        let requests = self.worker.pending(run_id).unwrap_or_default();
+    /// The Team requests `run_id` waits on (none for a run the ledger does not hold). A ledger failure or a
+    /// recorded request that does not decode is a state error, never "nothing pending": a caller must not delete a
+    /// run it could not read.
+    fn pending(&self, run_id: &str) -> Result<Vec<TeamRequest>, BrainError> {
+        let requests = self.worker.pending(run_id).map_err(state)?;
         requests
             .iter()
-            .filter_map(|request| TeamRequest::from_json(&request.name, &request.request))
+            .map(|request| {
+                TeamRequest::from_json(&request.name, &request.request).ok_or(BrainError::State)
+            })
             .collect()
     }
 
@@ -201,7 +205,7 @@ impl TurnService {
     }
 
     fn suspended(&self, run_id: &str) -> Result<Value, BrainError> {
-        let requests = self.pending(run_id);
+        let requests = self.pending(run_id)?;
         if requests.is_empty() {
             return Err(BrainError::State);
         }
@@ -301,7 +305,7 @@ impl TurnService {
         let Some(run_id) = thread.open_run.clone() else {
             return Err(BrainError::contract(NO_PENDING));
         };
-        let pending = self.pending(&run_id);
+        let pending = self.pending(&run_id)?;
         if pending.is_empty() {
             self.reconcile(&thread_id, &mut thread)?;
             return Err(BrainError::contract(NO_PENDING));
@@ -363,7 +367,7 @@ impl TurnService {
             return Ok(None);
         };
         let found = self
-            .pending(&run_id)
+            .pending(&run_id)?
             .into_iter()
             .find(|request| request.interrupt_id() == interrupt_id);
         let Some(TeamRequest::Action {
