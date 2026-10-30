@@ -2,7 +2,6 @@
 
 import json
 import random
-import subprocess
 import sys
 import tempfile
 import time
@@ -11,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 import routines_fake_brain
+from eval import cost as eval_cost
 from eval import routines_pool
 from eval import stats as eval_stats
 from routines_fake_worker import counted
@@ -222,76 +222,92 @@ class PoolTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.run_dir = Path(directory.name)
-        self.python = routines_fake_brain.launcher(self.run_dir)
+        self.root = Path(directory.name)
+        self.run_dir = self.root
+        self.binary = routines_fake_brain.launcher(self.root)
 
-    @property
-    def brains(self) -> list[subprocess.Popen]:
-        return self.pool.brains
+    def _pool(self, count: int = 2, threads: int = 2, results: dict | None = None, mode: str = "serve", **options):
+        """A pool in a run directory of its own, with the run's ledger, as each run has."""
 
-    def _pool(self, count: int = 2, threads: int = 2, results: dict | None = None, mode: str = "serve"):
-        def configure(_number: int, url: str, token: Path) -> dict[str, object]:
-            return {"mode": mode, "results": results or {}, "brain": url, "token": str(token)}
+        def configure(_number: int, slots: list[dict[str, str]]) -> dict[str, object]:
+            return {"mode": mode, "results": results or {}, "slots": slots}
 
-        brains = (self.python, self.run_dir, self.run_dir / "logs")
-        self.pool = routines_pool.Pool((sys.executable, str(FAKE_WORKER)), brains, count, threads, configure)
+        self.run_dir = Path(tempfile.mkdtemp(dir=self.root))
+        eval_cost.SharedBudget.create(self.run_dir / "budget.json", 1.0)
+        (self.run_dir / "logs").mkdir()
+        brains = (self.binary, self.run_dir, self.run_dir / "logs")
+        self.pool = routines_pool.Pool((sys.executable, str(FAKE_WORKER)), brains, count, threads, configure, **options)
         return self.pool
 
-    def test_a_run_settles_every_slot_across_its_workers_each_pinned_to_its_own_brain(self):
+    def test_a_run_settles_every_slot_across_its_workers_each_attempt_on_its_own_brain(self):
         throttled = {"disposition": "throttled", "throttled": 1}
         results = {"a:0:0": throttled, "b:2:0": {"passed": False, "reason": "schedule"}}
         schedule = routines_pool.Schedule(routines_pool.plan(MODELS, ["a", "b"], 3), 4, random.Random(1))
         with mock.patch.object(routines_pool, "BACKOFF_SECONDS", 0.01), self._pool(results=results) as pool:
-            files = pool.brain_files(1)
             routines_pool.orchestrate(schedule, pool)
             self.assertEqual(sum(worker.busy for worker in pool.workers), 0)
+            slots = pool.slots
+            argv = [json.loads((slot.files.brain_state / "argv.json").read_text()) for slot in slots]
+            origins = [item[item.index("--provider-origin") + 1] for item in argv]
+            states = [json.loads(slot.files.state.read_text())["requests"] for slot in slots]
         self.assertEqual(len(schedule.results), 12)
-        self.assertEqual(
-            {item["brain"] for item in schedule.results.values()}, {"http://127.0.0.1:40000", "http://127.0.0.1:40001"}
-        )
+        # Each worker runs on its own slots, and each slot's Brain sends to its own origin, which nothing else uses.
+        by_worker = [tuple(slot.url for slot in worker.slots) for worker in pool.workers]
+        self.assertEqual({tuple(item["slots"]) for item in schedule.results.values()}, set(by_worker))
+        self.assertEqual(len({url for urls in by_worker for url in urls}), 4)
+        self.assertEqual(len(set(origins)), 4)
+        self.assertEqual(states, [0, 0, 0, 0])
         self.assertEqual(schedule.results[(0, "a", 0)]["try"], 1)
         self.assertEqual(schedule.providers["openai"].discarded, 1)
-        self.assertEqual(
-            (files.token.name, files.events.name, files.ledger.name, files.log.name),
-            ("brain-1.token", "brain-1.events", "budget.json", "brain-1.log"),
-        )
-        self.assertTrue(all(process.poll() is not None for process in self.brains))
+        modes = {slot.files.token.stat().st_mode & 0o777 for slot in slots}
+        self.assertEqual((modes, slots[3].files.log), ({0o600}, self.run_dir / "logs" / "brain-3.log"))
+        self.assertTrue(all(slot.brain.poll() is not None and slot.origin.poll() == 0 for slot in slots))
         self.assertTrue(all(worker.process.poll() == 0 for worker in pool.workers))
 
     def test_a_worker_that_stops_or_fails_aborts_the_run(self):
         for mode, message in (("exit", "worker 0 stopped"), ("fail", "failed: RuntimeError: scripted")):
-            with self.subTest(mode=mode), self._pool(count=1, mode=mode) as pool:
+            with self.subTest(mode=mode), self._pool(count=1, threads=1, mode=mode) as pool:
                 schedule = routines_pool.Schedule(routines_pool.plan(MODELS, ["a"], 1), 2)
                 with self.assertRaisesRegex(routines_pool.PoolError, message):
                     routines_pool.orchestrate(schedule, pool)
 
-    def test_a_worker_or_brain_that_never_starts_aborts_before_any_attempt(self):
+    def test_a_worker_brain_or_origin_that_never_starts_aborts_before_any_attempt(self):
         with mock.patch.object(routines_pool, "WORKER_START_SECONDS", 0.5):
             for mode, message in (("silent", "did not start"), ("garbage", "an unreadable message")):
                 with self.subTest(mode=mode), self.assertRaisesRegex(routines_pool.PoolError, message):
-                    self._pool(count=1, mode=mode).__enter__()
+                    self._pool(count=1, threads=1, mode=mode).__enter__()
         with (
             mock.patch.dict(routines_pool.os.environ, {"FAKE_BRAIN_MODE": "quiet"}),
-            self.assertRaisesRegex(routines_pool.PoolError, "before it served"),
+            self.assertRaisesRegex(routines_pool.PoolError, "did not become healthy"),
         ):
-            self._pool(count=1).__enter__()
-        self.assertTrue(all(process.poll() is not None for process in self.brains))
+            self._pool(count=1, threads=1).__enter__()
+        silent_origin = (sys.executable, "-c", "import sys; print('no port', flush=True); sys.stdin.read()")
+        with self.assertRaisesRegex(routines_pool.PoolError, "before it served"):
+            self._pool(count=1, threads=1, origin=silent_origin).__enter__()
+        processes = [slot.origin for slot in self.pool.slots] + [worker.process for worker in self.pool.workers]
+        self.assertTrue(all(process.poll() is not None for process in processes))
 
-    def test_a_stopped_brain_aborts_the_run(self):
-        with mock.patch.dict(routines_pool.os.environ, {"FAKE_BRAIN_MODE": "dead"}), self._pool(count=2) as pool:
-            self.brains[1].wait(timeout=5)
-            with self.assertRaisesRegex(routines_pool.PoolError, "brain 1 stopped"):
-                pool.receive(0.1)
+    def test_a_stopped_brain_or_origin_aborts_the_run(self):
+        for kind in ("brain", "origin"):
+            with self.subTest(kind=kind), self._pool(count=2, threads=1) as pool:
+                stopped = getattr(pool.slots[1], kind)
+                stopped.kill()
+                stopped.wait(timeout=5)
+                with self.assertRaisesRegex(routines_pool.PoolError, f"{kind} 1 stopped"):
+                    pool.receive(0.1)
 
     def test_stop_terminates_then_kills_a_process_that_will_not_exit(self):
-        with mock.patch.object(routines_pool, "STOP_SECONDS", 0.3), self._pool(count=1, mode="stubborn") as pool:
+        with (
+            mock.patch.object(routines_pool, "STOP_SECONDS", 0.3),
+            self._pool(count=1, threads=1, mode="stubborn") as pool,
+        ):
             self.assertIsNone(pool.receive(0.01))
             worker = pool.workers[0].process
         self.assertEqual(worker.returncode, -9)
 
     def test_stop_also_stops_what_a_worker_started(self):
-        with self._pool(count=1, mode="child"):
-            marker = Path(self.run_dir, "brain-0.token.child")
+        with self._pool(count=1, threads=1, mode="child"):
+            marker = Path(self.run_dir, "slot-0.token.child")
             for _ in range(500):
                 if marker.exists() and marker.read_text(encoding="utf-8"):
                     break
@@ -312,23 +328,17 @@ class PoolTests(unittest.TestCase):
             self.assertEqual((first.number, second.number, pool.free()), (0, 1, None))
             first.busy = second.busy = 0
 
-    def test_evidence_sets_what_every_brain_met_against_what_the_attempts_received(self):
-        line = {"status": 429, "throttled": True, "clamped": False, "attributed": True}
-        lines = [line, {**line, "attributed": False}, {**line, "status": 200, "throttled": False, "clamped": True}]
-        Path(self.run_dir, "brain-0.events").write_text("".join(json.dumps(item) + "\n" for item in lines[:2]))
-        Path(self.run_dir, "brain-3.events").write_text(json.dumps(lines[2]) + "\n")
+    def test_evidence_sets_what_every_origin_met_against_what_the_attempts_received(self):
+        line = {"status": 429, "throttled": True, "clamped": False}
+        lines = [line, line, {**line, "status": 200, "throttled": False, "clamped": True}]
+        Path(self.run_dir, "slot-0.events").write_text("".join(json.dumps(item) + "\n" for item in lines[:2]))
+        Path(self.run_dir, "slot-3.events").write_text(json.dumps(lines[2]) + "\n")
         schedule = routines_pool.Schedule(routines_pool.plan(MODELS, ["a"], 1), 2)
         for slot in (schedule.take(0.0), schedule.take(0.0)):
             schedule.finish(slot.key, _result(slot, throttled=1), 1.0)
         self.assertEqual(
             routines_pool.evidence(self.run_dir, schedule),
-            {
-                "brain_throttled": 2,
-                "brain_clamped": 1,
-                "unattributed": 1,
-                "received_throttled": 2,
-                "received_clamped": 0,
-            },
+            {"brain_throttled": 2, "brain_clamped": 1, "received_throttled": 2, "received_clamped": 0},
         )
 
 

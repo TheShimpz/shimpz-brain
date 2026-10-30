@@ -1,292 +1,130 @@
-"""Provider-free checks of the Routine eval's Brain processes: evidence, failure causes, and how the run starts them."""
+"""Provider-free, binary-free checks of the Routine eval's slots: how each Brain starts, and what its origin counted."""
 
-import io
-import itertools
 import json
-import subprocess
+import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
-import agent_runtime
-import httpx
 import routines_fake_brain
+from eval import ceiling as eval_ceiling
 from eval import cost as eval_cost
 from eval import routines_serve
-from fastapi import FastAPI
-from fastapi.concurrency import run_in_threadpool
-from fastapi.testclient import TestClient
 
 
-class StatusError(RuntimeError):
-    def __init__(self, status_code: int) -> None:
-        super().__init__(f"status {status_code}")
-        self.status_code = status_code
+def _files(directory: Path, number: int = 0) -> routines_serve.SlotFiles:
+    return routines_serve.SlotFiles(
+        directory / f"slot-{number}.token",
+        directory / f"slot-{number}.state.json",
+        directory / f"slot-{number}.events",
+        directory / "budget.json",
+        directory / f"slot-{number}",
+        directory / f"brain-{number}.log",
+    )
 
 
-def _chained(*errors: BaseException) -> BaseException:
-    """The last error, caused by each earlier one in turn, as the SDK and Brain raise them."""
-    for cause, error in itertools.pairwise(errors):
-        error.__cause__ = cause
-    return errors[-1]
+class CountsTests(unittest.TestCase):
+    def test_an_attempt_reads_the_counts_its_slots_origin_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory, "slot-0.state.json")
+            ceiling = eval_ceiling.Ceiling(1.0, 4_000, state)
+            for name, times in (("refused", 1), ("throttled", 2), ("terminal", 3), ("clamped", 4), ("requests", 9)):
+                for _ in range(times):
+                    ceiling._count(name)
+            ceiling.write_state()
+            self.assertEqual(
+                routines_serve.read_counts(state), {"refused": 1, "throttled": 2, "terminal": 3, "clamped": 4}
+            )
+
+    def test_an_unreadable_snapshot_is_no_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory, "state.json")
+            self.assertIsNone(routines_serve.read_counts(state))
+            for body in ("not json", "[]", json.dumps({"refused": 0, "throttled": "1", "terminal": 0, "clamped": 0})):
+                state.write_text(body, encoding="utf-8")
+                self.assertIsNone(routines_serve.read_counts(state))
 
 
-class FailureTests(unittest.TestCase):
-    def test_the_cause_chain_names_the_budget_first_then_a_throttle(self):
-        refused = _chained(eval_cost.BudgetExhaustedError("cap"), RuntimeError("connection"), RuntimeError("provider"))
-        self.assertEqual(routines_serve.failure_of(refused), "budget")
-        for status in (429, 503, 529):
-            with self.subTest(status=status):
-                self.assertEqual(routines_serve.failure_of(_chained(StatusError(status), RuntimeError())), "throttled")
-        throttled_then_refused = _chained(StatusError(429), eval_cost.BudgetExhaustedError("cap"), RuntimeError())
-        self.assertEqual(routines_serve.failure_of(throttled_then_refused), "budget")
-        self.assertIsNone(routines_serve.failure_of(_chained(StatusError(500), RuntimeError())))
-        self.assertIsNone(routines_serve.failure_of(_chained(StatusError(400), RuntimeError())))
-        for status in (401, 402, 403):
-            with self.subTest(status=status):
-                self.assertEqual(routines_serve.failure_of(_chained(StatusError(status), RuntimeError())), "terminal")
-        broke = StatusError(400)
-        broke.args = ("Your credit balance is too low to access the Anthropic API",)
-        quota = StatusError(429)
-        quota.args = ("Error code: 429 - {'error': {'code': 'insufficient_quota'}}",)
-        for error in (broke, quota):
-            self.assertEqual(routines_serve.failure_of(_chained(error, RuntimeError())), "terminal")
-        refused = _chained(quota, eval_cost.BudgetExhaustedError("cap"), RuntimeError())
-        self.assertEqual(routines_serve.failure_of(refused), "budget")
-        looped = RuntimeError("outer")
-        inner = StatusError(400)
-        inner.__context__, looped.__cause__ = looped, inner
-        self.assertIsNone(routines_serve.failure_of(looped))
-
-    def test_only_an_answer_that_stopped_at_the_output_limit_is_clamped(self):
-        stopped = (
-            {"stop_reason": "max_tokens"},
-            {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}},
-            {"choices": [{"finish_reason": "stop"}, {"finish_reason": "length"}]},
-        )
-        for body in stopped:
-            with self.subTest(body=body):
-                self.assertTrue(routines_serve.clamped(body))
-        complete = (
-            [],
-            {"stop_reason": "end_turn"},
-            {"status": "incomplete", "incomplete_details": {"reason": "content_filter"}},
-            {"incomplete_details": None},
-            {"choices": ["length"]},
-            {"choices": "length"},
-        )
-        for body in complete:
-            with self.subTest(body=body):
-                self.assertFalse(routines_serve.clamped(body))
-
-
-def _response(status: int, body: object = None, host: str = "api.openai.com") -> tuple[httpx.Request, httpx.Response]:
-    request = httpx.Request("POST", f"https://{host}/v1/responses")
-    content = b"not json" if body is None else json.dumps(body).encode()
-    return request, httpx.Response(status, content=content, request=request)
-
-
-class ObserverTests(unittest.TestCase):
+class LaunchTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.events = Path(directory.name, "brain-0.events")
-        self.observer = routines_serve.Observer(self.events)
+        self.directory = Path(directory.name)
 
-    def test_each_provider_answer_is_credited_to_its_brain_request(self):
-        evidence = routines_serve.Evidence()
-        token = routines_serve._EVIDENCE.set(evidence)
-        self.addCleanup(routines_serve._EVIDENCE.reset, token)
-        for status, body in ((429, None), (529, {}), (200, {"stop_reason": "max_tokens"}), (200, None), (200, {})):
-            self.observer.observe(*_response(status, body))
-        self.observer.observe(*_response(429, host="example.net"))
-        self.assertEqual((evidence.throttled, evidence.clamped, evidence.failure), (2, 1, None))
-        lines = [json.loads(line) for line in self.events.read_text(encoding="utf-8").splitlines()]
-        self.assertEqual(
-            [(line["status"], line["throttled"], line["clamped"], line["attributed"]) for line in lines],
-            [(429, True, False, True), (529, True, False, True), (200, False, True, True)],
-        )
-        evidence.failure = "throttled"
-        self.assertEqual(
-            evidence.headers(),
-            [(b"eval-throttled", b"2"), (b"eval-clamped", b"1"), (b"eval-failure", b"throttled")],
-        )
+    def test_the_run_never_starts_without_an_executable_brain_binary(self):
+        plain = self.directory / "shimpz-brain"
+        plain.write_text("", encoding="utf-8")
+        for named in ("", str(self.directory / "missing"), str(plain)):
+            with (
+                mock.patch.dict(os.environ, {routines_serve.BINARY_ENVIRONMENT: named}),
+                self.assertRaises(SystemExit),
+            ):
+                routines_serve.brain_binary()
+        binary = routines_fake_brain.launcher(self.directory)
+        with mock.patch.dict(os.environ, {routines_serve.BINARY_ENVIRONMENT: binary}):
+            self.assertEqual(routines_serve.brain_binary(), binary)
 
-    def test_an_answer_outside_every_brain_request_is_written_down_instead(self):
-        self.observer.observe(*_response(429))
-        self.observer.observe(*_response(200, {"stop_reason": "max_tokens"}, host="api.anthropic.com"))
-        self.observer.observe(*_response(200, {}))
-        lines = [json.loads(line) for line in self.events.read_text(encoding="utf-8").splitlines()]
+    def test_a_brain_serves_privately_against_its_own_origin(self):
+        files = _files(self.directory, 3)
+        process, port = routines_serve.start_brain(routines_fake_brain.launcher(self.directory), files, 40123)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.terminate)
+        routines_serve.healthy(port, process)
+        argv = json.loads((files.brain_state / "argv.json").read_text(encoding="utf-8"))
         self.assertEqual(
-            lines,
+            argv,
             [
-                {"status": 429, "throttled": True, "clamped": False, "attributed": False},
-                {"status": 200, "throttled": False, "clamped": True, "attributed": False},
-                {"status": 200, "throttled": False, "clamped": False, "attributed": False},
+                "serve",
+                "--listen",
+                f"127.0.0.1:{port}",
+                "--token-file",
+                str(files.token),
+                "--state-dir",
+                str(files.brain_state),
+                "--provider-origin",
+                "http://127.0.0.1:40123",
             ],
         )
+        self.assertEqual(files.token.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(files.brain_state.stat().st_mode & 0o777, 0o700)
+        self.assertGreaterEqual(len(files.token.read_text(encoding="utf-8")), 32)
 
-    def test_install_observes_every_response_the_client_sends(self):
-        self.addCleanup(setattr, httpx.Client, "send", httpx.Client.send)
-        self.observer.install()
-        client = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(529, json={})))
-        self.assertEqual(client.post("https://api.anthropic.com/v1/messages").status_code, 529)
-        self.assertEqual(len(self.events.read_text(encoding="utf-8").splitlines()), 1)
+    def test_a_brain_that_stops_never_becomes_healthy(self):
+        with mock.patch.dict(os.environ, {"FAKE_BRAIN_MODE": "quiet"}):
+            process, port = routines_serve.start_brain(
+                routines_fake_brain.launcher(self.directory), _files(self.directory), 9
+            )
+        with self.assertRaisesRegex(RuntimeError, "did not become healthy"):
+            routines_serve.healthy(port, process, deadline=5)
 
+    def test_an_origin_serves_against_the_runs_ledger_and_says_its_port(self):
+        eval_cost.SharedBudget.create(self.directory / "budget.json", 1.0)
+        files = _files(self.directory)
+        origin = routines_serve.start_origin(files)
+        self.addCleanup(origin.wait)
+        self.addCleanup(origin.stdout.close)
+        self.addCleanup(origin.stdin.close)
+        self.assertGreater(routines_serve.announced_port(origin), 0)
+        snapshot = json.loads(files.state.read_text(encoding="utf-8"))
+        self.assertEqual((snapshot["cap_usd"], snapshot["max_output_tokens"]), (1.0, routines_serve.CALL_OUTPUT_TOKENS))
 
-class EvidenceHeadersTests(unittest.TestCase):
-    def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.events = Path(directory.name, "brain-0.events")
-        self.addCleanup(setattr, httpx.Client, "send", httpx.Client.send)
-        routines_serve.Observer(self.events).install()
-        answers = {"throttled": 429, "clean": 200}
-        app = FastAPI()
-
-        @app.post("/{kind}")
-        async def turn(kind: str) -> dict[str, str]:
-            def work() -> dict[str, str]:
-                provider = httpx.Client(
-                    transport=httpx.MockTransport(lambda _r: httpx.Response(answers[kind], json={}))
-                )
-                answer = provider.post("https://api.openai.com/v1/responses")
-                if answer.status_code != 200:
-                    raise agent_runtime.ProviderRequestError("failed") from StatusError(answer.status_code)
-                return {"status": "ok"}
-
-            return await run_in_threadpool(work)
-
-        app.add_exception_handler(agent_runtime.ProviderRequestError, routines_serve.provider_error)
-        app.add_middleware(routines_serve.EvidenceHeaders)
-        self.client = TestClient(app)
-
-    def test_each_brain_response_carries_its_own_request_evidence(self):
-        with self.client:
-            failed = self.client.post("/throttled")
-            clean = self.client.post("/clean")
-        self.assertEqual(failed.status_code, 502)
-        self.assertEqual(failed.json(), {"detail": "Model provider request failed"})
-        self.assertEqual(
-            (failed.headers["eval-throttled"], failed.headers["eval-clamped"], failed.headers["eval-failure"]),
-            ("1", "0", "throttled"),
-        )
-        self.assertEqual((clean.status_code, clean.headers["eval-throttled"]), (200, "0"))
-        self.assertNotIn("eval-failure", clean.headers)
-        (line,) = [json.loads(line) for line in self.events.read_text(encoding="utf-8").splitlines()]
-        self.assertEqual((line["status"], line["attributed"]), (429, True))
-
-    def test_a_provider_failure_outside_a_request_still_answers_brains_own_502(self):
-        import asyncio
-
-        answer = asyncio.run(routines_serve.provider_error(None, RuntimeError("provider")))
-        self.assertEqual(answer.status_code, 502)
-
-
-class EvaluationAppTests(unittest.TestCase):
-    def test_the_app_reserves_every_wire_try_under_the_run_ledger_and_reports_evidence(self):
-        with (
-            tempfile.TemporaryDirectory() as directory,
-            mock.patch("eval.ceiling.Ceiling") as ceiling,
-            mock.patch.object(routines_serve.Observer, "install") as observed,
+    def test_an_origin_that_never_says_a_port_is_stopped(self):
+        files = _files(self.directory)
+        for script, deadline in (
+            ("print('no port')", 5.0),
+            ("print(70000)", 5.0),
+            ("import time; time.sleep(30)", 0.2),
         ):
-            ledger = Path(directory, "budget.json")
-            app = routines_serve.evaluation_app(ledger, Path(directory, "events"), "t" * 43)
-        (cap, output), options = ceiling.call_args
-        self.assertEqual((cap, output, options["sdk_retries"]), (0.0, routines_serve.CALL_OUTPUT_TOKENS, True))
-        self.assertEqual(options["budget"].path, ledger)
-        ceiling.return_value.install.assert_called_once_with()
-        observed.assert_called_once_with()
-        self.assertIs(app.exception_handlers[agent_runtime.ProviderRequestError], routines_serve.provider_error)
-        self.assertIs(app.user_middleware[0].cls, routines_serve.EvidenceHeaders)
-
-    def test_serve_brain_writes_its_token_prints_its_port_and_serves_until_stdin_closes(self):
-        stdout = io.StringIO()
-        with (
-            tempfile.TemporaryDirectory() as directory,
-            mock.patch.object(routines_serve, "evaluation_app", return_value="app") as app,
-            mock.patch.object(routines_serve, "_log_provider_failures") as logged,
-            mock.patch.object(routines_serve.os, "dup2") as redirected,
-            mock.patch.object(routines_serve.threading, "Thread") as thread,
-            mock.patch("uvicorn.Server") as server,
-            mock.patch("sys.stdout", stdout),
-        ):
-            token = Path(directory, "token")
-            code = routines_serve.serve_brain(token, Path(directory, "budget.json"), Path(directory, "e"), Path("l"))
-            served = token.read_text(encoding="utf-8")
-            mode = token.stat().st_mode & 0o777
-        self.assertEqual((code, mode, len(served)), (0, 0o600, 43))
-        self.assertEqual(app.call_args.args[2], served)
-        logged.assert_called_once_with(Path("l"))
-        redirected.assert_called_once_with(2, 1)
-        self.assertIs(thread.call_args.kwargs["target"], routines_serve._exit_with_parent)
-        listener = server.return_value.run.call_args.kwargs["sockets"][0]
-        self.assertEqual(int(stdout.getvalue()), listener.getsockname()[1])
-        listener.close()
-
-    def test_a_brain_exits_once_its_stdin_closes(self):
-        with (
-            mock.patch.object(routines_serve.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b""))),
-            mock.patch.object(routines_serve.os, "_exit") as exited,
-        ):
-            routines_serve._exit_with_parent()
-        exited.assert_called_once_with(0)
-
-
-class StartTests(unittest.TestCase):
-    def test_brain_starts_from_its_own_environment_without_teams(self):
-        team = {"PYTHONPATH": ".:tests", "VIRTUAL_ENV": "/teams/.venv", "PYTHONHOME": "/x", "KEEP": "1"}
-        with mock.patch.dict(routines_serve.os.environ, team):
-            environment = routines_serve.brain_environment()
-            with mock.patch.object(routines_serve.subprocess, "Popen") as popen:
-                files = routines_serve.BrainFiles(Path("t"), Path("e"), Path("b"), Path("l"))
-                routines_serve.start_brain("/brain/python", files)
-        self.assertEqual(environment["KEEP"], "1")
-        self.assertFalse({"PYTHONPATH", "VIRTUAL_ENV", "PYTHONHOME"} & set(environment))
-        command = popen.call_args.args[0]
-        self.assertEqual(command[:4], ["/brain/python", "-m", "eval.routines", "--serve-brain"])
-        self.assertEqual(command[4:], ["--token-file", "t", "--ledger", "b", "--events", "e", "--brain-log", "l"])
-        self.assertEqual(
-            (popen.call_args.kwargs["cwd"], popen.call_args.kwargs["start_new_session"]), (routines_serve.BRAIN, True)
-        )
-        self.assertNotIn("PYTHONPATH", popen.call_args.kwargs["env"])
-
-    def test_brain_python_is_what_uv_resolves_in_brain(self):
-        found = subprocess.CompletedProcess([], 0, stdout="/brain/.venv/bin/python\n")
-        with (
-            mock.patch.object(routines_serve.shutil, "which", return_value="/bin/uv"),
-            mock.patch.object(routines_serve.subprocess, "run", return_value=found) as ran,
-        ):
-            self.assertEqual(routines_serve.brain_python(), "/brain/.venv/bin/python")
-            self.assertEqual(ran.call_args.args[0][:2], ["/bin/uv", "run"])
-            for failed in (subprocess.CompletedProcess([], 1, stdout="x"), subprocess.CompletedProcess([], 0, "")):
-                ran.return_value = failed
-                with self.assertRaises(SystemExit):
-                    routines_serve.brain_python()
-        with mock.patch.object(routines_serve.shutil, "which", return_value=None), self.assertRaises(SystemExit):
-            routines_serve.brain_python()
-
-    def _started(self, mode: str) -> subprocess.Popen:
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        files = routines_serve.BrainFiles(Path(directory.name, "brain-7.token"), Path("e"), Path("b"))
-        with mock.patch.dict(routines_serve.os.environ, {"FAKE_BRAIN_MODE": mode}):
-            process = routines_serve.start_brain(routines_fake_brain.launcher(Path(directory.name)), files)
-        for cleanup in (process.wait, process.kill, process.stdin.close, process.stdout.close):
-            self.addCleanup(cleanup)
-        return process
-
-    def test_a_brain_url_comes_from_its_first_stdout_line(self):
-        self.assertEqual(routines_serve.brain_url(self._started("serve")), "http://127.0.0.1:40007")
-        for mode in ("no port", "0", "70000", "quiet"):
-            with self.subTest(mode=mode), self.assertRaisesRegex(RuntimeError, "stopped before it served"):
-                routines_serve.brain_url(self._started(mode))
-        silent = self._started("silent")
-        with self.assertRaises(RuntimeError):
-            routines_serve.brain_url(silent, deadline=0.2)
-        self.assertIsNotNone(silent.wait(timeout=5))
+            with self.subTest(script=script):
+                origin = routines_serve.start_origin(files, (sys.executable, "-c", script))
+                with self.assertRaisesRegex(RuntimeError, "stopped before it served"):
+                    routines_serve.announced_port(origin, deadline)
+                origin.kill()
+                origin.wait(timeout=5)
+                origin.stdout.close()
+                origin.stdin.close()
 
 
 class MeterTests(unittest.TestCase):

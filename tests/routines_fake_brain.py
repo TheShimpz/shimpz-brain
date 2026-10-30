@@ -1,38 +1,43 @@
-"""A stand-in Brain interpreter for the Routine eval's process tests, which the run starts as it starts Brain's.
+"""A stand-in Rust Brain binary for the Routine eval's process tests, which the run starts as it starts the real one.
 
-``launcher`` writes an executable copy of this file, so ``start_brain`` runs it in place of Brain's interpreter with
-Brain's own arguments. It prints port 40000 plus the number in its token file's name and serves until stdin closes;
-``FAKE_BRAIN_MODE`` makes it print ``no port``, ``0``, or ``70000`` instead, ``quiet`` print nothing, ``silent`` hang,
-or ``dead`` stop Brain 1 right after it says its port.
+``launcher`` writes an executable copy of this file. Started as ``serve --listen HOST:PORT ... --state-dir DIR``, it
+records its arguments in ``DIR/argv.json`` and answers ``GET /health`` until it is terminated; ``FAKE_BRAIN_MODE=quiet``
+makes it exit at once instead, so it never becomes healthy.
 """
 
+import http.server
+import json
 import os
 import sys
-import time
 from pathlib import Path
 
 
 def launcher(directory: Path) -> str:
-    """An owner-only executable that runs this file with the current interpreter, wherever ``start_brain`` runs it."""
-    path = directory / "python"
+    """An owner-only executable that runs this file with the current interpreter, wherever the run starts it."""
+    path = directory / "shimpz-brain"
     path.write_text(f"#!{sys.executable}\n" + Path(__file__).read_text(encoding="utf-8"), encoding="utf-8")
     path.chmod(0o700)
     return str(path)
 
 
+class Health(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200 if self.path == "/health" else 404)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *_args: object) -> None:
+        return
+
+
 def main() -> int:
-    token = Path(sys.argv[sys.argv.index("--token-file") + 1])
-    number = int(token.stem.rsplit("-", 1)[1])
-    mode = os.environ.get("FAKE_BRAIN_MODE", "serve")
-    if mode == "silent":
-        time.sleep(30)
+    arguments = sys.argv[1:]
+    if os.environ.get("FAKE_BRAIN_MODE") == "quiet":
         return 0
-    if mode == "quiet":
-        return 0
-    print({"no port": "no port", "0": 0, "70000": 70000}.get(mode, 40000 + number), flush=True)
-    if mode == "dead" and number == 1:
-        return 0
-    sys.stdin.read()
+    state = Path(arguments[arguments.index("--state-dir") + 1])
+    (state / "argv.json").write_text(json.dumps(arguments), encoding="utf-8")
+    host, port = arguments[arguments.index("--listen") + 1].rsplit(":", 1)
+    http.server.HTTPServer((host, int(port)), Health).serve_forever()
     return 0
 
 

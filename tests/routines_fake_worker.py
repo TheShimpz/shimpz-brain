@@ -48,7 +48,7 @@ def _without_tasks(mode: str, config: dict[str, object]) -> None:
         if child == 0:
             time.sleep(60)
             os._exit(0)
-        Path(config["token"] + ".child").write_text(str(child), encoding="utf-8")
+        Path(config["slots"][0]["token"] + ".child").write_text(str(child), encoding="utf-8")
         sys.stdin.read()
     elif mode == "stubborn":
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -63,7 +63,7 @@ def _serve(config: dict[str, object]) -> None:
         if config["mode"] == "fail":
             print(json.dumps({**task, "error": "RuntimeError: scripted"}), flush=True)
             continue
-        result = counted(task, brain=config["brain"])
+        result = counted(task, slots=[slot["brain"] for slot in config["slots"]])
         print(
             json.dumps(result | config["results"].get(f"{task['case']}:{task['index']}:{task['try']}", {})), flush=True
         )

@@ -3,6 +3,7 @@
 import base64
 import datetime
 import json
+import queue
 import socketserver
 import tempfile
 import threading
@@ -31,32 +32,53 @@ class Answer:
         return self.headers.get(name.lower())
 
 
-def _evidence(throttled: str = "0", clamped: str = "0", **headers: str) -> dict[str, str]:
-    return {"eval-throttled": throttled, "eval-clamped": clamped, **headers}
+def _counts(refused: int = 0, throttled: int = 0, terminal: int = 0, clamped: int = 0) -> dict[str, int]:
+    return {"refused": refused, "throttled": throttled, "terminal": terminal, "clamped": clamped}
 
 
 class SignalsTests(unittest.TestCase):
-    def test_each_brain_response_adds_its_evidence_and_the_worst_decides_the_attempt(self):
+    def test_an_attempt_takes_only_what_its_slot_met_while_it_ran(self):
         signals = routines.Signals()
-        signals.saw(Answer(200, **_evidence("2", "1")))
+        signals.saw(Answer(200))
+        # The slot's origin had met earlier attempts' throttles; only this attempt's share is its own.
+        signals.settle(_counts(throttled=4, clamped=1), _counts(throttled=6, clamped=2))
         self.assertEqual((signals.throttled, signals.clamped, signals.disposition()), (2, 1, "counted"))
-        signals.saw(Answer(503, **_evidence(), **{"Retry-After": "1"}))
+
+    def test_a_failed_brain_response_is_explained_by_what_its_slot_met(self):
+        cases = (
+            (_counts(refused=1, throttled=1, terminal=1), "stopped"),
+            (_counts(throttled=1, terminal=1), "unavailable"),
+            (_counts(throttled=1), "throttled"),
+            (_counts(), "counted"),
+        )
+        for after, disposition in cases:
+            with self.subTest(after=after):
+                signals = routines.Signals()
+                signals.saw(Answer(502))
+                signals.settle(_counts(), after)
+                self.assertEqual(signals.disposition(), disposition)
+        # A throttle the Brain's own retry absorbed fails nothing: the attempt counts.
+        absorbed = routines.Signals()
+        absorbed.saw(Answer(200))
+        absorbed.settle(_counts(), _counts(throttled=1))
+        self.assertEqual((absorbed.throttled, absorbed.disposition()), (1, "counted"))
+
+    def test_brains_own_capacity_refusal_is_read_from_its_response(self):
+        signals = routines.Signals()
+        signals.saw(Answer(503, **{"Retry-After": "1"}))
+        signals.settle(_counts(), _counts())
         self.assertEqual((signals.refused, signals.failed, signals.disposition()), (1, 1, "brain-refused"))
-        signals.saw(Answer(502, **_evidence("3", **{"eval-failure": "throttled"})))
-        self.assertEqual((signals.throttled, signals.disposition()), (5, "throttled"))
-        signals.saw(Answer(502, **_evidence(**{"eval-failure": "budget"})))
-        self.assertEqual(signals.disposition(), "stopped")
         # A Brain 503 without Retry-After is no capacity refusal: Brain's state or authentication failed.
         failed = routines.Signals()
-        failed.saw(Answer(503, **_evidence()))
+        failed.saw(Answer(503))
+        failed.settle(_counts(), _counts())
         self.assertEqual((failed.refused, failed.failed, failed.disposition()), (0, 1, "counted"))
 
-    def test_a_response_without_readable_evidence_is_never_trusted(self):
-        for headers in ({}, _evidence("x"), {"eval-throttled": "0"}):
-            with self.subTest(headers=headers):
-                signals = routines.Signals()
-                signals.saw(Answer(200, **headers))
-                self.assertEqual(signals.disposition(), "error")
+    def test_an_attempt_whose_slot_counts_cannot_be_read_is_never_trusted(self):
+        for before, after in ((None, _counts()), (_counts(), None)):
+            signals = routines.Signals()
+            signals.settle(before, after)
+            self.assertEqual(signals.disposition(), "error")
 
     def test_the_attempts_connection_reads_each_response_before_team_does(self):
         class Brain(socketserver.StreamRequestHandler):
@@ -64,10 +86,8 @@ class SignalsTests(unittest.TestCase):
                 while self.rfile.readline() not in (b"\r\n", b""):
                     continue
                 self.rfile.read(2)
-                headers = "".join(f"{name}: {value}\r\n" for name, value in _evidence("1", **failure).items())
-                self.wfile.write(f"HTTP/1.1 502 Bad Gateway\r\n{headers}Content-Length: 2\r\n\r\n{{}}".encode())
+                self.wfile.write(b"HTTP/1.1 503 Busy\r\nRetry-After: 1\r\nContent-Length: 2\r\n\r\n{}")
 
-        failure = {"eval-failure": "throttled"}
         server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Brain)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
@@ -76,9 +96,9 @@ class SignalsTests(unittest.TestCase):
         connection = signals.connection("127.0.0.1", server.server_address[1], 5.0)
         connection.request("POST", "/v1/turns", b"{}")
         response = connection.getresponse()
-        self.assertEqual((response.status, response.read()), (502, b"{}"))
+        self.assertEqual((response.status, response.read()), (503, b"{}"))
         connection.close()
-        self.assertEqual((signals.throttled, signals.failed, signals.disposition()), (1, 1, "throttled"))
+        self.assertEqual((signals.refused, signals.failed), (1, 1))
 
 
 def _counted(task: dict[str, object], **changes) -> dict[str, object]:
@@ -93,7 +113,8 @@ class FakePool:
     def __init__(self, command, brains, count, threads, configure) -> None:
         self.command, self.brains, self.count, self.threads = command, brains, count, threads
         self.configs = [
-            configure(number, f"http://127.0.0.1:{4000 + number}", Path(f"t{number}")) for number in range(count)
+            configure(number, [{"brain": f"http://127.0.0.1:{4000 + number}", "token": f"t{number}", "state": "s"}])
+            for number in range(count)
         ]
         self.pending: list[dict[str, object]] = []
         self.worker = SimpleNamespace(busy=0, threads=count * threads)
@@ -121,7 +142,7 @@ class RunTests(unittest.TestCase):
         self.assistant = routines.Generated(b"manifest", b"contract", Path("/assistant"))
         patches = (
             mock.patch.object(routines, "Pool", FakePool),
-            mock.patch.object(routines, "brain_python", return_value="/brain/python"),
+            mock.patch.object(routines, "brain_binary", return_value="/brain/shimpz-brain"),
             mock.patch.object(routines, "confine", side_effect=lambda cpus: list(range(cpus))),
         )
         for patch in patches:
@@ -139,17 +160,25 @@ class RunTests(unittest.TestCase):
         self.assertEqual((cases[0]["passed"], cases[0]["trials"], cases[0]["usd"]), (30, 30, 0.3))
         self.assertEqual(report["variants"], VARIANTS)
         self.assertEqual(report["budget"]["spent_usd"], 0)
-        self.assertEqual(report["throttling"]["evidence"]["unattributed"], 0)
         run = report["run"]
         self.assertEqual(
             (run["cpus"], run["workers"], run["threads"], run["capacity"], run["peak_attempts"]), (4, 2, 3, 6, 6)
         )
         config = FakePool.last.configs[1]
-        self.assertEqual((config["brain"], config["token"], config["threads"]), ("http://127.0.0.1:4001", "t1", 3))
+        self.assertEqual((config["slots"][0]["brain"], config["threads"]), ("http://127.0.0.1:4001", 3))
         self.assertEqual(base64.b64decode(config["manifest"]), b"manifest")
         self.assertEqual(config["models"], [list(item) for item in self.models])
         self.assertEqual(FakePool.last.command[1], str(Path(routines.__file__).resolve()))
-        self.assertEqual(FakePool.last.brains[0], "/brain/python")
+        self.assertEqual(FakePool.last.brains[0], "/brain/shimpz-brain")
+
+    def test_a_run_never_starts_without_the_brain_binary(self):
+        with (
+            mock.patch.object(routines, "brain_binary", side_effect=SystemExit("no binary")),
+            mock.patch.object(routines.eval_cost.SharedBudget, "create") as ledger,
+            self.assertRaises(SystemExit),
+        ):
+            routines.run(self.models, routines.Settings(1, 1.0, workers=1, threads=1), assistant=self.assistant)
+        ledger.assert_not_called()
 
     def test_throttling_and_the_budget_never_pass_and_never_count_as_a_miss(self):
         def answer(task: dict[str, object]) -> dict[str, object]:
@@ -178,7 +207,7 @@ class RunTests(unittest.TestCase):
         failures = report["gate"]["failures"]
         for failure in ("attempts-below-gate", "throttled", "gpt-6-luna:plain-list", "provider-unavailable:anthropic"):
             self.assertIn(failure, failures)
-        # The fake Brains wrote no events, so the attempts received evidence no Brain met: never a loss.
+        # The fake origins wrote no events, so the attempts received evidence no origin met: never a loss.
         self.assertEqual(report["throttling"]["evidence"]["received_clamped"], 1)
         self.assertIn("output-clamped", failures)
         self.assertNotIn("evidence-lost", failures)
@@ -208,7 +237,6 @@ class RunTests(unittest.TestCase):
                 "evidence": {
                     "brain_throttled": 3,
                     "brain_clamped": 0,
-                    "unattributed": 0,
                     "received_throttled": 2,
                     "received_clamped": 0,
                 },
@@ -245,7 +273,7 @@ class WorkerTests(unittest.TestCase):
     def test_a_discarded_try_is_traced_beside_its_slot_never_in_its_place(self):
         with tempfile.TemporaryDirectory() as directory:
             context = routines.WorkerContext(
-                None, ("u", Path("t")), [("openai", "gpt-6-luna", "k")], Path(directory), Path(directory)
+                None, queue.Queue(), [("openai", "gpt-6-luna", "k")], Path(directory), Path(directory)
             )
             task = {"model": 0, "case": "plain-list", "index": 4, "try": 2}
             result = {"disposition": "throttled", "reason": None, "cause": None, "schedule": None, "questions": []}

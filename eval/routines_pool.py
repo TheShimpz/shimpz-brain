@@ -2,15 +2,15 @@
 
 One command starts every process the run needs and stops them all on any exit. The run confines itself, and so every
 process it starts, to its CPU budget: half the processors the machine reports, or all of them on a GitHub Actions
-runner. It starts one Brain per worker (``routines_serve``) and one worker process per Brain, each a Team runner that
-runs up to ``threads`` attempts at once, every one of them pinned to its worker's Brain, whose checkpoint lives in
-that process. Workers speak JSON lines: their configuration, model keys included, arrives on stdin, never in argv or
-the environment; each attempt goes in as one task and comes back as one result.
+runner. It starts worker processes, each a Team runner that runs up to ``threads`` attempts at once, and one slot per
+thread of each worker: a Rust Brain and its own provider origin (``routines_serve``), so each attempt runs on a Brain
+and an origin no other running attempt uses. Workers speak JSON lines: their configuration, model keys included,
+arrives on stdin, never in argv or the environment; each attempt goes in as one task and comes back as one result.
 
 The schedule hands out attempts index by index across every case and model, so a run the budget stops still covers
 every stratum evenly. A provider's rate-limit or overload answers never count as a model's miss and never pass: an
 attempt whose Brain request failed throttled is discarded and retried after an exponential backoff with jitter, until
-it gives up and leaves its case inconclusive; any throttled answer, even one the SDK's own retry absorbed, halves that
+it gives up and leaves its case inconclusive; any throttled answer, even one the Brain's own retry absorbed, halves that
 provider's attempt concurrency, which then grows back by one attempt per round of clean results. A Brain's own
 capacity refusal is retried the same way without touching the provider's concurrency. The budget's refusal stops the
 run's dispatch, a provider that refuses every request (no credit or quota left, a refused key) stops that provider's,
@@ -27,6 +27,7 @@ import queue
 import random
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -34,14 +35,14 @@ from pathlib import Path
 
 if __package__:
     from eval.routines_fixture import eval_cost, eval_stats
-    from eval.routines_serve import BrainFiles, brain_url, start_brain
+    from eval.routines_serve import ORIGIN, SlotFiles, announced_port, healthy, start_brain, start_origin
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import eval_cost, eval_stats
-    from routines_serve import BrainFiles, brain_url, start_brain
+    from routines_serve import ORIGIN, SlotFiles, announced_port, healthy, start_brain, start_origin
 
 
-# Attempts one worker runs at once against its own Brain: Brain admits about 14 small requests at once, and on
-# 2026-10-07 one worker ran 16 attempts 8 at a time in 41 s (19 s a wave, against 17 s for one alone), all passing.
+# Attempts one worker runs at once, each on a slot of its own: on 2026-10-07 one worker ran 16 attempts 8 at a time in
+# 41 s (19 s a wave, against 17 s for one alone), all passing.
 DEFAULT_THREADS = 8
 
 
@@ -277,23 +278,39 @@ def merge(models: list[tuple[str, str]], cases: list[str], attempts: int, schedu
 
 
 class PoolError(RuntimeError):
-    """A worker or Brain stopped, failed to start, or reported an error: the run is aborted."""
+    """A worker, Brain, or provider origin stopped, failed to start, or reported an error: the run is aborted."""
+
+
+@dataclasses.dataclass
+class BrainSlot:
+    """One attempt slot: its provider origin, the Brain that sends to it, and the files both use."""
+
+    number: int
+    files: SlotFiles
+    origin: subprocess.Popen
+    brain: subprocess.Popen | None = None
+    url: str = ""
+
+    def config(self) -> dict[str, str]:
+        """What the worker's attempt on this slot needs: its Brain, bearer file, and origin state snapshot."""
+        return {"brain": self.url, "token": str(self.files.token), "state": str(self.files.state)}
 
 
 @dataclasses.dataclass
 class Worker:
     number: int
     process: subprocess.Popen
-    brain: subprocess.Popen
+    slots: list[BrainSlot]
     threads: int
     busy: int = 0
 
 
 class Pool:
-    """The run's processes: one Brain and one worker per number, every one stopped on exit.
+    """The run's processes: one worker per number, one Brain and origin per thread of it, every one stopped on exit.
 
-    ``command`` is the worker's interpreter and script, which runs with ``--worker``; ``configure`` gives worker
-    ``number`` its configuration, given that worker's Brain URL and token file.
+    ``command`` is the worker's interpreter and script, which runs with ``--worker``; ``brain`` is the Brain binary,
+    the run's private directory (where the shared ledger already is), and the directory that keeps each Brain's log
+    (or None for the run's directory); ``configure`` gives worker ``number`` its configuration, given its slots'.
     """
 
     def __init__(
@@ -302,12 +319,14 @@ class Pool:
         brain: tuple[str, Path, Path | None],
         count: int,
         threads: int,
-        configure: Callable[[int, str, Path], dict[str, object]],
+        configure: Callable[[int, list[dict[str, str]]], dict[str, object]],
+        origin: tuple[str, ...] = (sys.executable, str(ORIGIN)),
     ) -> None:
         self.command, self.count, self.threads, self.configure = command, count, threads, configure
-        self.python, self.run_dir, self.log_dir = brain
+        self.binary, self.run_dir, self.log_dir = brain
+        self.origin_command = origin
         self.workers: list[Worker] = []
-        self.brains: list[subprocess.Popen] = []
+        self.slots: list[BrainSlot] = []
         self.readers: list[threading.Thread] = []
         self.messages: queue.Queue = queue.Queue()
         self.placed: dict[tuple[int, str, int], Worker] = {}
@@ -323,11 +342,17 @@ class Pool:
     def __exit__(self, *_exc) -> None:
         self.stop()
 
-    def brain_files(self, number: int) -> BrainFiles:
-        log = None if self.log_dir is None else self.log_dir / f"brain-{number}.log"
-        name = f"brain-{number}"
-        return BrainFiles(
-            self.run_dir / f"{name}.token", self.run_dir / f"{name}.events", self.run_dir / "budget.json", log
+    def slot_files(self, number: int) -> SlotFiles:
+        name = f"slot-{number}"
+        run = self.run_dir
+        logs = self.run_dir if self.log_dir is None else self.log_dir
+        return SlotFiles(
+            run / f"{name}.token",
+            run / f"{name}.state.json",
+            run / f"{name}.events",
+            run / "budget.json",
+            run / name,
+            logs / f"brain-{number}.log",
         )
 
     def _start(self) -> None:
@@ -335,28 +360,40 @@ class Pool:
         # Each process is recorded as soon as it starts, so a failure to start the next one still stops it. Each runs
         # in its own session, so stopping it also stops what it started, such as an Assistant's SDK.
         for number in range(self.count):
-            self.brains.append(start_brain(self.python, self.brain_files(number)))
+            slots = []
+            for thread in range(self.threads):
+                files = self.slot_files(number * self.threads + thread)
+                slots.append(BrainSlot(number * self.threads + thread, files, start_origin(files, self.origin_command)))
+                self.slots.append(slots[-1])
             process = subprocess.Popen(
                 [python, script, "--worker"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, start_new_session=True
             )
-            self.workers.append(Worker(number, process, self.brains[-1], self.threads))
+            self.workers.append(Worker(number, process, slots, self.threads))
         self.readers = [
             threading.Thread(target=self._read, args=(worker,), name=f"worker-{worker.number}", daemon=True)
             for worker in self.workers
         ]
         for reader in self.readers:
             reader.start()
+        for slot in self.slots:
+            self._serve(slot)
         for worker in self.workers:
-            try:
-                url = brain_url(worker.brain)
-            except RuntimeError as exc:
-                raise PoolError(str(exc)) from None
-            self._send(worker, self.configure(worker.number, url, self.brain_files(worker.number).token))
+            self._send(worker, self.configure(worker.number, [slot.config() for slot in worker.slots]))
         deadline = time.monotonic() + WORKER_START_SECONDS
         for _worker in self.workers:
             message = self._next(max(0.0, deadline - time.monotonic()))
             if message is None or message[1].get("ready") is not True:
                 raise PoolError("a worker did not start")
+
+    def _serve(self, slot: BrainSlot) -> None:
+        """Start the slot's Brain against its origin's port and wait until it answers its health check."""
+        try:
+            origin_port = announced_port(slot.origin)
+            slot.brain, port = start_brain(self.binary, slot.files, origin_port)
+            healthy(port, slot.brain)
+        except RuntimeError as exc:
+            raise PoolError(str(exc)) from None
+        slot.url = f"http://127.0.0.1:{port}"
 
     def _read(self, worker: Worker) -> None:
         try:
@@ -394,11 +431,20 @@ class Pool:
         worker.busy += 1
         self.placed[slot.key] = worker
 
+    def _stopped(self) -> str | None:
+        """Which slot process stopped, if any: every Brain and origin must outlive the run."""
+        for slot in self.slots:
+            if slot.origin.poll() is not None:
+                return f"origin {slot.number} stopped"
+            if slot.brain is not None and slot.brain.poll() is not None:
+                return f"brain {slot.number} stopped"
+        return None
+
     def receive(self, timeout: float | None) -> tuple[tuple[int, str, int], dict[str, object]] | None:
-        """The next result, or None when ``timeout`` passes first; a stopped Brain or worker aborts the run."""
-        stopped = next((item.number for item in self.workers if item.brain.poll() is not None), None)
+        """The next result, or None when ``timeout`` passes first; a stopped Brain, origin, or worker aborts the run."""
+        stopped = self._stopped()
         if stopped is not None:
-            raise PoolError(f"brain {stopped} stopped")
+            raise PoolError(stopped)
         found = self._next(timeout)
         if found is None:
             return None
@@ -408,15 +454,20 @@ class Pool:
         return key, message
 
     def stop(self) -> None:
-        """Close every process's stdin, so it exits, and reap it; terminate, then kill, any that does not.
+        """Close the stdin of every worker and origin, so it exits, and terminate every Brain; reap them all.
 
-        Then kill whatever is left of each process's session, so nothing it started outlives the run.
+        One that does not exit is terminated, then killed; then whatever is left of each process's session is killed,
+        so nothing it started outlives the run.
         """
-        for process in [item.process for item in self.workers] + self.brains:
+        piped = [item.process for item in self.workers] + [slot.origin for slot in self.slots]
+        brains = [slot.brain for slot in self.slots if slot.brain is not None]
+        for process in piped:
             if process.stdin is not None and not process.stdin.closed:
                 with contextlib.suppress(OSError):
                     process.stdin.close()
-        for process in [item.process for item in self.workers] + self.brains:
+        for process in brains:
+            process.terminate()
+        for process in piped + brains:
             for end in (lambda: None, process.terminate, process.kill):
                 end()
                 try:
@@ -428,7 +479,7 @@ class Pool:
                 os.killpg(process.pid, signal.SIGKILL)
         for reader in self.readers:
             reader.join(timeout=STOP_SECONDS)
-        for process in [item.process for item in self.workers] + self.brains:
+        for process in piped:
             process.stdout.close()
 
 
@@ -449,20 +500,19 @@ def orchestrate(schedule: Schedule, pool: Pool) -> None:
 
 
 def evidence(run_dir: Path, schedule: Schedule) -> dict[str, int]:
-    """What every Brain met on the wire against what the attempts received: any shortfall is evidence lost.
+    """What every slot's origin met on the wire against what the attempts received: any shortfall is evidence lost.
 
-    A request outside every Brain request, or one Team cancelled at its deadline, never delivers its evidence.
+    An attempt receives its slot's counts when it ends; one that ended without them leaves its slot's answers unread.
     """
     lines = [
         json.loads(line)
-        for path in sorted(run_dir.glob("brain-*.events"))
+        for path in sorted(run_dir.glob("slot-*.events"))
         for line in path.read_text(encoding="utf-8").splitlines()
     ]
     received = sum(state.throttled_answers for state in schedule.providers.values())
     return {
         "brain_throttled": sum(item["throttled"] for item in lines),
         "brain_clamped": sum(item["clamped"] for item in lines),
-        "unattributed": sum(not item["attributed"] for item in lines),
         "received_throttled": received,
         "received_clamped": schedule.clamped,
     }

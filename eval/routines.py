@@ -1,30 +1,30 @@
 """Evaluate recorded Team Routines (ADR-0101) through the real chat agent and Team's real record and confirm path.
 
-Brain and Team each define top-level ``routine`` and ``protocol`` packages, so they never share one interpreter: the
-run starts each Brain from Brain's own environment (``--serve-brain``, internal), serving Brain's real runtime API on
-loopback with an in-memory checkpoint and a fresh bearer in a new owner-only token file, and drives the eval under
-Team's environment. Each attempt's Team is an in-process Local controller built by Team's test harness, its
-Brain is Team's own ``BrainRuntimeClient`` over that loopback HTTP, and its one Assistant is the real Cloudflare
-Assistant project (``--assistant``, default ~/shimpz-cloudflare): its own manifest, Genesis, and the machine contract
-its pinned SDK generates from its source, exactly as staging generates it, admitted through Team's Local snapshot
-parsers. Only its provider is simulated: a fixture answers its reads with results its output schemas admit and fails
-any other call, so a change never passes as done. Every
-send runs as the person, with the fresh request identity an Admin send carries, and a clarification is answered exactly
-as Admin composes it.
+The Brain is a black box: the run starts the Rust binary ``SHIMPZ_BRAIN_BINARY`` names (it refuses to run without
+it) once per attempt slot, serving on loopback with a fresh bearer in a new owner-only token file and its own state
+directory, and sending every provider request to the slot's own loopback provider origin, which meters it. The eval
+itself runs under Team's environment. Each attempt's Team is an in-process Local controller built by Team's test
+harness, its Brain is Team's own ``BrainRuntimeClient`` over that loopback HTTP, and its one Assistant is the real
+Cloudflare Assistant project (``--assistant``, default ~/shimpz-cloudflare): its own manifest, Genesis, and the machine
+contract its pinned SDK generates from its source, exactly as staging generates it, admitted through Team's Local
+snapshot parsers. Only its provider is simulated: a fixture answers its reads with results its output schemas admit
+and fails any other call, so a change never passes as done. Every send runs as the person, with the fresh request
+identity an Admin send carries, and a clarification is answered exactly as Admin composes it.
 
-Validate offline from Team, with Brain beside it::
+Validate offline from Team, with Brain beside it (no Brain starts)::
 
     cd teams && PYTHONPATH=.:tests uv run --frozen --python 3.14 python ../brain/eval/routines.py --validate
 
 Run live, the one command, from Team; it starts every Brain and worker it needs and stops them on any exit::
 
-    cd teams && PYTHONPATH=.:tests uv run --frozen --python 3.14 python ../brain/eval/routines.py
-    --openai-key-file ../.gpt-key --anthropic-key-file ../.claude-key --budget 8
+    cd teams && SHIMPZ_BRAIN_BINARY=/path/to/shimpz-brain PYTHONPATH=.:tests uv run --frozen --python 3.14 python
+    ../brain/eval/routines.py --openai-key-file ../.gpt-key --anthropic-key-file ../.claude-key --budget 8
 
 The run (``routines_pool``) confines itself to its CPU budget (``--cpus``, default half the machine's processors) and
-starts ``--workers`` (default one per budgeted processor) Team runner processes, each beside its own Brain
-(``routines_serve``) and each running ``--threads`` attempts at once, every attempt pinned to its worker's Brain. Every
-provider request on the wire is reserved under one hard ``--budget`` before it is sent, across every Brain, and the
+starts ``--workers`` (default one per budgeted processor) Team runner processes, each running ``--threads`` attempts at
+once, every attempt on a slot of its own: a Brain and its provider origin (``routines_serve``) that no other running
+attempt uses, so the provider traffic the slot's origin counts during an attempt is exactly that attempt's. Every
+provider request on the wire is reserved under one hard ``--budget`` before it is sent, across every slot, and the
 budget's refusal stops the run. A provider's rate-limit or overload answer is never a model's miss and never a pass:
 its attempt is discarded and retried with backoff, the provider's concurrency adapts down, and the report counts it.
 
@@ -56,8 +56,6 @@ The gate exits non-zero unless every stratum of every shipped model passed every
 The gate also fails on a counted attempt whose cost is unknown, a reservation never settled, a response that reached
 the eval's output limit, provider evidence no attempt received, an attempt that stayed throttled through every retry,
 or a provider that refused every request (no credit or quota left, a refused key).
-For the control arm, run with SHIMPZ_ROUTINE_MODE_PROMPT=off, which every Brain inherits and which drops its
-Routine-mode prompt section.
 Output holds stratum ids, pass counts, Wilson 95% bounds, closed miss reasons with root causes, the questions asked,
 the schedules seen, the estimated cost, the throttling met, and the run's concurrency, wall time, and CPU time; never a
 message, a reply, or a key (only ``--trace-dir`` writes messages, a discarded try under ``CASE/discarded/``).
@@ -73,6 +71,7 @@ import functools
 import http.client
 import json
 import os
+import queue
 import resource
 import secrets
 import signal
@@ -114,7 +113,7 @@ if __package__:
     from eval.routines_person import Attempt, Outcome, Team
     from eval.routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
     from eval.routines_pool import evidence as wire_evidence
-    from eval.routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
+    from eval.routines_serve import Meter, brain_binary, read_counts
     from eval.routines_strata import CASES, VARIANT_STRATA, failure_cause, variants
 else:  # run as a script from Team, beside its sibling modules
     from private import read_key
@@ -142,7 +141,7 @@ else:  # run as a script from Team, beside its sibling modules
     from routines_person import Attempt, Outcome, Team
     from routines_pool import DEFAULT_THREADS, Pool, Schedule, confine, cpu_budget, merge, orchestrate, plan
     from routines_pool import evidence as wire_evidence
-    from routines_serve import CLAMPED_HEADER, FAILURE_HEADER, THROTTLED_HEADER, Meter, brain_python, serve_brain
+    from routines_serve import Meter, brain_binary, read_counts
     from routines_strata import CASES, VARIANT_STRATA, failure_cause, variants
 
 
@@ -406,7 +405,7 @@ def _attempt_team(
 ) -> tuple[object, Team, Fixture]:
     """A fresh Local Team for one attempt, whose own Space gives it its own Brain thread.
 
-    Its Brain client reads each response's evidence into the attempt's Signals before Team reads the response.
+    Its Brain client counts each failed or refused Brain response into the attempt's Signals before Team reads it.
     """
     provider, model, space = settings
     url, token_file, signals = brain
@@ -478,10 +477,9 @@ def _write_trace(path: Path, transcript: dict[str, object]) -> None:
 
 @dataclasses.dataclass
 class Signals:
-    """The evidence every Brain response of one attempt carried, read before Team reads the response.
+    """What one attempt met: Team's Brain responses, and its slot's provider traffic read from the slot's origin.
 
-    A response without the eval's evidence headers, or with unreadable ones, is never trusted: the attempt is an error
-    and the run stops.
+    An attempt whose slot counts cannot be read is never trusted: the attempt is an error and the run stops.
     """
 
     throttled: int = 0
@@ -493,16 +491,24 @@ class Signals:
     unreadable: int = 0
 
     def saw(self, response: http.client.HTTPResponse) -> None:
-        try:
-            self.throttled += int(response.getheader(THROTTLED_HEADER))
-            self.clamped += int(response.getheader(CLAMPED_HEADER))
-        except TypeError, ValueError:
-            self.unreadable += 1
-        failure = response.getheader(FAILURE_HEADER)
-        if failure is not None:
-            self.failures.add(failure)
         self.refused += response.status == 503 and response.getheader("retry-after") is not None
         self.failed += response.status != 200
+
+    def settle(self, before: dict[str, int] | None, after: dict[str, int] | None) -> None:
+        """Take the slot's provider traffic during the attempt: the difference of its origin's counts.
+
+        A failed Brain response is explained by what its slot met: the budget's refusal, a provider that refuses every
+        request, or a throttle.
+        """
+        if before is None or after is None:
+            self.unreadable += 1
+            return
+        met = {name: after[name] - before[name] for name in after}
+        self.throttled += met["throttled"]
+        self.clamped += met["clamped"]
+        if self.failed:
+            causes = (("budget", "refused"), ("terminal", "terminal"), ("throttled", "throttled"))
+            self.failures |= {failure for failure, count in causes if met[count]}
 
     def connection(self, host: str, port: int, timeout: float) -> http.client.HTTPConnection:
         """Team's own loopback connection, whose response this attempt reads first."""
@@ -562,10 +568,11 @@ def _patched(modules: Modules):
 
 @dataclasses.dataclass(frozen=True)
 class WorkerContext:
-    """What one worker's attempts share: Team's modules, its Brain, the models with their keys, and the run."""
+    """What one worker's attempts share: Team's modules, its free slots, the models with their keys, and the run."""
 
     modules: Modules
-    brain: tuple[str, Path]
+    # The worker's slots not in use, one per thread: each slot's Brain URL, bearer file, and origin state snapshot.
+    slots: queue.Queue
     models: list[tuple[str, str, str]]
     run_dir: Path
     trace_dir: Path | None
@@ -580,17 +587,23 @@ def _claim_variants(run_dir: Path) -> bool:
     return True
 
 
-def _judged(context: WorkerContext, case_id: str, attempt: Attempt, signals: Signals) -> tuple[Outcome, object]:
-    """Play the case, then judge it unless its evidence discards it; the first passing eligible one runs variants."""
+def _judged(
+    context: WorkerContext, case_id: str, attempt: Attempt, signals: Signals, settle: Callable[[], None]
+) -> tuple[Outcome, object]:
+    """Play the case, then judge it unless its evidence discards it; the first passing eligible one runs variants.
+
+    ``settle`` takes the slot's provider traffic into ``signals`` once the case is played; the variants send none.
+    """
     try:
         outcome = dict(CASES)[case_id](attempt)
     except context.modules.local_app.ApiProblem as exc:
         outcome = Outcome(f"team:{exc.code}")
-        # Team's mapped detail, as Admin would see it; the Brain's own cause is in its --brain-logs file.
+        # Team's mapped detail, as Admin would see it; the Brain's own log is its slot's brain-N.log.
         attempt.fixture.note({"kind": "team-error", "code": exc.code, "detail": str(exc)})
     if not outcome:
         outcome.cause = failure_cause(attempt, outcome.reason)
     outcome.questions = tuple(attempt.questions)
+    settle()
     eligible = outcome and case_id in VARIANT_STRATA and signals.disposition() == "counted"
     found = variants(attempt) if eligible and _claim_variants(context.run_dir) else None
     return outcome, found
@@ -607,25 +620,38 @@ def _trace(context: WorkerContext, task: dict[str, object], result: dict[str, ob
     _write_trace(path, {**transcript, "events": events})
 
 
-def attempt(context: WorkerContext, task: dict[str, object]) -> dict[str, object]:
-    """One attempt in its own Team, Space, temporary directory, and Brain thread, metered in this thread."""
+def _played(context: WorkerContext, task: dict[str, object], signals: Signals, meter: Meter, events: list | None):
+    """Play one attempt on a free slot of this worker, its slot's provider traffic taken into ``signals``."""
     provider, model_id, key = context.models[task["model"]]
-    meter, signals = Meter(), Signals()
-    events = None if context.trace_dir is None else []
+    slot = context.slots.get()
     token = _METER.set(meter)
     try:
+        state = Path(slot["state"])
+        before = read_counts(state)
         with tempfile.TemporaryDirectory(dir=context.run_dir) as directory:
             settings = (provider, model_id, f"eval-{secrets.token_hex(8)}")
-            brain = (*context.brain, signals)
+            brain = (slot["brain"], Path(slot["token"]), signals)
             harness, team, fixture = _attempt_team(context.modules, directory, brain, settings, events)
+            played = Attempt(team, fixture, provider, key)
             try:
-                outcome, found = _judged(context, task["case"], Attempt(team, fixture, provider, key), signals)
+                outcome, found = _judged(
+                    context, task["case"], played, signals, lambda: signals.settle(before, read_counts(state))
+                )
             finally:
                 harness.doCleanups()
     finally:
         _METER.reset(token)
+        context.slots.put(slot)
+    return outcome, found
+
+
+def attempt(context: WorkerContext, task: dict[str, object]) -> dict[str, object]:
+    """One attempt in its own Team, Space, temporary directory, and slot, metered in this thread."""
+    meter, signals = Meter(), Signals()
+    events = None if context.trace_dir is None else []
+    outcome, found = _played(context, task, signals, meter, events)
     if signals.disposition() == "error":
-        raise RuntimeError("a Brain response carried no readable eval evidence")
+        raise RuntimeError("an attempt's slot evidence could not be read")
     spent = meter.cost()
     result = {
         **task,
@@ -654,8 +680,10 @@ def _worker_context(config: dict[str, object]) -> WorkerContext:
     assistant = Generated(decoded["manifest"], decoded["contract"], Path(config["project"]))
     trace_dir = None if config["trace_dir"] is None else Path(config["trace_dir"])
     models = [tuple(item) for item in config["models"]]
-    brain = (config["brain"], Path(config["token"]))
-    return WorkerContext(_team_modules(assistant), brain, models, Path(config["run"]), trace_dir)
+    slots = queue.Queue()
+    for slot in config["slots"]:
+        slots.put(slot)
+    return WorkerContext(_team_modules(assistant), slots, models, Path(config["run"]), trace_dir)
 
 
 def _abandon() -> None:
@@ -720,13 +748,14 @@ class Settings:
     only: frozenset[str] = frozenset()
     trace_dir: Path | None = None
     cpus: int = 1
+    # Where each slot's Brain log is kept; None keeps it in the run's directory, which the run removes.
     brain_logs: Path | None = None
 
 
 def _worker_config(
     models: list[tuple[str, str, str]], settings: Settings, assistant: Generated, run_dir: Path
-) -> Callable[[int, str, Path], dict[str, object]]:
-    """Each worker's first stdin line: everything it needs, its model keys included, and its own Brain."""
+) -> Callable[[int, list[dict[str, str]]], dict[str, object]]:
+    """Each worker's first stdin line: everything it needs, its model keys included, and its own slots."""
     shared = {
         "teams": str(TEAMS),
         "manifest": base64.b64encode(assistant.manifest).decode(),
@@ -737,7 +766,7 @@ def _worker_config(
         "run": str(run_dir),
         "threads": settings.threads,
     }
-    return lambda _number, url, token: {**shared, "brain": url, "token": str(token)}
+    return lambda _number, slots: {**shared, "slots": slots}
 
 
 def _cpu_seconds() -> float:
@@ -763,6 +792,7 @@ def _run_report(schedule: Schedule, settings: Settings, times: tuple[float, floa
 def run(models: list[tuple[str, str, str]], settings: Settings, *, assistant: Generated) -> dict:
     """Every case of every model under one hard budget, across the run's workers, merged into one report."""
     started = time.monotonic()
+    binary = brain_binary()
     cpus = confine(settings.cpus)
     cases = [case for case, _play in CASES if not settings.only or case in settings.only]
     pairs = [(provider, model) for provider, model, _key in models]
@@ -774,7 +804,7 @@ def run(models: list[tuple[str, str, str]], settings: Settings, *, assistant: Ge
         run_dir = Path(directory)
         ledger = eval_cost.SharedBudget.create(run_dir / "budget.json", settings.budget)
         configure = _worker_config(models, settings, assistant, run_dir)
-        brains = (brain_python(), run_dir, settings.brain_logs)
+        brains = (binary, run_dir, settings.brain_logs)
         with Pool(command, brains, settings.workers, settings.threads, configure) as pool:
             ready = time.monotonic()
             orchestrate(schedule, pool)
@@ -806,7 +836,7 @@ def _run_failures(report: dict[str, object]) -> list[str]:
         ("cost-unknown", not all(case["cost_known"] for case in cases)),
         ("budget-unsettled", budget["unsettled_usd"]),
         ("output-clamped", wire["brain_clamped"] or wire["received_clamped"]),
-        ("evidence-lost", lost or wire["unattributed"]),
+        ("evidence-lost", lost),
         ("throttled", any(item["given_up"] for item in providers.values())),
     )
     unavailable = [f"provider-unavailable:{name}" for name, item in providers.items() if item["unavailable"]]
@@ -845,14 +875,9 @@ def _key(path: Path | None) -> str | None:
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--validate", action="store_true")
-    # Internal: the run starts its Brains and workers with these.
-    parser.add_argument("--serve-brain", action="store_true", help=argparse.SUPPRESS)
+    # Internal: the run starts its workers with this.
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--ledger", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--events", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--brain-log", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--brain-logs", type=Path, help="log each Brain's provider failures to DIR/brain-N.log")
+    parser.add_argument("--brain-logs", type=Path, help="keep each slot's Brain log as DIR/brain-N.log")
     parser.add_argument("--openai-key-file", type=Path)
     parser.add_argument("--anthropic-key-file", type=Path)
     parser.add_argument("--attempts", type=int, default=ATTEMPTS)
@@ -867,17 +892,15 @@ def _arguments() -> argparse.Namespace:
         "--assistant", type=Path, default=ASSISTANT_PROJECT, help="the real Assistant project; default ~/" + ASSISTANT
     )
     parser.add_argument("--cpus", type=int, default=cpu_budget(), help="processors the run may use; default half")
-    parser.add_argument("--workers", type=int, help="worker and Brain pairs; default one per processor")
-    parser.add_argument("--threads", type=int, default=DEFAULT_THREADS, help="attempts each worker runs at once")
+    parser.add_argument("--workers", type=int, help="Team runner processes; default one per processor")
+    parser.add_argument(
+        "--threads", type=int, default=DEFAULT_THREADS, help="attempts each worker runs at once, each on its own Brain"
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = _arguments()
-    if args.serve_brain:
-        if None in (args.token_file, args.ledger, args.events):
-            raise SystemExit("name the Brain's new token file, the run's ledger, and its events file")
-        return serve_brain(args.token_file, args.ledger, args.events, args.brain_log)
     if args.worker:
         return work()
     if args.teams is not None:
