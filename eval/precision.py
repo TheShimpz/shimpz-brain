@@ -5,7 +5,7 @@ orchestrator and the shipped Brain runtime, and writes a private JSON Lines tran
 the repository with owner-only permissions. From Brain, ``PYTHONPATH=. uv run --frozen --python 3.14 python -m
 eval.precision`` then:
 
-- ``validate`` checks the corpus, Brain's admission of every scenario's Assistants, and the calibration sample;
+- ``validate`` checks the corpus, every scenario's Assistants in Team's wire shape, and the calibration sample;
 - ``calibrate`` runs both judges over the adjudicated sample and writes their agreement;
 - ``judge`` judges every completed attempt of a transcript under a hard US dollar cap (``--cap``);
 - ``report`` writes the sanitized report: counts, rates with cluster bootstrap intervals, pass^k, paired
@@ -30,6 +30,7 @@ from pathlib import Path
 
 from eval import (
     arms,
+    brain_api,
     corpus,
     fixtures,
     fresh,
@@ -737,26 +738,19 @@ def build_report(
 
 
 def validate() -> dict[str, object]:
-    """Both strata are sound, and Brain admits every scenario under every contract set its arms use."""
-    import agent_runtime
+    """Both strata are sound, and every scenario's Assistants under every contract set its arms use are well formed.
 
+    The Assistants are built in Team's wire shape; the Brain admits them on the first live turn.
+    """
     corpus.validate()
     large_api.validate()
     for module in BLIND.values():
         module.validate()
-    provider = agent_runtime.ProviderConfig("openai", judge.JUDGE_MODELS["openai"], "offline-validation-key")
     checks = [(scenario, set_name) for scenario in corpus.SCENARIOS for set_name in ("a", "b")]
     checks += [(scenario, set_name) for scenario in large_api.SCENARIOS for set_name in ("large", "large-tasks")]
     checks += [(scenario, stratum) for stratum, module in BLIND.items() for scenario in module.SCENARIOS]
     for scenario, set_name in checks:
-        agent_runtime.TurnContext(
-            "precision:validate",
-            "Precision Team",
-            brain_assistants(scenario, set_name),
-            provider,
-            memories=(),
-            routines=(),
-        )
+        brain_assistants(scenario, set_name)
     return {
         "status": "corpus-valid",
         "corpora": {
@@ -769,24 +763,25 @@ def validate() -> dict[str, object]:
     }
 
 
-def brain_assistants(scenario: corpus.Scenario, contracts: str = "a") -> tuple:
+def brain_assistants(scenario: corpus.Scenario, contracts: str = "a") -> tuple[dict[str, object], ...]:
     return tuple(_brain_assistant(contracts, name) for name in scenario.assistants)
 
 
 @functools.cache
-def _brain_assistant(contracts: str, name: str) -> object:
-    """One contract set's Assistant as Brain admits it; the sets are constants, so each is validated once."""
-    import agent_runtime
-
+def _brain_assistant(contracts: str, name: str) -> dict[str, object]:
+    """One contract set's Assistant in Team's wire shape; the sets are constants, so each is checked once."""
     assistant = CONTRACTS[contracts][name]
-    return agent_runtime.AssistantDefinition(
-        assistant.id,
-        assistant.genesis,
-        tuple(
-            agent_runtime.ActionDefinition(a.id, a.summary, a.input_schema, output_schema=fixtures.OBJECT_SCHEMA)
-            for a in assistant.actions
-        ),
-    )
+    actions = [brain_api.action(a.id, a.summary, a.input_schema, fixtures.OBJECT_SCHEMA) for a in assistant.actions]
+    ids = [action["id"] for action in actions]
+    if (
+        not assistant.id
+        or not assistant.genesis.strip()
+        or len(set(ids)) != len(ids)
+        or not all(ids)
+        or any(not action["summary"].strip() or not isinstance(action["input_schema"], dict) for action in actions)
+    ):
+        raise ValueError("invalid contract set Assistant")
+    return brain_api.assistant(assistant.id, assistant.genesis, actions)
 
 
 def _judges(args: argparse.Namespace) -> tuple[Judgment, Judgment]:

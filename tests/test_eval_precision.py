@@ -670,17 +670,18 @@ class MetaTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_validate_admits_every_scenario_in_brain(self):
-        import agent_runtime
-
+    def test_validate_builds_every_scenario_in_teams_wire_shape(self):
         precision._brain_assistant.cache_clear()
-        with mock.patch.object(agent_runtime, "AssistantDefinition", wraps=agent_runtime.AssistantDefinition) as built:
-            result = precision.validate()
+        result = precision.validate()
         self.assertEqual((result["scenarios"], result["calibration_items"]), (456, 32))
-        # Each contract set's Assistant is built and admitted once, however many scenarios name it.
-        self.assertEqual(built.call_count, precision._brain_assistant.cache_info().currsize)
         scenario = corpus.SCENARIOS_BY_ID["status-migrate.en"]
-        self.assertEqual(len(precision.brain_assistants(scenario)), len(scenario.assistants))
+        built = precision.brain_assistants(scenario)
+        self.assertEqual(len(built), len(scenario.assistants))
+        self.assertEqual(set(built[0]), {"id", "genesis", "actions"})
+        self.assertEqual(
+            set(built[0]["actions"][0]),
+            {"id", "summary", "input_schema", "output_schema", "authorization", "input_files"},
+        )
 
     def test_the_module_runs_as_a_command(self):
         with (
