@@ -52,6 +52,22 @@ static SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     ])
 });
 
+/// The schema a turn's fixed token count measures for the tool (`SUMMARY`), which is the tool's own declaration,
+/// not the converted schema the providers receive.
+#[must_use]
+pub fn summary_schema() -> Value {
+    let objective = json::object([
+        ("type", json::text("string")),
+        ("maxLength", json::uint(MAX_OBJECTIVE_CHARS as u64)),
+    ]);
+    json::object([
+        ("type", json::text("object")),
+        ("additionalProperties", Value::Bool(false)),
+        ("required", json::array(vec![json::text("objective")])),
+        ("properties", json::object([("objective", objective)])),
+    ])
+}
+
 /// Whether a turn offers the Browser: where Team offered it, outside Routine work and attachment content.
 #[must_use]
 pub fn offered(context: &TurnContext) -> bool {
@@ -181,6 +197,18 @@ mod tests {
         assert_eq!(review_after(&[turn(vec![call()])]), Ok(Some(AFTER.into())));
         assert_eq!(review_after(&[reply("O prazo é 30/11.")]), Ok(None));
         assert_eq!(review_after(&[user("x")]), Ok(None));
+    }
+
+    #[test]
+    fn the_budget_measures_the_tools_own_declaration() {
+        assert_eq!(
+            json::compact(&summary_schema()),
+            r#"{"type":"object","additionalProperties":false,"required":["objective"],"properties":{"objective":{"type":"string","maxLength":2000}}}"#
+        );
+        assert_eq!(
+            json::compact(&spec().schema),
+            r#"{"properties":{"objective":{"maxLength":2000,"type":"string"}},"required":["objective"],"type":"object"}"#
+        );
     }
 
     #[test]
