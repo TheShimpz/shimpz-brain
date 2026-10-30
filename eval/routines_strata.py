@@ -21,8 +21,9 @@ if __package__:
         ZONE_SET,
     )
     from eval.routines_person import FULL, OVER_BUDGET, Attempt, Outcome, Person, conversation_turns
-    from protocol.team.http.v1 import phrase as team_phrase
-    from protocol.team.http.v1 import routine_proposal as team_routine_proposal
+
+    from protocol.http.v1 import phrase as team_phrase
+    from protocol.http.v1 import routine_proposal as team_routine_proposal
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         EXAMPLE,

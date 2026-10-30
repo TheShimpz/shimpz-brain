@@ -17,10 +17,18 @@ def _load(name: str, path: Path):
     return module
 
 
+# The Team checkout beside this Brain, whose HTTP protocol (``protocol.http.v1``) the eval reads; never Brain's mirror.
+TEAMS_CHECKOUT = BRAIN.parent / "teams"
+
+
 if __package__:
     # In Brain, the one cost module its evaluation ceiling uses too, so the shared ledger's refusal is one class.
     from eval import cost as eval_cost
     from eval import stats as eval_stats
+
+    # Team's protocol package merges with Brain's own `protocol` namespace; appended, so no Team module shadows Brain's.
+    if str(TEAMS_CHECKOUT) not in sys.path:
+        sys.path.append(str(TEAMS_CHECKOUT))
 else:  # run as a script from Team, which cannot import Brain's eval package
     eval_cost = _load("routine_eval_cost", BRAIN / "eval" / "cost.py")
     eval_stats = _load("routine_eval_stats", BRAIN / "eval" / "stats.py")

@@ -19,9 +19,10 @@ if __package__:
         TWIN,
         Fixture,
     )
-    from protocol.team.http.v1 import payload as team_payload
-    from protocol.team.http.v1 import phrase as team_phrase
-    from protocol.team.http.v1 import routine_proposal as team_routine_proposal
+
+    from protocol.http.v1 import payload as team_payload
+    from protocol.http.v1 import phrase as team_phrase
+    from protocol.http.v1 import routine_proposal as team_routine_proposal
 else:  # run as a script from Team, beside its sibling modules
     from routines_fixture import (
         ASSISTANT,
