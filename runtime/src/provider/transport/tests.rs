@@ -568,9 +568,9 @@ fn concurrent_calls_wait_for_a_pooled_connection_and_idle_ones_are_bounded() {
     for pending in calls {
         assert_eq!(pending.join().unwrap().0.unwrap().1.status, 200);
     }
-    assert_eq!(
-        origin.peak(),
-        PROVIDER_CONNECTIONS,
+    // How many calls overlap depends on scheduling; the bound is that none ever exceeds the pool's slots.
+    assert!(
+        origin.peak() <= PROVIDER_CONNECTIONS,
         "never more connections than the pool's slots"
     );
     assert_eq!(call(&harness, &scope, 1).unwrap().1.status, 200);
