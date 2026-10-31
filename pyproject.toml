@@ -3,14 +3,10 @@ name = "shimpz-brain-tooling"
 version = "0.0.0"
 requires-python = "==3.14.*"
 dependencies = [
-    # The evaluation and performance tooling only: it drives the Rust Brain over HTTP (ADR-0124). Its judges send
-    # their own provider requests, and the precision runners load Team's Action protocol, which validates with the
-    # same jsonschema and RE2 pins Team uses.
-    "google-re2==1.1.20251105",
+    # The evaluation and performance tooling only: it drives the Rust Brain over HTTP (ADR-0124), and its judges send
+    # their own provider requests.
     "httpx==0.28.1",
-    "jsonschema==4.25.1",
     "pydantic==2.14.0",
-    "referencing==0.37.0",
 ]
 
 [tool.uv]
