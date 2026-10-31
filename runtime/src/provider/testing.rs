@@ -210,6 +210,7 @@ struct Log {
     received: Vec<Received>,
     accepted: usize,
     open: usize,
+    busy: usize,
     peak: usize,
     closed: usize,
 }
@@ -307,7 +308,8 @@ impl Origin {
         self.shared.log().accepted
     }
 
-    /// The most connections open at once.
+    /// The most requests answered at once: each counts from its arrival until its answer is written, a span inside
+    /// the client's own, so the count never runs ahead of the client's concurrency the way a lagging close would.
     #[must_use]
     pub fn peak(&self) -> usize {
         self.shared.log().peak
@@ -370,7 +372,6 @@ fn accept(listener: &TcpListener, shared: &Arc<Shared>) {
         shared.update(|log| {
             log.accepted += 1;
             log.open += 1;
-            log.peak = log.peak.max(log.open);
         });
         let serving = Arc::clone(shared);
         thread::spawn(move || {
@@ -390,15 +391,22 @@ fn serve(mut stream: TcpStream, shared: &Shared) -> bool {
         let Some(received) = read_request(&mut stream, &mut buffer) else {
             return true;
         };
-        shared.update(|log| log.received.push(received.clone()));
+        shared.update(|log| {
+            log.received.push(received.clone());
+            log.busy += 1;
+            log.peak = log.peak.max(log.busy);
+        });
         let answer = (shared.responder)(&received);
         if answer.hang {
             let mut sink = [0; 4096];
             while matches!(stream.read(&mut sink), Ok(read) if read > 0) {}
+            shared.update(|log| log.busy -= 1);
             return true;
         }
         thread::sleep(answer.delay);
-        if stream.write_all(&encode(&answer)).is_err() {
+        let written = stream.write_all(&encode(&answer));
+        shared.update(|log| log.busy -= 1);
+        if written.is_err() {
             return true;
         }
     }
