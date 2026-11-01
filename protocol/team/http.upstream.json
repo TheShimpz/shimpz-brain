@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/TheShimpz/shimpz-teams",
-  "commit": "b055be8da654457397dfe87abd13b754ecb528e5",
+  "commit": "93bf215e208d039c2bf6eb3033760def4dc28b58",
   "path": "protocol/http/rust",
-  "tree": "7c822a66dd1e7bee8bda84e3b7db784a54d7662b",
-  "contract_files_sha256": "6c3eb04f0adbaa544bc29e18dcf17b7b6ad19b6763a733ed0660201163ddd84f"
+  "tree": "bccf2b8c0aa7480242b03ff7593e7eabe8b9713d",
+  "contract_files_sha256": "e61b67e962ef1cd8d1696288bf43a97bf43d5521d499f385cf3e219ff14a5718"
 }
